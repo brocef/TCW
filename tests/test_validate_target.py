@@ -110,7 +110,7 @@ def test_axis_semantics_are_object_local(tmp_path):
 def _spec_item(root: Path, name: str) -> Path:
     from tests.work.projects import write_item
     folder = write_item(root, name, {"title": name, "stage": "spec",
-                                     "blocked-by": [f"{name}-gone"]})
+                                     "blocked-by": [f"repo.work/{name}-gone"]})
     (folder / "spec").mkdir()
     (folder / "spec" / "spec.md").write_text("See [x](tcw://C/nowhere).\n")
     (folder / "review").mkdir()

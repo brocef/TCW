@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
+from tcw.ids import identity
 from tcw.work.backend import Query
 from tcw.work.layout import Layout
 from tcw.work.model import Item, blocks_of
@@ -27,7 +28,7 @@ def item_record(item: Item, items: Iterable[Item], layout: Layout) -> dict[str, 
     `children` are computed from (the readable ones)."""
     items = list(items)
     return {
-        "slug": str(item.slug),
+        **identity(item.slug),
         "title": item.title,
         "stage": item.stage,
         "created": item.created.isoformat(),

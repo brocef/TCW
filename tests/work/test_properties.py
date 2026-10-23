@@ -49,7 +49,7 @@ def test_invalid_changes_are_usage_errors(changes):
 def test_valid_changes_pass():
     _validate(Changes(title="new", priority="highest", effort="very-high",
                       complexity="low", add_tags=("Bug",), parent="b",
-                      add_blocked_by=("other/x", B)))
+                      add_blocked_by=("other.work/x", B)))
 
 
 def test_none_clears_a_property():
@@ -95,7 +95,7 @@ def test_apply_changes_sets_clears_and_edits():
     changed = apply_changes(item, Changes(
         title="renamed", effort=None, assignee="sam", parent="b",
         add_tags=("Docs", "bug"), remove_tags=("bug",),
-        add_blocked_by=("other/x",), remove_blocked_by=("b",)))
+        add_blocked_by=("other.work/x",), remove_blocked_by=("b",)))
     assert changed.title == "renamed"
     assert changed.effort is None
     assert changed.assignee == "sam"

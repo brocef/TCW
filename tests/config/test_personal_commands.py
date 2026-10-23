@@ -98,7 +98,7 @@ def test_a_childs_local_file_is_not_read_when_delegating_to_it(family):
     write_local_config(child, "id: wrong\n")
     result = tcw(parent, "work", "new", "--project", "child", "x")
     assert result.code == 0, result
-    assert result.out.startswith("child/")
+    assert result.out.startswith("child.work/")
     folder = result.out.strip().split("/", 1)[1]
     assert (child / "docs" / "work" / folder).is_dir()
 

@@ -51,9 +51,12 @@ def changed(lines: list[tuple[str, Path]]) -> None:
 
 
 def print_json(key: str | None, value: Any) -> None:
-    """Exactly one JSON object on stdout with `"schema": 1` first: `value`
-    under `key`, or `value`'s own keys when `key` is None (Design 1.6)."""
-    document: dict[str, Any] = {"schema": 1}
+    """Exactly one JSON object on stdout with `"schema": 2` first: `value`
+    under `key`, or `value`'s own keys when `key` is None (Design 1.6).
+
+    Schema 2 is TCW 4's: every record names its object by `full-id` and
+    `owner` (TCW-110 Design 4.3)."""
+    document: dict[str, Any] = {"schema": 2}
     if key is None:
         document.update(value)
     else:

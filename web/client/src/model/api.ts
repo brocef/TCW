@@ -126,10 +126,10 @@ export async function suggestOtherItems(
     text: string
 ): Promise<TReferenceOption[]> {
     const found = await fetchJson<
-        Array<{ slug: string; title: string; project: string }>
+        Array<{ "full-id": string; title: string; project: string }>
     >(`/api/options/work?q=${encodeURIComponent(text)}`)
     return found.map((item) => ({
-        identifier: item.slug,
+        identifier: item["full-id"],
         displayName: `${item.title} (${item.project})`,
     }))
 }

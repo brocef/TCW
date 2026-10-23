@@ -114,7 +114,7 @@ class JiraStubs:
         self.calls.append(("adopt", key))
         folder = f"{key}-adopted"
         backend.seed(folder, f"Adopted {key}")
-        return f"{backend.project}/{folder}", 0, None
+        return str(Slug(backend.project, folder)), 0, None
 
     def create_fields(self, backend):
         self.calls.append(("create_fields",))

@@ -214,3 +214,12 @@ def test_with_id_path_and_parts():
     assert full_id.parts == ["cli", "x"]
     assert full_id.with_id_path("cli/y") == FullId("demo", "capabilities", "cli/y")
     assert full_id.address() == "tcw://demo.capabilities/cli/x"
+
+
+def test_ac1_a_work_slug_equals_the_identifier_parsed_from_text():
+    from tcw.work.model import Slug
+    slug, parsed = Slug("demo", "x"), parse_full_id("demo.work/x")
+    assert slug == parsed and parsed == slug
+    assert hash(slug) == hash(parsed)
+    assert slug in {parsed} and parsed in {slug}
+    assert str(slug) == "demo.work/x" and slug.folder == "x"

@@ -112,7 +112,7 @@ def test_list_and_search_print_one_path_per_line(thing, run):
     assert run(thing, "capabilities", "list", "--local")[1] == "ns/do-a-thing\nns/other\n"
     assert run(thing, "capabilities", "search", "findme")[1] == "ns/other\n"
     data = json.loads(run(thing, "capabilities", "list", "--json")[1])
-    assert data["schema"] == 1
+    assert data["schema"] == 2
     assert data["capabilities"][0] == {"path": "ns/do-a-thing", "name": "Do A Thing",
                                        "status": "Missing", "origin": "local"}
     shown = json.loads(run(thing, "capabilities", "show", "ns/do-a-thing", "--json")[1])

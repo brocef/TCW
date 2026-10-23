@@ -103,7 +103,7 @@ def test_assign_me_without_an_identity_creates_nothing(personal, no_identity):
 
 def test_edit_of_a_missing_item_says_it_is_missing_before_who(personal, no_identity):
     # Review finding C8: the item is read before the identity is asked for.
-    result = tcw(no_identity, "work", "edit", "p/2026-01-01-nothing-here", "--assign-me")
+    result = tcw(no_identity, "work", "edit", "p.work/2026-01-01-nothing-here", "--assign-me")
     assert (result.code, result.out) == (4, ""), result
     assert "no identity" not in result.err
 

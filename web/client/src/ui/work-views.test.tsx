@@ -22,9 +22,11 @@ test("the stage is shown with the command that moves it, and nothing moves it", 
     renderPage(workDetail("x"))
     const line = screen.getByText(/^Stage:/)
     expect(line).toHaveTextContent(
-        "Stage: ask. Move it with tcw work advance p/x."
+        "Stage: ask. Move it with tcw work advance p.work/x."
     )
-    expect(line.querySelector("code")).toHaveTextContent("tcw work advance p/x")
+    expect(line.querySelector("code")).toHaveTextContent(
+        "tcw work advance p.work/x"
+    )
     for (const name of [/start/i, /complete/i, /advance/i, /drop/i, /discard/i])
         expect(screen.queryByRole("button", { name })).toBeNull()
 })
@@ -33,9 +35,9 @@ test("links to this project's items navigate; another project's are labelled", (
     renderPage(
         workDetail("x", {
             item: workItem("x", {
-                parent: "p/epic",
-                "blocked-by": ["q/2026-01-01-theirs"],
-                blocks: ["p/after"],
+                parent: "p.work/epic",
+                "blocked-by": ["q.work/2026-01-01-theirs"],
+                blocks: ["p.work/after"],
             }),
         })
     )

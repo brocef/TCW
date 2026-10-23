@@ -347,7 +347,7 @@ def test_hooks_get_the_callers_environment(tmp_path):
 
 def test_hooks_get_the_stage_variables_and_run_from_the_project_root(tmp_path):
     check = ('test "$TCW_STAGE" = review && test "$TCW_FROM_STAGE" = implement '
-             '&& test "$TCW_SLUG" = tcw/1-thing '
+             '&& test "$TCW_SLUG" = tcw.work/1-thing '
              '&& test "$TCW_ITEM_PATH" = "$TCW_PROJECT_ROOT/work/1-thing" '
              '&& test "$(pwd -P)" = "$(cd "$TCW_PROJECT_ROOT" && pwd -P)" '
              '&& test -z "$TCW_FORCED"')

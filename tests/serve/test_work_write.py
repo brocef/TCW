@@ -118,19 +118,26 @@ def test_a_local_parent_must_be_an_item_here(fs, two):
     refused = patch(fs, a, {"parent": "2026-01-01-nothing"}, {"parent": None})
     assert_refused(refused, 400, "usage", "parent", "2026-01-01-nothing")
     ok(patch(fs, a, {"parent": b}, {"parent": None}))
-    assert item_yaml(fs.root, a)["parent"] == f"p/{b}"
+    assert item_yaml(fs.root, a)["parent"] == f"p.work/{b}"
 
 
-@pytest.mark.parametrize("value", ["not a slug!", "a/b/c"])
+@pytest.mark.parametrize("value", ["not a slug!", "a.work/b c"])
 def test_a_parent_that_is_not_a_slug_is_refused(fs, two, value):
     a, _ = two
     assert_refused(patch(fs, a, {"parent": value}, {"parent": None}), 400, "usage")
 
 
+def test_a_parent_of_several_parts_names_no_item(fs, two):
+    """A work id-path is one folder name, so `a/b/c`, like a 3.x
+    `<project>/<folder>`, names no item (TCW-110 Design 3.4)."""
+    a, _ = two
+    assert_refused(patch(fs, a, {"parent": "a/b/c"}, {"parent": None}), 404, "not-found")
+
+
 def test_another_projects_parent_is_kept_with_a_warning(fs, two):
     a, _ = two
-    answer = ok(patch(fs, a, {"parent": "other-project/2026-01-01-x"}, {"parent": None}))
-    assert answer["item"]["parent"] == "other-project/2026-01-01-x"
+    answer = ok(patch(fs, a, {"parent": "other-project.work/2026-01-01-x"}, {"parent": None}))
+    assert answer["item"]["parent"] == "other-project.work/2026-01-01-x"
     assert any(w["where"] == "parent" and "other-project" in w["message"]
                for w in answer["warnings"])
 
@@ -141,15 +148,15 @@ def test_a_local_blocker_must_be_an_item_here(fs, two):
                     {"blocked-by": []})
     assert_refused(refused, 400, "usage", "blocked-by")
     ok(patch(fs, a, {"blocked-by": {"add": [b]}}, {"blocked-by": []}))
-    stale = patch(fs, a, {"blocked-by": {"remove": [f"p/{b}"]}}, {"blocked-by": []})
+    stale = patch(fs, a, {"blocked-by": {"remove": [f"p.work/{b}"]}}, {"blocked-by": []})
     assert_refused(stale, 409, "stale-revision", "blocked-by")
 
 
 def test_another_projects_blocker_is_kept_with_a_warning(fs, two):
     a, _ = two
-    answer = ok(patch(fs, a, {"blocked-by": {"add": ["other-project/2026-01-01-x"]}},
+    answer = ok(patch(fs, a, {"blocked-by": {"add": ["other-project.work/2026-01-01-x"]}},
                       {"blocked-by": []}))
-    assert answer["item"]["blocked-by"] == ["other-project/2026-01-01-x"]
+    assert answer["item"]["blocked-by"] == ["other-project.work/2026-01-01-x"]
     assert any(w["where"] == "blocked-by" for w in answer["warnings"])
 
 
@@ -171,8 +178,8 @@ def test_malformed_changes_are_refused(fs, two, changes):
 def test_blocks_adds_this_item_to_the_targets_blocked_by(fs, two):
     a, b = two
     ok(fs.post(f"/api/work/{a}/blocks", {"target": b, "expected": False}))
-    assert item_yaml(fs.root, b)["blocked-by"] == [f"p/{a}"]
-    assert ok(fs.get(f"/api/work/{a}"))["item"]["blocks"] == [f"p/{b}"]
+    assert item_yaml(fs.root, b)["blocked-by"] == [f"p.work/{a}"]
+    assert ok(fs.get(f"/api/work/{a}"))["item"]["blocks"] == [f"p.work/{b}"]
     again = fs.post(f"/api/work/{a}/blocks", {"target": b, "expected": False})
     assert_refused(again, 409, "stale-revision")
 
@@ -193,16 +200,16 @@ def test_blocks_into_a_connected_project(family, tcw):
     theirs = new(tcw, family.q, "Theirs")
     commit_all(family.q)
     mine = new(tcw, family.p, "Mine")
-    ok(family.served.post(f"/api/work/{mine}/blocks", {"target": f"q/{theirs}",
+    ok(family.served.post(f"/api/work/{mine}/blocks", {"target": f"q.work/{theirs}",
                                                         "expected": False}))
-    assert item_yaml(family.q, theirs)["blocked-by"] == [f"p/{mine}"]
+    assert item_yaml(family.q, theirs)["blocked-by"] == [f"p.work/{mine}"]
 
 
 def test_blocks_into_an_upstream_is_refused(family, tcw):
     mine = new(tcw, family.p, "Mine")
     before = state(family.r)
     answer = family.served.post(f"/api/work/{mine}/blocks", {
-        "target": f"r/{family.upstream_item}", "expected": False})
+        "target": f"r.work/{family.upstream_item}", "expected": False})
     assert_refused(answer, 409, "refused", "read-only")
     assert state(family.r) == before
 
@@ -233,9 +240,9 @@ def test_creating_here_calls_new_with_the_request(fs):
     answer = fs.post("/api/work", {"title": "Fresh", "requestText": "please do\n",
                                    "properties": {"priority": "high", "tags": ["ui"]}})
     assert answer.status == 201, answer.body
-    slug = answer.json["slug"]
+    slug = answer.json["full-id"]
     folder = slug.split("/", 1)[1]
-    assert slug.startswith("p/")
+    assert slug.startswith("p.work/")
     data = item_yaml(fs.root, folder)
     assert (data["priority"], data["tags"]) == ("high", ["ui"])
     request = fs.root / "docs" / "work" / folder / "request" / "request.md"
@@ -245,7 +252,7 @@ def test_creating_here_calls_new_with_the_request(fs):
 def test_creating_at_the_inbox(fs):
     answer = fs.post("/api/work", {"title": "Raw", "stage": "inbox"})
     assert answer.status == 201
-    assert item_yaml(fs.root, answer.json["slug"].split("/")[1])["stage"] == "inbox"
+    assert item_yaml(fs.root, answer.json["full-id"].split("/")[1])["stage"] == "inbox"
 
 
 def test_creating_into_a_connected_project(family):
@@ -254,8 +261,8 @@ def test_creating_into_a_connected_project(family):
         "title": "Please help", "requestText": "details\n", "project": "q",
         "properties": {"priority": "high"}})
     assert answer.status == 201, answer.body
-    slug = answer.json["slug"]
-    assert slug.startswith("q/")
+    slug = answer.json["full-id"]
+    assert slug.startswith("q.work/")
     data = item_yaml(family.q, slug.split("/")[1])
     assert (data["stage"], data["priority"]) == ("inbox", "high")
     assert state(family.p) == before
@@ -321,7 +328,7 @@ def test_jira_create_carries_a_refused_tickets_key(jira, monkeypatch):
 
 
 def test_jira_create_blocked_by_only_this_projects_items(jira):
-    for blocker in ("TCW-9-nothing", "other/2026-01-01-x"):
+    for blocker in ("TCW-9-nothing", "other.work/2026-01-01-x"):
         answer = jira.served.post("/api/work", {"title": "T", "properties": {
             "blocked-by": [blocker]}})
         assert_refused(answer, 400, "usage", "blocked-by")
@@ -336,7 +343,7 @@ def test_jira_tickets_and_adopt(jira):
     found = ok(jira.served.get("/api/tickets"))
     assert found["tickets"] == [{"key": "TCW-7", "summary": "Waiting"}]
     adopted = jira.served.post("/api/tickets/TCW-7/adopt", {})
-    assert adopted.status == 201 and adopted.json["slug"] == "tcw/TCW-7-adopted"
+    assert adopted.status == 201 and adopted.json["full-id"] == "tcw.work/TCW-7-adopted"
     assert (adopted.json["code"], adopted.json["problem"]) == (0, None)
 
 
@@ -358,7 +365,7 @@ def test_assignee_suggestions_are_a_usage_error_in_filesystem_mode(fs):
 def test_work_suggestions_come_from_connected_filesystem_projects(family, tcw):
     theirs = new(tcw, family.q, "Shared widget")
     found = ok(family.served.get("/api/options/work?q=widget"))
-    assert found == [{"slug": f"q/{theirs}", "title": "Shared widget",
+    assert found == [{"full-id": f"q.work/{theirs}", "title": "Shared widget",
                       "stage": "request", "project": "q"}]
 
 
@@ -429,7 +436,7 @@ def test_a_reference_to_a_stray_folder_is_refused(fs, two):
 def test_jira_create_keeps_another_projects_parent_with_a_warning(jira):
     """Spec 9's parent row: the backend decides whether it can hold it."""
     answer = jira.served.post("/api/work", {"title": "T", "properties": {
-        "parent": "other/2026-01-01-x"}})
+        "parent": "other.work/2026-01-01-x"}})
     assert answer.status == 201, answer.body
     assert [w["where"] for w in answer.json["warnings"]] == ["parent"]
     assert jira.backend.named("create")
@@ -480,8 +487,8 @@ def test_adopting_runs_the_request_stages_post_hook(adopting, tmp_path):
     served, key = adopting(f"echo $TCW_SLUG > {ran}")
     answer = served.post(f"/api/tickets/{key}/adopt", {})
     assert answer.status == 201, answer.body
-    slug = f"tcw/{key}-adopt-me"
-    assert answer.json == {"slug": slug, "code": 0, "problem": None}
+    slug = f"tcw.work/{key}-adopt-me"
+    assert answer.json == {"full-id": slug, "code": 0, "problem": None}
     assert ran.read_text().strip() == slug
 
 
@@ -491,5 +498,5 @@ def test_a_failed_adopt_hook_keeps_the_item_and_says_what_failed(adopting):
     assert answer.status == 201, answer.body
     assert answer.json["code"] == 6
     problem = answer.json["problem"]
-    assert problem.startswith(f"adopted {key} as tcw/{key}-adopt-me, but"), problem
+    assert problem.startswith(f"adopted {key} as tcw.work/{key}-adopt-me, but"), problem
     assert (served.root / "docs" / "work" / f"{key}-adopt-me").is_dir()

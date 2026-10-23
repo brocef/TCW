@@ -232,7 +232,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pl.add_argument("--local", action="store_true",
                     help="local capabilities only, none inherited")
     pl.add_argument("--json", action="store_true",
-                    help='print {"schema": 1, "capabilities": [...]}')
+                    help='print {"schema": 2, "capabilities": [...]}')
     pl.set_defaults(func=_list)
 
     ps = command(g, "show", help="read a capability", prints="the record, or --json",
@@ -241,7 +241,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ps.add_argument("id", metavar="path",
                     help="capability path, e.g. web/login (alias-prefixed if inherited)")
     ps.add_argument("--json", action="store_true",
-                    help='print {"schema": 1, "capability": {...}}')
+                    help='print {"schema": 2, "capability": {...}}')
     ps.set_defaults(func=_show)
 
     command(g, "path", help="print the capabilities store folder", prints="the folder",
@@ -291,7 +291,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                   examples=["capabilities search refund"])
     pse.add_argument("query", help="text matched case-insensitively in names + bodies")
     pse.add_argument("--json", action="store_true",
-                     help='print {"schema": 1, "capabilities": [...]}')
+                     help='print {"schema": 2, "capabilities": [...]}')
     pse.set_defaults(func=_search)
 
     pe = group(g, "extends", help="inherit other projects' capabilities")

@@ -51,7 +51,7 @@ class MemoryBackend:
         try:
             return self.items[folder]
         except KeyError:
-            raise NotFound(f"no work item {self.project}/{folder}") from None
+            raise NotFound(f"no work item {Slug(self.project, folder)}") from None
 
     def _put(self, item: Item) -> Item:
         self.items[item.slug.folder] = item

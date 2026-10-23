@@ -57,7 +57,7 @@ test("uses the same child grid and the row class at every depth", () => {
     fireEvent.click(toggle)
 })
 
-test("copies a work row's full slug", () => {
+test("copies a work row's full identifier", () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.assign(navigator, { clipboard: { writeText } })
     render(
@@ -66,7 +66,7 @@ test("copies a work row's full slug", () => {
                 nodes={[
                     {
                         name: "x",
-                        path: "p/x",
+                        path: "p.work/x",
                         item: workItem("x"),
                         children: [],
                     },
@@ -81,9 +81,11 @@ test("copies a work row's full slug", () => {
         </ThemeProvider>
     )
     fireEvent.click(
-        screen.getByRole("button", { name: "Copy slug to clipboard" })
+        screen.getByRole("button", {
+            name: "Copy full identifier to clipboard",
+        })
     )
-    expect(writeText).toHaveBeenCalledWith("p/x")
+    expect(writeText).toHaveBeenCalledWith("p.work/x")
 })
 
 test("a work row shows its stage and creation date; records their modified time", () => {

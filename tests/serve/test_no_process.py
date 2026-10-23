@@ -40,7 +40,7 @@ def every_route(served, folder: str, other: str) -> list:
         ("POST", f"/api/work/{folder}/comments", {"text": "hi"}),
         ("POST", "/api/work", {"title": "Here"}),
         ("POST", "/api/work", {"title": "There", "project": "q"}),
-        ("POST", f"/api/work/{folder}/blocks", {"target": f"s/{other}",
+        ("POST", f"/api/work/{folder}/blocks", {"target": f"s.work/{other}",
                                                 "expected": False}),
         ("GET", "/api/tickets", None),
         ("GET", "/api/options/work?q=a", None),

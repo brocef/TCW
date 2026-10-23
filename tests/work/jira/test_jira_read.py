@@ -54,7 +54,7 @@ def test_a_typed_key_names_the_item(jira_project, tcw):
     key, folder = jira_project.item("Typed", "x")
     result = tcw(["show", key], jira_project.root)
     assert result.code == 0, result.err
-    assert f"slug: tcw/{folder}" in result.out
+    assert f"full-id: tcw.work/{folder}" in result.out
     assert jira_project.fake.requests("GET", f"/rest/api/3/issue/{key}")
 
 
@@ -78,7 +78,7 @@ def test_every_property_is_mapped(jira_project):
     fake = jira_project.fake
     fake.add_project("WEB")
     epic = fake.ticket("Web epic", project="WEB", issue_type="Epic")
-    epic.custom[FIELDS["TCW Item"]] = "web/WEB-1-epic"
+    epic.custom[FIELDS["TCW Item"]] = "web.work/WEB-1-epic"
     _, blocker_folder = jira_project.item("Blocker", "blocker", status="Done")
     stray = fake.ticket("No item")
     key, folder = jira_project.item(

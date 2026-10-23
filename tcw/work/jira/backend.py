@@ -27,6 +27,7 @@ from tcw.errors import (
     BackendError, MovedWithoutNote, NotFound, Refused, TcwError, Unreachable, UsageError,
 )
 from tcw.findings import Finding
+from tcw.ids import IdError
 from tcw.output import shown
 from tcw.store.base import normalize_tag
 from tcw.work.backend import Comment, Query
@@ -45,7 +46,7 @@ from tcw.work.jira.mapping import (
 )
 from tcw.work.layout import Layout
 from tcw.work.model import (
-    FOLDER_LIMIT, UNSET, Changes, Item, Slug, check_encodable, completion_stage,
+    FOLDER_LIMIT, UNSET, Changes, Item, Slug, _as_slug, check_encodable, completion_stage,
     discard_stage, stage as table_stage, start_stage, title_words as make_title_words,
     validate_changes,
 )
@@ -327,7 +328,7 @@ class JiraBackend:
     def _key(self, folder: str) -> str:
         key = folder_key(folder)
         if key is None or "/" in folder or not (self.work_path / folder).is_dir():
-            raise NotFound(f"no work item {self.project}/{folder}")
+            raise NotFound(f"no work item {Slug(self.project, folder)}")
         return key
 
     # -- reading -----------------------------------------------------------------
@@ -337,7 +338,7 @@ class JiraBackend:
         issue = self._issue(key, folder, read_fields(self.metadata().field_ids))
         answered = str(issue.get("key") or key)
         if answered != key:
-            _warn(f"warning: {self.project}/{folder}: Jira answered for {key} with "
+            _warn(f"warning: {Slug(self.project, folder)}: Jira answered for {key} with "
                   f"{answered}; the ticket was moved, so the folder's key is stale")
         return self._items([(Slug(self.project, folder), issue)])[0]
 
@@ -346,7 +347,7 @@ class JiraBackend:
             with _jira():
                 return self.client.issue(key, tuple(fields))
         except NotFound:
-            raise NotFound(f"{self.project}/{folder}: Jira has no ticket {key}, or "
+            raise NotFound(f"{Slug(self.project, folder)}: Jira has no ticket {key}, or "
                            f"this account cannot see it") from None
 
     def _props(self, issue: Mapping) -> Props:
@@ -381,11 +382,11 @@ class JiraBackend:
         return items
 
     def _slug_of(self, value: Any) -> Slug | None:
-        if not isinstance(value, str):
-            return None
+        """The item a `TCW Item` value names, or None when it names none: a
+        3.x or malformed value is never refused here (Design 5.2)."""
         try:
-            return Slug.parse(value, self.project)
-        except UsageError:
+            return Slug.stored(value)
+        except IdError:
             return None
 
     def resolve_keys(self, keys: Iterable[str]) -> dict[str, Slug | None]:
@@ -495,7 +496,7 @@ class JiraBackend:
             with _jira():
                 found = self.client.comments(key, limit)
         except NotFound:
-            raise NotFound(f"{self.project}/{folder}: Jira has no ticket {key}, or "
+            raise NotFound(f"{Slug(self.project, folder)}: Jira has no ticket {key}, or "
                            f"this account cannot see it") from None
         comments = []
         for entry in found:
@@ -579,7 +580,7 @@ class JiraBackend:
         """The Jira key of the item a parent or blocker names. An item that is
         not a ticket on this site is refused before any request (Design 4.1
         step 1, 11.4)."""
-        slug = value if isinstance(value, Slug) else Slug.parse(value, self.project)
+        slug = _as_slug(value, self.project, what)
         backend = self if slug.project == self.project else self._other(slug.project)
         if not isinstance(backend, JiraBackend) or backend.jira.site != self.jira.site \
                 or folder_key(slug.folder) is None:

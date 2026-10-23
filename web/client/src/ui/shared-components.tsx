@@ -327,7 +327,7 @@ export function Tree<T extends AxisItem>({
                                         <Tooltip
                                             content={
                                                 <span className="copy-slug-tooltip">
-                                                    Copy slug
+                                                    Copy full identifier
                                                 </span>
                                             }
                                         >
@@ -335,11 +335,12 @@ export function Tree<T extends AxisItem>({
                                                 className="copy-slug"
                                                 variant="ghost"
                                                 type="button"
-                                                aria-label="Copy slug to clipboard"
+                                                aria-label="Copy full identifier to clipboard"
                                                 onClick={() =>
                                                     void navigator.clipboard.writeText(
-                                                        (node.item as WorkItem)
-                                                            .slug
+                                                        (node.item as WorkItem)[
+                                                            "full-id"
+                                                        ]
                                                     )
                                                 }
                                             >

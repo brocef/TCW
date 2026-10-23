@@ -76,7 +76,7 @@ def test_a_written_spec_lets_the_move_through(project, monkeypatch, capsys):
     code, out = advance(project, monkeypatch, capsys)
     assert code == 0, out.err
     assert stage(project) == "plan"
-    assert (project / "slug-seen.txt").read_text() == f"p/{FOLDER}"
+    assert (project / "slug-seen.txt").read_text() == f"p.work/{FOLDER}"
 
 
 def run_script(root, env):
@@ -92,9 +92,9 @@ def test_an_unset_slug_fails_closed(project):
 
 
 def test_an_unknown_slug_fails_closed(project):
-    r = run_script(project, {**os.environ, "TCW_SLUG": "p/2026-10-01-nothing"})
+    r = run_script(project, {**os.environ, "TCW_SLUG": "p.work/2026-10-01-nothing"})
     assert r.returncode == 1
-    assert "tcw work path p/2026-10-01-nothing spec failed" in r.stderr
+    assert "tcw work path p.work/2026-10-01-nothing spec failed" in r.stderr
 
 
 def test_the_script_names_no_2x_interface():

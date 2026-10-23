@@ -1,4 +1,6 @@
+import { parseFullId } from "./identifier"
 import type { CapabilityItem, TaxonomyItem, WorkItem } from "./types"
+import { folderOf } from "./work"
 
 export type TReferenceField =
     | "work-parent"
@@ -62,9 +64,9 @@ function descendantsOf(identifier: string, items: WorkItem[]): Set<string> {
             if (
                 item.parent &&
                 (item.parent === identifier || descendants.has(item.parent)) &&
-                !descendants.has(item.slug)
+                !descendants.has(item["full-id"])
             ) {
-                descendants.add(item.slug)
+                descendants.add(item["full-id"])
                 changed = true
             }
         }
@@ -87,7 +89,7 @@ export function referenceOptions(
 ): TReferenceOption[] {
     const current = context.currentIdentifier
     const selected = new Set(context.selected ?? [])
-    const work = context.work.map((item) => option(item.slug, item.title))
+    const work = context.work.map((item) => option(item["full-id"], item.title))
     const taxonomy = context.taxonomy.map((item) =>
         option(item.qualified ?? item.slug, item.name)
     )
@@ -244,10 +246,9 @@ export function pathSegments(
  * never by a key a backend gives it, so a link reads the same in every
  * mode. */
 export function tcwLinkOptions(context: TReferenceContext): TReferenceOption[] {
-    const folder = (slug: string) => slug.slice(slug.lastIndexOf("/") + 1)
     return [
         ...context.work.map((item) =>
-            option(`tcw://W/${folder(item.slug)}`, item.title)
+            option(`tcw://W/${folderOf(item["full-id"])}`, item.title)
         ),
         ...context.taxonomy.map((item) =>
             option(`tcw://T/${item.qualified ?? item.slug}`, item.name)
@@ -264,15 +265,14 @@ export function typedLink(textBeforeCaret: string): string | null {
     return found ? found[0] : null
 }
 
-const SLUG = /^([a-z0-9]+(?:-[a-z0-9]+)*)\/([A-Za-z0-9][A-Za-z0-9-]*)$/
-
-/** The warning a full slug naming another project's item carries: it is
- * kept, but this page cannot check it. Null for anything else. */
+/** The warning a full identifier naming another project's item carries: it
+ * is kept, but this page cannot check it. Null for anything else. */
 export function otherProjectWarning(
     text: string,
     projectId: string
 ): string | null {
-    const found = SLUG.exec(text.trim())
-    if (!found || found[1] === projectId) return null
-    return `${text.trim()} is in project ${found[1]}, which this page does not check; make sure it exists`
+    const found = parseFullId(text.trim())
+    if (!found || found.namespace !== "work" || found.project === projectId)
+        return null
+    return `${text.trim()} is in project ${found.project}, which this page does not check; make sure it exists`
 }

@@ -5,6 +5,7 @@ import {
     boardRows,
     defaultStageFilter,
     folderOf,
+    isLocal,
     knownAssignees,
     moveHint,
     needsAll,
@@ -17,13 +18,21 @@ import {
     verdictLine,
     withVerdict,
 } from "./work"
-import { STAGES, workItem } from "../test-fixtures"
+import { STAGES, project, workItem } from "../test-fixtures"
 
-test("a slug's folder and project", () => {
-    expect(folderOf("p/2026-01-01-x")).toBe("2026-01-01-x")
+test("a full identifier's folder and project", () => {
+    expect(folderOf("p.work/2026-01-01-x")).toBe("2026-01-01-x")
     expect(folderOf("2026-01-01-x")).toBe("2026-01-01-x")
-    expect(projectOf("q/2026-01-01-x")).toBe("q")
+    expect(projectOf("q.work/2026-01-01-x")).toBe("q")
     expect(projectOf("2026-01-01-x")).toBeNull()
+})
+
+test("TCW-110 AC 20a: this project's items and another's", () => {
+    const demo = project({ id: "demo" })
+    expect(isLocal("demo.work/x", demo)).toBe(true)
+    expect(isLocal("core.work/x", demo)).toBe(false)
+    expect(projectOf("demo.work/x")).toBe("demo")
+    expect(folderOf("demo.work/x")).toBe("x")
 })
 
 test("a person reads by display name when the answer carried one", () => {
@@ -71,13 +80,19 @@ test("the board query carries all and one tag parameter per tag", () => {
 
 test("a fallback row becomes a record that says it was not read", () => {
     const rows = boardRows({
-        items: [{ slug: "p/2026-01-01-x", path: "/w/2026-01-01-x" }],
+        items: [
+            {
+                "full-id": "p.work/2026-01-01-x",
+                owner: "p",
+                path: "/w/2026-01-01-x",
+            },
+        ],
         people: {},
         fallback: true,
         unavailable: "Jira is unreachable",
     })
     expect(rows[0]).toMatchObject({
-        slug: "p/2026-01-01-x",
+        "full-id": "p.work/2026-01-01-x",
         title: "2026-01-01-x",
         stage: null,
         unread: true,
@@ -98,8 +113,8 @@ test("the assignee filter offers everyone on the rows and the user", () => {
 })
 
 test("the stage line names the command that moves an item", () => {
-    expect(moveHint("p/2026-01-01-x")).toBe(
-        "Move it with `tcw work advance p/2026-01-01-x`."
+    expect(moveHint("p.work/2026-01-01-x")).toBe(
+        "Move it with `tcw work advance p.work/2026-01-01-x`."
     )
 })
 

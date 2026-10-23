@@ -18,7 +18,7 @@ export const LABELS: Record<Axis, string> = {
 /** What a row is selected and routed by: a work item's folder, a term's or
  * capability's qualified reference. */
 export function itemKey(axis: Axis, item: AxisItem): string {
-    if (axis === "work") return folderOf((item as WorkItem).slug)
+    if (axis === "work") return folderOf((item as WorkItem)["full-id"])
     if (axis === "taxonomy") {
         const term = item as TaxonomyItem
         return term.qualified ?? term.slug
@@ -29,7 +29,7 @@ export function itemKey(axis: Axis, item: AxisItem): string {
 
 export function itemTitle(axis: Axis, item: AxisItem): string {
     if (axis === "work")
-        return (item as WorkItem).title || (item as WorkItem).slug
+        return (item as WorkItem).title || (item as WorkItem)["full-id"]
     if (axis === "taxonomy")
         return (item as TaxonomyItem).name ?? (item as TaxonomyItem).slug
     return (item as CapabilityItem).name ?? (item as CapabilityItem).path

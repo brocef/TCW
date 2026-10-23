@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from tcw.errors import BackendError, NotFound, TcwError, Unreachable
+from tcw.ids import identity, looks_full
 from tcw.serve import files as item_files
 from tcw.serve.records import checked
 from tcw.serve.server import Request, not_found, read_only, route, usage
@@ -220,7 +221,7 @@ def board(request: Request):
         if ctx.owner != BACKEND or isinstance(error, NotFound):
             raise
         return HTTPStatus.OK, {
-            "items": [{"slug": str(ctx.slug(folder)),
+            "items": [{**identity(ctx.slug(folder)),
                        "path": str(ctx.layout.item_dir(ctx.slug(folder)))}
                       for folder in item_folders(ctx)],
             "people": {}, "fallback": True, "unavailable": str(error)}
@@ -243,7 +244,7 @@ def item_folder(ctx: WorkContext, name: str) -> str:
     found = ctx.backend.lookup(name)
     if found and found in folders:
         return found
-    raise not_found(f"no work item {ctx.backend.project}/{name}")
+    raise not_found(f"no work item {Slug(ctx.backend.project, name)}")
 
 
 def _comments(found) -> list[dict[str, Any]]:
@@ -366,7 +367,7 @@ def checked_reference(ctx: WorkContext, what: str, text: str) -> dict | None:
     """A `parent` or `blocked-by` a write adds: an item of this project, or
     a full slug naming another project's item, which is kept with a warning
     because it is not checked here. Anything else is refused."""
-    slug = Slug.parse(text, ctx.backend.project)
+    slug = Slug.typed(text, ctx.backend.project)
     if slug.project != ctx.backend.project:
         return {"severity": "warning", "where": what,
                 "message": f"{slug} is in project '{slug.project}', which this "
@@ -447,7 +448,7 @@ def add_blocks(request: Request):
     writable(ctx)
     folder = item_folder(ctx, request.param(1))
     slug = ctx.slug(folder)
-    target = Slug.parse(request.field("target"), slug.project)
+    target = Slug.typed(request.field("target"), slug.project)
     if request.body.get("expected") is not False:
         raise usage("expected must be false: the target as loaded did not list "
                     "this item")
@@ -468,7 +469,8 @@ CREATE_PROPERTIES = ("priority", "effort", "complexity", "tags", "assignee", "pa
 def create(request: Request):
     """`new` in this project, or delegation into a connected one, which takes
     only a title, request text and priority. Answers what the CLI prints: the
-    new item's slug, or the key of a ticket made in a project not here."""
+    new item's full identifier, or the key of a ticket made in a project not
+    here."""
     from tcw.work.cli import new_item
     ctx = context(request)
     title = request.field("title")
@@ -489,7 +491,7 @@ def create(request: Request):
         with request.lock:
             made = request.services.delegate(target, title, text,
                                              props.get("priority") or None, ctx.root)
-        key = "slug" if "/" in made else "ticket"
+        key = "full-id" if looks_full(made) else "ticket"
         return HTTPStatus.CREATED, {key: made}
     changes = parse_changes({
         **{k: props[k] for k in ("priority", "effort", "complexity", "assignee",
@@ -511,7 +513,7 @@ def create(request: Request):
     with request.lock:
         item = new_item(ctx.backend, title, changes,
                         stage=request.field("stage", required=False), request=text)
-    answer: dict[str, Any] = {"slug": str(item.slug)}
+    answer: dict[str, Any] = {"full-id": str(item.slug)}
     if notes:
         answer["warnings"] = notes
     return HTTPStatus.CREATED, answer
@@ -534,7 +536,7 @@ def adopt(request: Request):
     with request.lock:
         slug, code, problem = request.services.adopt(ctx.backend, request.param(1),
                                                      ctx.root)
-    return HTTPStatus.CREATED, {"slug": slug, "code": code, "problem": problem}
+    return HTTPStatus.CREATED, {"full-id": slug, "code": code, "problem": problem}
 
 
 # -- suggestions the client cannot compute ------------------------------------------------
@@ -563,7 +565,7 @@ def _other_items(request: Request, ctx: WorkContext, text: str) -> list[dict]:
             continue
         for item in items:
             if wanted in str(item.slug).lower() or wanted in item.title.lower():
-                found.append({"slug": str(item.slug), "title": item.title,
+                found.append({"full-id": str(item.slug), "title": item.title,
                               "stage": item.stage, "project": row["id"]})
     return found[:SUGGESTIONS]
 

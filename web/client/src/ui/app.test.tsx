@@ -182,7 +182,13 @@ test("a fallback board lists folders under a banner with Retry", async () => {
             "/api/work",
             200,
             {
-                items: [{ slug: "p/2026-10-01-a", path: "/w/2026-10-01-a" }],
+                items: [
+                    {
+                        "full-id": "p.work/2026-10-01-a",
+                        owner: "p",
+                        path: "/w/2026-10-01-a",
+                    },
+                ],
                 people: {},
                 fallback: true,
                 unavailable: "Jira is unreachable",
@@ -385,7 +391,7 @@ test("what an adopt hook failed with does not follow the browser back", async ()
             /^POST \/api\/tickets/,
             201,
             {
-                slug: "p/X-1-please",
+                "full-id": "p.work/X-1-please",
                 code: 6,
                 problem: "request post hook failed",
             },
@@ -484,10 +490,10 @@ test("the tickets view reads no list of every item, and an adopt's failed hook i
             /^POST \/api\/tickets\/X-1\/adopt$/,
             201,
             {
-                slug: "p/X-1-please",
+                "full-id": "p.work/X-1-please",
                 code: 6,
                 problem:
-                    "adopted X-1 as p/X-1-please, but request post hook failed: exit 1",
+                    "adopted X-1 as p.work/X-1-please, but request post hook failed: exit 1",
             },
         ],
         ["/api/work/X-1-please$", 200, workDetail("X-1-please")],

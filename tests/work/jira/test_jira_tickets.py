@@ -36,7 +36,7 @@ def listed(tcw, project, *flags):
 def test_the_inbox(jira_project, tcw):
     bare = raw(jira_project, "bare")
     ours = raw(jira_project, "ours", TCW_Project="tcw")
-    raw(jira_project, "an item", TCW_Item="tcw/TCW-9-x")
+    raw(jira_project, "an item", TCW_Item="tcw.work/TCW-9-x")
     raw(jira_project, "theirs", TCW_Project="web")
     raw(jira_project, "at request", status="Triage")
     result = listed(tcw, jira_project)
@@ -62,7 +62,7 @@ def labelled(project, summary, status="To Do", jira_project="TCW", **custom):
 def test_the_inbox_query_widens_only_to_what_adopt_accepts(widened, tcw):
     plain = raw(widened, "plain")
     at_request = labelled(widened, "at request", status="Triage")
-    labelled(widened, "an item", status="Triage", TCW_Item="tcw/TCW-9-x")
+    labelled(widened, "an item", status="Triage", TCW_Item="tcw.work/TCW-9-x")
     labelled(widened, "theirs", status="Triage", TCW_Project="web")
     labelled(widened, "other jira project", jira_project="WEB")
     labelled(widened, "further along", status="In Progress")
@@ -107,7 +107,7 @@ def test_every_page_is_read(jira_project, tcw):
 def test_adopting_from_the_inbox(jira_project, tcw):
     key = raw(jira_project, "Fix the login")
     result = tcw(["tickets", "adopt", key], jira_project.root)
-    slug = f"tcw/{key}-fix-the-login"
+    slug = f"tcw.work/{key}-fix-the-login"
     assert (result.code, result.out.strip()) == (0, slug)
     ticket = jira_project.fake.tickets[key]
     assert (ticket.custom[PROJECT], ticket.custom[ITEM]) == ("tcw", slug)
@@ -120,7 +120,7 @@ def test_adopting_from_the_inbox(jira_project, tcw):
 REFUSALS = {
     "another jira project": dict(jira_project="WEB"),
     "another tcw project": dict(TCW_Project="web"),
-    "an item already": dict(TCW_Item="web/WEB-1-x"),
+    "an item already": dict(TCW_Item="web.work/WEB-1-x"),
     "further along": dict(status="In Progress"),
     "an unmapped status": dict(status="Backlog"),
 }
@@ -149,16 +149,16 @@ def test_a_missing_ticket(jira_project, tcw):
 
 
 def test_resuming_without_a_folder(jira_project, tcw):
-    key = raw(jira_project, "x", TCW_Project="tcw", TCW_Item="tcw/TCW-1-exact-name")
+    key = raw(jira_project, "x", TCW_Project="tcw", TCW_Item="tcw.work/TCW-1-exact-name")
     result = tcw(["tickets", "adopt", key], jira_project.root)
-    assert (result.code, result.out.strip()) == (0, "tcw/TCW-1-exact-name")
+    assert (result.code, result.out.strip()) == (0, "tcw.work/TCW-1-exact-name")
     assert "resuming" in result.err
     assert (jira_project.work / "TCW-1-exact-name").is_dir()
     assert jira_project.fake.tickets[key].status == "Triage"
 
 
 def test_resuming_with_the_folder_at_the_inbox_status(jira_project, tcw):
-    key = raw(jira_project, "x", TCW_Project="tcw", TCW_Item="tcw/TCW-1-kept")
+    key = raw(jira_project, "x", TCW_Project="tcw", TCW_Item="tcw.work/TCW-1-kept")
     folder = jira_project.work / "TCW-1-kept"
     folder.mkdir(parents=True)
     (folder / "item.yaml").write_text("ticket: mine\n")
@@ -178,13 +178,13 @@ def test_finishing_a_create_that_stopped_at_its_folder(jira_project, tcw):
     assert tcw(["new", "Half"], jira_project.root).code == 1
     (jira_project.work / "TCW-1-half").unlink()
     result = tcw(["tickets", "adopt", "TCW-1"], jira_project.root)
-    assert (result.code, result.out.strip()) == (0, "tcw/TCW-1-half")
+    assert (result.code, result.out.strip()) == (0, "tcw.work/TCW-1-half")
     assert (jira_project.work / "TCW-1-half" / "item.yaml").is_file()
     assert jira_project.fake.tickets["TCW-1"].status == "Triage"
 
 
 def test_a_ticket_naming_another_folder(jira_project, tcw):
-    key = raw(jira_project, "x", TCW_Project="tcw", TCW_Item="tcw/TCW-1-named")
+    key = raw(jira_project, "x", TCW_Project="tcw", TCW_Item="tcw.work/TCW-1-named")
     (jira_project.work / "TCW-1-other").mkdir(parents=True)
     result = tcw(["tickets", "adopt", key], jira_project.root)
     assert result.code == 3 and "TCW-1-named" in result.err
@@ -227,7 +227,7 @@ def test_adopting_from_the_inbox_runs_post_once(hooked, tcw):
     assert result.code == 0, result.err
     env, = runs(out)
     assert (env["TCW_STAGE"], env["TCW_FROM_STAGE"]) == ("request", "inbox")
-    assert env["TCW_SLUG"] == f"tcw/{key}-hook-me"
+    assert env["TCW_SLUG"] == f"tcw.work/{key}-hook-me"
 
 
 def test_adopting_at_request_has_no_from_stage(hooked, tcw):
@@ -244,9 +244,9 @@ def test_a_failing_post_hook_keeps_the_adoption(tmp_path, fake, tcw):
     project = JiraProject(make_project(tmp_path, "tcw", config=config), "tcw", fake)
     key = raw(project, "Kept")
     result = tcw(["tickets", "adopt", key], project.root)
-    assert (result.code, result.out.strip()) == (6, f"tcw/{key}-kept")
+    assert (result.code, result.out.strip()) == (6, f"tcw.work/{key}-kept")
     assert (project.work / f"{key}-kept").is_dir()
-    assert fake.tickets[key].custom[ITEM] == f"tcw/{key}-kept"
+    assert fake.tickets[key].custom[ITEM] == f"tcw.work/{key}-kept"
 
 
 def test_a_refused_move_runs_no_post_hook(hooked, tcw):
@@ -260,7 +260,7 @@ def test_a_refused_move_runs_no_post_hook(hooked, tcw):
 
 def test_a_resumed_adoption_runs_post_once(hooked, tcw):
     project, out = hooked
-    key = raw(project, "x", TCW_Project="tcw", TCW_Item="tcw/TCW-1-resumed")
+    key = raw(project, "x", TCW_Project="tcw", TCW_Item="tcw.work/TCW-1-resumed")
     assert tcw(["tickets", "adopt", key], project.root).code == 0
     assert len(runs(out)) == 1
 
@@ -314,16 +314,16 @@ def test_finishing_a_create_that_stopped_before_its_tcw_item(jira_project, tcw):
     jira_project.fake.projects["TCW"].statuses += ("Open",)
     key = raw(jira_project, "Half", status="Open", TCW_Project="tcw")
     result = tcw(["tickets", "adopt", key], jira_project.root)
-    assert (result.code, result.out.strip()) == (0, "tcw/TCW-1-half"), result.err
+    assert (result.code, result.out.strip()) == (0, "tcw.work/TCW-1-half"), result.err
     assert jira_project.fake.tickets[key].status == "Triage"
 
 
 def test_a_folder_left_without_item_yaml_is_finished(jira_project, tcw):
     key = raw(jira_project, "x", status="Triage", TCW_Project="tcw",
-              TCW_Item="tcw/TCW-1-kept")
+              TCW_Item="tcw.work/TCW-1-kept")
     (jira_project.work / "TCW-1-kept").mkdir(parents=True)
     result = tcw(["tickets", "adopt", key], jira_project.root)
-    assert (result.code, result.out.strip()) == (0, "tcw/TCW-1-kept"), result.err
+    assert (result.code, result.out.strip()) == (0, "tcw.work/TCW-1-kept"), result.err
     assert (jira_project.work / "TCW-1-kept" / "item.yaml").read_text() == \
         f"ticket: {jira_project.fake.site}/browse/{key}\n"
 
@@ -339,7 +339,7 @@ def test_a_delegated_ticket_moved_on_is_not_taken_back(jira_project, tcw, status
 
 def test_an_item_moved_on_whose_item_yaml_is_gone_is_not_taken_back(jira_project, tcw):
     key = raw(jira_project, "x", status="In Progress", TCW_Project="tcw",
-              TCW_Item="tcw/TCW-1-kept")
+              TCW_Item="tcw.work/TCW-1-kept")
     (jira_project.work / "TCW-1-kept").mkdir(parents=True)
     jira_project.fake.log.clear()
     result = tcw(["tickets", "adopt", key], jira_project.root)
@@ -367,7 +367,7 @@ def test_new_whose_read_back_fails_names_the_item(jira_project, tcw, monkeypatch
     _read_back_fails(monkeypatch, jira_project.fake)
     result = tcw(["new", "Late failure"], jira_project.root)
     key = max(jira_project.fake.tickets, key=lambda k: int(k.split("-")[1]))
-    slug = f"tcw/{key}-late-failure"
+    slug = f"tcw.work/{key}-late-failure"
     assert (result.code, result.out) == (5, slug + "\n"), result
     assert f"tcw work new: created {slug}, but could not read it back" in result.err
 
@@ -376,7 +376,7 @@ def test_adopt_whose_read_back_fails_names_the_item(jira_project, tcw, monkeypat
     key = raw(jira_project, "Fix the login")
     _read_back_fails(monkeypatch, jira_project.fake)
     result = tcw(["tickets", "adopt", key], jira_project.root)
-    assert (result.code, result.out) == (5, f"tcw/{key}-fix-the-login\n"), result
+    assert (result.code, result.out) == (5, f"tcw.work/{key}-fix-the-login\n"), result
 
 
 def test_adopt_whose_move_fails_names_the_item(jira_project, tcw, monkeypatch):
@@ -387,7 +387,7 @@ def test_adopt_whose_move_fails_names_the_item(jira_project, tcw, monkeypatch):
         raise jira.TrackerUnavailable("the connection was reset")
     monkeypatch.setattr(jira_project.fake, "_transition", down)
     result = tcw(["tickets", "adopt", key], jira_project.root)
-    slug = f"tcw/{key}-fix-the-login"
+    slug = f"tcw.work/{key}-fix-the-login"
     assert (result.code, result.out) == (5, slug + "\n"), result
     assert (jira_project.work / f"{key}-fix-the-login" / "item.yaml").is_file()
 

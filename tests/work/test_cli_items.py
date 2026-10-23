@@ -55,7 +55,7 @@ def p(tmp_path):
 
 def test_new_prints_the_slug_and_writes_three_keys(tcw, p):
     r = tcw(["new", "Add a widget"], p)
-    assert (r.code, r.out) == (0, f"p/{TODAY}-add-a-widget\n")
+    assert (r.code, r.out) == (0, f"p.work/{TODAY}-add-a-widget\n")
     folder = p / "docs" / "work" / f"{TODAY}-add-a-widget"
     assert (folder / "item.yaml").read_text() == (
         "title: Add a widget\nstage: request\npriority: medium\n")
@@ -70,7 +70,7 @@ def test_a_second_new_the_same_day_is_refused(tcw, p):
 
 
 def test_untitled(tcw, p):
-    assert tcw(["new", "!!!"], p).out == f"p/{TODAY}-untitled\n"
+    assert tcw(["new", "!!!"], p).out == f"p.work/{TODAY}-untitled\n"
 
 
 # -- AC 3: request text ------------------------------------------------------------------
@@ -143,14 +143,14 @@ def test_a_tag_removed_from_the_registry(tcw, tmp_path):
 def test_show_with_another_item_unreadable(tcw, p):
     write_item(p, "2026-10-01-a", {"title": "a", "stage": "spec"})
     write_item(p, "2026-10-01-b", {"title": "b", "stage": "spec",
-                                  "parent": "p/2026-10-01-a",
-                                  "blocked-by": ["p/2026-10-01-a"]})
+                                  "parent": "p.work/2026-10-01-a",
+                                  "blocked-by": ["p.work/2026-10-01-a"]})
     write_item(p, "2026-10-01-bad", "title: [x\n")
     r = tcw(["show", "2026-10-01-a", "--json"], p)
     assert r.code == 0
     record = yaml.safe_load(r.out)["item"]
-    assert record["children"] == ["p/2026-10-01-b"]
-    assert record["blocks"] == ["p/2026-10-01-b"]
+    assert record["children"] == ["p.work/2026-10-01-b"]
+    assert record["blocks"] == ["p.work/2026-10-01-b"]
     [line] = r.err.strip().splitlines()
     assert "2026-10-01-bad/item.yaml" in line
 
@@ -174,9 +174,9 @@ def test_the_default_list(tcw, p):
         write_item(p, folder, {"title": folder, "stage": stage})
     (p / "docs/work/notes").mkdir()
     (p / "docs/work/README.md").write_text("hi")
-    assert slugs(tcw(["list"], p)) == ["p/2026-10-01-inbox", "p/2026-10-01-lost",
-                                       "p/2026-10-01-open"]
-    assert slugs(tcw(["list", "--stage", "inbox"], p)) == ["p/2026-10-01-inbox"]
+    assert slugs(tcw(["list"], p)) == ["p.work/2026-10-01-inbox", "p.work/2026-10-01-lost",
+                                       "p.work/2026-10-01-open"]
+    assert slugs(tcw(["list", "--stage", "inbox"], p)) == ["p.work/2026-10-01-inbox"]
     assert len(slugs(tcw(["list", "--all"], p))) == 5
     assert tcw(["list", "--stage", "inbox", "--all"], p).code == 2
 
@@ -192,12 +192,12 @@ def test_the_tag_filter(tcw, p):
         write_item(p, f"2026-10-01-{name}", {"title": name, "stage": "request",
                                             **({"tags": tags} if tags else {})})
     write_item(p, "2026-10-01-e", {"title": "e", "stage": "completed", "tags": ["ui"]})
-    ab = ["p/2026-10-01-a", "p/2026-10-01-b"]
+    ab = ["p.work/2026-10-01-a", "p.work/2026-10-01-b"]
     r = tcw(["list", "--tag", "ui"], p)
     assert slugs(r) == ab and r.err == ""
-    assert slugs(tcw(["list", "--tag", "ui", "--tag", "api"], p)) == ab + ["p/2026-10-01-c"]
+    assert slugs(tcw(["list", "--tag", "ui", "--tag", "api"], p)) == ab + ["p.work/2026-10-01-c"]
     assert tcw(["list", "--tag", "ui,api"], p).code == 2
-    assert slugs(tcw(["list", "--tag", "ui", "--all"], p)) == ab + ["p/2026-10-01-e"]
+    assert slugs(tcw(["list", "--tag", "ui", "--all"], p)) == ab + ["p.work/2026-10-01-e"]
     r = tcw(["list", "--tag", "nosuch"], p)
     assert (r.code, r.out) == (0, "")
     [line] = r.err.splitlines()
@@ -207,7 +207,7 @@ def test_the_tag_filter(tcw, p):
 def test_list_json_holds_the_records_under_items(tcw, p):
     write_item(p, "2026-10-01-a", {"title": "a", "stage": "spec"})
     [record] = yaml.safe_load(tcw(["list", "--json"], p).out)["items"]
-    assert record["slug"] == "p/2026-10-01-a" and record["untracked"] == []
+    assert record["full-id"] == "p.work/2026-10-01-a" and record["untracked"] == []
 
 
 # -- AC 6: comments --------------------------------------------------------------------------
@@ -253,7 +253,7 @@ def test_a_pre_hook_runs_in_the_project_root(tcw, tmp_path):
     assert (r.code, r.out) == (0, "spec\n"), r.err
     where, slug = out.read_text().split()
     assert os.path.realpath(where) == os.path.realpath(root)
-    assert slug == "p/2026-10-01-a"
+    assert slug == "p.work/2026-10-01-a"
 
 
 # -- AC 8: rename ----------------------------------------------------------------------------
@@ -267,16 +267,16 @@ def test_rename(tcw, tmp_path):
     (a / "spec").mkdir()
     (a / "spec/spec.md").write_text("intro\nsee 2026-09-01-a\n")
     write_item(root, "2026-09-01-b", {"title": "b", "stage": "spec",
-                                     "parent": "p/2026-09-01-a"})
+                                     "parent": "p.work/2026-09-01-a"})
     write_item(root, "2026-09-01-c", {"title": "c", "stage": "spec",
-                                     "blocked-by": ["2026-09-01-a"]})
+                                     "blocked-by": ["p.work/2026-09-01-a"]})
     write_item(other, "2026-09-01-x", {"title": "x", "stage": "spec",
-                                      "blocked-by": ["p/2026-09-01-a"]})
+                                      "blocked-by": ["p.work/2026-09-01-a"]})
     before = (other / "docs/work/2026-09-01-x/item.yaml").read_text()
     r = tcw(["rename", "2026-09-01-a", "new-words"], root)
-    assert (r.code, r.out) == (0, "p/2026-09-01-new-words\n")
-    assert item_yaml(root, "2026-09-01-b")["parent"] == "p/2026-09-01-new-words"
-    assert item_yaml(root, "2026-09-01-c")["blocked-by"] == ["p/2026-09-01-new-words"]
+    assert (r.code, r.out) == (0, "p.work/2026-09-01-new-words\n")
+    assert item_yaml(root, "2026-09-01-b")["parent"] == "p.work/2026-09-01-new-words"
+    assert item_yaml(root, "2026-09-01-c")["blocked-by"] == ["p.work/2026-09-01-new-words"]
     assert "spec.md:2" in r.err
     assert not list(root.rglob("renames.yaml"))
     assert (other / "docs/work/2026-09-01-x/item.yaml").read_text() == before
@@ -306,7 +306,7 @@ def test_new_into_another_project(tcw, pq):
     root, q = pq
     head = git(q, "rev-parse", "HEAD")
     r = tcw(["new", "T", "--priority", "high", "--project", "q"], root)
-    assert (r.code, r.out) == (0, f"q/{TODAY}-t\n")
+    assert (r.code, r.out) == (0, f"q.work/{TODAY}-t\n")
     assert item_yaml(q, f"{TODAY}-t") == {"title": "T", "stage": "inbox",
                                           "priority": "high"}
     assert "uncommitted" in r.err and "item.yaml" in r.err
@@ -343,9 +343,9 @@ def test_edit_blocks_into_another_project(tcw, pq):
     write_item(q, "2026-10-01-x", {"title": "x", "stage": "spec"})
     commit_all(q)
     write_item(root, "2026-10-01-a", {"title": "a", "stage": "spec"})
-    r = tcw(["edit", "2026-10-01-a", "--blocks", "q/2026-10-01-x"], root)
+    r = tcw(["edit", "2026-10-01-a", "--blocks", "q.work/2026-10-01-x"], root)
     assert (r.code, r.out) == (0, ""), r.err
-    assert item_yaml(q, "2026-10-01-x")["blocked-by"] == ["p/2026-10-01-a"]
+    assert item_yaml(q, "2026-10-01-x")["blocked-by"] == ["p.work/2026-10-01-a"]
     assert sorted(os.listdir(q / "docs/work")) == [".gitkeep", "2026-10-01-x"]
     # Review fix N3: the file written in the other repository says it is left
     # uncommitted there, as delegation's lines do (TCW-73 Design 1.2).
@@ -357,17 +357,17 @@ def test_edit_blocks_into_another_project(tcw, pq):
 def test_any_other_write_into_another_project_is_refused(tcw, pq):
     root, q = pq
     write_item(q, "2026-10-01-x", {"title": "x", "stage": "spec"})
-    assert tcw(["edit", "q/2026-10-01-x", "--priority", "high"], root).code == 3
-    assert tcw(["comment", "q/2026-10-01-x"], root, stdin="hi").code == 3
-    assert tcw(["advance", "q/2026-10-01-x"], root).code == 3
-    assert tcw(["show", "q/2026-10-01-x"], root).code == 0
+    assert tcw(["edit", "q.work/2026-10-01-x", "--priority", "high"], root).code == 3
+    assert tcw(["comment", "q.work/2026-10-01-x"], root, stdin="hi").code == 3
+    assert tcw(["advance", "q.work/2026-10-01-x"], root).code == 3
+    assert tcw(["show", "q.work/2026-10-01-x"], root).code == 0
 
 
 def test_show_of_an_absent_or_undeclared_project(tcw, pq):
     root, q = pq
     shutil.rmtree(q)
-    assert tcw(["show", "q/2026-10-01-x"], root).code == 5
-    assert tcw(["show", "nobody/2026-10-01-x"], root).code == 4
+    assert tcw(["show", "q.work/2026-10-01-x"], root).code == 5
+    assert tcw(["show", "nobody.work/2026-10-01-x"], root).code == 4
 
 
 def test_jira_block_delegation_and_blocks(tcw, pq, monkeypatch):
@@ -385,7 +385,7 @@ def test_jira_block_delegation_and_blocks(tcw, pq, monkeypatch):
     r = tcw(["new", "T", "--project", "q"], root)
     assert (r.code, r.out.strip()) == (0, "TCW-1")
     write_item(root, "2026-10-01-a", {"title": "a", "stage": "spec"})
-    assert tcw(["edit", "2026-10-01-a", "--blocks", "q/2026-10-01-x"], root).code == 3
+    assert tcw(["edit", "2026-10-01-a", "--blocks", "q.work/2026-10-01-x"], root).code == 3
 
 
 # -- AC 11: streams and exits ------------------------------------------------------------------

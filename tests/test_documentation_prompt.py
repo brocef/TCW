@@ -176,7 +176,7 @@ def test_docs_json_reports_the_config_source(tmp_path):
     r = _cli(root, "work", "docs", "--json")
     assert r.returncode == 0, r.stderr
     payload = json.loads(r.stdout)
-    assert payload["schema"] == 1
+    assert payload["schema"] == 2
     assert payload["source"] == "config"
     assert [e["path"] for e in payload["entries"]] == [
         e["path"] for e in CONFIGURED]

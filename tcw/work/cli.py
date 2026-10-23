@@ -1,6 +1,6 @@
 """The `tcw work` commands on the 3.0 model (TCW-70 Design 7).
 
-Every stdout line is a full slug, a stage, a path, a record or composed text,
+Every stdout line is a full identifier, a stage, a path, a record or composed text,
 so a script can read it; everything said to a person goes to stderr. A failure
 is a `TcwError` carrying its exit code, which `tcw.cli.main` turns into
 `tcw work <command>: <message>` on stderr.
@@ -60,7 +60,7 @@ def resolve_item(arg: str, here: Path | None = None
         if folder is None:
             raise NotFound(f"no work item here carries the Jira key {arg}")
         return Slug(backend.project, folder), backend, root
-    slug = Slug.parse(arg, backend.project)
+    slug = Slug.typed(arg, backend.project)
     if slug.project != backend.project:
         backend = open_project(slug.project, root)
     return slug, backend, root
@@ -179,7 +179,8 @@ def blocks_target(slug: Slug, target: Slug, backend: WorkBackend, root: Path):
 # -- commands ----------------------------------------------------------------------------
 
 
-SLUG_HELP = "the item: its full slug, or its folder name"
+SLUG_HELP = ("the item: its full identifier (<project>.work/<folder>), its "
+             "folder name, or its tracker key")
 PROPERTY_FLAGS = ("effort", "complexity", "tag", "assignee", "parent", "blocked_by")
 
 
@@ -244,7 +245,7 @@ def _list(args) -> int:
     for tag in sorted(tags or ()):
         if tag not in backend.config.tags:
             _say(f"warning: tag '{tag}' is not in this project's registry")
-    parent = Slug.parse(args.parent, backend.project) if args.parent else None
+    parent = Slug.typed(args.parent, backend.project) if args.parent else None
     query = Query(stages=frozenset(args.stage) if args.stage else None,
                   parent=parent, assignee=assignee, tags=tags,
                   all=args.all)
@@ -336,7 +337,7 @@ def _edit(args) -> int:
         add_tags=tuple(args.tag or ()), remove_tags=tuple(args.untag or ()),
         add_blocked_by=tuple(args.blocked_by or ()),
         remove_blocked_by=tuple(args.unblocked_by or ()))
-    targets = [Slug.parse(t, slug.project) for t in args.blocks or ()]
+    targets = [Slug.typed(t, slug.project) for t in args.blocks or ()]
     if changes == Changes() and not targets and not args.assign_me:
         raise UsageError("nothing to change; give at least one property flag")
     own = _own(slug, backend, root)
@@ -513,7 +514,7 @@ def _stage_prompt(args) -> int:
         res.text = "\n\n".join(parts)
         if item is not None:
             # Every `<slug>` in the output names this item (TCW-74 Design
-            # 4.2): the same full slug hooks receive as TCW_SLUG.
+            # 4.2): the same full identifier hooks receive as TCW_SLUG.
             res.text = res.text.replace("<slug>", str(item.slug))
     return _print_resolution(res, label, args.no_exec)
 
@@ -679,9 +680,11 @@ def _properties(p: argparse.ArgumentParser, *, editing: bool) -> None:
     p.add_argument("--assignee", help=f"who the item is assigned to{clear}")
     p.add_argument("--assign-me", dest="assign_me", action="store_true",
                    help="assign it to you: user.name, or your Jira account")
-    p.add_argument("--parent", help=f"the item this one belongs under (a slug){clear}")
+    p.add_argument("--parent", help=f"the item this one belongs under (an item: its full "
+                        f"identifier or folder name){clear}")
     p.add_argument("--blocked-by", dest="blocked_by", action="append",
-                   help="an item that must finish first (a slug); repeat for more")
+                   help="an item that must finish first (an item: its full "
+                        "identifier or folder name); repeat for more")
     if editing:
         p.add_argument("--title", type=_nonempty, help="a new title")
         p.add_argument("--untag", type=_tag, action="append",
@@ -705,8 +708,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     p = command(cmds, "new", help="create an item; text piped on stdin says what it "
                                   "asks for",
-                prints="the new item's full slug (a ticket key when it stopped "
-                       "after creating a ticket)",
+                prints="the new item's full identifier (a ticket key when it "
+                       "stopped after creating a ticket)",
                 writes="the item, and in Jira mode its ticket",
                 examples=["new 'Refund a payment' --priority high < ask.md",
                           "new 'Support SSO' --project platform --tag auth"])
@@ -718,21 +721,22 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(func=_new)
 
     p = command(cmds, "list", help="list items",
-                prints="one full slug per line, or --json", writes="nothing",
+                prints="one full identifier per line, or --json", writes="nothing",
                 examples=["list", f"list --stage {start_stage()} --tag auth",
                           "list --all --json"])
     p.add_argument("--stage", action="append",
                    help=f"only items at this stage; repeat for more ({stages})")
     p.add_argument("--tag", type=_tag, action="append",
                    help="list items carrying this tag; repeat for any of several")
-    p.add_argument("--parent", help="only items under this item (a slug)")
+    p.add_argument("--parent", help="only items under this item (an item: its "
+                                   "full identifier or folder name)")
     p.add_argument("--assignee", help="only items assigned to this person")
     p.add_argument("--mine", action="store_true",
                    help="only items assigned to you: user.name, or your Jira account")
     p.add_argument("--all", action="store_true",
                    help="include items that have ended")
     p.add_argument("--json", action="store_true",
-                   help='print {"schema": 1, "items": [...]}')
+                   help='print {"schema": 2, "items": [...]}')
     p.set_defaults(func=_list)
 
     p = command(cmds, "show", help="an item's record, what it asks for, and its "
@@ -803,7 +807,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p.set_defaults(func=_comment)
 
     p = command(cmds, "rename", help="rename an item's folder",
-                prints="the item's new full slug", writes="the item's folder name",
+                prints="the item's new full identifier", writes="the item's folder name",
                 examples=["rename 2026-10-01-refund-a-payment refund-an-order"])
     p.add_argument("slug", help=SLUG_HELP)
     p.add_argument("new_name", help="the new words after the date, lower case "
@@ -840,14 +844,14 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                 examples=["lifecycle", f"lifecycle --stage {start_stage()} --json"])
     p.add_argument("--stage", help=f"one stage only ({stages})")
     p.add_argument("--json", action="store_true",
-                   help='print {"schema": 1, "hooks": {...}, "stages": [...]}')
+                   help='print {"schema": 2, "hooks": {...}, "stages": [...]}')
     p.set_defaults(func=_lifecycle)
 
     p = command(cmds, "docs", help="this project's documentation entries",
                 prints="the entries, or --json", writes="nothing",
                 examples=["docs", "docs --json"])
     p.add_argument("--json", action="store_true",
-                   help='print {"schema": 1, "source": ..., "entries": [...]}')
+                   help='print {"schema": 2, "source": ..., "entries": [...]}')
     p.set_defaults(func=_docs)
 
     p = group(cmds, "tags", help="this project's tag registry")
@@ -870,10 +874,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                 prints="one ticket key per line, or --json", writes="nothing",
                 examples=["tickets list", "tickets list --json"])
     p.add_argument("--json", action="store_true",
-                   help='print {"schema": 1, "tickets": [...]}')
+                   help='print {"schema": 2, "tickets": [...]}')
     p.set_defaults(func=_tickets_list)
     p = command(verbs, "adopt", help="make a ticket an item",
-                prints="the new item's full slug", writes="the item's folder, and "
+                prints="the new item's full identifier", writes="the item's folder, and "
                        "the ticket's TCW fields", examples=["tickets adopt TCW-42"])
     p.add_argument("key", help="the ticket's Jira key")
     p.set_defaults(func=_tickets_adopt)

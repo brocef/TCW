@@ -453,7 +453,7 @@ export function App() {
                     ? workAncestors(
                           data.work.find(
                               (item) => itemKey("work", item) === key
-                          )?.slug ?? "",
+                          )?.["full-id"] ?? "",
                           data.work
                       )
                     : pathAncestors(key)

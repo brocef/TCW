@@ -205,7 +205,7 @@ def test_one_item_declaring_both_ways_is_not_called_two_items(layout):
     declare(layout, "new: [x/y]\nremoved: [x/y]\n", a.slug)
     [problem] = drift_problems(layout, [a], FakeReader())
     assert problem.kind == "ambiguous" and "same day" not in problem.message
-    assert "tcw/1-a" in problem.message
+    assert "tcw.work/1-a" in problem.message
 
 
 def test_drift_covers_removals_terms_and_unchecked(layout):

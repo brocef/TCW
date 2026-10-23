@@ -94,7 +94,7 @@ def test_list_and_search_print_one_path_per_line(project, run):
     assert run(project, "taxonomy", "list")[1] == "widget\nwidget/gear\n"
     assert run(project, "taxonomy", "search", "small")[1] == "widget\n"
     data = json.loads(run(project, "taxonomy", "list", "--json")[1])
-    assert data["schema"] == 1
+    assert data["schema"] == 2
     assert data["terms"][1] == {"path": "widget/gear", "name": "Gear",
                                 "kind": "Vocabulary", "origin": "local"}
 
@@ -102,7 +102,7 @@ def test_list_and_search_print_one_path_per_line(project, run):
 def test_show_json(project, run):
     run(project, "taxonomy", "add", "Widget", stdin="small\n")
     data = json.loads(run(project, "taxonomy", "show", "widget", "--json")[1])
-    assert data["schema"] == 1 and data["term"]["path"] == "widget"
+    assert data["schema"] == 2 and data["term"]["path"] == "widget"
     assert data["term"]["description"].strip() == "small"
 
 

@@ -66,7 +66,8 @@ export function workItem(
     overrides: Partial<WorkItem> = {}
 ): WorkItem {
     return {
-        slug: `p/${folder}`,
+        "full-id": `p.work/${folder}`,
+        owner: "p",
         title: folder,
         stage: "ask",
         created: "2026-10-01T09:00:00+00:00",

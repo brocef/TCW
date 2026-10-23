@@ -76,7 +76,7 @@ def many(jira_project, count, **values):
         ticket = jira_project.fake.ticket(f"t{n}", **values)
         name = f"{ticket.key}-t"
         ticket.custom[FIELDS["TCW Project"]] = "tcw"
-        ticket.custom[FIELDS["TCW Item"]] = f"tcw/{name}"
+        ticket.custom[FIELDS["TCW Item"]] = f"tcw.work/{name}"
         (work / name).mkdir()
         keys.append(ticket.key)
     return keys
@@ -112,7 +112,7 @@ def test_the_request_budget(jira_project):
 def test_a_refused_key_search_falls_back_to_direct_reads(jira_project):
     fake = jira_project.fake
     parent = fake.ticket("Parent", issue_type="Epic")
-    parent.custom[FIELDS["TCW Item"]] = "web/WEB-1-x"
+    parent.custom[FIELDS["TCW Item"]] = "web.work/WEB-1-x"
     key, folder = jira_project.item("Child", "child", parent=parent.key)
     fake.link_counter += 1
     fake.links.append(Link("1", "Blocks", *block_link("TCW-99", key)))
@@ -129,7 +129,7 @@ def test_a_parent_missing_from_searches_is_read_directly(jira_project):
     parent = fake.ticket("Parent", issue_type="Epic")
     _, folder = jira_project.item("Child", "child", parent=parent.key)
     backend = jira_project.backend()
-    backend.client.edit_issue(parent.key, {FIELDS["TCW Item"]: "web/WEB-2-y"})
+    backend.client.edit_issue(parent.key, {FIELDS["TCW Item"]: "web.work/WEB-2-y"})
     fake.search_lag = 10
     item, = backend.list(Query())
     assert item.parent == Slug("web", "WEB-2-y")

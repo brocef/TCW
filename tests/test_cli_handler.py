@@ -52,10 +52,10 @@ def test_a_nested_command_names_every_word(run, fx):
 def test_a_failure_after_creation_prints_the_name_then_the_error(run, fx, monkeypatch):
     def create(self, title, props, *, stage, request):
         (self.work_path / "2026-10-02-x").mkdir()
-        raise BackendError("made it, then failed", name="fx/2026-10-02-x")
+        raise BackendError("made it, then failed", name="fx.work/2026-10-02-x")
     monkeypatch.setattr(FsWorkBackend, "create", create)
     code, out, err = run(["work", "new", "x"], fx)
-    assert (code, out) == (1, "fx/2026-10-02-x\n")
+    assert (code, out) == (1, "fx.work/2026-10-02-x\n")
     assert err == "tcw work new: made it, then failed\n"
 
 

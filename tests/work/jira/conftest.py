@@ -13,6 +13,7 @@ import yaml
 
 from tcw.cli import main
 from tcw.work.open import open_backend
+from tests.fullids import wid
 from tests.work.jira.fake import FIELDS, SITE, FakeJira
 from tests.work.projects import make_project
 
@@ -65,7 +66,7 @@ class JiraProject:
                                   **values)
         name = f"{ticket.key}-{words}"
         ticket.custom[FIELDS["TCW Project"]] = project_id or self.id
-        ticket.custom[FIELDS["TCW Item"]] = item or f"{self.id}/{name}"
+        ticket.custom[FIELDS["TCW Item"]] = item or wid(self.id, name)
         if folder:
             path = self.work / name
             path.mkdir(parents=True)

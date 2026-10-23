@@ -194,7 +194,7 @@ test("blocks are added one request per link, stopping at the first refusal", asy
     const fetch = vi.fn(async (_input: unknown, init?: RequestInit) => {
         const { target } = JSON.parse(String(init?.body))
         sent.push(target)
-        const refused = target.startsWith("q/")
+        const refused = target.startsWith("q.work/")
         return {
             ok: !refused,
             status: refused ? 409 : 200,
@@ -218,7 +218,7 @@ test("blocks are added one request per link, stopping at the first refusal", asy
         />
     )
     const input = screen.getByRole("combobox", { name: "Blocks (add)" })
-    for (const target of ["p/a", "q/2026-01-01-z", "p/b"]) {
+    for (const target of ["p.work/a", "q.work/2026-01-01-z", "p.work/b"]) {
         fireEvent.change(input, { target: { value: target } })
         fireEvent.keyDown(input, { key: "Escape" })
         fireEvent.keyDown(input, { key: "Enter" })
@@ -226,11 +226,11 @@ test("blocks are added one request per link, stopping at the first refusal", asy
     fireEvent.click(screen.getByRole("button", { name: "Add" }))
     expect(
         await screen.findByText(
-            "Added p/a. q/2026-01-01-z was not added: q is upstream"
+            "Added p.work/a. q.work/2026-01-01-z was not added: q is upstream"
         )
     ).toBeInTheDocument()
-    expect(sent).toEqual(["p/a", "q/2026-01-01-z"])
-    expect(onSaved).toHaveBeenCalledWith("Added p/a", null)
+    expect(sent).toEqual(["p.work/a", "q.work/2026-01-01-z"])
+    expect(onSaved).toHaveBeenCalledWith("Added p.work/a", null)
 })
 
 test("a comment is added through the comments route", async () => {
@@ -272,7 +272,9 @@ describe("the new item form", () => {
     }
 
     test("in this project, unticking the first stage leaves it in the inbox stage", async () => {
-        const fetch = fakeFetch([[/^POST /, 201, { slug: "p/2026-10-15-new" }]])
+        const fetch = fakeFetch([
+            [/^POST /, 201, { "full-id": "p.work/2026-10-15-new" }],
+        ])
         globalThis.fetch = fetch as unknown as typeof globalThis.fetch
         const onCreated = renderForm()
         fireEvent.change(screen.getByRole("textbox", { name: "Title" }), {
@@ -284,7 +286,7 @@ describe("the new item form", () => {
         await waitFor(() =>
             expect(onCreated).toHaveBeenCalledWith(
                 "2026-10-15-new",
-                "Created p/2026-10-15-new"
+                "Created p.work/2026-10-15-new"
             )
         )
         expect(fetch.calls[0].body).toEqual({
@@ -295,7 +297,9 @@ describe("the new item form", () => {
     })
 
     test("another project leaves only title, request text and priority", async () => {
-        const fetch = fakeFetch([[/^POST /, 201, { slug: "q/2026-10-15-new" }]])
+        const fetch = fakeFetch([
+            [/^POST /, 201, { "full-id": "q.work/2026-10-15-new" }],
+        ])
         globalThis.fetch = fetch as unknown as typeof globalThis.fetch
         const onCreated = renderForm()
         await choose("Project", "q")
@@ -310,7 +314,7 @@ describe("the new item form", () => {
         await waitFor(() =>
             expect(onCreated).toHaveBeenCalledWith(
                 null,
-                "Created q/2026-10-15-new"
+                "Created q.work/2026-10-15-new"
             )
         )
         expect(fetch.calls[0].body).toEqual({
@@ -337,7 +341,9 @@ describe("the new item form", () => {
     })
 
     test("in Jira mode another project's parent is kept with a warning, a blocker is not", async () => {
-        const fetch = fakeFetch([[/^POST /, 201, { slug: "p/TCW-9-new" }]])
+        const fetch = fakeFetch([
+            [/^POST /, 201, { "full-id": "p.work/TCW-9-new" }],
+        ])
         globalThis.fetch = fetch as unknown as typeof globalThis.fetch
         const onCreated = renderForm({
             recordOwner: "backend",
@@ -348,16 +354,18 @@ describe("the new item form", () => {
             target: { value: "New" },
         })
         const parent = screen.getByRole("combobox", { name: "Parent" })
-        fireEvent.change(parent, { target: { value: "other/TCW-1-x" } })
+        fireEvent.change(parent, { target: { value: "other.work/TCW-1-x" } })
         fireEvent.keyDown(parent, { key: "Enter" })
         expect(
-            await screen.findByText(/other\/TCW-1-x is in project other/)
+            await screen.findByText(/other\.work\/TCW-1-x is in project other/)
         ).toBeInTheDocument()
         const blockers = screen.getByRole("combobox", { name: "Blocked by" })
-        fireEvent.change(blockers, { target: { value: "other/TCW-1-x" } })
+        fireEvent.change(blockers, { target: { value: "other.work/TCW-1-x" } })
         fireEvent.click(screen.getByRole("button", { name: "Save" }))
         expect(
-            await screen.findByText(/^Blocked by: other\/TCW-1-x is not one/)
+            await screen.findByText(
+                /^Blocked by: other\.work\/TCW-1-x is not one/
+            )
         ).toBeInTheDocument()
         expect(fetch.calls).toHaveLength(0)
         fireEvent.change(blockers, { target: { value: "" } })
@@ -365,7 +373,7 @@ describe("the new item form", () => {
         await waitFor(() => expect(onCreated).toHaveBeenCalled())
         expect(fetch.calls[0].body).toMatchObject({
             title: "New",
-            properties: { parent: "other/TCW-1-x" },
+            properties: { parent: "other.work/TCW-1-x" },
         })
     })
 
@@ -408,7 +416,7 @@ describe("the tickets view", () => {
     test("adopting opens the new item", async () => {
         globalThis.fetch = fakeFetch([
             ["/api/tickets$", 200, { tickets: [ticket], query: "q" }],
-            [/^POST /, 201, { slug: "p/X-1-please", code: 0 }],
+            [/^POST /, 201, { "full-id": "p.work/X-1-please", code: 0 }],
         ]) as unknown as typeof globalThis.fetch
         const onAdopted = vi.fn()
         wrap(<TicketsView onAdopted={onAdopted} />)
@@ -429,7 +437,7 @@ describe("the tickets view", () => {
                 /^POST /,
                 201,
                 {
-                    slug: "p/X-1-please",
+                    "full-id": "p.work/X-1-please",
                     code: 6,
                     problem:
                         "adopted X-1 as p/X-1-please, but request post hook failed",
@@ -500,7 +508,9 @@ describe("text a field will not keep holds back a save", () => {
     })
 
     test("the new item form keeps a refused tag and creates nothing", async () => {
-        const fetch = fakeFetch([[/^POST /, 201, { slug: "p/2026-10-15-new" }]])
+        const fetch = fakeFetch([
+            [/^POST /, 201, { "full-id": "p.work/2026-10-15-new" }],
+        ])
         globalThis.fetch = fetch as unknown as typeof globalThis.fetch
         const onCreated = vi.fn()
         wrap(
@@ -540,7 +550,7 @@ describe("text a field will not keep holds back a save", () => {
             />
         )
         const input = screen.getByRole("combobox", { name: "Blocks (add)" })
-        fireEvent.change(input, { target: { value: "p/a" } })
+        fireEvent.change(input, { target: { value: "p.work/a" } })
         fireEvent.keyDown(input, { key: "Enter" })
         fireEvent.change(input, { target: { value: "not a slug" } })
         fireEvent.click(screen.getByRole("button", { name: "Add" }))
@@ -634,7 +644,9 @@ test("loading the file again after a conflict keeps the draft when the read fail
 })
 
 test("the new item form sends single values trimmed", async () => {
-    const fetch = fakeFetch([[/^POST /, 201, { slug: "p/2026-10-15-new" }]])
+    const fetch = fakeFetch([
+        [/^POST /, 201, { "full-id": "p.work/2026-10-15-new" }],
+    ])
     globalThis.fetch = fetch as unknown as typeof globalThis.fetch
     wrap(
         <NewItemForm

@@ -30,7 +30,7 @@ def test_a_clean_store_has_no_findings(tmp_path):
 def test_three_warnings_and_no_error(tmp_path):
     p = make_project(tmp_path, "p", config=TAGS)
     write_item(p, "2026-10-01-blocked", {"title": "b", "stage": "request",
-                                        "blocked-by": ["2026-10-01-nothing"]})
+                                        "blocked-by": ["p.work/2026-10-01-nothing"]})
     ahead = write_item(p, "2026-10-01-ahead", {"title": "c", "stage": "plan"})
     (ahead / "request").mkdir()
     (ahead / "request" / "request.md").write_text("Do it.\n")
@@ -54,17 +54,17 @@ def test_references_into_other_projects(tmp_path):
     connect(p, q, "children")
     connect(q, p, "parent")
     write_item(p, "2026-10-01-a", {"title": "a", "stage": "request",
-                                  "blocked-by": ["q/2026-10-01-x",
-                                                 "nobody/2026-10-01-y"]})
+                                  "blocked-by": ["q.work/2026-10-01-x",
+                                                 "nobody.work/2026-10-01-y"]})
     import shutil
     shutil.rmtree(q)
     found, _ = findings(p)
     assert by_severity(found, "error") == []
     [unresolved] = by_severity(found, "unresolved")
-    assert "q/2026-10-01-x" in unresolved.message
+    assert "q.work/2026-10-01-x" in unresolved.message
     assert "blocked-by" in unresolved.message
     [missing] = by_severity(found, "warning")
-    assert "nobody/2026-10-01-y" in missing.message
+    assert "nobody.work/2026-10-01-y" in missing.message
 
 
 def test_a_reference_found_in_another_project_is_fine(tmp_path):
@@ -74,7 +74,7 @@ def test_a_reference_found_in_another_project_is_fine(tmp_path):
     connect(q, p, "parent")
     write_item(q, "2026-10-01-x", {"title": "x", "stage": "discarded"})
     write_item(p, "2026-10-01-a", {"title": "a", "stage": "request",
-                                  "parent": "q/2026-10-01-x"})
+                                  "parent": "q.work/2026-10-01-x"})
     assert findings(p) == ([], None)
 
 
@@ -109,7 +109,7 @@ def test_one_unreadable_item_does_not_hide_the_rest(tmp_path):
     p = make_project(tmp_path, "p")
     write_item(p, "2026-10-01-bad", "title: [x\n")
     write_item(p, "2026-10-01-blocked", {"title": "b", "stage": "request",
-                                        "blocked-by": ["2026-10-01-nothing"]})
+                                        "blocked-by": ["p.work/2026-10-01-nothing"]})
     folder = write_item(p, "2026-10-01-caps", {"title": "c", "stage": "request"})
     (folder / "capabilities.yaml").write_text("added: [x/y]\n")
     found, note = findings(p)

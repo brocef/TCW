@@ -62,7 +62,7 @@ def test_one_id_per_line_current_first(graph, monkeypatch, capsys):
 def test_json_says_relation_and_presence(graph, monkeypatch, capsys):
     code, out, _ = run(monkeypatch, capsys, graph, "projects", "list", "--json")
     data = json.loads(out)
-    assert data["schema"] == 1
+    assert data["schema"] == 2
     rows = {p["id"]: p for p in data["projects"]}
     assert [p["id"] for p in data["projects"]] == ["fx", "top", "c1", "c2", "gone", "up"]
     assert rows["fx"]["relation"] == "current" and rows["top"]["relation"] == "parent"

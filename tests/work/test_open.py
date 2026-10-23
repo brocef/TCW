@@ -119,7 +119,7 @@ def test_delegate_creates_an_inbox_item_and_commits_nothing(pq):
     lines = []
     slug = delegate("q", "T", "please\n", "high", here=p, report=lines.append)
     folder = slug.split("/", 1)[1]
-    assert slug.startswith("q/") and folder.endswith("-t")
+    assert slug.startswith("q.work/") and folder.endswith("-t")
     item = yaml.safe_load((q / "docs" / "work" / folder / "item.yaml").read_text())
     assert item == {"title": "T", "stage": "inbox", "priority": "high"}
     assert any("item.yaml" in l and "uncommitted" in l for l in lines)
@@ -224,7 +224,7 @@ def test_open_for_update_follows_the_same_conditions(pq):
     item = target.create("x", Changes(), stage="request", request=None)
     commit_all(q)
     open_for_update("q", p).update(item.slug.folder,
-                                   Changes(add_blocked_by=("p/2026-01-01-a",)))
+                                   Changes(add_blocked_by=("p.work/2026-01-01-a",)))
     (q / "docs" / "work" / "stray.md").write_text("x")
     with pytest.raises(Refused, match="uncommitted"):
         open_for_update("q", p)

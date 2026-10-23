@@ -36,7 +36,7 @@ def test_show_prints_the_record_then_the_request_then_comments_newest_first(tcw,
     assert tcw(["comment", slug], fx, stdin="two\n").code == 0
     out = tcw(["show", slug], fx).out
     record, request, comments = out.split("\n\n")
-    assert record.splitlines()[0] == f"slug: {slug}"
+    assert record.splitlines()[0] == f"full-id: {slug}"
     assert "untracked:" not in record
     assert request == "request:\n  Need X"
     lines = comments.splitlines()
@@ -51,7 +51,7 @@ def test_show_json_carries_the_request_and_comments(tcw, fx):
     tcw(["comment", slug], fx, stdin="two\n")
     shown = json.loads(tcw(["show", slug, "--json"], fx).out)
     assert list(shown) == ["schema", "item", "request", "comments"]
-    assert shown["schema"] == 1 and shown["item"]["slug"] == slug
+    assert shown["schema"] == 2 and shown["item"]["full-id"] == slug
     assert "Need X" in shown["request"]
     assert [c["text"].strip() for c in shown["comments"]] == ["two", "one"]
     assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", shown["comments"][0]["at"])
@@ -68,8 +68,8 @@ def test_an_item_with_no_request(tcw, fx):
 def test_list_json_is_one_object_with_items(tcw, fx):
     slug = new(tcw, fx, "A b")
     listed = json.loads(tcw(["list", "--json"], fx).out)
-    assert listed["schema"] == 1
-    assert [i["slug"] for i in listed["items"]] == [slug]
+    assert listed["schema"] == 2
+    assert [i["full-id"] for i in listed["items"]] == [slug]
     assert "request" not in listed["items"][0]
 
 
@@ -157,7 +157,7 @@ def test_an_unknown_procedure_lists_the_names(tcw, fx):
 def test_lifecycle_json(tcw, tmp_path):
     root = make_project(tmp_path, "fx", config={"stages": {"qa": {"enabled": False}}})
     data = json.loads(tcw(["lifecycle", "--json"], root).out)
-    assert data["schema"] == 1
+    assert data["schema"] == 2
     assert [s["name"] for s in data["stages"] if not s["enabled"]] == ["qa"]
     assert "request" in [s["name"] for s in data["stages"] if s["enabled"]]
     text = tcw(["lifecycle"], root).out
@@ -222,4 +222,4 @@ def test_show_names_people_in_text_and_ids_in_json(tcw, jira_project):
 def test_tickets_list_json_is_one_object(tcw, jira_project):
     jira_project.fake.ticket("Loose", status="To Do")
     data = json.loads(tcw(["tickets", "list", "--json"], jira_project.root).out)
-    assert data["schema"] == 1 and isinstance(data["tickets"], list)
+    assert data["schema"] == 2 and isinstance(data["tickets"], list)

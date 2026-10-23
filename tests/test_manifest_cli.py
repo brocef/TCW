@@ -208,14 +208,14 @@ def test_ac7_an_entry_decides_and_a_project_not_here(tmp_path):
             if line.startswith("unresolved: .tcw/tcw-manifest.local.yaml:")]
     assert len(mine) == 1 and "../gone2" in mine[0], lines
     assert "example.invalid" not in mine[0]
-    shown = tcw(app, "work", "show", "lib/x", env=env)
+    shown = tcw(app, "work", "show", "lib.work/x", env=env)
     assert shown.code == 5 and "../gone2" in shown.err, shown
     assert "example.invalid" not in shown.err
     # No manifest, and no `lib` anywhere.
     for path in app.glob(".tcw/tcw-manifest*.yaml"):
         path.unlink()
     shutil.rmtree(tmp_path / "lib")
-    shown = tcw(app, "work", "show", "lib/x")
+    shown = tcw(app, "work", "show", "lib.work/x")
     assert shown.code == 5, shown
     assert NO_ENTRY.format(app) in shown.err
     assert "tcw provision" not in shown.err.replace("tcw project provision", "")
@@ -265,7 +265,7 @@ def test_ac8_an_empty_folder_is_not_on_this_machine(tmp_path, contents):
     unresolved = [line for line in lines if line.startswith("unresolved:")]
     assert len(unresolved) == 1 and "'lib'" in unresolved[0] and "../gone" in unresolved[0]
     assert listed(app)["lib"]["present"] is False
-    assert tcw(app, "work", "show", "lib/x").code == 5
+    assert tcw(app, "work", "show", "lib.work/x").code == 5
     (folder / ".DS_Store").write_text("x")
     ran, lines = validated(app)
     assert ran.code == 1 and any("not a TCW project" in line for line in lines), lines
@@ -288,7 +288,7 @@ def test_ac8_an_uninitialised_submodule_is_not_on_this_machine(tmp_path):
     assert len(unresolved) == 1 and "'lib'" in unresolved[0], lines
     assert listed(clone)["lib"]["present"] is False
     (clone / "docs" / "work").mkdir(parents=True, exist_ok=True)
-    shown = tcw(clone, "work", "show", "lib/x")
+    shown = tcw(clone, "work", "show", "lib.work/x")
     assert shown.code == 5 and "not on this machine" in shown.err, shown
 
 
@@ -544,7 +544,7 @@ def test_ac22_provision_fetches_no_project(tmp_path):
     ran_git = calls.read_text() if calls.exists() else ""
     assert "example.invalid" not in ran_git and "clone" not in ran_git, ran_git
     assert "'lib'" not in ran.err and "lib.git" not in ran.err
-    shown = tcw(app, "work", "show", "lib/x")
+    shown = tcw(app, "work", "show", "lib.work/x")
     assert shown.code == 5, shown
     assert "https://example.invalid/lib.git" in shown.err
     assert "tcw project provision lib" in shown.err

@@ -8,6 +8,7 @@ from tcw.work.jira import client as jira
 from tcw.work.jira.backend import Refusal, choose_transition
 from tcw.work.jira.client import Transition
 from tcw.work.jira.mapping import document_text
+from tests.fullids import wid
 from tests.work.jira.fake import Transition as Route
 
 NOTE = "forced: the spec is in the old wiki"
@@ -134,7 +135,7 @@ def test_a_dropped_note_whose_comments_cannot_be_read_may_have_been_posted(item,
     assert "may have been posted" in result.err
     assert "the trace may not have been recorded" in result.err
     assert "the trace was not recorded" not in result.err
-    assert f"`tcw work show {project.id}/{folder}`" in result.err \
+    assert f"`tcw work show {wid(project.id, folder)}`" in result.err \
         or f"`tcw work show {folder}`" in result.err
     assert len(project.fake.tickets[key].comments) == 1
     assert len(comment_posts(project, key)) == 1

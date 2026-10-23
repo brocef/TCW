@@ -57,7 +57,9 @@ export interface TProject {
 
 /** An item record: what `tcw work list --json` and `show --json` carry. */
 export interface WorkItem {
-    slug: string
+    /** `<project>.work/<folder>` (TCW-110 Design 4.3). */
+    "full-id": string
+    owner: string
     title: string
     stage: string | null
     created: string
@@ -79,7 +81,8 @@ export interface WorkItem {
 
 /** A board row when the backend cannot answer: the folder alone. */
 export interface TFallbackRow {
-    slug: string
+    "full-id": string
+    owner: string
     path: string
 }
 

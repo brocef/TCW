@@ -24,7 +24,7 @@ def test_a_missing_same_project_blocker_is_a_warning():
     a = item("a", blocked_by=[Slug("tcw", "gone")])
     [problem] = reference_problems([a], "tcw", never)
     assert (problem.level, problem.slug) == ("warning", a.slug)
-    assert "missing item" in problem.message and "tcw/gone" in problem.message
+    assert "missing item" in problem.message and "tcw.work/gone" in problem.message
 
 
 def test_a_missing_parent_is_a_warning():
@@ -45,7 +45,7 @@ def test_cross_project_references_go_through_resolve():
     problems = reference_problems([a], "tcw", answers.__getitem__)
     assert sorted(p.level for p in problems) == ["unresolved", "warning"]
     unresolved = next(p for p in problems if p.level == "unresolved")
-    assert "far/x" in unresolved.message
+    assert "far.work/x" in unresolved.message
 
 
 def write(path):

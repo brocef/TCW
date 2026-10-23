@@ -306,7 +306,7 @@ def generate_payload(record: dict | None, request: str | None, role: str,
             request = raw[:cap].decode("utf-8", errors="ignore")
             truncated = True
     payload = {
-        "schema": 1,
+        "schema": 2,
         "item": record,
         "request": request,
         "hook": {"role": role, "kind": kind, "id": hook_id, "phase": phase,

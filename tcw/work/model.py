@@ -14,9 +14,9 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any, Callable, Iterable
 
-from tcw.errors import UsageError
+from tcw.errors import NotFound, UsageError
+from tcw.ids import FullId, parse_stored, sort_input
 from tcw.store.base import normalize_tag
-from tcw.store.project import PROJECT_ID_PATTERN
 
 # ---------------------------------------------------------------------------
 # Identity
@@ -28,51 +28,52 @@ PREFIX_ALLOWANCE = 20
 FOLDER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
 
 
-@dataclass(frozen=True, order=True)
-class Slug:
-    """A work item's identity: the project it belongs to, and its folder name.
+class Slug(FullId):
+    """A work item's full identifier, `<project>.work/<folder>` (TCW-110):
+    the project it belongs to, and its folder name, which is its id-path.
+
+    A `FullId` with namespace `work`, so it equals, hashes and sorts with a
+    `FullId` parsed from text for the same item, and prints the same. It
+    carries no dataclass decorator of its own, which would generate equality
+    again and undo that.
 
     The folder pattern allows upper case so that a Jira key can lead it
     (`TCW-67-…`); each backend narrows the pattern for the names it creates.
     """
 
-    project: str
-    folder: str
+    def __init__(self, project: str, folder: str):
+        object.__setattr__(self, "project", project)
+        object.__setattr__(self, "namespace", "work")
+        object.__setattr__(self, "id_path", folder)
+
+    @property
+    def folder(self) -> str:
+        return self.id_path
 
     @classmethod
-    def parse(cls, text: str, current_project: str) -> Slug:
-        """`project/folder`, or a bare `folder` in `current_project`.
+    def of(cls, full_id: FullId) -> Slug:
+        return full_id if isinstance(full_id, Slug) else cls(full_id.project,
+                                                             full_id.id_path)
 
-        Anything else is a usage error. The 2.x reserved project names are not
-        applied: they kept project ids apart from status folders, and 3.0 has
-        none, so `backlog/f` is simply an unknown project.
-        """
-        if not isinstance(text, str):
-            raise UsageError(f"{text!r} is not a work item slug")
-        parts = text.split("/")
-        if len(parts) == 1:
-            project, folder = current_project, parts[0]
-        elif len(parts) == 2:
-            project, folder = parts
-        else:
-            raise UsageError(
-                f"{text!r} is not a work item slug: use `project/folder` or a "
-                f"bare folder name")
-        # fullmatch, not match: `$` also matches before a final newline, which
-        # would let a slug read from a file keep its line ending.
-        if not PROJECT_ID_PATTERN.fullmatch(project):
-            raise UsageError(
-                f"{text!r} is not a work item slug: {project!r} is not a "
-                f"project id (lowercase letters and digits joined by `-`)")
-        if len(folder) > FOLDER_LIMIT or not FOLDER_PATTERN.fullmatch(folder):
-            raise UsageError(
-                f"{text!r} is not a work item slug: a folder name is letters, "
-                f"digits and `-`, starts with a letter or digit, and is at "
-                f"most {FOLDER_LIMIT} characters")
-        return cls(project, folder)
+    @classmethod
+    def stored(cls, value: Any) -> Slug:
+        """A work reference read from a file or a ticket: a full identifier,
+        or a `ThreeXReference` / `MalformedId` (Design 5.2)."""
+        return cls.of(parse_stored(value, "work"))
 
-    def __str__(self) -> str:
-        return f"{self.project}/{self.folder}"
+    @classmethod
+    def typed(cls, text: Any, current_project: str) -> Slug:
+        """A work item named on a command line or in a request: its full
+        identifier, its address, or its folder name in `current_project`."""
+        found = sort_input(text, "work")
+        if found.form == "d":
+            if "/" in found.id_path:
+                # A work item's id-path is one folder name until TCW-111, so
+                # an id-path of several parts names no item; a 3.x
+                # `<project>/<folder>` reads this way (Design 3.4).
+                raise NotFound(f"no work item {text} in project '{current_project}'")
+            return cls(current_project, found.id_path)
+        return cls.of(found.full_id)
 
 
 def title_words(title: str, limit: int = FOLDER_LIMIT - PREFIX_ALLOWANCE) -> str:
@@ -156,7 +157,7 @@ def _as_slug(value: Any, current_project: str, what: str) -> Slug:
     if isinstance(value, Slug):
         return value
     try:
-        return Slug.parse(value, current_project)
+        return Slug.typed(value, current_project)
     except UsageError as error:
         raise UsageError(f"{what}: {error}") from None
 

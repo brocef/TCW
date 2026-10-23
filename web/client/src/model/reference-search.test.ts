@@ -55,13 +55,13 @@ describe("reference search", () => {
 
     test("applies centralized candidate restrictions and duplicate filtering", () => {
         const context = {
-            currentIdentifier: "parent",
-            selected: ["duplicate"],
+            currentIdentifier: "p.work/parent",
+            selected: ["p.work/duplicate"],
             work: [
-                workItem("parent", { slug: "parent" }),
-                workItem("child", { slug: "child", parent: "parent" }),
-                workItem("epic", { slug: "epic" }),
-                workItem("duplicate", { slug: "duplicate" }),
+                workItem("parent"),
+                workItem("child", { parent: "p.work/parent" }),
+                workItem("epic"),
+                workItem("duplicate"),
             ],
             taxonomy: [
                 { slug: "term", name: "Term", kind: "Vocabulary" },
@@ -77,12 +77,12 @@ describe("reference search", () => {
             referenceOptions("work-parent", context).map(
                 (item) => item.identifier
             )
-        ).toEqual(["epic", "duplicate"])
+        ).toEqual(["p.work/epic", "p.work/duplicate"])
         expect(
             referenceOptions("work-blockers", context).map(
                 (item) => item.identifier
             )
-        ).toEqual(["child", "epic"])
+        ).toEqual(["p.work/child", "p.work/epic"])
         expect(
             referenceOptions("taxonomy-vocabulary", context).map(
                 (item) => item.identifier
@@ -105,8 +105,8 @@ describe("the fields of the autocomplete table", () => {
     const context = {
         work: [
             workItem("parent"),
-            workItem("child", { parent: "p/parent" }),
-            workItem("grandchild", { parent: "p/child" }),
+            workItem("child", { parent: "p.work/parent" }),
+            workItem("grandchild", { parent: "p.work/child" }),
             workItem("other", { assignee: "acc-1" }),
         ],
         taxonomy: [
@@ -140,9 +140,9 @@ describe("the fields of the autocomplete table", () => {
         )
 
     test("a work parent excludes the item and its descendants", () => {
-        expect(ids("work-parent", { currentIdentifier: "p/parent" })).toEqual([
-            "p/other",
-        ])
+        expect(
+            ids("work-parent", { currentIdentifier: "p.work/parent" })
+        ).toEqual(["p.work/other"])
     })
 
     test("assignees are the names on items and the user", () => {
@@ -206,9 +206,10 @@ test("the link being typed is found before the caret", () => {
     expect(typedLink("See tcw://W/x done")).toBeNull()
 })
 
-test("another project's full slug is kept with a warning; this project's is not", () => {
-    expect(otherProjectWarning("q/2026-01-01-x", "p")).toMatch(/project q/)
-    expect(otherProjectWarning("p/2026-01-01-x", "p")).toBeNull()
+test("another project's full identifier is kept with a warning; this project's is not", () => {
+    expect(otherProjectWarning("q.work/2026-01-01-x", "p")).toMatch(/project q/)
+    expect(otherProjectWarning("p.work/2026-01-01-x", "p")).toBeNull()
+    expect(otherProjectWarning("q/" + "2026-01-01-x", "p")).toBeNull()
     expect(otherProjectWarning("2026-01-01-x", "p")).toBeNull()
     expect(otherProjectWarning("not a slug", "p")).toBeNull()
 })

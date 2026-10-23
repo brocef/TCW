@@ -15,6 +15,7 @@ from typing import Any, Callable, Mapping
 
 from tcw import exit as codes
 from tcw.errors import BackendError, NotFound, Refused, TcwError, UsageError
+from tcw.ids import IdError
 from tcw.work.advance import run_post
 from tcw.work.config import WorkConfig
 from tcw.work.jira import jql
@@ -233,8 +234,8 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
 def _own_slug(backend: JiraBackend, value: Any, key: str) -> Slug | None:
     """The slug TCW Item names, when it is an item of this project for `key`."""
     try:
-        slug = Slug.parse(value, backend.project)
-    except (UsageError, TypeError):
+        slug = Slug.stored(value)
+    except IdError:
         return None
     if slug.project != backend.project or folder_key(slug.folder) != key:
         return None

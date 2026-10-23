@@ -9,6 +9,7 @@ import {
     Text,
 } from "@radix-ui/themes"
 import { isUnavailable } from "../model/api"
+import { fullIdText } from "../model/identifier"
 import {
     folderOf,
     isLocal,
@@ -50,7 +51,7 @@ export function Unavailable({
     )
 }
 
-/** A work item named by its slug: a link that opens it when it is in this
+/** A work item named by its full identifier: a link that opens it when it is in this
  * project, and a labelled name that does not navigate when it is another
  * project's, which this page does not serve. */
 export function SlugLink({
@@ -242,7 +243,8 @@ export function WorkPage({
     editing?: TWorkPageEditing
 }) {
     const item = isUnavailable(detail.item) ? null : detail.item
-    const slug = item?.slug ?? `${project.id}/${detail.folder}`
+    const slug =
+        item?.["full-id"] ?? fullIdText(project.id, "work", detail.folder)
     return (
         <>
             <div className="detail-head">

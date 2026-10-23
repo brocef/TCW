@@ -77,14 +77,14 @@ ROWS: dict[str, tuple[list[str], int]] = {
     # Flags that need an identity get rows of their own (TCW-72).
     "work list --mine": (["work", "list", "--mine"], 1),
     "work new --assign-me": (["work", "new", "A b", "--assign-me"], 1),
-    "work edit --assign-me": (["work", "edit", "fx/2026-10-01-a", "--assign-me"], 1),
-    "work show": (["work", "show", "fx/2026-10-01-a"], 1),
+    "work edit --assign-me": (["work", "edit", "fx.work/2026-10-01-a", "--assign-me"], 1),
+    "work show": (["work", "show", "fx.work/2026-10-01-a"], 1),
     "work path": (["work", "path"], 1),
-    "work edit": (["work", "edit", "fx/2026-10-01-a", "--priority", "high"], 1),
-    "work advance": (["work", "advance", "fx/2026-10-01-a"], 1),
-    "work discard": (["work", "discard", "fx/2026-10-01-a", "--reason", "r"], 1),
-    "work comment": (["work", "comment", "fx/2026-10-01-a"], 1),
-    "work rename": (["work", "rename", "fx/2026-10-01-a", "b"], 1),
+    "work edit": (["work", "edit", "fx.work/2026-10-01-a", "--priority", "high"], 1),
+    "work advance": (["work", "advance", "fx.work/2026-10-01-a"], 1),
+    "work discard": (["work", "discard", "fx.work/2026-10-01-a", "--reason", "r"], 1),
+    "work comment": (["work", "comment", "fx.work/2026-10-01-a"], 1),
+    "work rename": (["work", "rename", "fx.work/2026-10-01-a", "b"], 1),
     "work stage prompt": (["work", "stage", "prompt", "spec"], 1),
     "work procedure": (["work", "procedure", "audit-backlog"], 0),
     "work lifecycle": (["work", "lifecycle"], 1),
@@ -265,7 +265,7 @@ def test_init_prints_nothing_and_names_everything(tmp_path):
 
 def test_the_work_commands(fx):
     made = written(fx, "work", "new", "A b", stdin="Need X\n")
-    assert re.fullmatch(r"fx/[0-9]{4}-[0-9]{2}-[0-9]{2}-a-b\n", made.out), made.out
+    assert re.fullmatch(r"fx\.work/[0-9]{4}-[0-9]{2}-[0-9]{2}-a-b\n", made.out), made.out
     slug = made.out.strip()
 
     assert ok(fx, "work", "advance", slug, "--dry-run").out == "spec\n"
@@ -282,7 +282,7 @@ def test_the_work_commands(fx):
     assert tail.index("two") < tail.index("one")
 
     data = json.loads(ok(fx, "work", "show", slug, "--json").out)
-    assert data["schema"] == 1 and "Need X" in data["request"]
+    assert data["schema"] == 2 and "Need X" in data["request"]
     assert [c["text"].strip() for c in data["comments"]] == ["two", "one"]
     assert data["item"]["untracked"] == []
 
@@ -344,7 +344,7 @@ def test_a_clean_validate_prints_nothing(fx):
     assert ok(fx, "validate").out == ""
 
 
-def test_every_json_output_is_one_object_with_schema_1(fx):
+def test_every_json_output_is_one_object_with_schema_2(fx):
     configure(fx, tags=["a"])
     slug = new(fx)
     ok(fx, "taxonomy", "add", "Widget")
@@ -359,7 +359,7 @@ def test_every_json_output_is_one_object_with_schema_1(fx):
                  ["capabilities", "search", "thing", "--json"]):
         data = json.loads(ok(fx, *argv).out)
         assert isinstance(data, dict) and next(iter(data)) == "schema", argv
-        assert data["schema"] == 1, argv
+        assert data["schema"] == 2, argv
 
 
 # -- AC 10: exit codes ------------------------------------------------------------
@@ -369,11 +369,13 @@ def test_naming_an_item(fx):
     slug = new(fx)
     folder = slug.split("/", 1)[1]
     assert run(fx, "work", "show", "fx/no-such").code == 4
-    assert run(fx, "work", "show", "a/b/c").code == 2
+    # An id-path of several parts names no work item (TCW-110 Design 3.4).
+    assert run(fx, "work", "show", "a/b/c").code == 4
+    assert run(fx, "work", "show", "a/b c").code == 2
     assert run(fx, "work", "show", folder[:10]).code == 4
     assert run(fx, "work", "advance", slug, "--to", "nonsense").code == 2
     renamed = ok(fx, "work", "rename", slug, "other").out.strip()
-    assert renamed == f"fx/{TODAY}-other"
+    assert renamed == f"fx.work/{TODAY}-other"
     assert run(fx, "work", "show", slug).code == 4
 
 
@@ -444,7 +446,7 @@ def test_a_rename_that_fails_after_moving_prints_the_new_slug(fx):
     finally:
         folder.chmod(0o755)
         (folder / "item.yaml").chmod(0o644)
-    assert (result.code, result.out) == (1, f"fx/{TODAY}-moved\n"), result
+    assert (result.code, result.out) == (1, f"fx.work/{TODAY}-moved\n"), result
 
 
 # -- Jira mode, in-process (plan choice 1) ------------------------------------------
@@ -485,8 +487,8 @@ def test_a_key_names_an_item(jira_fx, monkeypatch):
     monkeypatch.setattr(JiraBackend, "read_comments", lambda self, folder, limit=None: [])
     shown = jira_fx("work", "show", "TCW-9")
     assert shown.code == 0, shown
-    slugs = re.findall(r"(?<![\w/])\w+/TCW-9-a-thing\b", shown.out)
-    assert slugs and set(slugs) == {"fx/TCW-9-a-thing"}
+    slugs = re.findall(r"(?<![\w/.])[\w.]+/TCW-9-a-thing\b", shown.out)
+    assert slugs and set(slugs) == {"fx.work/TCW-9-a-thing"}
     data = json.loads(jira_fx("work", "show", "TCW-9", "--json").out)
     assert data["item"]["priority"] is None and data["item"]["untracked"] == ["EXT-4"]
     assert jira_fx("work", "show", "TCW-10").code == 4
@@ -502,10 +504,10 @@ def test_a_refused_create_prints_the_key_it_left(jira_fx, monkeypatch):
 
 def test_a_late_backend_error_prints_the_slug(jira_fx, monkeypatch):
     def create(self, *args, **kwargs):
-        raise BackendError("made the folder, then failed", name="fx/2026-10-02-x")
+        raise BackendError("made the folder, then failed", name="fx.work/2026-10-02-x")
     monkeypatch.setattr(JiraBackend, "create", create)
     result = jira_fx("work", "new", "x")
-    assert (result.code, result.out) == (1, "fx/2026-10-02-x\n")
+    assert (result.code, result.out) == (1, "fx.work/2026-10-02-x\n")
 
 
 def test_an_early_failure_prints_nothing(jira_fx, monkeypatch):
@@ -572,7 +574,7 @@ def test_another_projects_item_reads_but_does_not_write(graph):
 
 def test_naming_projects_that_are_not_here(graph):
     assert run(graph["fx"], "work", "show", "ghost/x").code == 4
-    absent = run(graph["fx"], "work", "show", "absent/x")
+    absent = run(graph["fx"], "work", "show", "absent.work/x")
     # TCW-107 Design 6.2: where its manifest entry places it.
     assert absent.code == 5 and "project 'absent' is not on this machine" in absent.err
     assert "places it at ../absent" in absent.err
@@ -598,7 +600,7 @@ def test_delegation_through_jira_and_blocks(graph, fake, monkeypatch, capsys):  
 
     mine = new(graph["fx"], "Mine")
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
-    assert main(["work", "edit", mine, "--blocks", "absentj/x"]) == 3
+    assert main(["work", "edit", mine, "--blocks", "absentj.work/x"]) == 3
 
 
 # -- AC 28: people in Jira mode ---------------------------------------------------
@@ -661,7 +663,8 @@ def test_the_reading_commands_in_a_project(fx):
 
     checked(fx, "work", "list", out=slug + "\n")
     checked(fx, "work", "show", slug,
-            out=lambda o: o.startswith(f"slug: {slug}\ntitle: A b\n") and "Need X" in o)
+            out=lambda o: o.startswith(f"full-id: {slug}\nowner: fx\ntitle: A b\n")
+            and "Need X" in o)
     checked(fx, "work", "path", out=is_path(work))
     checked(fx, "work", "path", slug, out=is_path(work / folder))
     checked(fx, "work", "lifecycle", out=lambda o: o.startswith("inbox"))
@@ -688,9 +691,9 @@ def test_the_reading_commands_in_a_project(fx):
 def test_the_writing_work_commands_in_a_project(fx):
     configure(fx, tags=["a"])
     slug = new(fx, "A b")
-    renamed = checked(fx, "work", "rename", slug, "other", out=f"fx/{TODAY}-other\n")
+    renamed = checked(fx, "work", "rename", slug, "other", out=f"fx.work/{TODAY}-other\n")
     assert any(MOVED.match(l) for l in renamed.err.splitlines()), renamed.err
-    slug = f"fx/{TODAY}-other"
+    slug = f"fx.work/{TODAY}-other"
     checked(fx, "work", "discard", slug, "--reason", "r", out="discarded\n")
 
     added = checked(fx, "work", "tags", "add", "c", out="")
@@ -705,7 +708,7 @@ def test_the_identity_flags_in_a_project(fx, monkeypatch):
     monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
     write_local_config(fx, "user:\n  name: Brian\n")
     mine = checked(fx, "work", "new", "Mine", "--assign-me",
-                   out=lambda o: re.fullmatch(rf"fx/{TODAY}-mine\n", o)).out.strip()
+                   out=lambda o: re.fullmatch(rf"fx.work/{TODAY}-mine\n", o)).out.strip()
     new(fx, "Theirs", "--assignee", "brian")
     later = new(fx, "Later")
     checked(fx, "work", "list", "--mine", out=mine + "\n")
@@ -779,20 +782,20 @@ def jira_written(jira_fx, *argv: str, stdin: str = "") -> Result:
 def test_jira_edit_comment_and_rename(jira_fx, fake):  # noqa: F811
     made = jira_written(jira_fx, "work", "new", "Jira thing")
     slug = made.out.strip()
-    assert re.fullmatch(r"fx/TCW-\d+-jira-thing", slug), made
+    assert re.fullmatch(r"fx.work/TCW-\d+-jira-thing", slug), made
     key = slug.split("/", 1)[1].rsplit("-jira-thing", 1)[0]
     assert jira_written(jira_fx, "work", "edit", slug, "--tag", "ui").out == ""
     assert fake.tickets[key].labels == ["ui"]
     assert jira_written(jira_fx, "work", "comment", slug, stdin="hello\n").out == ""
     renamed = jira_written(jira_fx, "work", "rename", slug, "other")
-    assert renamed.out == f"fx/{key}-other\n", renamed
+    assert renamed.out == f"fx.work/{key}-other\n", renamed
     assert any(MOVED.match(l) for l in renamed.err.splitlines()), renamed.err
 
 
 def test_jira_tickets_adopt(jira_fx, fake):  # noqa: F811
     key = fake.ticket("Fix the login").key
     adopted = jira_written(jira_fx, "work", "tickets", "adopt", key)
-    assert adopted.out == f"fx/{key}-fix-the-login\n", adopted
+    assert adopted.out == f"fx.work/{key}-fix-the-login\n", adopted
 
 
 def test_jira_identity_flags(jira_fx, fake):  # noqa: F811

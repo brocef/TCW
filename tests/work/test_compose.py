@@ -172,7 +172,7 @@ def test_a_generate_binding_gets_the_record_request_and_environment(
 
     payload = json.loads((out / "stdin.json").read_text())
     assert set(payload) == {"schema", "item", "request", "hook"}
-    assert payload["schema"] == 1
+    assert payload["schema"] == 2
     assert payload["item"] == record
     assert payload["request"] == "The request.\n"
     assert payload["hook"] == {"role": "prompt", "kind": "generate", "id": "spec",
@@ -217,6 +217,6 @@ def test_planning_runs_nothing(tmp_path, monkeypatch):
 
 
 def test_the_header_names_advance_dry_run():
-    header = stage_header("p/2026-10-02-x")
-    assert "tcw work advance p/2026-10-02-x --dry-run" in header
+    header = stage_header("p.work/2026-10-02-x")
+    assert "tcw work advance p.work/2026-10-02-x --dry-run" in header
     assert "stage gate" not in header

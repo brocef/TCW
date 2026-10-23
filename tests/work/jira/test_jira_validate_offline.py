@@ -129,14 +129,14 @@ def test_a_filesystem_item_naming_a_jira_item_stays_offline(offline, tmp_path, m
     p = make_project(tmp_path, "p", config={})
     connect(p, offline.root, "children")
     connect(offline.root, p, "parent")
-    write_item(p, "2026-10-01-child", {"title": "c", "stage": "spec", "parent": "tcw/TCW-1-x"})
+    write_item(p, "2026-10-01-child", {"title": "c", "stage": "spec", "parent": "tcw.work/TCW-1-x"})
     write_item(p, "2026-10-01-orphan", {"title": "o", "stage": "spec",
-                                        "parent": "tcw/TCW-7-gone"})
+                                        "parent": "tcw.work/TCW-7-gone"})
     monkeypatch.chdir(p)
     assert main(["validate"]) == 0
     text = "".join(capsys.readouterr())
     # A reference to a missing item is a warning (TCW-69); one that exists is fine.
-    assert "parent references a missing item, tcw/TCW-7-gone" in text
+    assert "parent references a missing item, tcw.work/TCW-7-gone" in text
     assert "TCW-1-x" not in text
 
 

@@ -71,4 +71,4 @@ def test_provision_accepts_a_store_of_item_folders(tmp_path, capsys, monkeypatch
     assert code == 0, out + err
     assert (tmp_path / "co" / "docs/work/2026-10-01-a/item.yaml").exists()
     code, out, err = run(capsys, monkeypatch, root, "work", "list")
-    assert (code, out) == (0, "p/2026-10-01-a\n"), err
+    assert (code, out) == (0, "p.work/2026-10-01-a\n"), err

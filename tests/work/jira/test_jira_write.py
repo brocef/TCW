@@ -32,7 +32,7 @@ def test_a_new_item(jira_project):
     ticket = jira_project.fake.tickets["TCW-1"]
     assert item.slug == Slug("tcw", "TCW-1-dark-mode") and item.stage == "request"
     assert ticket.custom[FIELDS["TCW Project"]] == "tcw"
-    assert ticket.custom[FIELDS["TCW Item"]] == "tcw/TCW-1-dark-mode"
+    assert ticket.custom[FIELDS["TCW Item"]] == "tcw.work/TCW-1-dark-mode"
     assert ticket.status == "Triage" and document_text(ticket.description) == "Please"
     folder = jira_project.work / "TCW-1-dark-mode"
     assert [p.name for p in folder.iterdir()] == ["item.yaml"]
@@ -93,7 +93,7 @@ def test_step_6_refused(jira_project, tcw):
                   if t.to == "Triage")
     jira_project.fake.require_screen_field(triage.id, "resolution")
     result = tcw(["new", "Half"], jira_project.root)
-    assert (result.code, result.out.strip()) == (1, "tcw/TCW-1-half")
+    assert (result.code, result.out.strip()) == (1, "tcw.work/TCW-1-half")
     assert "resolution is required" in result.err and "advance" in result.err
     assert (jira_project.work / "TCW-1-half" / "item.yaml").is_file()
     assert jira_project.fake.tickets["TCW-1"].status == "To Do"
@@ -107,14 +107,14 @@ def test_step_6_drops(jira_project, monkeypatch, tcw):
         raise jira.TrackerUnavailable("connection lost")
     monkeypatch.setattr(jira_project.fake, "_transition", dropped)
     result = tcw(["new", "Half"], jira_project.root)
-    assert (result.code, result.out.strip()) == (5, "tcw/TCW-1-half")
+    assert (result.code, result.out.strip()) == (5, "tcw.work/TCW-1-half")
 
 
 def test_step_7_fails(jira_project, monkeypatch, tcw):
     _, blocker = jira_project.item("Blocker", "blocker")
     refuse(jira_project.fake, monkeypatch, "_link")
     result = tcw(["new", "Half", "--blocked-by", blocker], jira_project.root)
-    assert (result.code, result.out.strip()) == (1, "tcw/TCW-2-half")
+    assert (result.code, result.out.strip()) == (1, "tcw.work/TCW-2-half")
     assert "not made: add TCW-1" in result.err
     assert jira_project.fake.tickets["TCW-2"].status == "Triage"
 
@@ -267,7 +267,7 @@ def test_rename(jira_project):
     (jira_project.work / "TCW-2-other" / "notes.md").write_text(f"see {folder}\n")
     item = jira_project.backend().rename(folder, "new-words")
     assert item.slug == Slug("tcw", f"{key}-new-words")
-    assert jira_project.fake.custom(key, "TCW Item") == f"tcw/{key}-new-words"
+    assert jira_project.fake.custom(key, "TCW Item") == f"tcw.work/{key}-new-words"
     assert (jira_project.work / f"{key}-new-words").is_dir()
     assert not (jira_project.work / folder).exists()
 
@@ -307,5 +307,5 @@ def test_step_6_without_permission_is_not_unreachable(jira_project, monkeypatch,
         raise jira_project.fake._error(403, route, "You do not have permission")
     monkeypatch.setattr(jira_project.fake, "_transition", forbidden)
     result = tcw(["new", "Half"], jira_project.root)
-    assert (result.code, result.out.strip()) == (1, "tcw/TCW-1-half")
-    assert "advance tcw/TCW-1-half --to request --force --reason" in result.err
+    assert (result.code, result.out.strip()) == (1, "tcw.work/TCW-1-half")
+    assert "advance tcw.work/TCW-1-half --to request --force --reason" in result.err

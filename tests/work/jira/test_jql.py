@@ -95,13 +95,13 @@ def test_the_fake_refuses_any_other_shape(query):
 
 TICKETS = [
     {"key": "TCW-1", "project": "TCW", "status": "Triage", "labels": ["ui"],
-     ITEM: "tcw/TCW-1-a", "created": "2026-01-02"},
+     ITEM: "tcw.work/TCW-1-a", "created": "2026-01-02"},
     {"key": "TCW-2", "project": "TCW", "status": "Done", "labels": ["UI", "api"],
-     ITEM: "tcw/TCW-2-b", "created": "2026-01-01", "parent": "TCW-1"},
+     ITEM: "tcw.work/TCW-2-b", "created": "2026-01-01", "parent": "TCW-1"},
     {"key": "TCW-3", "project": "TCW", "status": "To Do", "labels": [],
      ITEM: None, "created": "2026-01-03"},
     {"key": "WEB-1", "project": "WEB", "status": "Triage", "labels": ["ui"],
-     ITEM: "web/WEB-1-c", "created": "2026-01-04"},
+     ITEM: "web.work/WEB-1-c", "created": "2026-01-04"},
 ]
 
 

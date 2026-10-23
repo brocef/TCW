@@ -128,7 +128,7 @@ def _load(folder: Path, project: str,
 
     def slug(key: str, value: Any) -> Slug:
         try:
-            return Slug.parse(value, project)
+            return Slug.stored(value)
         except UsageError as error:
             raise Unreadable(path, key, str(error)) from None
 
@@ -258,7 +258,7 @@ class FsWorkBackend:
     def _folder(self, folder: str) -> Path:
         path = self.work_path / folder
         if "/" in folder or not is_item_folder(path):
-            raise NotFound(f"no work item {self.project}/{folder}")
+            raise NotFound(f"no work item {Slug(self.project, folder)}")
         return path
 
     def _load(self, folder: str) -> tuple[Item, str]:

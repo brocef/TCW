@@ -34,9 +34,9 @@ def test_a_creatable_folder_makes_the_item(pair, fake, tcw):
     p, target, hook = pair
     result = tcw(["new", "Add export", "--project", "tcw"], p, stdin="Please add it")
     assert result.code == 0, result.err
-    assert result.out.strip() == "tcw/TCW-1-add-export"
+    assert result.out.strip() == "tcw.work/TCW-1-add-export"
     ticket = fake.tickets["TCW-1"]
-    assert (ticket.custom[PROJECT], ticket.custom[ITEM]) == ("tcw", "tcw/TCW-1-add-export")
+    assert (ticket.custom[PROJECT], ticket.custom[ITEM]) == ("tcw", "tcw.work/TCW-1-add-export")
     assert ticket.status == "Triage"
     assert (target / "docs" / "work" / "TCW-1-add-export" / "item.yaml").is_file()
     assert "uncommitted" in result.err
@@ -104,7 +104,7 @@ def test_the_block_is_only_read_when_the_target_is_not_here(pair, fake, tcw):
     commit_all(p)
     result = tcw(["new", "Add export", "--project", "tcw"], p)
     assert result.code == 0, result.err
-    assert fake.tickets["TCW-1"].custom[ITEM] == "tcw/TCW-1-add-export"
+    assert fake.tickets["TCW-1"].custom[ITEM] == "tcw.work/TCW-1-add-export"
 
 
 def test_other_property_flags_are_usage_errors(pair, fake, tcw):
@@ -133,7 +133,7 @@ def test_the_targets_local_file_is_not_read(pair, fake, tcw, monkeypatch):
     commit_all(target)
     result = tcw(["new", "Add export", "--project", "tcw"], p)
     assert result.code == 0, result.err
-    assert result.out.strip() == "tcw/TCW-1-add-export"
+    assert result.out.strip() == "tcw.work/TCW-1-add-export"
 
 
 def test_a_user_wide_token_name_does_not_reach_the_target(pair, fake, tcw, monkeypatch,
@@ -147,4 +147,4 @@ def test_a_user_wide_token_name_does_not_reach_the_target(pair, fake, tcw, monke
     monkeypatch.delenv("TCW_TEST_NOT_SET", raising=False)
     result = tcw(["new", "Add export", "--project", "tcw"], p)
     assert result.code == 0, result.err
-    assert result.out.strip() == "tcw/TCW-1-add-export"
+    assert result.out.strip() == "tcw.work/TCW-1-add-export"

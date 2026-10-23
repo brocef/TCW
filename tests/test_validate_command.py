@@ -40,7 +40,7 @@ def about(lines, text):
 
 def test_a_missing_blocker_is_a_warning(project, run):
     write_item(project, "2026-10-01-a", {"title": "a", "stage": "request",
-                                        "blocked-by": ["2026-10-01-nothing"]})
+                                        "blocked-by": ["p.work/2026-10-01-nothing"]})
     code, out, _ = run(project)
     [line] = about(out, "2026-10-01-nothing")
     assert line.startswith("warning: ") and code == 0
@@ -52,10 +52,10 @@ def test_a_blocker_in_an_unreachable_project_is_unresolved(tmp_path, run):
     connect(p, q, "children")
     connect(q, p, "parent")
     write_item(p, "2026-10-01-a", {"title": "a", "stage": "request",
-                                  "blocked-by": ["q/2026-10-01-x"]})
+                                  "blocked-by": ["q.work/2026-10-01-x"]})
     shutil.rmtree(q)
     code, out, _ = run(p)
-    [line] = about(out, "q/2026-10-01-x")
+    [line] = about(out, "q.work/2026-10-01-x")
     assert line.startswith("unresolved: ") and code == 0
     # The absent project itself is one more `unresolved` line, not exit 5.
     assert [l for l in out if l.startswith("unresolved: ") and "'q'" in l]
@@ -69,9 +69,9 @@ def test_a_blocker_in_a_project_that_cannot_be_read_is_a_warning(tmp_path, run):
     connect(p, q, "children")
     connect(q, p, "parent")
     write_item(p, "2026-10-01-a", {"title": "a", "stage": "request",
-                                  "blocked-by": ["q/2026-10-01-x"]})
+                                  "blocked-by": ["q.work/2026-10-01-x"]})
     code, out, _ = run(p)
-    [line] = about(out, "q/2026-10-01-x")
+    [line] = about(out, "q.work/2026-10-01-x")
     assert line.startswith("warning: ") and "tcw validate" in line, line
     assert code == 0, out
 
@@ -159,7 +159,7 @@ def test_an_unparsable_item_does_not_stop_the_other_checks(project, run):
     bad = write_item(project, "2026-10-01-bad", {"title": "b", "stage": "request"})
     (bad / "item.yaml").write_text("title: [unclosed\n")
     write_item(project, "2026-10-01-a", {"title": "a", "stage": "request",
-                                        "blocked-by": ["2026-10-01-nothing"]})
+                                        "blocked-by": ["p.work/2026-10-01-nothing"]})
     code, out, _ = run(project)
     [unreadable] = about(out, "2026-10-01-bad/item.yaml")
     assert unreadable.startswith("error: ")
@@ -197,7 +197,7 @@ def test_the_count_is_on_stderr_and_a_clean_run_prints_nothing(project, run):
     assert (code, out) == (0, [])
     assert err.splitlines()[-1] == "0 errors, 0 warnings, 0 unresolved"
     write_item(project, "2026-10-01-a", {"title": "a", "stage": "request",
-                                        "blocked-by": ["2026-10-01-nothing"]})
+                                        "blocked-by": ["p.work/2026-10-01-nothing"]})
     code, out, err = run(project)
     assert err.splitlines()[-1] == "0 errors, 1 warning, 0 unresolved"
     assert not any("warning," in line for line in out)

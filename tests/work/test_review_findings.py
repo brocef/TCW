@@ -74,12 +74,12 @@ def test_a_refused_blocks_target_leaves_the_item_unchanged(pq, monkeypatch, caps
     p, q = pq
     (q / "docs" / "work" / "stray.md").write_text("x")
     code, out, _ = run(monkeypatch, capsys, p, "work", "edit", "2026-10-01-a",
-                       "--priority", "high", "--blocks", "q/2026-10-01-x")
+                       "--priority", "high", "--blocks", "q.work/2026-10-01-x")
     assert (code, out) == (3, "")
     assert "priority" not in item_yaml(p, "2026-10-01-a")
 
 
-@pytest.mark.parametrize("target", ["q/2026-10-01-nothing", "2026-10-01-nothing"])
+@pytest.mark.parametrize("target", ["q.work/2026-10-01-nothing", "2026-10-01-nothing"])
 def test_a_missing_blocks_target_leaves_the_item_unchanged(pq, monkeypatch, capsys,
                                                            target):
     p, _ = pq
@@ -93,7 +93,7 @@ def test_a_second_refused_target_leaves_the_first_unchanged(pq, monkeypatch, cap
     p, q = pq
     write_item(p, "2026-10-01-b", {"title": "b", "stage": "spec"})
     code, _, _ = run(monkeypatch, capsys, p, "work", "edit", "2026-10-01-a",
-                     "--blocks", "2026-10-01-b", "--blocks", "q/2026-10-01-nothing")
+                     "--blocks", "2026-10-01-b", "--blocks", "q.work/2026-10-01-nothing")
     assert code == 4
     assert "blocked-by" not in item_yaml(p, "2026-10-01-b")
 

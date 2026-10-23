@@ -20,6 +20,8 @@ import {
     suggestOtherItems,
 } from "../model/api"
 import {
+    folderOf,
+    isLocal,
     propertiesDraft,
     propertyChanges,
     verdictLine,
@@ -224,7 +226,7 @@ export function PropertiesForm({
             setSaving(false)
         }
     }
-    const context = { ...references, currentIdentifier: item.slug }
+    const context = { ...references, currentIdentifier: item["full-id"] }
     const otherProject = (text: string) => otherProjectWarning(text, project.id)
     return (
         <div className={`editor-container${saving ? " saving" : ""}`}>
@@ -394,7 +396,7 @@ export function BlocksForm({
                     value={targets}
                     options={referenceOptions("work-blockers", {
                         ...references,
-                        currentIdentifier: item.slug,
+                        currentIdentifier: item["full-id"],
                         selected: [...item.blocks, ...targets],
                     })}
                     onChange={(value) => setTargets(value as string[])}
@@ -551,7 +553,7 @@ export function NewItemForm({
             if (here && project.inboxItems && !atStart)
                 body.stage = project.inboxStage
             const result = await requestJson<{
-                slug?: string
+                "full-id"?: string
                 ticket?: string
                 warnings?: unknown
             }>("/api/work", "POST", body)
@@ -566,9 +568,9 @@ export function NewItemForm({
                 return
             }
             onDirty(false)
-            const made = result.data?.slug
-            if (made && made.startsWith(`${project.id}/`))
-                onCreated(made.slice(project.id.length + 1), `Created ${made}`)
+            const made = result.data?.["full-id"]
+            if (made && isLocal(made, project))
+                onCreated(folderOf(made), `Created ${made}`)
             else
                 onCreated(
                     null,
@@ -783,16 +785,15 @@ export function TicketsView({
         setBusy(key)
         try {
             const result = await requestJson<{
-                slug: string
+                "full-id": string
                 problem?: string | null
             }>(`/api/tickets/${encodeRef(key)}/adopt`, "POST", {})
-            if (!result.ok || !result.data?.slug) {
+            if (!result.ok || !result.data?.["full-id"]) {
                 setRefusals((old) => ({ ...old, [key]: result.error }))
                 return
             }
-            const slug = result.data.slug
             onAdopted(
-                slug.slice(slug.indexOf("/") + 1),
+                folderOf(result.data["full-id"]),
                 `Adopted ${key}`,
                 result.data.problem ?? null
             )

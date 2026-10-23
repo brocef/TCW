@@ -111,7 +111,7 @@ def run(project_root: Path, *, live: bool, say: Callable[[str], None] = print) -
     # 2. advance through every enabled stage to qa, writing what each leaves:
     # a document at spec and plan, an implementation round before review, and
     # an accepted review judging it before qa.
-    item = Slug.parse(slug, backend.project)
+    item = Slug.typed(slug, backend.project)
     implement_round = 0
     for stage in flow_order(backend.enabled)[2:]:
         if stage == "review":
@@ -176,7 +176,7 @@ def run(project_root: Path, *, live: bool, say: Callable[[str], None] = print) -
 
     # 7. rename.
     renamed = r.work("rename", other, "renamed-by-scenario")
-    assert renamed == f"{backend.project}/{other_key}-renamed-by-scenario"
+    assert renamed == str(Slug(backend.project, f"{other_key}-renamed-by-scenario"))
     assert r.fields(other_key)[ids["item"]] == renamed
     assert (backend.work_path / renamed.split("/", 1)[1]).is_dir()
 
@@ -358,7 +358,7 @@ def probe(project_root: Path, result: Result, *, other_parent: str,
 
     # 8. lag: a new ticket (step 1), and a ticket just given a TCW Item value.
     key = new_ticket(f"Probe item lag {stamp}")
-    client.edit_issue(key, {ids["item"]: f"{backend.project}/{key}-probe"})
+    client.edit_issue(key, {ids["item"]: str(Slug(backend.project, f"{key}-probe"))})
     lag = wait_for(f"key = {quote(key)} AND {field(ids['item'])} IS NOT EMPTY", {key})
     client.edit_issue(key, {ids["item"]: None})
     ask("search lag", f"a new ticket: {result.lag:.1f}s (step 1); a ticket just given "

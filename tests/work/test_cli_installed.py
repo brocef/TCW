@@ -52,7 +52,7 @@ def stage_of(root, folder):
 
 def test_new_prints_exactly_the_slug(p):
     r = tcw(["new", "Add a widget"], p)
-    assert (r.code, r.out) == (0, f"p/{TODAY}-add-a-widget\n"), r.err
+    assert (r.code, r.out) == (0, f"p.work/{TODAY}-add-a-widget\n"), r.err
     assert not (p / "docs/work" / f"{TODAY}-add-a-widget" / "request").exists()
 
 

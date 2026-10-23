@@ -143,7 +143,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                  examples=["taxonomy list", "taxonomy list --local --json"])
     pl.add_argument("--local", action="store_true", help="local entries only")
     pl.add_argument("--json", action="store_true",
-                    help='print {"schema": 1, "terms": [...]}')
+                    help='print {"schema": 2, "terms": [...]}')
     pl.set_defaults(func=_list)
 
     pa = command(g, "add", help="create a vocabulary term or feature; the "
@@ -167,7 +167,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ps.add_argument("path",
                     help="term path, e.g. event/log-batch (alias-prefixed if inherited)")
     ps.add_argument("--json", action="store_true",
-                    help='print {"schema": 1, "term": {...}}')
+                    help='print {"schema": 2, "term": {...}}')
     ps.set_defaults(func=_show)
 
     command(g, "path", help="print the taxonomy store folder", prints="the folder",
@@ -184,7 +184,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                   examples=["taxonomy search refund", "taxonomy search refund --json"])
     pse.add_argument("query", help="text matched case-insensitively in names + descriptions")
     pse.add_argument("--json", action="store_true",
-                     help='print {"schema": 1, "terms": [...]}')
+                     help='print {"schema": 2, "terms": [...]}')
     pse.set_defaults(func=_search)
 
     pe = group(g, "extends", help="inherit other projects' taxonomies")

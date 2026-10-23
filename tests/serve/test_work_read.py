@@ -102,13 +102,13 @@ def test_the_board_is_the_clis_list(tagged, tcw):
     assert board["fallback"] is False and board["people"] == {}
     listed = tcw(["work", "list", "--json"], served.root).json["items"]
     assert board["items"] == listed
-    assert {i["slug"].split("/")[1] for i in board["items"]} == set(folders.values())
+    assert {i["full-id"].split("/")[1] for i in board["items"]} == set(folders.values())
 
 
 def test_the_tags_filter_is_the_clis_tag_query(tagged, tcw):
     served, folders = tagged
     board = ok(served.get("/api/work?tag=a&tag=b"))
-    assert {i["slug"].split("/")[1] for i in board["items"]} == \
+    assert {i["full-id"].split("/")[1] for i in board["items"]} == \
         {folders["a"], folders["b"], folders["ab"]}
     listed = tcw(["work", "list", "--tag", "a", "--tag", "b", "--json"],
                  served.root).json["items"]
@@ -129,10 +129,10 @@ def test_finished_items_show_only_with_all(tagged, tcw):
     data = yaml.safe_load(item.read_text())
     data["stage"] = "completed"
     item.write_text(yaml.safe_dump(data))
-    default = {i["slug"] for i in ok(served.get("/api/work"))["items"]}
+    default = {i["full-id"] for i in ok(served.get("/api/work"))["items"]}
     every = ok(served.get("/api/work?all=1"))["items"]
-    assert f"p/{folders['none']}" not in default
-    assert f"p/{folders['none']}" in {i["slug"] for i in every}
+    assert f"p.work/{folders['none']}" not in default
+    assert f"p.work/{folders['none']}" in {i["full-id"] for i in every}
     assert every == tcw(["work", "list", "--all", "--json"], served.root).json["items"]
 
 
@@ -154,7 +154,7 @@ def test_a_child_projects_items_are_not_on_the_board(tmp_path, personal_on,
     mine = new(tcw, root, "Mine")
     new(tcw, child, "Theirs")
     board = ok(serve_project(root).get("/api/work"))
-    assert [i["slug"] for i in board["items"]] == [f"p/{mine}"]
+    assert [i["full-id"] for i in board["items"]] == [f"p.work/{mine}"]
 
 
 # -- one item ---------------------------------------------------------------------------------
@@ -237,7 +237,7 @@ def test_jira_mode_project_survives_a_failing_user_and_fields(jira):
 def test_jira_board_is_one_list_with_names(jira):
     board = ok(jira.served.get("/api/work"))
     assert len(jira.backend.named("list")) == 1
-    assert {i["slug"] for i in board["items"]} == {"tcw/TCW-1-first", "tcw/TCW-2-second"}
+    assert {i["full-id"] for i in board["items"]} == {"tcw.work/TCW-1-first", "tcw.work/TCW-2-second"}
     assert board["people"] == {"acc-ann": NAMES["acc-ann"], ME: NAMES[ME]}
 
 
@@ -245,7 +245,7 @@ def test_jira_board_tags_are_a_backend_query(jira):
     board = ok(jira.served.get("/api/work?tag=ui"))
     tagged = [c for c in jira.backend.named("list") if c[1].tags is not None]
     assert len(tagged) == 1 and tagged[0][1].tags == frozenset({"ui"})
-    assert [i["slug"] for i in board["items"]] == ["tcw/TCW-1-first"]
+    assert [i["full-id"] for i in board["items"]] == ["tcw.work/TCW-1-first"]
 
 
 def test_jira_item(jira):
@@ -277,9 +277,9 @@ def test_jira_mode_degrades_when_the_backend_cannot_answer(jira, failure):
     board = ok(jira.served.get("/api/work"))
     assert board["fallback"] is True
     assert board["unavailable"] == str(failure)
-    assert sorted(r["slug"] for r in board["items"]) == \
-        ["tcw/TCW-1-first", "tcw/TCW-2-second"]
-    assert all(set(r) == {"slug", "path"} for r in board["items"])
+    assert sorted(r["full-id"] for r in board["items"]) == \
+        ["tcw.work/TCW-1-first", "tcw.work/TCW-2-second"]
+    assert all(set(r) == {"full-id", "owner", "path"} for r in board["items"])
     found = ok(jira.served.get("/api/work/TCW-1-first"))
     for part in ("item", "requestText", "comments"):
         assert found[part] == {"unavailable": str(failure)}, part
@@ -288,7 +288,7 @@ def test_jira_mode_degrades_when_the_backend_cannot_answer(jira, failure):
 
 
 def test_not_found_never_degrades(jira):
-    jira.backend.fail["read"] = NotFound("no work item tcw/TCW-1-first")
+    jira.backend.fail["read"] = NotFound("no work item tcw.work/TCW-1-first")
     answer = jira.served.get("/api/work/TCW-1-first")
     assert answer.status == 404 and answer.json["code"] == "not-found"
 
@@ -338,5 +338,5 @@ def test_a_stray_folder_is_not_on_the_fallback_board(jira):
     jira.backend.fail["list"] = Unreachable("could not reach the tracker")
     board = ok(jira.served.get("/api/work"))
     assert board["fallback"] is True
-    assert sorted(r["slug"] for r in board["items"]) == \
-        ["tcw/TCW-1-first", "tcw/TCW-2-second"]
+    assert sorted(r["full-id"] for r in board["items"]) == \
+        ["tcw.work/TCW-1-first", "tcw.work/TCW-2-second"]

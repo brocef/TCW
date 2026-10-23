@@ -87,11 +87,11 @@ def test_properties_are_written_in_order(backend, work):
     parent = new(backend, "parent")
     item = new(backend, "child", priority="high", effort="low",
                complexity="very-high", add_tags=("ui",), assignee="sam",
-               parent=parent.slug.folder, add_blocked_by=("other/x",))
+               parent=parent.slug.folder, add_blocked_by=("other.work/x",))
     assert item_yaml(work, item.slug.folder) == (
         "title: child\nstage: request\npriority: high\neffort: low\n"
         "complexity: very-high\ntags:\n- ui\nassignee: sam\n"
-        f"parent: tcw/{parent.slug.folder}\nblocked-by:\n- other/x\n")
+        f"parent: tcw.work/{parent.slug.folder}\nblocked-by:\n- other.work/x\n")
 
 
 def test_create_validates_its_properties(backend, work):
@@ -169,13 +169,26 @@ def test_an_absent_priority_reads_as_medium(backend, work):
     assert backend.read("2026-10-01-x").priority == "medium"
 
 
-def test_a_bare_reference_reads_as_this_project(backend, work):
+def test_a_stored_reference_is_a_full_identifier(backend, work):
     write_item(work, "2026-10-01-x", {"title": "t", "stage": "spec",
-                                      "parent": "2026-10-01-p",
-                                      "blocked-by": ["2026-10-01-q", "o/r"]})
+                                      "parent": "tcw.work/2026-10-01-p",
+                                      "blocked-by": ["tcw.work/2026-10-01-q", "o.work/r"]})
     item = backend.read("2026-10-01-x")
     assert item.parent == Slug("tcw", "2026-10-01-p")
     assert item.blocked_by == (Slug("tcw", "2026-10-01-q"), Slug("o", "r"))
+
+
+@pytest.mark.parametrize("key, value", [
+    ("parent", "2026-10-01-p"), ("parent", "tcw/2026-10-01-p"),
+    ("blocked-by", ["2026-10-01-q"]), ("blocked-by", ["o/r"])])
+def test_a_3x_reference_makes_the_item_unreadable_naming_tcw_migrate(backend, work,
+                                                                    key, value):
+    """A bare folder or `<project>/<folder>` was a 3.x reference (TCW-110
+    Design 5.2): reported where it is read, never read as this project's."""
+    write_item(work, "2026-10-01-x", {"title": "t", "stage": "spec", key: value})
+    with pytest.raises(BackendError) as caught:
+        backend.read("2026-10-01-x")
+    assert f"({key})" in str(caught.value) and "tcw migrate" in str(caught.value)
 
 
 def test_an_edit_keeps_a_stage_that_reads_as_none(backend, work):
@@ -302,9 +315,9 @@ def test_rename_rewrites_references_and_reports_mentions(work):
     backend = backend_for(work, report=lines.append)
     a = new(backend, "A")
     write_item(work, "2026-10-01-b", {"title": "b", "stage": "verify",
-                                      "parent": f"tcw/{a.slug.folder}"})
+                                      "parent": str(a.slug)})
     write_item(work, "2026-10-01-c", {"title": "c", "stage": "spec",
-                                      "blocked-by": [a.slug.folder]})
+                                      "blocked-by": [str(a.slug)]})
     spec = work / a.slug.folder / "spec" / "spec.md"
     spec.parent.mkdir()
     spec.write_text(f"intro\nsee {a.slug.folder}\n")
@@ -314,8 +327,8 @@ def test_rename_rewrites_references_and_reports_mentions(work):
     b = yaml.safe_load(item_yaml(work, "2026-10-01-b"))
     c = yaml.safe_load(item_yaml(work, "2026-10-01-c"))
     assert b == {"title": "b", "stage": "verify", "priority": "medium",
-                 "parent": "tcw/2026-10-02-new-words"}
-    assert c["blocked-by"] == ["tcw/2026-10-02-new-words"]
+                 "parent": "tcw.work/2026-10-02-new-words"}
+    assert c["blocked-by"] == ["tcw.work/2026-10-02-new-words"]
     new_spec = work / "2026-10-02-new-words" / "spec" / "spec.md"
     assert any(line.startswith(f"{new_spec}:2:") and "not rewritten" in line
                for line in lines)

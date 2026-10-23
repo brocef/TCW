@@ -22,6 +22,7 @@ import pytest
 import yaml
 
 from tcw import __version__
+from tcw.ids import parse_full_id
 from tests.projectfiles import config_file, local_config_file, write_config, write_local_config
 from tests.projectfiles import write_connected_config, write_manifest
 
@@ -87,9 +88,10 @@ def legacy_project(root: Path, project_id: str = "old") -> Path:
 
 
 def listed_ids(ran: Ran) -> set[str]:
-    """The project IDs `tcw work list` printed, from the slugs' prefixes."""
+    """The project IDs `tcw work list` printed, the owners of its full
+    identifiers."""
     assert ran.code == 0, ran
-    return {line.split("/", 1)[0] for line in ran.out.splitlines() if line}
+    return {parse_full_id(line).project for line in ran.out.splitlines() if line}
 
 
 def snapshot(root: Path) -> dict[str, bytes | None]:

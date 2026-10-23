@@ -55,7 +55,7 @@ COMMANDS = [
     ("comment", f"{TODAY}-a-thing"),
     ("advance", f"{TODAY}-a-thing", "--to", "plan", "--force", "--reason", "r"),
     ("rename", f"{TODAY}-a-thing", "another-thing"),
-    ("edit", f"{TODAY}-another-thing", "--blocks", "q/2026-10-01-x"),
+    ("edit", f"{TODAY}-another-thing", "--blocks", "q.work/2026-10-01-x"),
     ("new", "Delegated", "--project", "q"),
     ("discard", f"{TODAY}-another-thing", "--reason", "done with it"),
     ("tags", "add", "x"),

@@ -45,7 +45,7 @@ def packaged_lines(name, slug=None):
     (TCW-74 Design 3 and 4.2)."""
     from tcw.work.passages import filter_backend
     text = filter_backend(packaged_text("prompts", name), "filesystem")
-    slug = f"p/{TODAY}-x" if slug is None else slug
+    slug = f"p.work/{TODAY}-x" if slug is None else slug
     return [line.replace("<slug>", slug) for line in text.splitlines()
             if line.strip() and "{{" not in line]
 
@@ -172,14 +172,14 @@ def generated(tcw, tmp_path):
 def test_a_generate_binding_gets_one_record(generated):
     root, seen, payload = generated("line one\n")
     assert set(payload) == {"schema", "item", "request", "hook"}
-    assert payload["schema"] == 1
-    assert payload["item"]["slug"] == f"p/{TODAY}-x"
+    assert payload["schema"] == 2
+    assert payload["item"]["full-id"] == f"p.work/{TODAY}-x"
     assert payload["request"] == "line one\n"
     assert set(payload["hook"]) == {"role", "kind", "id", "phase",
                                     "body_truncated"}
     assert payload["hook"]["body_truncated"] is False
     assert seen["cwd"] == str(root.resolve())
-    assert seen["slug"] == f"p/{TODAY}-x"
+    assert seen["slug"] == f"p.work/{TODAY}-x"
     assert seen["role"]
 
 
