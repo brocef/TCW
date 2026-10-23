@@ -82,11 +82,11 @@ def tree_hash(root: Path) -> str:
 def test_reset_drops_override_and_reinherits(tmp_path):
     base, child = federated(tmp_path)
     store(child).set("auth/login", {"Status": "Missing"})          # create override
-    assert store(child).get("auth/login").status == "Missing"
+    assert store(child).get_view("auth/login").status == "Missing"
     assert (child / "docs/capabilities/auth/login").is_dir()
 
     store(child).reset("auth/login")
-    cap = store(child).get("auth/login")
+    cap = store(child).get_view("auth/login")
     assert cap.status == "Supported"                               # re-inherited
     assert cap.origin == "base"
     assert not (child / "docs/capabilities/auth/login").exists()   # override folder gone
@@ -108,7 +108,7 @@ def test_reset_qualified_placement_variant(tmp_path):
     assert (child / "docs/capabilities/base/auth/login").is_dir()
     store(child).reset("base.capabilities/auth/login")
     assert not (child / "docs/capabilities/base/auth/login").exists()
-    assert store(child).get("base/auth/login").status == "Supported"
+    assert store(child).get_inherited("base", "auth/login").status == "Supported"
     assert (child / "docs/capabilities/auth/login").is_dir()            # local shadow untouched
 
 

@@ -32,7 +32,7 @@ def item(tmp_path, monkeypatch, capsys):
 
     assert _advance(slug, capsys) == (0, "spec")
     _path(slug, capsys).joinpath("capabilities.yaml").write_text(
-        "new:\n  - billing/refund\n", encoding="utf-8")
+        "new:\n  - shop.capabilities/billing/refund\n", encoding="utf-8")
     assert _advance(slug, capsys) == (0, "plan")
     assert _advance(slug, capsys) == (0, "implement")
     round_one = _path(slug, capsys, "implement", "--next")
@@ -59,7 +59,7 @@ def test_a_record_written_with_its_real_status_lets_the_item_reach_review(
     monkeypatch.setattr("sys.stdin", io.StringIO("Refund a payment.\n"))
     assert main(["capabilities", "add", "billing/refund", "Refund a payment",
                  "--status", "Supported"]) == 0
-    assert FsCapabilitiesStore.open(root).get("billing/refund").status == "Supported"
+    assert FsCapabilitiesStore.open(root).get_view("billing/refund").status == "Supported"
     assert _advance(slug, capsys) == (0, "review")
 
 
@@ -67,7 +67,7 @@ def test_a_record_left_at_its_default_status_is_refused(item, capsys, monkeypatc
     root, slug = item
     monkeypatch.setattr("sys.stdin", io.StringIO("Refund a payment.\n"))
     assert main(["capabilities", "add", "billing/refund", "Refund a payment"]) == 0
-    assert FsCapabilitiesStore.open(root).get("billing/refund").status == "Missing"
+    assert FsCapabilitiesStore.open(root).get_view("billing/refund").status == "Missing"
     capsys.readouterr()
     assert main(["work", "advance", slug]) == 3
     assert "billing/refund" in capsys.readouterr().err

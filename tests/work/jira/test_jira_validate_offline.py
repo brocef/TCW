@@ -153,7 +153,7 @@ def test_one_item_without_its_item_contacts_nothing(offline, monkeypatch):
         raise AssertionError("the records check ran without the item")
     monkeypatch.setattr(gates, "records_problems", never)
     _, name = offline.item("At spec", "spec")
-    (offline.work / name / "capabilities.yaml").write_text("changed: [auth/login]\n")
+    (offline.work / name / "capabilities.yaml").write_text("changed: [tcw.capabilities/auth/login]\n")
     (offline.work / name / "review").mkdir()
     (offline.work / name / "review" / "round-1.md").write_text("---\nverdict: x\n---\n")
     found = validate_one(offline.root, target=ValidationTarget("work", name))
@@ -215,7 +215,7 @@ def test_a_well_formed_declaration_has_no_offline_finding(offline, monkeypatch, 
     """Its records are `--remote`'s to check: this project keeps no ledger, so
     `auth/login` could not be checked there, but offline says nothing."""
     (folder(offline, "TCW-1-x") / "capabilities.yaml").write_text(
-        "changed: [auth/login]\n")
+        "changed: [tcw.capabilities/auth/login]\n")
     code, text = validate(offline, monkeypatch, capsys)
     assert code == 0 and "capabilities.yaml" not in text, text
 

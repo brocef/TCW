@@ -30,9 +30,9 @@ def drift(root, monkeypatch, capsys):
 def test_a_completed_item_declaring_an_absent_capability_drifts(tmp_path):
     p = project(tmp_path)
     folder = write_item(p, "2026-10-01-a", {"title": "a", "stage": "completed"})
-    (folder / "capabilities.yaml").write_text("new: [x/y]\n")
+    (folder / "capabilities.yaml").write_text("new: [p.capabilities/x/y]\n")
     [problem] = _completed_work_drift(p)
-    assert (problem.kind, problem.where) == ("drift", "x/y")
+    assert (problem.kind, problem.where) == ("drift", "p.capabilities/x/y")
     assert "2026-10-01-a" in problem.message
 
 
@@ -45,17 +45,17 @@ def test_no_declaration_no_drift(tmp_path):
 def test_an_unfinished_item_is_not_drift(tmp_path):
     p = project(tmp_path)
     folder = write_item(p, "2026-10-01-a", {"title": "a", "stage": "implement"})
-    (folder / "capabilities.yaml").write_text("new: [x/y]\n")
+    (folder / "capabilities.yaml").write_text("new: [p.capabilities/x/y]\n")
     assert _completed_work_drift(p) == []
 
 
 def test_an_unreadable_item_is_named_and_the_rest_still_checked(tmp_path):
     p = project(tmp_path)
     folder = write_item(p, "2026-10-01-a", {"title": "a", "stage": "completed"})
-    (folder / "capabilities.yaml").write_text("new: [x/y]\n")
+    (folder / "capabilities.yaml").write_text("new: [p.capabilities/x/y]\n")
     write_item(p, "2026-10-01-bad", "title: [x\n")
     problems = _completed_work_drift(p)
-    assert any(p.where == "x/y" for p in problems)
+    assert any(p.where == "p.capabilities/x/y" for p in problems)
     assert any(p.kind == "unchecked" and p.where.endswith("2026-10-01-bad/item.yaml")
                for p in problems)
 
@@ -65,19 +65,19 @@ def test_an_unreadable_item_is_named_and_the_rest_still_checked(tmp_path):
 def test_drift_prints_one_line_and_exits_1(tmp_path, monkeypatch, capsys):
     p = project(tmp_path)
     folder = write_item(p, "2026-10-01-a", {"title": "a", "stage": "completed"})
-    (folder / "capabilities.yaml").write_text("new: [x/y]\n")
+    (folder / "capabilities.yaml").write_text("new: [p.capabilities/x/y]\n")
     code, out, _ = drift(p, monkeypatch, capsys)
     assert code == 1
     [line] = out
-    assert line.startswith("drift: x/y: ")
+    assert line.startswith("drift: p.capabilities/x/y: ")
 
 
 def test_a_later_removal_clears_it(tmp_path, monkeypatch, capsys):
     p = project(tmp_path)
     first = write_item(p, "2026-10-01-a", {"title": "a", "stage": "completed"})
-    (first / "capabilities.yaml").write_text("new: [x/y]\n")
+    (first / "capabilities.yaml").write_text("new: [p.capabilities/x/y]\n")
     later = write_item(p, "2026-10-02-b", {"title": "b", "stage": "completed"})
-    (later / "capabilities.yaml").write_text("removed: [x/y]\n")
+    (later / "capabilities.yaml").write_text("removed: [p.capabilities/x/y]\n")
     assert drift(p, monkeypatch, capsys)[:2] == (0, [])
 
 

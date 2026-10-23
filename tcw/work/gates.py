@@ -23,8 +23,11 @@ from typing import Callable, Iterable, NamedTuple, Protocol
 
 import yaml
 
+from tcw.errors import ProjectGraphError, Unreachable
+from tcw.ids import FullId, IdError, parse_stored
+from tcw.locate import FOUND, MISSING as MISSING_OBJECT, UNRESOLVED
 from tcw.store.base import RefError
-from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, unreachable_project_note
+from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
 from tcw.work.layout import ACCEPTED, Layout
 from tcw.work.model import STAGES, Item, Slug
 
@@ -41,6 +44,15 @@ class Present:
 class Unchecked:
     """The reader could not find out, and says why. Every gate treats this as
     a failure: a check that could not run has not passed."""
+
+    reason: str
+
+
+@dataclass(frozen=True)
+class Invalid:
+    """The entry itself is wrong, and says why: a TCW 3.x or malformed entry,
+    or a project ID TCW cannot locate (TCW-110 Design 6.1). Reported at any
+    point, not only once the work is finished."""
 
     reason: str
 
@@ -65,11 +77,11 @@ MISSING = "Missing"
 
 
 class RecordsReader(Protocol):
-    def capability(self, path: str) -> Present | _Answer | Unchecked: ...
+    def capability(self, path: str) -> Present | _Answer | Unchecked | Invalid: ...
 
-    def removal(self, path: str) -> _Answer | Unchecked: ...
+    def removal(self, path: str) -> _Answer | Unchecked | Invalid: ...
 
-    def term(self, term: str) -> Present | _Answer | Unchecked: ...
+    def term(self, term: str) -> Present | _Answer | Unchecked | Invalid: ...
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +175,8 @@ def _capability_problem(kind: str, path: str, reader: RecordsReader,
                         finished: bool) -> str | None:
     if kind == "removed":
         answer = reader.removal(path)
+        if isinstance(answer, Invalid):
+            return f"{path}: {answer.reason}"
         if isinstance(answer, Unchecked):
             return _unchecked(path, answer)
         if answer is INHERITED:
@@ -173,6 +187,8 @@ def _capability_problem(kind: str, path: str, reader: RecordsReader,
                     f"it with `tcw capabilities rm`)")
         return None
     answer = reader.capability(path)
+    if isinstance(answer, Invalid):
+        return f"{path}: {answer.reason}"
     if isinstance(answer, Unchecked):
         return _unchecked(path, answer)
     if not finished:
@@ -188,6 +204,8 @@ def _capability_problem(kind: str, path: str, reader: RecordsReader,
 def _term_problem(kind: str, term: str, reader: RecordsReader,
                   finished: bool) -> str | None:
     answer = reader.term(term)
+    if isinstance(answer, Invalid):
+        return f"term {term}: {answer.reason}"
     if isinstance(answer, Unchecked):
         return _unchecked(f"term {term}", answer)
     if not finished:
@@ -320,93 +338,80 @@ def drift_problems(layout: Layout, items: Iterable[Item],
 
 
 class Route(NamedTuple):
-    """Which ledger answers for a declared capability path, and the path
-    within it. `owner` is the child project's id, or None for the item's own
-    project."""
-    owner: str | None
+    """Which ledger answers for a declared capability, and how to read it.
+    `inherited` is true when `store` is the item's project's own ledger and
+    the capability is read through its `extends`."""
+    full_id: FullId
     store: FsCapabilitiesStore
-    path: str
+    inherited: bool = False
 
 
 def route_capability_path(path: str, *, own: "FsCapabilitiesStore | None",
-                          registry, project_id: str,
-                          open_child) -> "Route | str":
-    """Route one declared `capabilities.yaml` path to the ledger that answers
-    for it, or return a problem line.
+                          project_id: str, locator, project_root: Path
+                          ) -> "Route | Unchecked | Invalid":
+    """Route one declared `capabilities.yaml` entry to the ledger that answers
+    for it, or say why none can (TCW-110 Design 6.2).
 
-    The one place this rule lives. `own` is the item's project's ledger (None when
-    the project keeps none); `open_child(project_id)` returns a child's ledger or
-    the reason it has none. In order:
+    The one place this rule lives. The entry is a full identifier, and its
+    project is the ledger's: `own` (the item's project's ledger, None when it
+    keeps none) for the item's own project and for a project `own` extends,
+    read through `own`'s view; any other project's own ledger, found through
+    the command's `locator`. A 3.x or malformed entry, and a project TCW
+    cannot locate, are `Invalid`; a project not on this machine, or one that
+    keeps no ledger, `Unchecked`.
 
-    1. A first segment naming a project `own` extends is today's inheritance
-       reading, even when that project is also a declared child — every
-       existing sidecar keeps its meaning.
-    2. A first segment naming a declared child (reachable here or not) routes
-       the rest of the path to that child's own ledger, read the way the child
-       reads it — unless `own` already shows capabilities under that same
-       namespace, which is refused as ambiguous rather than guessed at.
-    3. Anything else is the project's own path; with no ledger of its own, nothing
-       can check it.
-
-    Uses only the registry's declared children and the stores it is handed, so
-    a non-filesystem store could answer every question it asks."""
-    head, _, rest = path.partition("/")
-    if own is not None and head in own.extends:
-        return Route(None, own, path)
-    child_ids = registry.declared_child_ids()
-    if head in child_ids:
-        if not rest:
-            return f"{path}: names project '{head}' but no capability"
-        if own is not None:
-            # Judged over the project's resolved view — its own capabilities and
-            # the inherited ones `get` falls through to — so a `kid/...` path
-            # that resolved through inheritance before `kid` was declared a
-            # child is refused, not quietly sent to the child's ledger.
-            clash = [c.path for c in own.list_all(namespace=head)]
-            if clash:
-                more = ", …" if len(clash) > 1 else ""
-                return (f"{path}: ambiguous — '{head}' is both a child project of "
-                        f"this project and a namespace in this project's capabilities "
-                        f"ledger ({clash[0]}{more}); rename one of them, or "
-                        f"complete with --force")
-        store = open_child(head)
-        if isinstance(store, str):
-            return f"{path}: {store}"
-        return Route(head, store, rest)
-    if own is not None:
-        return Route(None, own, path)
-    qualifiers = ", ".join(child_ids) or "it declares no child projects"
-    return (f"{path}: this project ('{project_id}') keeps no capabilities ledger; "
-            f"qualify the path with a child project id ({qualifiers})")
+    Uses only the locator and the stores it is handed, so a non-filesystem
+    store could answer every question it asks."""
+    try:
+        full_id = parse_stored(path, "capabilities")
+    except IdError as error:
+        return Invalid(str(error))
+    if full_id.project == project_id or (own is not None and full_id.project in own.extends):
+        if own is None:
+            return Unchecked(f"this project ('{project_id}') keeps no capabilities "
+                             f"ledger; name the ledger's project in the entry "
+                             f"(<project>.capabilities/{full_id.id_path})")
+        return Route(full_id, own, full_id.project != project_id)
+    try:
+        store = locator.owner_store(full_id.project, "capabilities", project_root)
+    except Unreachable as error:
+        return Unchecked(str(error))
+    except ProjectGraphError as error:
+        return Invalid(str(error))
+    except _READ_ERRORS as error:
+        return Unchecked(str(error))
+    if not store.root.is_dir():
+        return Unchecked(f"project '{full_id.project}' keeps no capabilities ledger")
+    return Route(full_id, store)
 
 
 _READ_ERRORS = (RefError, ValueError, yaml.YAMLError)
 
 
 class _LedgerReader:
-    def __init__(self, own, registry, project_id, open_child, taxonomy):
+    def __init__(self, own, project_id, locator, project_root, taxonomy):
         self.own = own
-        self.registry = registry
         self.project_id = project_id
-        self.open_child = open_child
+        self.locator = locator
+        self.project_root = project_root
         self.taxonomy = taxonomy
 
-    def _route(self, path: str) -> Route | Unchecked:
+    def _route(self, path: str) -> "Route | Unchecked | Invalid":
         try:
-            route = route_capability_path(path, own=self.own,
-                                          registry=self.registry,
-                                          project_id=self.project_id,
-                                          open_child=self.open_child)
+            return route_capability_path(path, own=self.own, project_id=self.project_id,
+                                         locator=self.locator,
+                                         project_root=self.project_root)
         except _READ_ERRORS as error:
             return Unchecked(str(error))
-        return Unchecked(route) if isinstance(route, str) else route
 
     def capability(self, path: str):
         route = self._route(path)
-        if isinstance(route, Unchecked):
+        if not isinstance(route, Route):
             return route
+        full_id = route.full_id
         try:
-            found = route.store.get(route.path)
+            found = route.store.get_inherited(full_id.project, full_id.id_path) \
+                if route.inherited else route.store.get_local(full_id.id_path)
         except _READ_ERRORS as error:
             return Unchecked(str(error))
         return ABSENT if found is None else Present(found.status)
@@ -414,36 +419,45 @@ class _LedgerReader:
     def removal(self, path: str):
         # After a local capability is removed its path may fall through to an
         # inherited one, and that still counts as removed: only a local hit is
-        # STILL_LOCAL. A path qualified by an extended ledger can never be
-        # removed locally at all.
+        # STILL_LOCAL. A capability of an extended ledger can never be removed
+        # locally at all.
         route = self._route(path)
-        if isinstance(route, Unchecked):
+        if not isinstance(route, Route):
             return route
+        if route.inherited:
+            return INHERITED
         try:
-            if route.path.partition("/")[0] in route.store.extends:
-                return INHERITED
-            local = route.store.get_local(route.path)
+            local = route.store.get_local(route.full_id.id_path)
         except _READ_ERRORS as error:
             return Unchecked(str(error))
         return REMOVED if local is None else STILL_LOCAL
 
     def term(self, term: str):
-        if self.taxonomy is None:
+        try:
+            full_id = parse_stored(term, "taxonomy")
+        except IdError as error:
+            return Invalid(str(error))
+        if full_id.project == self.project_id and self.taxonomy is None:
             return Unchecked(f"project '{self.project_id}' keeps no taxonomy")
         try:
-            found = self.taxonomy.get(term)
+            found = self.locator.read(full_id, named_by=self.project_root)
         except _READ_ERRORS as error:
             return Unchecked(str(error))
-        return ABSENT if found is None else Present()
+        if found.kind == FOUND:
+            return Present()
+        if found.kind == MISSING_OBJECT:
+            return ABSENT
+        return Unchecked(found.message) if found.kind == UNRESOLVED \
+            else Invalid(found.message)
 
 
-def ledger_reader(own: FsCapabilitiesStore | None, registry, project_id: str,
-                  open_child: Callable[[str], "FsCapabilitiesStore | str"],
-                  taxonomy) -> RecordsReader:
+def ledger_reader(own: FsCapabilitiesStore | None, project_id: str, locator,
+                  project_root: Path, taxonomy) -> RecordsReader:
     """The production `RecordsReader` over this project's capabilities ledger
-    (`own`, None when it keeps none), its child projects' ledgers
-    (`open_child`) and its taxonomy store (None when it keeps none)."""
-    return _LedgerReader(own, registry, project_id, open_child, taxonomy)
+    (`own`, None when it keeps none) and taxonomy store (None when it keeps
+    none), and every other project's ledger and taxonomy, found through the
+    command's `locator`."""
+    return _LedgerReader(own, project_id, locator, Path(project_root), taxonomy)
 
 
 def _open_or_reason(store_cls, root: Path):
@@ -458,26 +472,11 @@ def _open_or_reason(store_cls, root: Path):
 
 def project_reader(project_root: Path, registry) -> RecordsReader:
     """`ledger_reader` for the project at `project_root`: its own capabilities
-    ledger and taxonomy, and each child project's ledger opened on demand.
-    A store that cannot be opened turns every question routed to it into an
-    `Unchecked` answer naming why, never an exception."""
-    own, reason = _open_or_reason(FsCapabilitiesStore, Path(project_root))
+    ledger and taxonomy, and other projects' found through the command's one
+    `Locator`. A store that cannot be opened turns every question routed to
+    it into an `Unchecked` answer naming why, never an exception."""
+    from tcw.locate import Locator
+    own, _ = _open_or_reason(FsCapabilitiesStore, Path(project_root))
     taxonomy, _ = _open_or_reason(FsTaxonomyStore, Path(project_root))
-    children: dict[str, tuple] = {}
-
-    def open_child(project_id: str) -> "FsCapabilitiesStore | str":
-        if project_id not in children:
-            project = registry.get(project_id)
-            children[project_id] = (
-                _open_or_reason(FsCapabilitiesStore, Path(project.locator))
-                if project is not None
-                else (None, unreachable_project_note(registry, project_id)
-                      or f"project '{project_id}' is declared but not on this "
-                         f"machine"))
-        store, why = children[project_id]
-        if why is not None:
-            return why
-        return store if store is not None else \
-            f"project '{project_id}' keeps no capabilities ledger"
-
-    return ledger_reader(own, registry, registry.current.id, open_child, taxonomy)
+    return ledger_reader(own, registry.current.id, Locator.of(Path(project_root)),
+                         Path(project_root), taxonomy)

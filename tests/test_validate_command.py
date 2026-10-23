@@ -87,9 +87,9 @@ def test_an_unknown_records_key_is_an_error(project, run):
 
 def test_an_undelivered_new_path_is_not_a_finding(project, run):
     folder = write_item(project, "2026-10-01-a", {"title": "a", "stage": "spec"})
-    (folder / "capabilities.yaml").write_text("new: [x/y]\n")
+    (folder / "capabilities.yaml").write_text("new: [p.capabilities/x/y]\n")
     _, out, _ = run(project)
-    assert about(out, "capabilities.yaml") == [] and about(out, "x/y") == []
+    assert about(out, "capabilities.yaml") == [] and about(out, "p.capabilities/x/y") == []
 
 
 def test_malformed_records_on_a_completed_item_come_from_the_file_scan(project, run):

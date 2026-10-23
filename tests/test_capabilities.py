@@ -119,7 +119,7 @@ def test_add_creates_folder_with_id(tmp_path):
     assert cap.id.startswith("cap-")
     assert (root / "docs/capabilities/routes/login/meta.yaml").is_file()
     assert (root / "docs/capabilities/routes/login/description.md").is_file()
-    assert st.get("routes/login").status == "Missing"        # default status
+    assert st.get_view("routes/login").status == "Missing"        # default status
 
 
 def test_modified_timestamp_includes_declared_capability_docs(tmp_path):
@@ -137,7 +137,7 @@ def test_modified_timestamp_includes_declared_capability_docs(tmp_path):
     os.utime(folder / "description.md", (200, 200))
     os.utime(guide, (300, 300))
 
-    assert st.get("routes/login").modified == "1970-01-01T00:05:00Z"
+    assert st.get_view("routes/login").modified == "1970-01-01T00:05:00Z"
 
 
 def test_add_mints_unique_ids(tmp_path):
@@ -166,9 +166,9 @@ def small_tree(tmp_path):
 
 def test_resolution_by_path(tmp_path):
     st = FsCapabilitiesStore.open(small_tree(tmp_path))
-    assert st.get("routes/login").path == "routes/login"
-    assert st.get("api/auth/login").path == "api/auth/login"     # nested
-    assert st.get("routes/nope") is None
+    assert st.get_view("routes/login").path == "routes/login"
+    assert st.get_view("api/auth/login").path == "api/auth/login"     # nested
+    assert st.get_view("routes/nope") is None
 
 
 def test_list_search(tmp_path):
@@ -206,7 +206,7 @@ def test_heading_slug():
 def test_subject_multivalued(tmp_path):
     root = node(tmp_path)
     write_cap(root, "x", Status="Supported", Subject=["a", "b"])
-    cap = FsCapabilitiesStore.open(root).get("x")
+    cap = FsCapabilitiesStore.open(root).get_view("x")
     assert cap.fields["Subject"] == ["a", "b"]
 
 
@@ -597,7 +597,7 @@ def test_set_inserts_new_field(tmp_path):
     st = FsCapabilitiesStore.open(node(tmp_path))
     st.add("auth/google", name="Sign in with Google", body="User clicks.")
     st.set("auth/google", {"Gaps": "no refresh tokens"})
-    cap = st.get("auth/google")
+    cap = st.get_view("auth/google")
     assert cap.fields.get("Gaps") == "no refresh tokens"
     assert cap.body.startswith("User clicks")
 
@@ -613,16 +613,16 @@ def test_set_refuses_a_retired_field_and_keeps_an_existing_one(tmp_path):
         with pytest.raises(UsageError):
             st.set("auth/google", {key: "x"})
     st.set("auth/google", {"Status": "Supported"})
-    assert st.get("auth/google").fields["Tracker"] == "X-1"
+    assert st.get_view("auth/google").fields["Tracker"] == "X-1"
 
 
 def test_set_clears_field_with_none(tmp_path):
     st = FsCapabilitiesStore.open(node(tmp_path))
     st.add("x")
     st.set("x", {"Priority": "P1"})
-    assert st.get("x").fields.get("Priority") == "P1"
+    assert st.get_view("x").fields.get("Priority") == "P1"
     st.set("x", {"Priority": None})
-    assert "Priority" not in st.get("x").fields
+    assert "Priority" not in st.get_view("x").fields
 
 
 def test_set_rejects_invalid_status_and_unknown_field(tmp_path):
@@ -644,7 +644,7 @@ def test_remove(tmp_path):
     st = FsCapabilitiesStore.open(node(tmp_path))
     st.add("x")
     st.remove("x")
-    assert st.get("x") is None
+    assert st.get_view("x") is None
 
 
 def test_cli_set_not_rewritten_to_show(tmp_path, monkeypatch, capsys):
@@ -654,7 +654,7 @@ def test_cli_set_not_rewritten_to_show(tmp_path, monkeypatch, capsys):
     FsCapabilitiesStore.open(root).add("routes/login", name="Sign in")
     assert main(["capabilities", "set", "routes/login", "--status", "Supported"]) == 0
     assert capsys.readouterr().out == ""
-    assert FsCapabilitiesStore.open(root).get("routes/login").status == "Supported"
+    assert FsCapabilitiesStore.open(root).get_view("routes/login").status == "Supported"
 
 
 def test_cli_set_inherited_path(tmp_path, monkeypatch, capsys):
@@ -672,9 +672,9 @@ def test_cli_set_inherited_path(tmp_path, monkeypatch, capsys):
     assert main(["capabilities", "set", "base.capabilities/moderation/report-content",
                  "--status", "Missing"]) == 0
     assert capsys.readouterr().out == ""
-    assert FsCapabilitiesStore.open(child).get(
+    assert FsCapabilitiesStore.open(child).get_view(
         "moderation/report-content").status == "Missing"
-    assert FsCapabilitiesStore.open(base).get(
+    assert FsCapabilitiesStore.open(base).get_view(
         "moderation/report-content").status == "Supported"
 
 
@@ -737,7 +737,7 @@ def test_the_capabilities_store_has_no_attachment_surface_to_regress(tmp_path):
     meta["appendedDocs"] = ["extra.md"]
     yaml_path.write_text(yaml.safe_dump(meta, sort_keys=False))
 
-    cap = FsCapabilitiesStore.open(root).get("billing/refund")
+    cap = FsCapabilitiesStore.open(root).get_view("billing/refund")
     assert cap is not None
     assert "appended text" in cap.body          # read by name, not by listing
     assert "not a store config" not in cap.body  # the stray file is simply inert

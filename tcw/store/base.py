@@ -373,13 +373,6 @@ class TaxonomyStore(ABC):
         """All terms (local + inherited), each flagged by `origin`."""
 
     @abstractmethod
-    def get(self, ref: str) -> Term | None:
-        """Resolve a 3.x reference (B.6) to a term, or None if it resolves to
-        nothing. Raises `AmbiguousRef` when a bare ref matches multiple
-        extended taxonomies. Kept for the stored references and links that
-        have not moved to full identifiers yet (TCW-110)."""
-
-    @abstractmethod
     def get_local(self, slug: str) -> Term | None:
         """This store's own project's entry at the id-path `slug`, every
         folder spelled exactly as given, or None."""
@@ -560,13 +553,6 @@ class CapabilitiesStore(ABC):
     def list_all(self, status: str | None = None, namespace: str | None = None,
                  local_only: bool = False) -> list[Capability]:
         """All capabilities (local + inherited), each flagged by `origin`."""
-
-    @abstractmethod
-    def get(self, identifier: str) -> Capability | None:
-        """Resolve a 3.x path (A.6) to its capability, or None. Raises
-        `AmbiguousRef` when a bare ref matches multiple extended stores. Kept
-        for the stored references and links that have not moved to full
-        identifiers yet (TCW-110)."""
 
     @abstractmethod
     def get_local(self, path: str) -> Capability | None:

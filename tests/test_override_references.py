@@ -98,7 +98,7 @@ def test_rm_refuses_a_term_an_override_names(tmp_path, monkeypatch, capsys,
     capsys.readouterr()
     assert main(["taxonomy", "rm", "zed"]) == 3
     assert f"capability override ov ({field})" in capsys.readouterr().err
-    assert FsTaxonomyStore.open(root).get("zed") is not None
+    assert FsTaxonomyStore.open(root).get_view("zed") is not None
 
 
 def test_an_override_naming_another_term_does_not_block(tmp_path):
@@ -107,7 +107,7 @@ def test_an_override_naming_another_term_does_not_block(tmp_path):
     term(root, "other")
     override(root, Subject=[T("other")])
     FsTaxonomyStore.open(root).remove("zed")
-    assert FsTaxonomyStore.open(root).get("zed") is None
+    assert FsTaxonomyStore.open(root).get_view("zed") is None
 
 
 def test_a_malformed_override_refuses_the_removal_readably(tmp_path, monkeypatch, capsys):
@@ -120,7 +120,7 @@ def test_a_malformed_override_refuses_the_removal_readably(tmp_path, monkeypatch
     assert main(["taxonomy", "rm", "zed"]) == 3
     err = capsys.readouterr().err
     assert "capabilities that might name it cannot be read" in err and "Traceback" not in err, err
-    assert FsTaxonomyStore.open(root).get("zed") is not None
+    assert FsTaxonomyStore.open(root).get_view("zed") is not None
 
 
 # ── review fold-in: check(identifier) on an inherited capability ────────────

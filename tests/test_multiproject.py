@@ -43,7 +43,7 @@ def test_extends_resolves_across_sibling_subfolders(tmp_path):
     _extend_b_onto_a(repo)
     node = find_component_project("taxonomy", repo / "project-b")     # detection finds project-b
     assert node == (repo / "project-b").resolve()
-    term = FsTaxonomyStore.open(node).get("project-a/account")
+    term = FsTaxonomyStore.open(node).get_inherited("project-a", "account")
     assert term is not None and term.name == "Account"
 
 

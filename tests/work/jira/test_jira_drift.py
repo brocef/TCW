@@ -28,8 +28,8 @@ def test_an_unreachable_jira_exits_5_after_the_unreviewed_lines(
 def test_completed_items_come_from_jira(jira_project, monkeypatch, capsys):
     init(["capabilities"], jira_project.root, "tcw")
     _, done = jira_project.item("Done", "done", status="Done")
-    (jira_project.work / done / "capabilities.yaml").write_text("new: [x/y]\n")
+    (jira_project.work / done / "capabilities.yaml").write_text("new: [tcw.capabilities/x/y]\n")
     monkeypatch.chdir(jira_project.root)
     assert main(["capabilities", "drift"]) == 1
     [line] = capsys.readouterr().out.splitlines()
-    assert line.startswith("drift: x/y: ") and done in line
+    assert line.startswith("drift: tcw.capabilities/x/y: ") and done in line

@@ -494,7 +494,7 @@ def test_an_inherited_capabilitys_refusal_names_a_command_that_overrides_it(
     ran = tcw(argv, inheriting.root)
     assert ran.code == 0, ran.err
     assert base_meta.read_text() == before
-    shown = FsCapabilitiesStore.open(inheriting.root).get("shared-cap")
+    shown = FsCapabilitiesStore.open(inheriting.root).get_view("shared-cap")
     assert shown.status == "Partial"
 
 

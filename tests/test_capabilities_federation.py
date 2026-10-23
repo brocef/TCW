@@ -95,8 +95,8 @@ def test_get_inherited_by_prefixed_and_bare(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
     st = store(child)
-    assert st.get("base/auth/login").origin == "base"
-    assert st.get("auth/login").origin == "base"          # bare-wins resolution
+    assert st.get_inherited("base", "auth/login").origin == "base"
+    assert st.get_view("auth/login").origin == "base"          # bare-wins resolution
 
 
 # ── override: metadata + body ────────────────────────────────────────────────
@@ -106,8 +106,8 @@ def test_override_status(tmp_path):
         "auth/login": {"id": "cap-aaa111", "Status": "Supported", "body": "Log in."}})
     write_cap(child, "ov/login", overrides="cap-aaa111", Status="Missing")
     st = store(child)
-    assert st.get("auth/login").status == "Missing"         # child view overridden
-    assert store(base).get("auth/login").status == "Supported"   # upstream untouched
+    assert st.get_view("auth/login").status == "Missing"         # child view overridden
+    assert store(base).get_view("auth/login").status == "Supported"   # upstream untouched
 
 
 def test_override_body_append(tmp_path):
@@ -117,7 +117,7 @@ def test_override_body_append(tmp_path):
     write_cap(child, "ov/upload", overrides="cap-bbb222",
               appendedDocs=["camera.md"],
               docs={"camera.md": "Or take a photo with the device camera."})
-    body = store(child).get("media/upload").body
+    body = store(child).get_view("media/upload").body
     assert "Upload an image" in body and "take a photo" in body
 
 
@@ -125,7 +125,7 @@ def test_override_body_replace(tmp_path):
     base, child = child_of(tmp_path, {
         "media/upload": {"id": "cap-bbb222", "Status": "Supported", "body": "UPSTREAM."}})
     write_cap(child, "ov/upload", overrides="cap-bbb222", body="MOBILE STORY.")
-    body = store(child).get("media/upload").body
+    body = store(child).get_view("media/upload").body
     assert body.strip() == "MOBILE STORY." and "UPSTREAM" not in body
 
 
@@ -141,7 +141,7 @@ def test_override_null_clears_field(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported", "Priority": "P1"}})
     write_cap(child, "ov/login", overrides="cap-aaa111", Priority=None)
-    assert "Priority" not in store(child).get("auth/login").fields
+    assert "Priority" not in store(child).get_view("auth/login").fields
 
 
 # ── read-only structure ──────────────────────────────────────────────────────
@@ -230,7 +230,7 @@ def test_qualified_override_target(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
     write_cap(child, "ov/login", overrides="base/cap-aaa111", Status="Missing")
-    assert store(child).get("auth/login").status == "Missing"
+    assert store(child).get_view("auth/login").status == "Missing"
     assert store(child).check() == []
 
 
@@ -252,15 +252,15 @@ def test_set_inherited_qualified(tmp_path):
         "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
     cap = store(child).set("base.capabilities/moderation/report-content", {"Status": "Missing"})
     assert cap.status == "Missing" and cap.origin == "base"
-    assert store(child).get("moderation/report-content").status == "Missing"
-    assert store(base).get("moderation/report-content").status == "Supported"
+    assert store(child).get_view("moderation/report-content").status == "Missing"
+    assert store(base).get_view("moderation/report-content").status == "Supported"
 
 
 def test_set_inherited_bare(tmp_path):
     base, child = child_of(tmp_path, {
         "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
     store(child).set("moderation/report-content", {"Status": "Missing"})
-    assert store(child).get("moderation/report-content").status == "Missing"
+    assert store(child).get_view("moderation/report-content").status == "Missing"
 
 
 def test_set_inherited_materializes_mirrored_override(tmp_path):
@@ -304,7 +304,7 @@ def test_set_inherited_reuses_hand_authored_override(tmp_path):
     store(child).set("auth/login", {"Status": "Partial", "Gaps": "wip"})
     assert ov_meta(child, "ov/login")["Status"] == "Partial"     # in place
     assert not (child / "docs" / "capabilities" / "auth" / "login").exists()
-    assert store(child).get("auth/login").status == "Partial"
+    assert store(child).get_view("auth/login").status == "Partial"
 
 
 def test_set_local_unchanged_by_override_machinery(tmp_path):
@@ -347,8 +347,8 @@ def test_set_inherited_falls_back_when_local_occupies_path(tmp_path):
             / "meta.yaml").read_bytes() == before          # local untouched
     assert ov_meta(child, "base/auth/login") == {
         "overrides": "base/cap-aaa111", "Status": "Partial", "Gaps": "wip"}
-    assert store(child).get("base/auth/login").status == "Partial"
-    assert store(child).get("auth/login").status == "Missing"   # bare wins local
+    assert store(child).get_inherited("base", "auth/login").status == "Partial"
+    assert store(child).get_view("auth/login").status == "Missing"   # bare wins local
     assert store(child).check() == []
 
 
@@ -368,15 +368,15 @@ def test_set_second_alias_same_path(tmp_path):
     store(child).set("base.capabilities/a/thing", {"Status": "Missing"})
     store(child).set("base2.capabilities/a/thing", {"Status": "Omitted"})
 
-    assert store(child).get("base/a/thing").status == "Missing"
-    assert store(child).get("base2/a/thing").status == "Omitted"
+    assert store(child).get_inherited("base", "a/thing").status == "Missing"
+    assert store(child).get_inherited("base2", "a/thing").status == "Omitted"
     assert ov_meta(child, "a/thing")["overrides"] == "base/cap-one"
     assert ov_meta(child, "base2/a/thing")["overrides"] == "base2/cap-two"
     assert store(child).check() == []
     # Re-entrant: each updates its own override in place.
     store(child).set("base2.capabilities/a/thing", {"Status": "Partial", "Gaps": "x"})
-    assert store(child).get("base2/a/thing").status == "Partial"
-    assert store(child).get("base/a/thing").status == "Missing"
+    assert store(child).get_inherited("base2", "a/thing").status == "Partial"
+    assert store(child).get_inherited("base", "a/thing").status == "Missing"
 
 
 def test_set_ambiguous_bare_ref_raises(tmp_path):
@@ -401,8 +401,8 @@ def test_set_inherited_null_clears_inherited_field(tmp_path):
     store(child).set("auth/login", {"Priority": None})
     assert ov_meta(child, "auth/login") == {"overrides": "base/cap-aaa111",
                                             "Priority": None}
-    assert "Priority" not in store(child).get("auth/login").fields
-    assert store(child).get("auth/login").status == "Supported"   # rest inherited
+    assert "Priority" not in store(child).get_view("auth/login").fields
+    assert store(child).get_view("auth/login").status == "Supported"   # rest inherited
 
 
 def test_set_local_null_pops_field(tmp_path):

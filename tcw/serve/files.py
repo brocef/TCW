@@ -21,7 +21,8 @@ from tcw.serve.server import ApiError, Request, not_found, route, usage
 from tcw.store.base import StaleRevision
 from tcw.store.fs import _atomic_write_all
 from tcw.validate import ValidationTarget
-from tcw.work.gates import Present, parse_declarations, project_reader
+from tcw.work.gates import (Invalid, Present, Unchecked, parse_declarations,
+                             project_reader)
 from tcw.work.layout import CAPABILITIES_FILE, HANDOFF_NAME, ROUND_NAME, Layout, round_verdict
 from tcw.work.model import (
     DOCUMENT, NO_ARTIFACT, ROUNDS, STAGES, Slug, check_encodable, is_stage,
@@ -298,6 +299,23 @@ def get_declaration(request: Request):
 
 
 def _sent_lists(request: Request) -> dict[str, dict[str, list[str]]]:
+    """The six lists as sent, each entry written as a full identifier
+    (TCW-110 Design 5.3): an id-path names this project's own record."""
+    from tcw.ids import FullId, IdError, sort_input
+    from tcw.locate import Locator
+    project_id = None
+
+    def stored(value: str, namespace: str) -> str:
+        nonlocal project_id
+        try:
+            found = sort_input(value, namespace)
+        except IdError as error:
+            raise usage(str(error)) from None
+        if found.form != "d":
+            return str(found.full_id)
+        project_id = project_id or Locator.of(request.root).project_id
+        return str(FullId(project_id, namespace, found.id_path))
+
     sent: dict[str, dict[str, list[str]]] = {}
     for axis in ("capabilities", "taxonomy"):
         group = request.field(axis, dict, required=False, default={})
@@ -310,7 +328,7 @@ def _sent_lists(request: Request) -> dict[str, dict[str, list[str]]]:
             if not isinstance(values, list) or not all(
                     isinstance(v, str) and v.strip() for v in values):
                 raise usage(f"{axis}.{kind} must be a list of non-empty names")
-            sent[axis][kind] = list(dict.fromkeys(v.strip() for v in values))
+            sent[axis][kind] = list(dict.fromkeys(stored(v.strip(), axis) for v in values))
     return sent
 
 
@@ -327,7 +345,10 @@ def _check_existing(request: Request, sent, before) -> None:
                     continue
                 reader = reader or project_reader(request.root,
                                                   FsProjectRegistry.open(request.root))
-                if not isinstance(getattr(reader, ask)(name), Present):
+                answer = getattr(reader, ask)(name)
+                if isinstance(answer, (Invalid, Unchecked)):
+                    raise usage(f"{axis}.{kind}: {name}: {answer.reason}")
+                if not isinstance(answer, Present):
                     raise usage(f"{axis}.{kind}: {name} does not exist")
 
 

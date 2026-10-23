@@ -169,7 +169,7 @@ def test_read_never_reaches_what_the_owner_itself_inherits(pair, tmp_path):
     _entry(base, "taxonomy", "deep")
     connect_projects(core, "upstream", "base")
     FsTaxonomyStore.open(core).extends_add("base")
-    assert FsTaxonomyStore.open(core).get("base/deep") is not None
+    assert FsTaxonomyStore.open(core).get_inherited("base", "deep") is not None
     assert Locator.of(app).read(FullId("core", "taxonomy", "deep"), app).kind == MISSING
 
 

@@ -50,7 +50,7 @@ def test_add_prints_the_path_and_names_its_files(project, run):
     code, out, err = run(project, "capabilities", "add", "ns/do-a-thing", stdin="Body.\n")
     assert (code, out) == (0, "fx.capabilities/ns/do-a-thing\n")
     assert "wrote docs/capabilities/ns/do-a-thing/meta.yaml" in err.splitlines()
-    assert "Body." in FsCapabilitiesStore.open(project).get("ns/do-a-thing").body
+    assert "Body." in FsCapabilitiesStore.open(project).get_view("ns/do-a-thing").body
 
 
 def test_set_prints_nothing(thing, run):
@@ -58,7 +58,7 @@ def test_set_prints_nothing(thing, run):
                          "--status", "Supported")
     assert (code, out) == (0, "")
     assert err.splitlines() == ["wrote docs/capabilities/ns/do-a-thing/meta.yaml"]
-    assert FsCapabilitiesStore.open(thing).get("ns/do-a-thing").status == "Supported"
+    assert FsCapabilitiesStore.open(thing).get_view("ns/do-a-thing").status == "Supported"
 
 
 def test_an_unknown_subject_is_a_usage_error(thing, run):

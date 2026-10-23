@@ -74,11 +74,11 @@ def test_add_nesting_and_slug_is_path(tmp_path):
     perm = st.add("Permission", parent="admin")
     assert perm.slug == "admin/permission"
     assert (root / "docs/taxonomy/admin/permission/meta.yaml").exists()
-    assert st.get("admin/permission").name == "Permission"
+    assert st.get_view("admin/permission").name == "Permission"
     # same leaf under different parents are distinct terms
     st.add("Object")
     st.add("Permission", parent="object")
-    assert st.get("object/permission").slug == "object/permission"
+    assert st.get_view("object/permission").slug == "object/permission"
 
 
 def test_modified_timestamp_uses_bounded_taxonomy_resources(tmp_path):
@@ -92,7 +92,7 @@ def test_modified_timestamp_uses_bounded_taxonomy_resources(tmp_path):
     attachment.write_text("not a core taxonomy resource\n")
     os.utime(attachment, (300, 300))
 
-    assert st.get("user").modified == "1970-01-01T00:03:20Z"
+    assert st.get_view("user").modified == "1970-01-01T00:03:20Z"
 
 
 def test_add_feature_with_vocabulary_refs(tmp_path):
@@ -174,7 +174,7 @@ def test_add_stores_the_full_identifier_of_a_resolving_ref(tmp_path):
 def test_missing_kind_defaults_to_vocabulary(tmp_path):
     root = node(tmp_path, "repo")
     write_term(root, "user", name="User")
-    term = FsTaxonomyStore.open(root).get("user")
+    term = FsTaxonomyStore.open(root).get_view("user")
     assert term.kind == "Vocabulary"
 
 
@@ -226,7 +226,7 @@ def test_list_flags_inherited_origin(tmp_path):
     st = FsTaxonomyStore.open(cons)
     by_slug = {t.slug: t for t in st.list_all()}
     assert by_slug["Argument"].origin == "shared"
-    assert str(st.get("shared/Argument").full_id) == "shared.taxonomy/Argument"
+    assert str(st.get_inherited("shared", "Argument").full_id) == "shared.taxonomy/Argument"
     assert FsTaxonomyStore.open(cons).list_all(local_only=True) == []
 
 
@@ -239,8 +239,8 @@ def test_transitive_extends_flattens_terms_by_owning_project(tmp_path):
         ("charlie.taxonomy/deep", "charlie"),
         ("charlie.taxonomy/shared", "charlie"),
     }
-    assert str(st.get("charlie/deep").full_id) == "charlie.taxonomy/deep"
-    assert st.get("deep").origin == "charlie"
+    assert str(st.get_inherited("charlie", "deep").full_id) == "charlie.taxonomy/deep"
+    assert st.get_view("deep").origin == "charlie"
     assert [str(term.full_id) for term in st.search("transitive needle")] == ["charlie.taxonomy/deep"]
 
     detail = st.get_term_detail("charlie.taxonomy/deep")
@@ -256,10 +256,10 @@ def test_transitive_extends_preserves_shadowing_and_ambiguity(tmp_path):
     a, _, _ = transitive_taxonomy(tmp_path)
     st = FsTaxonomyStore.open(a)
     with pytest.raises(AmbiguousRef):
-        st.get("shared")
+        st.get_view("shared")
 
     write_term(a, "shared", name="A Shared")
-    assert FsTaxonomyStore.open(a).get("shared").origin == "local"
+    assert FsTaxonomyStore.open(a).get_view("shared").origin == "local"
 
 
 def test_transitive_extends_deduplicates_a_diamond_by_project_id(tmp_path):
@@ -323,13 +323,13 @@ def test_transitive_extends_crosses_a_second_hop_through_a_moved_tree(tmp_path):
 def test_resolution_unique_extended(tmp_path):
     cons, _ = consumer_with_shared(tmp_path)
     st = FsTaxonomyStore.open(cons)
-    assert st.get("Argument").origin == "shared"          # bare, one extend
+    assert st.get_view("Argument").origin == "shared"          # bare, one extend
 
 
 def test_resolution_local_wins_bare(tmp_path):
     cons, _ = consumer_with_shared(tmp_path, local_dup=True)
     st = FsTaxonomyStore.open(cons)
-    assert st.get("Argument").origin == "local"           # local shadows extend
+    assert st.get_view("Argument").origin == "local"           # local shadows extend
 
 
 def test_resolution_ambiguous_errors(tmp_path):
@@ -340,8 +340,8 @@ def test_resolution_ambiguous_errors(tmp_path):
     write_connected_config(cons, "extends:\n  - a\n  - b\n")
     st = FsTaxonomyStore.open(cons)
     with pytest.raises(AmbiguousRef):
-        st.get("Term")
-    assert st.get("a/Term").origin == "a"                 # qualified is unambiguous
+        st.get_view("Term")
+    assert st.get_inherited("a", "Term").origin == "a"                 # qualified is unambiguous
 
 
 def test_get_term_detail_of_inherited_term(tmp_path):
@@ -378,7 +378,7 @@ def test_rm_refuses_ref_escaping_the_store(tmp_path):
     outside.mkdir(parents=True)
     (outside / "meta.yaml").write_text("name: Thing\n")
     st = FsTaxonomyStore.open(root)
-    assert st.get("../capabilities/thing") is None
+    assert st.get_view("../capabilities/thing") is None
     with pytest.raises(TcwError, match="is not a full identifier"):
         st.remove("../capabilities/thing")
     assert outside.is_dir()
@@ -407,7 +407,7 @@ def test_rm_refuses_nested_terms(tmp_path, monkeypatch, capsys):
     assert main(["taxonomy", "rm", "admin"]) == 3
     captured = capsys.readouterr()
     assert "admin/permission" in captured.err and captured.out == ""
-    assert st.get("admin") is not None and st.get("admin/permission") is not None
+    assert st.get_view("admin") is not None and st.get_view("admin/permission") is not None
 
 
 def test_rm_refuses_a_relatesto_referrer(tmp_path):
@@ -418,7 +418,7 @@ def test_rm_refuses_a_relatesto_referrer(tmp_path):
     st = FsTaxonomyStore.open(root)
     with pytest.raises(TcwError, match=r"still referenced by payment \(relatesTo\)"):
         st.remove("invoice")
-    assert st.get("invoice") is not None and st.check() == []
+    assert st.get_view("invoice") is not None and st.check() == []
 
 
 def test_rm_refuses_a_vocabulary_referrer(tmp_path):
@@ -428,7 +428,7 @@ def test_rm_refuses_a_vocabulary_referrer(tmp_path):
     st.add("PDF Export", kind="feature", vocabulary=["invoice"])
     with pytest.raises(TcwError, match=r"still referenced by pdf-export \(vocabulary\)"):
         st.remove("invoice")
-    assert st.get("invoice") is not None
+    assert st.get_view("invoice") is not None
 
 
 def test_rm_is_not_refused_by_a_same_leaf_ref_elsewhere(tmp_path):
@@ -439,7 +439,7 @@ def test_rm_is_not_refused_by_a_same_leaf_ref_elsewhere(tmp_path):
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     st = FsTaxonomyStore.open(root)
     st.remove("permission")
-    assert st.get("permission") is None and st.check() == []
+    assert st.get_view("permission") is None and st.check() == []
 
 
 def test_rm_ignores_a_self_reference(tmp_path):
@@ -448,7 +448,7 @@ def test_rm_ignores_a_self_reference(tmp_path):
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     st = FsTaxonomyStore.open(root)
     st.remove("loop")
-    assert st.get("loop") is None
+    assert st.get_view("loop") is None
 
 
 def test_rm_is_not_blocked_by_an_untracked_leftover_folder(tmp_path):
@@ -474,7 +474,7 @@ def test_rm_ignores_vocabulary_on_a_non_feature(tmp_path):
     st = FsTaxonomyStore.open(root)
     assert st.check() == []
     st.remove("invoice")
-    assert st.get("invoice") is None
+    assert st.get_view("invoice") is None
 
 
 def test_referrers_treats_a_vanished_folder_as_no_match(tmp_path, monkeypatch):
@@ -722,7 +722,7 @@ def test_extends_add_writes_map_and_resolves(tmp_path):
     FsTaxonomyStore.open(consumer).extends_add("base")
     st = FsTaxonomyStore.open(consumer)            # reopen to load the new federation
     assert "base.taxonomy/widget" in {str(t.full_id) for t in st.list_all()}
-    assert st.get("base/widget").name == "Widget"
+    assert st.get_inherited("base", "widget").name == "Widget"
 
 
 def test_extends_add_refuses(tmp_path):
@@ -809,8 +809,8 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
 
     st = FsTaxonomyStore.open(cons)
     assert {str(term.full_id) for term in st.list_all()} == {"base.taxonomy/argument"}
-    assert st.get("base/argument").name == "Argument"
-    assert st.get("argument").origin == "base"
+    assert st.get_inherited("base", "argument").name == "Argument"
+    assert st.get_view("argument").origin == "base"
 
 
 # ── extends lives in the node config, not in the store ──────────────────────
@@ -898,7 +898,7 @@ def test_a_config_yaml_in_a_term_folder_is_still_not_an_attachment(tmp_path):
     (d / "config.yaml").write_text("extends:\n  - ghost\n")
     (d / "notes.md").write_text("a real attachment")
 
-    term = FsTaxonomyStore.open(root).get("widget")
+    term = FsTaxonomyStore.open(root).get_view("widget")
     assert term is not None
     assert term.attachments == ["notes.md"]
 

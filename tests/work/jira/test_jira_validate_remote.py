@@ -163,7 +163,7 @@ def test_records_problems_mid_work_only(clean, monkeypatch, capsys):
     _, open_ = clean.item("Open", "open", status="In Progress")
     _, done = clean.item("Done", "done", status="Done")
     for folder in (open_, done):
-        (clean.work / folder / "capabilities.yaml").write_text("changed: [auth/login]\n")
+        (clean.work / folder / "capabilities.yaml").write_text("changed: [tcw.capabilities/auth/login]\n")
     run = remote(clean, monkeypatch, capsys)
     assert run.code == 1
     assert any(line.startswith(f"error: tcw.work/{open_}:") for line in run.lines), run.out
@@ -180,7 +180,7 @@ def test_records_problems_wait_for_remote_offline(clean, monkeypatch, capsys):
     def never(*args, **kwargs):
         raise AssertionError("the records check ran offline")
     _, open_ = clean.item("Open", "open", status="In Progress")
-    (clean.work / open_ / "capabilities.yaml").write_text("changed: [auth/login]\n")
+    (clean.work / open_ / "capabilities.yaml").write_text("changed: [tcw.capabilities/auth/login]\n")
     monkeypatch.setattr(gates, "records_problems", never)
     clean.fake.log.clear()
     monkeypatch.chdir(clean.root)

@@ -1982,12 +1982,6 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
     def _term_via(store: "FsTaxonomyStore", slug: str, alias: str) -> Term:
         return store._term(slug, origin=alias)
 
-    def get(self, ref: str) -> Term | None:
-        inherited_stores = self._inherited_stores()
-        head, _, rest = ref.partition("/")
-        if head in inherited_stores:                   # prefixed (B.6.1)
-            return self.get_inherited(head, rest)
-        return self.get_view(ref)
 
     def get_view(self, slug: str) -> Term | None:
         """An id-path read as the active project sees it (TCW-110 Design 3.1
@@ -2643,11 +2637,6 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             out.append(c)
         return out
 
-    def get(self, identifier: str) -> Capability | None:
-        head, _, rest = identifier.partition("/")
-        if head in self.extends:                         # prefixed
-            return self.get_inherited(head, rest)
-        return self.get_view(identifier)
 
     def get_view(self, path: str) -> Capability | None:
         """An id-path read as the active project sees it (TCW-110 Design 3.1

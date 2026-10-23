@@ -178,12 +178,12 @@ describe("the fields of the autocomplete table", () => {
         expect(ids("taxonomy-parent")).toEqual(["term", "feature"])
     })
 
-    test("declaration lists offer the ledger's entries", () => {
+    test("declaration lists offer the ledger's entries by full identifier", () => {
         expect(ids(declarationField("capabilities", "changed"))).toContain(
-            "web/editing"
+            "p.capabilities/web/editing"
         )
         expect(ids(declarationField("taxonomy", "new"))).toContain(
-            "base/shared"
+            "base.taxonomy/shared"
         )
     })
 })

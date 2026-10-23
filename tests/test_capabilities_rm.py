@@ -97,7 +97,7 @@ def test_remove_deletes_local_capability_and_stages_nothing(tmp_path):
     write_cap(root, "x", id="cap-x00001", Status="Supported")
     subprocess.run(["git", "-C", str(root), "commit", "-qm", "seed"], check=True)
     store(root).remove("x")
-    assert store(root).get("x") is None
+    assert store(root).get_view("x") is None
     status = subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
                             capture_output=True, text=True, check=True).stdout
     assert " D docs/capabilities/x/meta.yaml" in status        # deleted, not staged
@@ -108,7 +108,7 @@ def test_remove_ignores_unresolvable_reference_tokens(tmp_path):
     write_cap(root, "x", id="cap-x00001", Status="Supported")
     write_cap(root, "y", id="cap-y00001", Status="Blocked", **{"Blocked by": S("ghost/path")})
     store(root).remove("x")
-    assert store(root).get("x") is None
+    assert store(root).get_view("x") is None
 
 
 def test_remove_succeeds_after_referrer_repointed(tmp_path):
@@ -121,7 +121,7 @@ def test_remove_succeeds_after_referrer_repointed(tmp_path):
         store(root).remove("old")
     store(root).set("other", {"Superseded by": "new"})
     store(root).remove("old")
-    assert store(root).get("old") is None
+    assert store(root).get_view("old") is None
 
 
 # ── refusals (fail closed, change nothing) ───────────────────────────────────
@@ -193,8 +193,8 @@ def test_remove_refuses_nested_capability(tmp_path):
     with pytest.raises(TcwError, match="routes/login"):
         store(root).remove("routes")
     _assert_nothing_removed(root, before)
-    assert store(root).get("routes") is not None
-    assert store(root).get("routes/login") is not None
+    assert store(root).get_view("routes") is not None
+    assert store(root).get_view("routes/login") is not None
 
 
 def test_remove_refuses_capability_nested_in_a_dot_directory(tmp_path):
@@ -217,8 +217,8 @@ def test_remove_treats_a_glob_character_in_the_path_literally(tmp_path):
     # The name breaks the identifier rule, so only a full identifier built in
     # code names it; a command refuses the text (TCW-110 Design 1.6).
     store(root).remove(FullId("solo", "capabilities", "a*"))
-    assert store(root).get("a*") is None
-    assert store(root).get("abc") is not None
+    assert store(root).get_view("a*") is None
+    assert store(root).get_view("abc") is not None
     assert (root / "docs" / "capabilities" / "abc" / "meta.yaml").is_file()
 
 
@@ -231,7 +231,7 @@ def test_remove_skips_a_folder_that_vanished_after_listing(tmp_path, monkeypatch
     listed = st._all_meta_dirs()
     monkeypatch.setattr(st, "_all_meta_dirs", lambda: [*listed, "gone/away"])
     st.remove("x")
-    assert store(root).get("x") is None
+    assert store(root).get_view("x") is None
 
 
 def test_remove_does_not_proceed_when_comparing_folders_fails_for_another_reason(
@@ -252,7 +252,7 @@ def test_remove_does_not_proceed_when_comparing_folders_fails_for_another_reason
         store(root).remove("old")
     monkeypatch.undo()
     _assert_nothing_removed(root, before)
-    assert store(root).get("old") is not None
+    assert store(root).get_view("old") is not None
 
 
 def test_remove_nested_check_respects_the_path_boundary(tmp_path):
@@ -261,8 +261,8 @@ def test_remove_nested_check_respects_the_path_boundary(tmp_path):
     write_cap(root, "routes", id="cap-rou001", Status="Supported")
     write_cap(root, "routes-v2", id="cap-rv2001", Status="Supported")
     store(root).remove("routes")
-    assert store(root).get("routes") is None
-    assert store(root).get("routes-v2") is not None
+    assert store(root).get_view("routes") is None
+    assert store(root).get_view("routes-v2") is not None
 
 
 @pytest.mark.parametrize("ref", ["routes/", "./routes", "routes/.", "routes//", "Routes",
@@ -310,7 +310,7 @@ def test_remove_refuses_referenced_target(tmp_path, field, target, value):
         store(root).remove(target)
     assert f"billing/refund ({field})" in str(e.value)
     _assert_nothing_removed(root, before)
-    assert store(root).get(target) is not None
+    assert store(root).get_view(target) is not None
 
 
 @pytest.mark.parametrize("field, value", [
@@ -328,7 +328,7 @@ def test_remove_ignores_a_value_check_does_not_resolve_to_the_target(tmp_path, f
     write_cap(root, "roles/admin", id="cap-adm001", Status="Supported")
     write_cap(root, "billing/refund", id="cap-ref001", Status="Supported", **{field: value})
     store(root).remove("roles/admin")
-    assert store(root).get("roles/admin") is None
+    assert store(root).get_view("roles/admin") is None
 
 
 def test_gate_removed_ignores_an_inherited_capability_at_the_same_path(tmp_path):
@@ -340,7 +340,7 @@ def test_gate_removed_ignores_an_inherited_capability_at_the_same_path(tmp_path)
     init(["work"], child)
     ws = FsWorkStore.open(child)
     slug = ws.create("Task", created="2026-01-01").slug
-    (ws.path(slug) / "capabilities.yaml").write_text("removed:\n  - auth/login\n")
+    (ws.path(slug) / "capabilities.yaml").write_text("removed:\n  - child.capabilities/auth/login\n")
     assert capability_gate(ws, ws.get(slug)) == []
     write_cap(child, "auth/login", id="cap-loc001", Status="Supported")
     problems = capability_gate(ws, ws.get(slug))

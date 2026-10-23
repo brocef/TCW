@@ -187,7 +187,7 @@ def test_update_term_stale_revision(tmp_path):
     with pytest.raises(StaleRevision):
         st.update_term("admin", name="X", core_revision=old_rev)
 
-    assert st.get("admin").name == "Admin"  # unchanged
+    assert st.get_view("admin").name == "Admin"  # unchanged
 
 
 def test_update_term_refuses_inherited(tmp_path):
@@ -363,7 +363,7 @@ def test_update_capability_inherited_fields(tmp_path):
     assert detail.capability.status == "Missing"
     assert detail.capability.origin == "base-project"
     # Upstream untouched.
-    assert FsCapabilitiesStore.open(base).get("routes/login").status == "Supported"
+    assert FsCapabilitiesStore.open(base).get_view("routes/login").status == "Supported"
 
 
 def test_update_capability_inherited_matches_set(tmp_path):
@@ -374,7 +374,7 @@ def test_update_capability_inherited_matches_set(tmp_path):
         write(st)
         meta = yaml.safe_load(
             (root / "docs/capabilities/routes/login/meta.yaml").read_text())
-        upstream_id = st.get("routes/login").id
+        upstream_id = st.get_view("routes/login").id
         meta["overrides"] = meta["overrides"].replace(upstream_id, "<id>")
         return meta
 
@@ -397,7 +397,7 @@ def test_update_capability_inherited_body(tmp_path):
     assert "UPSTREAM" not in detail.capability.body
     assert (child / "docs/capabilities/routes/login/description.md").exists()
     # Upstream body untouched.
-    assert FsCapabilitiesStore.open(base).get("routes/login").body.strip() == "UPSTREAM."
+    assert FsCapabilitiesStore.open(base).get_view("routes/login").body.strip() == "UPSTREAM."
 
 
 def test_update_capability_inherited_body_cleared_drops_the_delta(tmp_path):

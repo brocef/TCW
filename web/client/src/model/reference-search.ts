@@ -55,21 +55,6 @@ export interface TReferenceContext {
 
 const RESULT_LIMIT = 10
 
-/** The value a declaration picker inserts for a term or capability, in the
- * 3.x form `capabilities.yaml` entries still take until TCW-110 Step 11:
- * this project's own entry by its id-path, an inherited one as
- * `<owner>/<id-path>`. */
-function threeXRef(
-    item: TaxonomyItem | CapabilityItem,
-    projectId: string
-): string {
-    const found = parseFullId(item["full-id"])
-    if (!found) return item["full-id"]
-    return found.project === projectId
-        ? found.idPath
-        : `${found.project}/${found.idPath}`
-}
-
 /** A route key as the full identifier a record stores: an id-path is the
  * served project's own entry. */
 function asFullId(
@@ -130,10 +115,7 @@ export function referenceOptions(
     const capabilities = context.capabilities.map((item) =>
         option(item["full-id"], item.name)
     )
-    const declared = (items: (TaxonomyItem | CapabilityItem)[]) =>
-        items.map((item) =>
-            option(threeXRef(item, context.projectId), item.name)
-        )
+
     if (field === "work-parent") {
         const excluded = current
             ? descendantsOf(current, context.work)
@@ -142,10 +124,9 @@ export function referenceOptions(
         return work.filter((item) => !excluded.has(item.identifier))
     }
     if (field.startsWith("declaration-"))
-        return declared(
-            field.startsWith("declaration-taxonomy")
-                ? context.taxonomy
-                : context.capabilities
+        // A `capabilities.yaml` entry is the record's full identifier.
+        return (
+            field.startsWith("declaration-taxonomy") ? taxonomy : capabilities
         ).filter((item) => !selected.has(item.identifier))
     if (field === "work-assignee") {
         const people = context.people ?? {}

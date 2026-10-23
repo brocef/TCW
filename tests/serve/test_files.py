@@ -189,13 +189,26 @@ SIX = {"capabilities": {"new": ["web/new-thing"], "changed": ["web"], "removed":
        "taxonomy": {"new": ["gadget"], "changed": ["widget"], "removed": ["widget"]}}
 
 
+def _qualified(lists: dict) -> dict:
+    """`lists` with each id-path written as `p`'s full identifier."""
+    return {axis: {kind: [f"p.{axis}/{v}" for v in values]
+                   for kind, values in group.items()}
+            for axis, group in lists.items()}
+
+
 def test_the_declaration_round_trips(ledger):
+    """An id-path is stored as this project's full identifier (TCW-110
+    Design 5.3); a full identifier is stored as written."""
     served, folder = ledger
     empty = ok(served.get(f"/api/work/{folder}/declaration"))
     assert empty["present"] is False and empty["problem"] is None
     ok(served.put(f"/api/work/{folder}/declaration", {**SIX, "revision": None}))
     found = ok(served.get(f"/api/work/{folder}/declaration"))
-    assert {k: found[k] for k in SIX} == SIX
+    assert {k: found[k] for k in SIX} == _qualified(SIX)
+    ok(served.put(f"/api/work/{folder}/declaration",
+                  {**_qualified(SIX), "revision": found["revision"]}))
+    again = ok(served.get(f"/api/work/{folder}/declaration"))
+    assert {k: again[k] for k in SIX} == _qualified(SIX)
     written = (folder_of(served, folder) / "capabilities.yaml").read_text()
     assert list(yaml.safe_load(written)) == ["new", "changed", "removed", "taxonomy"]
 
@@ -206,7 +219,7 @@ def test_the_declaration_is_written_without_empty_lists(ledger):
         "capabilities": {"new": [], "changed": ["web"]}, "taxonomy": {},
         "revision": None}))
     written = (folder_of(served, folder) / "capabilities.yaml").read_text()
-    assert yaml.safe_load(written) == {"changed": ["web"]}
+    assert yaml.safe_load(written) == {"changed": ["p.capabilities/web"]}
 
 
 def test_a_changed_entry_must_exist_and_a_new_one_need_not(ledger):
@@ -222,10 +235,17 @@ def test_a_changed_entry_must_exist_and_a_new_one_need_not(ledger):
 def test_an_entry_already_in_the_file_is_not_checked_again(ledger):
     served, folder = ledger
     path = folder_of(served, folder) / "capabilities.yaml"
-    path.write_text("changed: [gone/away]\n")
+    path.write_text("changed: [p.capabilities/gone/away]\n")
     revision = ok(served.get(f"/api/work/{folder}/declaration"))["revision"]
     ok(served.put(f"/api/work/{folder}/declaration", {
         "capabilities": {"changed": ["gone/away", "web"]}, "revision": revision}))
+
+
+def test_a_3x_address_in_a_declaration_is_refused(ledger):
+    served, folder = ledger
+    refused = served.put(f"/api/work/{folder}/declaration", {
+        "capabilities": {"new": ["tcw://C/web"]}, "revision": None})
+    assert refused.status == 400 and "TCW 3.x reference" in refused.json["error"]
 
 
 def test_a_taxonomy_entry_must_exist_to_be_changed(ledger):

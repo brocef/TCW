@@ -54,7 +54,7 @@ def rm(root: Path, monkeypatch, capsys, slug: str) -> tuple[int, str]:
 
 
 def lists(root: Path, slug: str) -> bool:
-    return FsTaxonomyStore.open(root).get(slug) is not None
+    return FsTaxonomyStore.open(root).get_view(slug) is not None
 
 
 # ── a capability names the term ──────────────────────────────────────────────

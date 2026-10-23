@@ -214,8 +214,8 @@ class TestLoneProject:
         st.add("Admin")
         st.add("Permission", parent="admin")
         st.add("User")
-        assert st.get("admin").name == "Admin"
-        assert st.get("admin/permission").slug == "admin/permission"
+        assert st.get_view("admin").name == "Admin"
+        assert st.get_view("admin/permission").slug == "admin/permission"
         assert {t.slug for t in st.list_all()} == {"admin", "admin/permission", "user"}
         assert {t.slug for t in st.list_all(local_only=True)} == {"admin", "admin/permission", "user"}
         assert st.search("admin")
@@ -226,7 +226,7 @@ class TestLoneProject:
         st = FsTaxonomyStore.open(root)
         st.add("Temp")
         st.remove("temp")
-        assert st.get("temp") is None
+        assert st.get_view("temp") is None
 
     def test_taxonomy_check_clean(self, tmp_path):
         root = lone_project(tmp_path)
@@ -257,7 +257,7 @@ class TestLoneProject:
         st = FsCapabilitiesStore.open(root)
         st.add("routes/home")
         st.set("routes/home", {"Status": "Supported"})
-        assert st.get("routes/home").status == "Supported"
+        assert st.get_view("routes/home").status == "Supported"
 
     def test_capabilities_check_clean(self, tmp_path):
         root = lone_project(tmp_path)
@@ -311,29 +311,29 @@ class TestNestedMonorepo:
         root, child_a, _ = nested_monorepo(tmp_path)
         FsTaxonomyStore.open(root).add("Shared")
         st_a = FsTaxonomyStore.open(child_a)
-        assert st_a.get("root/shared").name == "Shared"
+        assert st_a.get_inherited("root", "shared").name == "Shared"
 
     def test_child_cannot_see_other_child_taxonomy(self, tmp_path):
         root, child_a, child_b = nested_monorepo(tmp_path)
         FsTaxonomyStore.open(child_a).add("LocalA")
         st_b = FsTaxonomyStore.open(child_b)
-        assert st_b.get("locala") is None
-        assert st_b.get("root/locala") is None  # not in root either
+        assert st_b.get_view("locala") is None
+        assert st_b.get_inherited("root", "locala") is None  # not in root either
 
     def test_child_can_add_local_terms(self, tmp_path):
         root, child_a, _ = nested_monorepo(tmp_path)
         FsTaxonomyStore.open(root).add("Shared")
         st = FsTaxonomyStore.open(child_a)
         st.add("Plugin")
-        assert st.get("plugin").origin == "local"
+        assert st.get_view("plugin").origin == "local"
         # Root's terms are visible through the inherited namespace
-        assert st.get("root/shared").origin == "root"
+        assert st.get_inherited("root", "shared").origin == "root"
 
     def test_local_wins_bare_ref_in_child(self, tmp_path):
         root, child_a, _ = nested_monorepo(tmp_path)
         FsTaxonomyStore.open(root).add("Shared")
         FsTaxonomyStore.open(child_a).add("Shared", slug="shared")
-        assert FsTaxonomyStore.open(child_a).get("shared").origin == "local"
+        assert FsTaxonomyStore.open(child_a).get_view("shared").origin == "local"
 
     def test_child_node_relation_parent(self, tmp_path):
         root, child_a, _ = nested_monorepo(tmp_path)
@@ -350,7 +350,7 @@ class TestNestedMonorepo:
         _, child_a, _ = nested_monorepo(tmp_path)
         caps = FsCapabilitiesStore.open(child_a)
         caps.add("routes/local", status="Supported")
-        assert caps.get("routes/local").status == "Supported"
+        assert caps.get_view("routes/local").status == "Supported"
         assert caps.check() == []
 
 
@@ -397,20 +397,20 @@ class TestSiblingNodes:
         parent, left, _ = sibling_nodes(tmp_path)
         FsTaxonomyStore.open(parent).add("Platform")
         st = FsTaxonomyStore.open(left)
-        assert st.get("parent/platform").name == "Platform"
+        assert st.get_inherited("parent", "platform").name == "Platform"
 
     def test_sibling_standalone_taxonomy(self, tmp_path):
         _, left, _ = sibling_nodes(tmp_path)
         st = FsTaxonomyStore.open(left)
         st.add("Feature")
-        assert st.get("feature").origin == "local"
+        assert st.get_view("feature").origin == "local"
 
     def test_siblings_cannot_see_each_other(self, tmp_path):
         parent, left, right = sibling_nodes(tmp_path)
         FsTaxonomyStore.open(left).add("Leftonly")
         st_right = FsTaxonomyStore.open(right)
-        assert st_right.get("leftonly") is None
-        assert st_right.get("parent/leftonly") is None
+        assert st_right.get_view("leftonly") is None
+        assert st_right.get_inherited("parent", "leftonly") is None
 
     def test_child_nodes_finds_siblings(self, tmp_path):
         parent, left, right = sibling_nodes(tmp_path)
@@ -574,14 +574,14 @@ class TestCrossEnvironment:
         root, _ = env
         st = FsTaxonomyStore.open(root)
         st.add("Term")
-        assert st.get("term").name == "Term"
+        assert st.get_view("term").name == "Term"
         assert st.search("term")
 
     def test_capabilities_add_and_query(self, env):
         root, _ = env
         st = FsCapabilitiesStore.open(root)
         st.add("test/cap", status="Supported")
-        assert st.get("test/cap").status == "Supported"
+        assert st.get_view("test/cap").status == "Supported"
 
 
 # ────────────────────────────────────────────────────────────────────────

@@ -667,7 +667,7 @@ def _seed_items(dest: Path) -> dict[str, str]:
     _document(dest, slug, "plan", CLOSEOUT_PLAN)
     _advance(dest, slug, "implement")
     _write_at(Path(_run(dest, "work", "path", slug)) / "capabilities.yaml",
-              "new:\n  - billing/download-invoice\n")
+              f"new:\n  - {PROJECT_ID}.capabilities/billing/download-invoice\n")
     billing = dest / "src/billing.py"
     billing.write_text(billing.read_text() + CLOSEOUT_CODE)
     _round(dest, slug, "implement", CLOSEOUT_ROUND)
@@ -698,7 +698,7 @@ def _seed_items(dest: Path) -> dict[str, str]:
     reports = dest / "src/reports.py"
     reports.write_text(reports.read_text().replace(QA_CODE_OLD, QA_CODE_NEW))
     _write_at(Path(_run(dest, "work", "path", slug)) / "capabilities.yaml",
-              "changed:\n  - reports/view\n")
+              f"changed:\n  - {PROJECT_ID}.capabilities/reports/view\n")
     _round(dest, slug, "implement", QA_ROUND)
     _advance(dest, slug, "review")
     _round(dest, slug, "review", QA_REVIEW_ROUND)
