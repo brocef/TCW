@@ -66,4 +66,5 @@ not its kind, so the run's result is unchanged.
 
 ## The suite
 
-SUITE_RESULT
+`.venv/bin/pytest -q -p no:cacheprovider`, run in full as CI runs it, at `f2af0cdc`
+(2026-10-23): `5442 passed, 118 skipped in 496.20s`.
