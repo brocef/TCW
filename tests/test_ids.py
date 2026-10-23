@@ -185,6 +185,52 @@ def test_sort_input_refuses_anything_else_as_a_usage_error(text):
     assert caught.value.code == codes.USAGE
 
 
+RENAME = "no command can be given a folder whose name breaks that rule: rename it by hand"
+
+
+@pytest.mark.parametrize("text, namespace, says", [
+    ("cli/has.dot", "capabilities", "'cli/has.dot' names no capability: the id-part "
+                                    "'has.dot' breaks the rule"),
+    ("has.dot", "taxonomy", "'has.dot' names no term: it is not a full identifier "
+                            "(<project>.taxonomy/<id-path>), and an id-path holds no '.'"),
+    ("2026-01-01-a.b", "work", "'2026-01-01-a.b' names no work item"),
+    ("demo.capabilities/cli/has.dot", "capabilities", "the id-part 'has.dot' breaks"),
+    ("has.dot/x", "capabilities", "'dot' is not a namespace"),
+    ("-x", "work", "the id-part '-x' breaks the rule"),
+])
+def test_input_naming_a_folder_that_breaks_the_rule_says_to_rename_it(text, namespace,
+                                                                        says):
+    """Design 1.6: no form of input reaches such a folder, so the message
+    names the rule and the rename by hand, and offers no form to write."""
+    with pytest.raises(MalformedId) as caught:
+        sort_input(text, namespace, KEY)
+    message = str(caught.value)
+    assert caught.value.code == codes.USAGE
+    assert says in message and "letters, digits, '-' and '_'" in message, message
+    assert message.endswith(RENAME), message
+    assert "write" not in message.replace(RENAME, ""), message
+
+
+@pytest.mark.parametrize("text", ["cli//x", "cli/", "demo.work/x//y"])
+def test_a_typing_slip_is_not_called_a_folder_to_rename(text):
+    with pytest.raises(MalformedId) as caught:
+        sort_input(text, "work", KEY)
+    assert "empty part" in str(caught.value)
+    assert "rename" not in str(caught.value)
+
+
+@pytest.mark.parametrize("namespace, noun", [
+    ("taxonomy", "term"), ("capabilities", "capability"), ("work", "work item")])
+def test_messages_call_an_object_by_its_namespaces_noun(namespace, noun):
+    with pytest.raises(MalformedId, match=f"names no {noun}:"):
+        sort_input("x/y.z", namespace)
+    with pytest.raises(MalformedId, match=f"names a folder, not a {noun};"):
+        sort_input("tcw://demo.path/x", namespace)
+    other = "work" if namespace != "work" else "taxonomy"
+    with pytest.raises(MalformedId, match=f"this command takes a {noun} "):
+        sort_input(f"demo.{other}/x", namespace)
+
+
 def test_identity_is_full_id_and_owner():
     assert identity(FullId("core", "taxonomy", "term")) == {
         "full-id": "core.taxonomy/term", "owner": "core"}

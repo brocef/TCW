@@ -167,9 +167,19 @@ def test_ac18_a_hand_made_folder_breaking_the_rule_is_listed_and_reported(tcw, d
     [line] = [line for line in checked.out.splitlines() if "has.dot" in line]
     assert line.startswith("error: ")
     assert "rename it by hand" in line and "letters, digits" in line
-    shown = tcw(["capabilities", "show", "cli/has.dot"], demo)
-    assert shown.code == 2
-    assert "letters, digits" in shown.err
+    for argv in (["show", "cli/has.dot"], ["set", "cli/has.dot", "--field", "Status=Partial"],
+                 ["rm", "cli/has.dot"], ["show", "demo.capabilities/cli/has.dot"]):
+        refused = tcw(["capabilities", *argv], demo)
+        assert refused.code == 2, refused.err
+        assert "letters, digits" in refused.err and "rename it by hand" in refused.err
+        assert "or its id-path" not in refused.err
+    assert (demo / "docs" / "capabilities" / "cli" / "has.dot" / "meta.yaml").is_file()
+    entry(demo, "taxonomy", "has.dot")
+    for argv in (["show", "has.dot"], ["rm", "has.dot"]):
+        refused = tcw(["taxonomy", *argv], demo)
+        assert refused.code == 2, refused.err
+        assert "names no term" in refused.err and "rename it by hand" in refused.err
+    assert (demo / "docs" / "taxonomy" / "has.dot").is_dir()
 
 
 def _overridden(demo: Path) -> Path:

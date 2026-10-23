@@ -276,8 +276,8 @@ def test_remove_refuses_non_canonical_path_spelling(tmp_path, ref):
     write_cap(root, "routes", id="cap-rou001", Status="Supported")
     write_cap(root, "routes/login", id="cap-log001", Status="Supported")
     before = tree_hash(root)
-    with pytest.raises(TcwError, match="no such capability|names no capabilities "
-                                       "object|is not a full identifier"):
+    with pytest.raises(TcwError, match="no such capability|names no capability|"
+                                       "is not a full identifier"):
         store(root).remove(ref)
     _assert_nothing_removed(root, before)
 

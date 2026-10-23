@@ -47,6 +47,12 @@ _ID_PART_RULE = (f"letters, digits, '-' and '_', starting with a letter or "
                  f"digit, at most {ID_PART_LIMIT} characters")
 _PROJECT_RULE = "lowercase letters and digits joined by single hyphens"
 _FOLDER_RULE = "letters, digits, '-', '_', '.' and '~'"
+#: A folder on disk may break `_ID_PART_RULE` (Design 1.6): it is read and
+#: listed, but no text a command takes can reach it.
+_RENAME = ("no command can be given a folder whose name breaks that rule: "
+           "rename it by hand")
+#: What one object of each namespace is called in a message.
+NOUNS = {"taxonomy": "term", "capabilities": "capability", "work": "work item"}
 #: The characters an address may hold at all; anything else (`%`, `?`, `#`,
 #: a space, `:`, `@`) would be read by a URL parser as something other than
 #: part of the path.
@@ -212,8 +218,8 @@ def parse_full_id(text: Any, namespace: str | None = None) -> FullId:
     _check_namespace(found, text)
     if namespace is not None and found != namespace:
         raise MalformedId(
-            f"{text!r} names a {found} object; this command takes a "
-            f"{namespace} object ({namespace} namespace)")
+            f"{text!r} names a {NOUNS[found]}; this command takes a "
+            f"{NOUNS[namespace]} ({namespace} namespace)")
     problem = id_path_problem(id_path)
     if problem:
         raise MalformedId(f"{text!r} is not a full identifier: {problem}")
@@ -331,33 +337,63 @@ class Input:
 def sort_input(text: Any, namespace: str, key_pattern: re.Pattern | None = None) -> Input:
     """Sort command input into one form of Design 3.1 by its text alone.
     `key_pattern` is the tracker key rule, passed in by the work layer."""
+    noun = NOUNS[namespace]
     if not isinstance(text, str) or not text:
-        raise MalformedId(f"{text!r} names no {namespace} object")
+        raise MalformedId(f"{text!r} names no {noun}")
     if text.startswith(SCHEME):
         found = parse_address(text)
         if isinstance(found, FolderAddress):
             raise MalformedId(
-                f"{text} names a folder, not a {namespace} object; write "
+                f"{text} names a folder, not a {noun}; write "
                 f"tcw://<project>.{namespace}/<id-path>")
-        if found.namespace != namespace:
-            parse_full_id(str(found), namespace)
         full_id = found
     elif looks_full(text):
-        full_id = parse_full_id(text, namespace)
+        full_id = _typed_full_id(text, namespace)
     else:
         if key_pattern is not None and key_pattern.fullmatch(text):
             return Input("b", key=text)
         problem = id_path_problem(text)
         if problem:
-            raise MalformedId(
-                f"{text!r} names no {namespace} object: {problem}; write its "
-                f"full identifier (<project>.{namespace}/<id-path>) or its "
-                f"id-path in this project")
+            rename = f"; {_RENAME}" if _breaks_part_rule(text) else ""
+            raise MalformedId(f"{text!r} names no {noun}: {problem}{rename}")
         return Input("d", id_path=text)
+    if full_id.namespace != namespace:
+        parse_full_id(str(full_id), namespace)
     if (key_pattern is not None and "/" not in full_id.id_path
             and key_pattern.fullmatch(full_id.id_path)):
         return Input("c", full_id=full_id, key=full_id.id_path)
     return Input("a", full_id=full_id)
+
+
+def _typed_full_id(text: str, namespace: str) -> FullId:
+    """Command input with a `.` before its first `/` (Design 1.2). When it is
+    no full identifier it is no id-path either, since an id-part holds no
+    `.`, so it may be the name of a folder that breaks the rule, which only a
+    rename by hand makes reachable (Design 1.6)."""
+    pieces = text.partition("/")[0].split(".")
+    if "/" not in text or len(pieces) != 2:
+        raise MalformedId(
+            f"{text!r} names no {NOUNS[namespace]}: it is not a full identifier "
+            f"(<project>.{namespace}/<id-path>), and an id-path holds no '.' "
+            f"(each id-part is {_ID_PART_RULE}); {_RENAME}")
+    try:
+        return parse_full_id(text)
+    except MalformedId as error:
+        project, found = pieces
+        if is_project_id(project) and found in NAMESPACES:
+            id_path = text.partition("/")[2]
+            rename = f"; {_RENAME}" if _breaks_part_rule(id_path) else ""
+            raise MalformedId(f"{error}{rename}") from None
+        raise MalformedId(
+            f"{error}; and an id-path holds no '.' (each id-part is "
+            f"{_ID_PART_RULE}); {_RENAME}") from None
+
+
+def _breaks_part_rule(id_path: str) -> bool:
+    """Whether some non-empty part of `id_path` is one a folder on disk could
+    be named but an id-part cannot (Design 1.6), rather than a typing slip
+    such as `//`."""
+    return any(part and id_part_problem(part) for part in id_path.split("/"))
 
 
 def identity(full_id: FullId) -> dict[str, str]:
