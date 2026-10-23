@@ -230,4 +230,5 @@ init exited 0 having written `tcw:/qq.path/board/.gitkeep`); after it,
 
 ## The suite
 
-SUITE_RESULT
+`.venv/bin/pytest -q -p no:cacheprovider`, run in full as CI runs it, at `b2f4d595`
+(2026-10-23): `5752 passed, 114 skipped in 527.62s`.
