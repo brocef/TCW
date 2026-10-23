@@ -75,17 +75,21 @@ def test_ac24_an_absolute_or_home_location_stops_every_command(tcw, tmp_path, co
 
 
 @pytest.mark.parametrize("flag, key", [("--work-path", "work.path"),
-                                       ("--taxonomy-path", "taxonomy.path")])
+                                       ("--taxonomy-path", "taxonomy.path"),
+                                       ("--capabilities-path", "capabilities.path")])
 @pytest.mark.parametrize("value", ["/abs/store", "~/store"])
 def test_ac24_init_refuses_an_absolute_or_home_location_and_writes_nothing(
         tcw, tmp_path, flag, key, value):
+    """`init` refuses a tcw:// value for these options, so its message does
+    not offer one, as the message for a location read from the file does."""
     root = tmp_path / "fresh"
     root.mkdir()
     git(root, "init", "-q")
     component = key.split(".")[0]
     found = tcw(["init", "--id", "fresh", flag, value, component], root)
     assert found.code == 2
-    _says_relative(found.err, key)
+    assert f"{key} {RELATIVE}" in found.err, found.err
+    assert "tcw://" not in found.err and ".tcw/tcw-manifest.local.yaml" in found.err
     assert sorted(p.name for p in root.iterdir()) == [".git"]
 
 

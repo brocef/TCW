@@ -168,7 +168,10 @@ def test_ac18_a_hand_made_folder_breaking_the_rule_is_listed_and_reported(tcw, d
     assert line.startswith("error: ")
     assert "rename it by hand" in line and "letters, digits" in line
     for argv in (["show", "cli/has.dot"], ["set", "cli/has.dot", "--field", "Status=Partial"],
-                 ["rm", "cli/has.dot"], ["show", "demo.capabilities/cli/has.dot"]):
+                 ["rm", "cli/has.dot"], ["show", "demo.capabilities/cli/has.dot"],
+                 ["show", "tcw://demo.capabilities/cli/has.dot"],
+                 ["set", "tcw://demo.capabilities/cli/has.dot", "--field", "Status=Partial"],
+                 ["rm", "tcw://demo.capabilities/cli/has.dot"]):
         refused = tcw(["capabilities", *argv], demo)
         assert refused.code == 2, refused.err
         assert "letters, digits" in refused.err and "rename it by hand" in refused.err
@@ -179,6 +182,11 @@ def test_ac18_a_hand_made_folder_breaking_the_rule_is_listed_and_reported(tcw, d
         refused = tcw(["taxonomy", *argv], demo)
         assert refused.code == 2, refused.err
         assert "names no term" in refused.err and "rename it by hand" in refused.err
+    for argv in (["show", "tcw://demo.taxonomy/has.dot"],
+                 ["rm", "tcw://demo.taxonomy/has.dot"]):
+        refused = tcw(["taxonomy", *argv], demo)
+        assert refused.code == 2, refused.err
+        assert "letters, digits" in refused.err and "rename it by hand" in refused.err
     assert (demo / "docs" / "taxonomy" / "has.dot").is_dir()
 
 

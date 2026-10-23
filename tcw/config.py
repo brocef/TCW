@@ -319,18 +319,20 @@ def _lists(mapping: dict, path: KeyPath = ()) -> Iterator[tuple[KeyPath, list]]:
 STORE_COMPONENTS = ("taxonomy", "capabilities", "work")
 
 
-def store_location_problem(key: str | None, value: Any) -> str | None:
+def store_location_problem(key: str | None, value: Any, address: bool = True) -> str | None:
     """Design 7.1: why a store location in the shared file cannot be used, or
     None. An absolute path or one starting with `~` names a folder on one
     machine in a file every machine reads. `key` starts the message; None
-    leaves it out, for a problem whose line already names the key."""
+    leaves it out, for a problem whose line already names the key. `address`
+    False leaves out the tcw:// form, for `tcw init`, which refuses it."""
     if not isinstance(value, str) or value.startswith("tcw://"):
         return None
     if value.startswith("~") or Path(value).is_absolute():
-        return (f"{key + ' ' if key else ''}must be a path relative to the project, "
-                f"or a tcw:// .path address such as tcw://<project>.path/<folder>; a "
-                f"folder that sits elsewhere on this machine is placed by an entry "
-                f"in .tcw/tcw-manifest.local.yaml")
+        offer = (", or a tcw:// .path address such as tcw://<project>.path/<folder>"
+                 if address else "")
+        return (f"{key + ' ' if key else ''}must be a path relative to the project"
+                f"{offer}; a folder that sits elsewhere on this machine is placed by "
+                f"an entry in .tcw/tcw-manifest.local.yaml")
     return None
 
 

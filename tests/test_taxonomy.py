@@ -339,7 +339,7 @@ def test_resolution_ambiguous_errors(tmp_path):
     connect_sources(cons, a, b)
     write_connected_config(cons, "extends:\n  - a\n  - b\n")
     st = FsTaxonomyStore.open(cons)
-    with pytest.raises(AmbiguousRef):
+    with pytest.raises(AmbiguousRef, match=r"<project>\.taxonomy/Term$"):
         st.get_view("Term")
     assert st.get_inherited("a", "Term").origin == "a"                 # qualified is unambiguous
 

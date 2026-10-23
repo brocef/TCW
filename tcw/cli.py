@@ -72,7 +72,7 @@ def run_init(components: list[str], project_id: str | None = None,
                              "inferred")
     from tcw.config import store_location_problem
     for c, text in given.items():
-        problem = store_location_problem(f"{c}.path", text)
+        problem = store_location_problem(f"{c}.path", text, address=False)
         if problem:
             raise UsageError(problem)
     try:

@@ -197,6 +197,10 @@ RENAME = "no command can be given a folder whose name breaks that rule: rename i
     ("demo.capabilities/cli/has.dot", "capabilities", "the id-part 'has.dot' breaks"),
     ("has.dot/x", "capabilities", "'dot' is not a namespace"),
     ("-x", "work", "the id-part '-x' breaks the rule"),
+    ("tcw://demo.capabilities/cli/has.dot", "capabilities", "the id-part 'has.dot' breaks"),
+    ("tcw://demo.taxonomy/has.dot", "taxonomy", "the id-part 'has.dot' breaks"),
+    ("tcw://demo.work/2026-01-01-a.b", "work", "the id-part '2026-01-01-a.b' breaks"),
+    ("tcw://demo.taxonomy/has.dot", "capabilities", "the id-part 'has.dot' breaks"),
 ])
 def test_input_naming_a_folder_that_breaks_the_rule_says_to_rename_it(text, namespace,
                                                                         says):
@@ -211,7 +215,8 @@ def test_input_naming_a_folder_that_breaks_the_rule_says_to_rename_it(text, name
     assert "write" not in message.replace(RENAME, ""), message
 
 
-@pytest.mark.parametrize("text", ["cli//x", "cli/", "demo.work/x//y"])
+@pytest.mark.parametrize("text", ["cli//x", "cli/", "demo.work/x//y",
+                                  "tcw://demo.work/x//y"])
 def test_a_typing_slip_is_not_called_a_folder_to_rename(text):
     with pytest.raises(MalformedId) as caught:
         sort_input(text, "work", KEY)

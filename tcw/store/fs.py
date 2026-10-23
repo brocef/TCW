@@ -645,7 +645,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     # every machine (TCW-110 Design 7.1).
     from tcw.config import store_location_problem
     for c, given in paths.items():
-        problem = store_location_problem(f"{c}.path", str(given))
+        problem = store_location_problem(f"{c}.path", str(given), address=False)
         if problem:
             raise UsageError(problem)
     work_path = paths.get("work")
@@ -2003,7 +2003,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             project_id = matches[0][0]
             return self._term_via(inherited_stores[project_id], ref, project_id)
         if len(matches) > 1:
-            raise AmbiguousRef(ref)
+            raise AmbiguousRef(ref, "taxonomy")
         return None
 
     def get_inherited(self, alias: str, slug: str) -> Term | None:
@@ -2656,7 +2656,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             return self._apply_override(self.extends[a]._capability(identifier, origin=a),
                                         a, self._override_index())
         if len(matches) > 1:
-            raise AmbiguousRef(identifier)
+            raise AmbiguousRef(identifier, "capabilities")
         return None
 
     def get_inherited(self, alias: str, path: str) -> Capability | None:

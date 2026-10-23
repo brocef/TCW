@@ -36,11 +36,11 @@ class AmbiguousRef(UsageError, RefError):
     ("x/thing") reads as noise rather than an explanation.
     """
 
-    def __init__(self, ref: str):
+    def __init__(self, ref: str, namespace: str):
         self.ref = ref
         super().__init__(f"ambiguous ref '{ref}': more than one project this one "
                          f"inherits from holds it; name it by its full identifier, "
-                         f"<project>.<namespace>/{ref}")
+                         f"<project>.{namespace}/{ref}")
 
 
 class StaleRevision(Exception):

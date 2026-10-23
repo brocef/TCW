@@ -397,6 +397,7 @@ def test_cli_rm_ambiguous(tmp_path, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "tcw capabilities rm: ambiguous ref 'auth/login'" in err
     assert "name it by its full identifier" in err and "alias prefix" not in err
+    assert "<project>.capabilities/auth/login" in err, err
     assert main(["capabilities", "show", "base-a.capabilities/auth/login"]) == 0
 
 

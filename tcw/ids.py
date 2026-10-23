@@ -341,7 +341,10 @@ def sort_input(text: Any, namespace: str, key_pattern: re.Pattern | None = None)
     if not isinstance(text, str) or not text:
         raise MalformedId(f"{text!r} names no {noun}")
     if text.startswith(SCHEME):
-        found = parse_address(text)
+        try:
+            found = parse_address(text)
+        except MalformedId as error:
+            raise MalformedId(f"{error}{_address_rename(text)}") from None
         if isinstance(found, FolderAddress):
             raise MalformedId(
                 f"{text} names a folder, not a {noun}; write "
@@ -387,6 +390,18 @@ def _typed_full_id(text: str, namespace: str) -> FullId:
         raise MalformedId(
             f"{error}; and an id-path holds no '.' (each id-part is "
             f"{_ID_PART_RULE}); {_RENAME}") from None
+
+
+def _address_rename(text: str) -> str:
+    """The Design 1.6 rename for an object address whose id-path a folder on
+    disk could hold but an id-part cannot, as `_typed_full_id` gives it for
+    the full identifier; empty otherwise."""
+    authority, _, id_path = text[len(SCHEME):].partition("/")
+    pieces = authority.split(".")
+    if (len(pieces) == 2 and is_project_id(pieces[0]) and pieces[1] in NAMESPACES
+            and _breaks_part_rule(id_path)):
+        return f"; {_RENAME}"
+    return ""
 
 
 def _breaks_part_rule(id_path: str) -> bool:
