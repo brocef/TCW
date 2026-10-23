@@ -22,7 +22,7 @@ and all three resolve through one ladder, so what is true of one is true of the
 others.
 
 `work.path` says where the store sits on **this** machine. Beside it I can add a
-`repository` block saying where the store *comes from*, so a machine that has
+`repository` block saying where the store _comes from_, so a machine that has
 never seen it can obtain it — see
 [declaring the home repository](tcw://C/work/declare-the-work-stores-home-repository).
 The declaration is a fallback and never an override: a store already present at
