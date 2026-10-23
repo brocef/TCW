@@ -124,6 +124,39 @@ class Project:
     locator: Any
 
 
+#: What a parent link can pass down (TCW-108 Design 1.2), in the order every
+#: list of them is printed.
+AXES = ("taxonomy", "capabilities", "config")
+
+
+@dataclass(frozen=True)
+class ParentLink:
+    """One entry of a project's `parents:`: the parent's ID, and the axes the
+    link passes down (a subset of `AXES`; all three for `inherit: all`)."""
+
+    id: str
+    inherit: frozenset = frozenset(AXES)
+
+
+@dataclass(frozen=True)
+class LoadOrder:
+    """A project's load order (TCW-108 Design 4): the project and every
+    ancestor, farthest first and the project itself last. `missing` holds the
+    IDs in `ids` that are not on this machine and `unreadable` those whose own
+    parent links could not be read; each is placed as a project with no
+    parents (Design 6.4). `warning` is Design 4.5's text when C3 found no
+    order and the depth-first order is used instead."""
+
+    ids: tuple
+    missing: tuple = ()
+    unreadable: tuple = ()
+    warning: str | None = None
+
+    @property
+    def complete(self) -> bool:
+        return not self.missing and not self.unreadable
+
+
 @dataclass(frozen=True)
 class UnreachableProject:
     """A connected project that is declared here but not available here.
