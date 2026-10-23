@@ -25,15 +25,16 @@ description, a capability's body — is read from standard input.
 **One set of exit codes**, the same for every command, and listed at the end of
 `tcw --help`:
 
-| Code | Meaning                                                                            |
-| ---- | ---------------------------------------------------------------------------------- |
-| 0    | it worked (including `tcw validate` with only warnings)                            |
-| 1    | an error: TCW, its configuration or the work backend failed                        |
-| 2    | a usage error: a malformed command, option or value                                |
-| 3    | refused: a gate, a name already taken, or a record something else still depends on |
-| 4    | not found: no such item, term, capability, tag or ticket                           |
-| 5    | unreachable: Jira, or a declared project that is not on this machine               |
-| 6    | the work item moved, but something after the move failed                           |
+| Code | Meaning                                                                                                                                                    |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | it worked (including `tcw validate` with only warnings)                                                                                                    |
+| 1    | an error: TCW, its configuration or the work backend failed                                                                                                |
+| 2    | a usage error: a malformed command, option or value                                                                                                        |
+| 3    | refused: a gate, a name already taken, or a record something else still depends on                                                                         |
+| 4    | not found: no such item, term, capability, tag or ticket                                                                                                   |
+| 5    | unreachable: Jira, or a declared project that is not on this machine                                                                                       |
+| 6    | the work item moved, but something after the move failed                                                                                                   |
+| 7    | something this project inherits is not available here: a project it inherits from is not on this machine, or that project's parent links could not be read |
 
 A command that fails after it has already created or renamed something still
 prints that thing's name on standard output, as success would, so I never lose

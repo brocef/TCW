@@ -34,29 +34,29 @@ item's full slug (`project/folder`), a Jira ticket key, a qualified path of a
 taxonomy entry or capability, or a project ID. More detail is available only
 through `--json`, on the commands that offer it.
 
-| Command | Standard output |
-| --- | --- |
-| `tcw work new` | the new item's full slug; a ticket key when TCW stopped after creating a ticket |
-| `tcw work list` | one full slug per line |
-| `tcw work show` | the item's properties, its request and its comments, newest first |
-| `tcw work path` | one path |
-| `tcw work advance`, `tcw work discard` | the stage the item is at after the move; with `--dry-run`, the stage it would move to |
-| `tcw work rename` | the item's new full slug |
-| `tcw work stage prompt`, `tcw work procedure` | the composed instructions |
-| `tcw work lifecycle` | every stage, its kind, whether it is turned on, and its bindings |
-| `tcw work docs` | the project's documentation entries |
-| `tcw work tags list` | one tag per line |
-| `tcw work tickets list` | one Jira ticket key per line |
-| `tcw work tickets adopt` | the new item's full slug |
-| `tcw taxonomy list`, `tcw capabilities list`, and their `search` | one qualified path per line |
-| `tcw taxonomy add`, `tcw capabilities add` | the new record's qualified path |
-| `tcw taxonomy show`, `tcw capabilities show` | the record |
-| `tcw taxonomy path`, `tcw capabilities path` | the store's folder |
-| `tcw capabilities drift` | one finding per line, `<kind>: <path>: <message>`; nothing when there is none |
-| `tcw validate` | one finding per line, `<severity>: <where>: <message>`; nothing when there is none |
-| `tcw projects list` | one project ID per line, this project first |
-| `tcw config show` | the configuration in effect, as YAML |
-| `tcw serve` | the address the web viewer is served at |
+| Command                                                          | Standard output                                                                       |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `tcw work new`                                                   | the new item's full slug; a ticket key when TCW stopped after creating a ticket       |
+| `tcw work list`                                                  | one full slug per line                                                                |
+| `tcw work show`                                                  | the item's properties, its request and its comments, newest first                     |
+| `tcw work path`                                                  | one path                                                                              |
+| `tcw work advance`, `tcw work discard`                           | the stage the item is at after the move; with `--dry-run`, the stage it would move to |
+| `tcw work rename`                                                | the item's new full slug                                                              |
+| `tcw work stage prompt`, `tcw work procedure`                    | the composed instructions                                                             |
+| `tcw work lifecycle`                                             | every stage, its kind, whether it is turned on, and its bindings                      |
+| `tcw work docs`                                                  | the project's documentation entries                                                   |
+| `tcw work tags list`                                             | one tag per line                                                                      |
+| `tcw work tickets list`                                          | one Jira ticket key per line                                                          |
+| `tcw work tickets adopt`                                         | the new item's full slug                                                              |
+| `tcw taxonomy list`, `tcw capabilities list`, and their `search` | one qualified path per line                                                           |
+| `tcw taxonomy add`, `tcw capabilities add`                       | the new record's qualified path                                                       |
+| `tcw taxonomy show`, `tcw capabilities show`                     | the record                                                                            |
+| `tcw taxonomy path`, `tcw capabilities path`                     | the store's folder                                                                    |
+| `tcw capabilities drift`                                         | one finding per line, `<kind>: <path>: <message>`; nothing when there is none         |
+| `tcw validate`                                                   | one finding per line, `<severity>: <where>: <message>`; nothing when there is none    |
+| `tcw projects list`                                              | one project ID per line, this project first                                           |
+| `tcw config show`                                                | the configuration in effect, as YAML                                                  |
+| `tcw serve`                                                      | the address the web viewer is served at                                               |
 
 Every other command, such as `tcw work edit`, `tcw work comment`,
 `tcw init` and `tcw provision`, prints nothing on stdout.
@@ -137,15 +137,16 @@ Every command exits with one of these codes. The numbers live in
 `tcw/exit.py`. Inside TCW, each kind of failure is an exception class in
 `tcw/errors.py` that carries its code; a script needs only the numbers.
 
-| Code | Meaning | Examples |
-| --- | --- | --- |
-| 0 | Success. | The command did what it was asked; `tcw validate` found no errors (it may still have printed warnings). |
-| 1 | An error: the backend or TCW itself failed. | `tcw-config.yaml` has a problem every command refuses on; a file could not be written; `tcw validate` found an error; no identity is configured for `--mine` or `--assign-me`. |
-| 2 | A usage error: the command was asked for something that cannot be asked. | An unknown stage or option; `--force` without `--reason`; a malformed slug. Nothing was read or changed. |
-| 3 | Refused: a legal request that a rule or a gate turned down. Nothing changed. | A failing `pre` hook or built-in gate; a move that skips a stage without `--force`; a name already taken; creating an item in an upstream project, in a project nothing here declares, or in a project that is declared but not on this machine and has no `jira` block; changing another project's item. |
-| 4 | Not found. | No such item, taxonomy entry, capability, tag or ticket; a slug naming a project nothing here declares. |
-| 5 | Unreachable. | Jira could not be reached; a command had to read a connected project that is declared but is not on this machine (`tcw provision` obtains it). |
-| 6 | The item moved, but something after the move failed. | A `post` hook failed; the trace comment that records why the item moved could not be written. The move stands. |
+| Code | Meaning                                                                      | Examples                                                                                                                                                                                                                                                                               |
+| ---- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Success.                                                                     | The command did what it was asked; `tcw validate` found no errors (it may still have printed warnings).                                                                                                                                                                                |
+| 1    | An error: the backend or TCW itself failed.                                  | `tcw-config.yaml` has a problem every command refuses on; a file could not be written; `tcw validate` found an error; no identity is configured for `--mine` or `--assign-me`.                                                                                                         |
+| 2    | A usage error: the command was asked for something that cannot be asked.     | An unknown stage or option; `--force` without `--reason`; a malformed slug. Nothing was read or changed.                                                                                                                                                                               |
+| 3    | Refused: a legal request that a rule or a gate turned down. Nothing changed. | A failing `pre` hook or built-in gate; a move that skips a stage without `--force`; a name already taken; creating an item in a project that is read-only from here, in a project nothing here declares, or in a project that is not on this machine; changing another project's item. |
+| 4    | Not found.                                                                   | No such item, taxonomy entry, capability, tag or ticket; a slug naming a project nothing here declares.                                                                                                                                                                                |
+| 5    | Unreachable.                                                                 | Jira could not be reached; a command had to read a connected project that is not on this machine (the manifest entry that places it says where it should be).                                                                                                                          |
+| 6    | The item moved, but something after the move failed.                         | A `post` hook failed; the trace comment that records why the item moved could not be written. The move stands.                                                                                                                                                                         |
+| 7    | Something this project inherits is not available here.                       | A project it inherits from is not on this machine, or that project's parent links could not be read, and the command needs what it passes down.                                                                                                                                        |
 
 Creating an item in another project (`tcw work new --project <id>`) shows how
 the codes fit together. When the target is declared, is not on this machine,

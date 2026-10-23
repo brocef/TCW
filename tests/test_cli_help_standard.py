@@ -148,7 +148,7 @@ def test_top_level_help_carries_the_exit_codes_and_the_stream_rule(capsys):
     with pytest.raises(SystemExit):
         build_parser().parse_args(["--help"])
     text = capsys.readouterr().out
-    for code in range(7):
+    for code in range(8):
         assert re.search(rf"^\s+{code}\s", text, re.MULTILINE), code
     assert "stdout" in text and "stderr" in text
 

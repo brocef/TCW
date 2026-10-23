@@ -5,40 +5,41 @@ Every `tcw work` command, from `tcw work --help` and each command's own
 output carries only what a command produces, one identifier per line, with
 details through `--json`; everything said to a person goes to standard error.
 
-| Goal | Command |
-| --- | --- |
-| create an item | `tcw work new "<title>" [--priority <p>] [--effort <e>] [--complexity <c>] [--tag <t> ...] [--assignee <name> \| --assign-me] [--parent <slug>] [--blocked-by <slug> ...]`, with what it asks for on stdin. It starts at request; `--stage inbox` starts it as an arrival (filesystem only). Prints the new slug |
-| file into another project | `tcw work new "<title>" --project <id>`; prints the new slug, or a ticket key when that project is reached only through Jira |
-| list unfinished items | `tcw work list [--stage <s> ...] [--tag <t> ...] [--parent <slug>] [--assignee <name> \| --mine] [--all] [--json]`; each repeated flag matches any of its values; `--all` adds completed and discarded items |
-| read an item | `tcw work show <slug> [--json]`: its properties, its request, then its comments, newest first |
-| a path | `tcw work path` (the store) · `tcw work path <slug>` (the item's folder) · `tcw work path <slug> <stage>` (a stage's document or folder) · `--next` (the stage's next round) · `--handoff` (a new handoff file). Exits 3 for a stage the backend keeps |
-| move an item | `tcw work advance <slug> [--to <stage>] [--dry-run]`; prints the stage it is at after the move |
-| move past a refusing gate | `tcw work advance <slug> --force --reason "<why>"` |
-| abandon an item | `tcw work discard <slug> --reason "<why>"` |
-| add a comment | `tcw work comment <slug>`, with the text on stdin |
-| change properties | `tcw work edit <slug> [--title <t>] [--priority <p>] [--effort <e>] [--complexity <c>] [--tag <t>] [--untag <t>] [--assignee <name> \| --assign-me] [--parent <slug>] [--blocked-by <slug>] [--unblocked-by <slug>] [--blocks <slug>]`; an empty value clears a single-valued property |
-| rename the folder | `tcw work rename <slug> <new-name>`, the words after the date; prints the new slug |
-| a stage's instructions | `tcw work stage prompt <stage> [<slug>] [--no-exec]`; runs no checks |
-| a procedure | `tcw work procedure <id> [<slug>] [--no-exec]`, one of `documentation-sync`, `create-work`, `audit-backlog`, `search`, `triage-issues`, `unattended-work`, `pause-work`. Outside a TCW project, TCW's own text |
-| the stage table and bindings | `tcw work lifecycle [--stage <s>] [--json]` |
-| documentation entries | `tcw work docs [--json]`: the documents this project keeps in step with its code |
-| tags | `tcw work tags list` · `tcw work tags add <tag> ...` · `tcw work tags rm <tag> ...`; see [`tags.md`](tags.md) |
-| Jira arrivals | `tcw work tickets list [--json]` (tickets not yet items; `--json` carries summary, status, reporter, link and description) · `tcw work tickets adopt <KEY>` (make one an item at request) |
-| check the project | `tcw validate` · `tcw validate --remote` (a Jira-mode project against Jira) |
-| obtain what is declared but missing here | `tcw provision [--component <axis>] [--dry-run]` |
-| the projects this one declares | `tcw projects list` |
+| Goal                                     | Command                                                                                                                                                                                                                                                                                                          |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| create an item                           | `tcw work new "<title>" [--priority <p>] [--effort <e>] [--complexity <c>] [--tag <t> ...] [--assignee <name> \| --assign-me] [--parent <slug>] [--blocked-by <slug> ...]`, with what it asks for on stdin. It starts at request; `--stage inbox` starts it as an arrival (filesystem only). Prints the new slug |
+| file into another project                | `tcw work new "<title>" --project <id>`; prints the new slug, or a ticket key when that project is reached only through Jira                                                                                                                                                                                     |
+| list unfinished items                    | `tcw work list [--stage <s> ...] [--tag <t> ...] [--parent <slug>] [--assignee <name> \| --mine] [--all] [--json]`; each repeated flag matches any of its values; `--all` adds completed and discarded items                                                                                                     |
+| read an item                             | `tcw work show <slug> [--json]`: its properties, its request, then its comments, newest first                                                                                                                                                                                                                    |
+| a path                                   | `tcw work path` (the store) · `tcw work path <slug>` (the item's folder) · `tcw work path <slug> <stage>` (a stage's document or folder) · `--next` (the stage's next round) · `--handoff` (a new handoff file). Exits 3 for a stage the backend keeps                                                           |
+| move an item                             | `tcw work advance <slug> [--to <stage>] [--dry-run]`; prints the stage it is at after the move                                                                                                                                                                                                                   |
+| move past a refusing gate                | `tcw work advance <slug> --force --reason "<why>"`                                                                                                                                                                                                                                                               |
+| abandon an item                          | `tcw work discard <slug> --reason "<why>"`                                                                                                                                                                                                                                                                       |
+| add a comment                            | `tcw work comment <slug>`, with the text on stdin                                                                                                                                                                                                                                                                |
+| change properties                        | `tcw work edit <slug> [--title <t>] [--priority <p>] [--effort <e>] [--complexity <c>] [--tag <t>] [--untag <t>] [--assignee <name> \| --assign-me] [--parent <slug>] [--blocked-by <slug>] [--unblocked-by <slug>] [--blocks <slug>]`; an empty value clears a single-valued property                           |
+| rename the folder                        | `tcw work rename <slug> <new-name>`, the words after the date; prints the new slug                                                                                                                                                                                                                               |
+| a stage's instructions                   | `tcw work stage prompt <stage> [<slug>] [--no-exec]`; runs no checks                                                                                                                                                                                                                                             |
+| a procedure                              | `tcw work procedure <id> [<slug>] [--no-exec]`, one of `documentation-sync`, `create-work`, `audit-backlog`, `search`, `triage-issues`, `unattended-work`, `pause-work`. Outside a TCW project, TCW's own text                                                                                                   |
+| the stage table and bindings             | `tcw work lifecycle [--stage <s>] [--json]`                                                                                                                                                                                                                                                                      |
+| documentation entries                    | `tcw work docs [--json]`: the documents this project keeps in step with its code                                                                                                                                                                                                                                 |
+| tags                                     | `tcw work tags list` · `tcw work tags add <tag> ...` · `tcw work tags rm <tag> ...`; see [`tags.md`](tags.md)                                                                                                                                                                                                    |
+| Jira arrivals                            | `tcw work tickets list [--json]` (tickets not yet items; `--json` carries summary, status, reporter, link and description) · `tcw work tickets adopt <KEY>` (make one an item at request)                                                                                                                        |
+| check the project                        | `tcw validate` · `tcw validate --remote` (a Jira-mode project against Jira)                                                                                                                                                                                                                                      |
+| obtain what is declared but missing here | `tcw provision [--component <axis>] [--dry-run]`                                                                                                                                                                                                                                                                 |
+| the projects this one declares           | `tcw projects list`                                                                                                                                                                                                                                                                                              |
 
 ## Exit codes
 
-| Code | Meaning |
-| --- | --- |
-| 0 | done |
-| 1 | the backend or TCW failed |
-| 2 | a malformed command or value |
-| 3 | refused: a gate, a name collision, or a record that depends on this one |
-| 4 | not found: no such item, term, capability, tag or ticket |
-| 5 | unreachable: Jira, or a declared project not on this machine |
-| 6 | the item moved, but something after the move failed |
+| Code | Meaning                                                                                                                                                    |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | done                                                                                                                                                       |
+| 1    | the backend or TCW failed                                                                                                                                  |
+| 2    | a malformed command or value                                                                                                                               |
+| 3    | refused: a gate, a name collision, or a record that depends on this one                                                                                    |
+| 4    | not found: no such item, term, capability, tag or ticket                                                                                                   |
+| 5    | unreachable: Jira, or a declared project not on this machine                                                                                               |
+| 6    | the item moved, but something after the move failed                                                                                                        |
+| 7    | something this project inherits is not available here: a project it inherits from is not on this machine, or that project's parent links could not be read |
 
 On exit 3 from `advance`, read standard error: it names the gate and why. Do
 not reach for `--force` to get past a gate you have not understood; it needs a
@@ -68,8 +69,8 @@ open with front matter:
 
 ```yaml
 ---
-verdict: accepted        # or rejected
-judges: 3                # the newest implement round
+verdict: accepted # or rejected
+judges: 3 # the newest implement round
 ---
 ```
 

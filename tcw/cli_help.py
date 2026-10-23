@@ -46,4 +46,6 @@ exit codes:
   3  refused: a gate, a name collision or a record that depends on this one
   4  not found: no such item, term, capability, tag or ticket
   5  unreachable: Jira, or a declared project not on this machine
-  6  the item moved, but something after the move failed"""
+  6  the item moved, but something after the move failed
+  7  inherited unavailable: a project this one inherits from is not on this
+     machine, or its parent links could not be read"""

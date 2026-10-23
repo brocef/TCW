@@ -106,6 +106,27 @@ class UnknownProject(ProjectGraphError):
     code = codes.ERROR
 
 
+class InheritedUnavailable(TcwError):
+    """Something the project inherits is not available here (TCW-108 Design
+    6.2): a project it inherits an axis from is not on this machine, or that
+    project's own parent links could not be read, so what reaches it from
+    above is unknown.
+
+    `project` is the ID of the project that is not available, `axis` the axis
+    the command needed, and `reason` `"missing"` or `"unreadable"`, so `tcw
+    validate` can report it as "could not check" without parsing the
+    message."""
+
+    code = codes.INHERITED_UNAVAILABLE
+
+    def __init__(self, message: str = "", *, project: str | None = None,
+                 axis: str | None = None, reason: str | None = None):
+        super().__init__(message)
+        self.project = project
+        self.axis = axis
+        self.reason = reason
+
+
 class MovedWithoutNote(TcwError):
     """The item's stage changed, but the note meant to record why did not, or,
     when `uncertain`, may not have: the connection failed and whether the note
