@@ -273,14 +273,15 @@ def test_ac11_the_records_gate_refuses_a_3x_entry(tmp_path, monkeypatch, capsys)
 def app_and_server(tmp_path):
     """`app` with a child `server` holding the capability `x`."""
     from tcw.store.fs import init
-    from tests.work.projects import connect, make_project
+    from tests.projectfiles import connect_projects
+    from tests.work.projects import make_project
     app = make_project(tmp_path, "app")
     server = make_project(tmp_path, "server")
     init(["capabilities"], app)
     init(["capabilities"], server)
     write_cap(server, "x", id="cap-x00001", Status="Supported")
-    connect(app, server, "children")
-    connect(server, app, "parent")
+    connect_projects(app, "children", "server")
+    connect_projects(server, "parent", "app")
     return app, server
 
 
