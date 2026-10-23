@@ -60,6 +60,12 @@ def run_init(components: list[str], project_id: str | None = None,
         if not isinstance(configured, dict) or not configured.get("id"):
             raise UsageError("a new project needs `--id <project-id>`; IDs are not "
                              "inferred")
+    from tcw.config import store_location_problem
+    given = {**(paths or {}), **({"work": work_path} if work_path is not None else {})}
+    for c, text in given.items():
+        problem = store_location_problem(f"{c}.path", text)
+        if problem:
+            raise UsageError(problem)
     try:
         written = init(
             components, root, project_id,

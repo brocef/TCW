@@ -227,6 +227,19 @@ def _configured_path_problem(project_root: Path, comp: str) -> str | None:
     return None
 
 
+def _refused_location(project_root: Path, comp: str) -> bool:
+    """Whether the shared file gives `<comp>.path` a location it refuses
+    (TCW-110 Design 7.1), which the configuration findings already report."""
+    from tcw.config import store_location_problem
+    try:
+        config = load_yaml(project_root / SENTINEL, unique=True)
+    except Exception:
+        return False
+    section = config.get(comp) if isinstance(config, dict) else None
+    value = section.get("path") if isinstance(section, dict) else None
+    return store_location_problem(f"{comp}.path", value) is not None
+
+
 def _config_file(project_root: Path) -> str:
     return _rel(project_root / SENTINEL, project_root)
 
@@ -426,6 +439,8 @@ def validate(project_root: Path, *, target: ValidationTarget | None = None,
         # says why. The work store is not among them: its checks are (e).
         components = [target.axis] if target is not None else list(trees)
         for comp in components:
+            if _refused_location(project_root, comp):
+                continue            # reported once, by `config_findings`
             # Before the component's own check, so a project reads "your path is
             # broken" ahead of whatever the store it fell back to has to say.
             configured = _configured_path_problem(project_root, comp)

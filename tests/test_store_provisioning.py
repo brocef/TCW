@@ -10,6 +10,7 @@ the code under test never learns the difference.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -404,7 +405,7 @@ def test_a_store_already_here_wins_over_the_declaration(tmp_path):
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
     here = _local_store(_repo(tmp_path / "orchestrator-local") / "stores" / "corelib")
-    _write_config(code, path=str(here),
+    _write_config(code, path=os.path.relpath(here, code),
                   repository={"url": str(_remote_with_store(tmp_path)),
                               "path": "docs/work/corelib"})
 
@@ -596,7 +597,7 @@ def test_provision_reports_a_local_store_without_contacting_the_remote(
     remote = _remote_with_store(tmp_path)
     _write_config(
         code,
-        path=str(here),
+        path=os.path.relpath(here, code),
         repository={"url": str(remote), "path": "docs/work/corelib"},
     )
     monkeypatch.chdir(code)
@@ -1170,7 +1171,8 @@ def test_a_configured_tree_path_is_followed(tmp_path):
     """Criterion 6's other half: the new local locator actually works."""
     elsewhere = tmp_path / "trees" / "taxonomy"
     elsewhere.mkdir(parents=True)
-    code = _tree_node(tmp_path, "taxonomy", path=str(elsewhere))
+    code = _tree_node(tmp_path, "taxonomy",
+                      path=os.path.relpath(elsewhere, tmp_path / "code"))
 
     assert FsTaxonomyStore.open(code).root == elsewhere.resolve()
 
@@ -1210,7 +1212,7 @@ def test_a_local_tree_store_wins_over_a_declaration(tmp_path):
     """Criterion 4 per component. A declaration is a fallback, never an override."""
     here = tmp_path / "trees" / "taxonomy"
     here.mkdir(parents=True)
-    code = _tree_node(tmp_path, "taxonomy", path=str(here),
+    code = _tree_node(tmp_path, "taxonomy", path=os.path.relpath(here, tmp_path / "code"),
                       repository={"url": "https://example.invalid/orchestrator.git",
                                   "path": "trees/taxonomy"})
 
@@ -1388,7 +1390,7 @@ def test_a_local_store_wins_at_the_command_for_every_component(
     else:
         here = tmp_path / "local" / component
         here.mkdir(parents=True)
-    code = _tree_node(tmp_path, component, path=str(here),
+    code = _tree_node(tmp_path, component, path=os.path.relpath(here, tmp_path / "code"),
                       repository={"url": str(remote), "path": "trees/thing",
                                   "checkout": str(tmp_path / "co")})
     monkeypatch.chdir(code)
@@ -1440,12 +1442,12 @@ def test_init_scaffolds_a_tree_store_at_a_configured_location(tmp_path, monkeypa
     monkeypatch.chdir(code)
     elsewhere = tmp_path / "trees" / component
 
-    assert main(["init", "--id", "corelib", f"--{component}-path", str(elsewhere),
-                 component]) == 0
+    assert main(["init", "--id", "corelib", f"--{component}-path",
+                 f"../trees/{component}", component]) == 0
 
     assert elsewhere.is_dir()
     assert yaml.safe_load((code / ".tcw/tcw-config.yaml").read_text())[component]["path"] \
-        == str(elsewhere)
+        == f"../trees/{component}"
     assert STORE_CLASSES[component].open(code).root == elsewhere.resolve()
 
 
@@ -1589,7 +1591,8 @@ def test_extends_add_writes_the_nodes_config_and_touches_neither_repository(tmp_
     and both indexes stay as they were."""
     store_repo = _repo(tmp_path / "store-repo")
     (store_repo / "taxonomy").mkdir(parents=True)
-    consumer, _ = _federation_pair(tmp_path, taxonomy_path=str(store_repo / "taxonomy"))
+    consumer, _ = _federation_pair(
+        tmp_path, taxonomy_path=os.path.relpath(store_repo / "taxonomy", tmp_path / "consumer"))
 
     assert fs.git_root(consumer) != fs.git_root(store_repo / "taxonomy")
 
@@ -1606,7 +1609,7 @@ def test_extends_add_writes_the_nodes_config_and_touches_neither_repository(tmp_
     # names this key, and the sibling-key half of that criterion is asserted in
     # the test above, whose fixture deliberately has no `taxonomy.path` at all.
     config = yaml.safe_load((consumer / ".tcw/tcw-config.yaml").read_text())
-    assert config["taxonomy"]["path"] == str(store_repo / "taxonomy")
+    assert config["taxonomy"]["path"] == "../store-repo/taxonomy"
     assert config["taxonomy"]["extends"] == ["source"]
 
 

@@ -1,6 +1,7 @@
 """`tcw validate` finds a taxonomy or capabilities store where it really is
 (spec: 2026-09-21-make-tcw-validate-check-taxonomy-and-capabilities-stores-moved-by-their-path-setting)."""
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -150,7 +151,7 @@ def test_a_store_shared_by_two_projects_is_reported_by_each(tmp_path, monkeypatc
     shared.mkdir()
     term(shared, "payment", relatesTo=["invoice"])
     for root in (parent, child):
-        set_component_key(root, "taxonomy", "path", str(shared))
+        set_component_key(root, "taxonomy", "path", os.path.relpath(shared, root))
     for root in (parent, child):
         monkeypatch.chdir(root)
         assert main(["validate"]) == 1

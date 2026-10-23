@@ -7,6 +7,7 @@ project that upgraded without moving it silently lost every inherited entry,
 with nothing pointing at the cause. `check` (and `tcw validate`) now name the
 file and the fix; nothing parses, rewrites or deletes it.
 """
+import os
 import shutil
 from pathlib import Path
 
@@ -119,7 +120,7 @@ def test_a_leftover_outside_the_node_is_named_by_its_absolute_path(
     consumer = _federated(tmp_path)
     elsewhere = tmp_path / f"elsewhere-{component}"
     shutil.move(str(consumer / "docs" / component), str(elsewhere))
-    set_component_key(consumer, component, "path", str(elsewhere))
+    set_component_key(consumer, component, "path", os.path.relpath(elsewhere, consumer))
     (elsewhere / LEFTOVER[component]).write_text("extends: [shared]\n")
 
     _assert_one_leftover(STORE[component].open(consumer).check(), component,
@@ -248,7 +249,8 @@ def test_validate_reports_a_leftover_outside_the_node_once(tmp_path):
     consumer = _federated(tmp_path)
     elsewhere = tmp_path / "elsewhere"
     shutil.move(str(consumer / "docs" / "capabilities"), str(elsewhere))
-    set_component_key(consumer, "capabilities", "path", str(elsewhere))
+    set_component_key(consumer, "capabilities", "path",
+                      os.path.relpath(elsewhere, consumer))
     (elsewhere / ".config.yaml").write_text("extends: [shared]\n")
 
     _assert_one_leftover(validate(consumer), "capabilities",

@@ -315,6 +315,37 @@ def _lists(mapping: dict, path: KeyPath = ()) -> Iterator[tuple[KeyPath, list]]:
             yield here, value
 
 
+#: The three store locations' keys (TCW-110 Design 7.1).
+STORE_COMPONENTS = ("taxonomy", "capabilities", "work")
+
+
+def store_location_problem(key: str | None, value: Any) -> str | None:
+    """Design 7.1: why a store location in the shared file cannot be used, or
+    None. An absolute path or one starting with `~` names a folder on one
+    machine in a file every machine reads. `key` starts the message; None
+    leaves it out, for a problem whose line already names the key."""
+    if not isinstance(value, str) or value.startswith("tcw://"):
+        return None
+    if value.startswith("~") or Path(value).is_absolute():
+        return (f"{key + ' ' if key else ''}must be a path relative to the project, "
+                f"or a tcw:// .path address such as tcw://<project>.path/<folder>; a "
+                f"folder that sits elsewhere on this machine is placed by an entry "
+                f"in .tcw/tcw-manifest.local.yaml")
+    return None
+
+
+def _store_location_problems(mapping: dict, origin: Origin, root: Path) -> list[Problem]:
+    problems = []
+    for component in STORE_COMPONENTS:
+        section = mapping.get(component)
+        if not isinstance(section, dict):
+            continue
+        message = store_location_problem(None, section.get("path"))
+        if message:
+            problems.append(Problem(origin.file, (component, "path"), message, root))
+    return problems
+
+
 def _list_problems(mapping: dict, origin: Origin, root: Path) -> list[Problem]:
     """`builtin:` written in a file, the `inherit` entry's rules, and an entry
     repeated within one chain list (Design 3.4, 3.6, 3.8)."""
@@ -611,6 +642,7 @@ def load_config(project_root: Path, *, personal: bool = True) -> Config:
         config.work, _ = parse_work_config(values.get("work"), origins)
         return config
     config.problems += _list_problems(raw, project, shown)
+    config.problems += _store_location_problems(raw, project, shown)
     if "user" in raw:
         config.problems.append(Problem(
             project.file, ("user",),

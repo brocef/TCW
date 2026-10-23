@@ -310,9 +310,8 @@ def test_init_writes_only_the_id_and_path_lines(tmp_path):
     root = repository(tmp_path / "node")
     before = b"# my node\nwork:\n    tags: [a]  # registered by hand\n"
     write_connected_config(root, before)
-    target = root / "planning" / "work"
-    init(["work"], root, "node", work_path=target)
-    assert_only_added(before, config(root), b"id: node\n", f"    path: {target}\n".encode())
+    init(["work"], root, "node", work_path=Path("planning/work"))
+    assert_only_added(before, config(root), b"id: node\n", b"    path: planning/work\n")
 
 
 def test_init_replacing_a_path_keeps_the_comment_after_it(tmp_path):
@@ -332,15 +331,22 @@ def test_init_rerun_without_a_path_keeps_a_relative_work_path_as_written(tmp_pat
     assert config(root) == before
 
 
-def test_init_rerun_without_a_path_does_not_expand_a_tilde(tmp_path, monkeypatch):
+def test_init_rerun_with_a_tilde_location_is_refused_and_writes_nothing(
+        tmp_path, monkeypatch, capsys):
+    """TCW-110 Design 7.1: a `~` location in the shared file names a folder
+    on one machine; every command refuses it, `tcw init` included."""
     home = repository(tmp_path / "home")
     monkeypatch.setenv("HOME", str(home))
     root = repository(tmp_path / "node")
-    init(["work"], root, "node", work_path=home / "store")
     before = b"id: node\nwork:\n    path: ~/store\n"
     write_connected_config(root, before)
-    init(["work"], root)
+    commit_all(root)
+    code = run(root, monkeypatch, "init", "work")
+    err = capsys.readouterr().err
+    assert code == 1, err
+    assert "work.path must be a path relative to the project" in err
     assert config(root) == before
+    assert not (home / "store").exists()
 
 
 def test_init_with_an_explicit_path_still_writes_it(tmp_path):
@@ -367,8 +373,8 @@ def test_a_refused_init_leaves_config_index_and_folders_alone(tmp_path, monkeypa
     write_connected_config(root, before)
     commit_all(root)
     status = git(root, "status", "--porcelain").stdout
-    target = root / "planning" / "work"
-    code = run(root, monkeypatch, "init", "work", "--id", "node", "--work-path", str(target))
+    code = run(root, monkeypatch, "init", "work", "--id", "node", "--work-path",
+               "planning/work")
     err = assert_refused_leaving_everything(root, before, code, capsys, "inside the braces")
     assert git(root, "status", "--porcelain").stdout == status   # .gitignore too
     assert "work.path" in err
@@ -416,7 +422,7 @@ def test_init_with_a_scalar_work_section_is_refused(tmp_path, monkeypatch, capsy
     before = b"id: node\nwork: docs/work\n"
     write_connected_config(root, before)
     commit_all(root)
-    code = run(root, monkeypatch, "init", "work", "--work-path", str(root / "w"))
+    code = run(root, monkeypatch, "init", "work", "--work-path", "w")
     err = capsys.readouterr().err
     assert code != 0
     assert config(root) == before

@@ -923,7 +923,7 @@ def test_two_projects_sharing_one_tree_inherit_independently(tmp_path):
     for name, source in (("left", left_src), ("right", right_src)):
         n = node(tmp_path, name)
         connect_sources(n, source)
-        set_component_key(n, "taxonomy", "path", str(shared_tree))
+        set_component_key(n, "taxonomy", "path", os.path.relpath(shared_tree, n))
         write_connected_config(n, f"extends:\n  - {source.name}\n")
 
     left_origins = {t.origin for t in FsTaxonomyStore.open(tmp_path / "left").list_all()}
@@ -953,7 +953,7 @@ def test_a_shared_tree_may_now_be_composed_with_itself(tmp_path):
     bravo = node(tmp_path, "bravo")
     connect_sources(alpha, bravo)
     for n in (alpha, bravo):
-        set_component_key(n, "taxonomy", "path", str(shared_tree))
+        set_component_key(n, "taxonomy", "path", os.path.relpath(shared_tree, n))
     write_connected_config(alpha, "extends:\n  - bravo\n")
 
     st = FsTaxonomyStore.open(alpha)

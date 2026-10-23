@@ -1,5 +1,6 @@
 """`tcw validate` — aggregate YAML + tcw:// link + component-check pass."""
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -378,7 +379,7 @@ def _half_a_store(tmp_path: Path) -> Path:
 def test_a_broken_path_and_an_unprovisioned_declaration_are_two_problems(tmp_path):
     half = _half_a_store(tmp_path)
     root = _node_with(tmp_path, work={
-        "path": str(half),
+        "path": os.path.relpath(half, tmp_path / "code"),
         "repository": {"url": "https://example.invalid/orchestrator.git"},
     })
 
@@ -427,7 +428,7 @@ def test_a_broken_path_is_reported_even_when_the_declaration_answers(tmp_path):
 
     half = _half_a_store(tmp_path)
     root = _node_with(tmp_path, work={
-        "path": str(half),
+        "path": os.path.relpath(half, tmp_path / "code"),
         "repository": {"url": str(remote), "path": "docs/work/corelib"},
     })
     from tcw.store.fs import FsStoreProvisioner

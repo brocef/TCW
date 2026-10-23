@@ -642,6 +642,14 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     paths = dict(paths or {})
     if work_path is not None:
         paths["work"] = work_path
+    # Refused before anything is written: the location is written into the
+    # shared file, where only a relative path or a folder address works on
+    # every machine (TCW-110 Design 7.1).
+    from tcw.config import store_location_problem
+    for c, given in paths.items():
+        problem = store_location_problem(f"{c}.path", str(given))
+        if problem:
+            raise UsageError(problem)
     work_path = paths.get("work")
     # A location read back from the file is used, never written: writing it
     # would replace what the user typed (`./store`, `~/store`) with its
@@ -663,6 +671,9 @@ def init(components: list[str], root: Path, project_id: str | None = None,
             if (not isinstance(configured_path, str)
                     or not configured_path.strip()):
                 raise ValueError(f"{root / SENTINEL}: {c}.path must be a string")
+            problem = store_location_problem(f"{c}.path", configured_path)
+            if problem:
+                raise ValueError(f"{root / SENTINEL}: {problem}")
             paths[c] = Path(configured_path).expanduser()
             configured_text[c] = configured_path
             read_from_config.add(c)

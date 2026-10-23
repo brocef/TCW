@@ -201,7 +201,7 @@ def test_delegation_names_the_repository_holding_the_store(tmp_path, monkeypatch
     git(store, "-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
     git(store, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "s")
     doc = yaml.safe_load((q / ".tcw/tcw-config.yaml").read_text())
-    doc.setdefault("work", {})["path"] = str(store / "work")
+    doc.setdefault("work", {})["path"] = os.path.relpath(store / "work", q)
     write_connected_config(q, yaml.safe_dump(doc))
     connect(p, q, "children")
     connect(q, p, "parent")
