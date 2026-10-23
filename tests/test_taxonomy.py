@@ -10,6 +10,7 @@ from tcw.store.fs import FsTaxonomyStore, write_sentinel
 
 from nodeconfig import declare_extends, set_component_key
 from tcw.errors import TcwError
+from tests.fullids import fid
 from tests.projectfiles import config_file, write_config_file
 from tests.projectfiles import write_connected_config, write_connected_config_file
 from tests.projectfiles import write_connected_config as write_project_config
@@ -24,6 +25,11 @@ def node(tmp_path: Path, name: str) -> Path:
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
     write_sentinel(root, name)          # mark it a node for CLI (find_component_project) tests
     return root
+
+
+def R(slug: str, project: str = "repo") -> str:
+    """A taxonomy entry's full identifier, as a record stores it (TCW-110)."""
+    return fid(project, "taxonomy", slug)
 
 
 def write_term(root: Path, slug: str, name=None, relates_to=None, description="",
@@ -95,7 +101,7 @@ def test_add_feature_with_vocabulary_refs(tmp_path):
     st.add("User")
     feature = st.add("User Authentication", kind="Feature", vocabulary=["user"])
     assert feature.kind == "Feature"
-    assert feature.vocabulary == ["user"]
+    assert feature.vocabulary == [R("user")]
     assert st.check() == []
 
 
@@ -131,7 +137,7 @@ def test_add_resolves_a_unique_leaf_slug_to_its_path(tmp_path):
     st.add("Alpha")
     st.add("Zeta", parent="alpha")
     feature = st.add("F", kind="Feature", vocabulary=["zeta"])
-    assert feature.vocabulary == ["alpha/zeta"]        # the path, not the leaf
+    assert feature.vocabulary == [R("alpha/zeta")]     # the path, not the leaf
     assert st.check() == []                            # what add wrote, check accepts
 
 
@@ -149,19 +155,20 @@ def test_add_ambiguous_leaf_slug_names_both_candidates(tmp_path):
     assert not (root / "docs/taxonomy/f").exists()
 
 
-def test_add_stores_a_resolving_ref_verbatim(tmp_path):
-    # A ref that already resolves is never rewritten — not a full local path,
-    # and not an inherited term reached through an extends alias.
+def test_add_stores_the_full_identifier_of_a_resolving_ref(tmp_path):
+    # Whatever input form names the entry, its full identifier is stored
+    # (TCW-110 Design 5.3): a local path, an inherited term found as an
+    # id-path, and an inherited term named by its full identifier.
     cons, _ = consumer_with_shared(tmp_path)
     st = FsTaxonomyStore.open(cons)
     st.add("Alpha")
     st.add("Zeta", parent="alpha")
     assert st.add("F", kind="Feature",
-                  vocabulary=["alpha/zeta"]).vocabulary == ["alpha/zeta"]
+                  vocabulary=["alpha/zeta"]).vocabulary == [R("alpha/zeta", "consumer")]
     assert st.add("G", kind="Feature",
-                  vocabulary=["Argument"]).vocabulary == ["Argument"]
+                  vocabulary=["Argument"]).vocabulary == [R("Argument", "shared")]
     assert st.add("H", kind="Feature",
-                  vocabulary=["shared/Argument"]).vocabulary == ["shared/Argument"]
+                  vocabulary=[R("Argument", "shared")]).vocabulary == [R("Argument", "shared")]
 
 
 def test_missing_kind_defaults_to_vocabulary(tmp_path):
@@ -384,7 +391,8 @@ def test_check_reports_escaping_ref_as_dangling(tmp_path):
     write_term(root, "feature", name="Feature", kind="Feature",
                vocabulary=["../../capabilities/thing"])
     problems = [str(f) for f in FsTaxonomyStore.open(root).check()]
-    assert any("dangling vocabulary" in p for p in problems)
+    assert any("vocabulary '../../capabilities/thing' is not a full identifier" in p
+               for p in problems), problems
 
 
 def test_rm_refuses_nested_terms(tmp_path, monkeypatch, capsys):
@@ -405,7 +413,7 @@ def test_rm_refuses_nested_terms(tmp_path, monkeypatch, capsys):
 def test_rm_refuses_a_relatesto_referrer(tmp_path):
     root = node(tmp_path, "repo")
     write_term(root, "invoice", name="Invoice")
-    write_term(root, "payment", name="Payment", relates_to=["invoice"])
+    write_term(root, "payment", name="Payment", relates_to=[R("invoice")])
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     st = FsTaxonomyStore.open(root)
     with pytest.raises(TcwError, match=r"still referenced by payment \(relatesTo\)"):
@@ -427,7 +435,7 @@ def test_rm_is_not_refused_by_a_same_leaf_ref_elsewhere(tmp_path):
     root = node(tmp_path, "repo")
     write_term(root, "permission", name="Permission")
     write_term(root, "admin/permission", name="Admin Permission")
-    write_term(root, "role", name="Role", relates_to=["admin/permission"])
+    write_term(root, "role", name="Role", relates_to=[R("admin/permission")])
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     st = FsTaxonomyStore.open(root)
     st.remove("permission")
@@ -436,7 +444,7 @@ def test_rm_is_not_refused_by_a_same_leaf_ref_elsewhere(tmp_path):
 
 def test_rm_ignores_a_self_reference(tmp_path):
     root = node(tmp_path, "repo")
-    write_term(root, "loop", name="Loop", relates_to=["loop"])
+    write_term(root, "loop", name="Loop", relates_to=[R("loop")])
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     st = FsTaxonomyStore.open(root)
     st.remove("loop")
@@ -461,7 +469,7 @@ def test_rm_ignores_vocabulary_on_a_non_feature(tmp_path):
     """`check` reads `vocabulary` only on Features, so `rm` must too."""
     root = node(tmp_path, "repo")
     write_term(root, "invoice", name="Invoice")
-    write_term(root, "payment", name="Payment", kind="Vocabulary", vocabulary=["invoice"])
+    write_term(root, "payment", name="Payment", kind="Vocabulary", vocabulary=[R("invoice")])
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     st = FsTaxonomyStore.open(root)
     assert st.check() == []
@@ -472,7 +480,7 @@ def test_rm_ignores_vocabulary_on_a_non_feature(tmp_path):
 def test_referrers_treats_a_vanished_folder_as_no_match(tmp_path, monkeypatch):
     root = node(tmp_path, "repo")
     write_term(root, "invoice", name="Invoice")
-    write_term(root, "payment", name="Payment", relates_to=["invoice"])
+    write_term(root, "payment", name="Payment", relates_to=[R("invoice")])
     st = FsTaxonomyStore.open(root)
     real = Path.samefile
 
@@ -499,7 +507,7 @@ def test_rm_refuses_inherited(tmp_path):
     cons, _ = consumer_with_shared(tmp_path)
     st = FsTaxonomyStore.open(cons)
     with pytest.raises(TcwError):
-        st.remove("shared/Argument")
+        st.remove("shared.taxonomy/Argument")
 
 
 # ── check ───────────────────────────────────────────────────────────────────
@@ -511,7 +519,7 @@ def test_check_clean(tmp_path):
 
 def test_check_dangling_relatesto(tmp_path):
     root = node(tmp_path, "repo")
-    write_term(root, "thing", name="Thing", relates_to=["nope/missing"])
+    write_term(root, "thing", name="Thing", relates_to=[R("nope/missing")])
     problems = [str(f) for f in FsTaxonomyStore.open(root).check()]
     assert any("dangling" in p for p in problems)
 
@@ -520,11 +528,11 @@ def test_check_feature_vocabulary_refs(tmp_path):
     root = node(tmp_path, "repo")
     write_term(root, "user", name="User")
     write_term(root, "user-authentication", name="User Authentication",
-               kind="Feature", vocabulary=["user"])
+               kind="Feature", vocabulary=[R("user")])
     write_term(root, "password-reset", name="Password Reset",
-               kind="Feature", vocabulary=["user-authentication"])
+               kind="Feature", vocabulary=[R("user-authentication")])
     write_term(root, "ghost-feature", name="Ghost Feature",
-               kind="Feature", vocabulary=["ghost"])
+               kind="Feature", vocabulary=[R("ghost")])
     problems = [str(f) for f in FsTaxonomyStore.open(root).check()]
     assert any("password-reset" in p and "expected Vocabulary" in p for p in problems)
     assert any("ghost-feature" in p and "dangling vocabulary" in p for p in problems)
@@ -537,7 +545,9 @@ def test_check_feature_requires_vocabulary_refs(tmp_path):
     assert any("Feature requires at least one vocabulary ref" in p for p in problems)
 
 
-def test_check_ambiguous_relatesto(tmp_path):
+def test_check_reports_a_3x_relatesto_naming_tcw_migrate(tmp_path):
+    """A stored id-path is a 3.x value (TCW-110 Design 5.2), so it can no
+    longer be ambiguous between two inherited projects; it is reported."""
     a = node(tmp_path, "a"); write_term(a, "Term")
     b = node(tmp_path, "b"); write_term(b, "Term")
     cons = node(tmp_path, "consumer")
@@ -545,7 +555,8 @@ def test_check_ambiguous_relatesto(tmp_path):
     write_connected_config(cons, "extends:\n  - a\n  - b\n")
     write_term(cons, "host", relates_to=["Term"])
     problems = [str(f) for f in FsTaxonomyStore.open(cons).check()]
-    assert any("ambiguous" in p for p in problems)
+    assert any("relatesTo 'Term' is a TCW 3.x reference" in p and "tcw migrate" in p
+               for p in problems), problems
 
 
 def test_check_duplicate_project_id(tmp_path):
@@ -636,7 +647,7 @@ def test_cli_add_feature_lists_and_shows_kind(tmp_path, monkeypatch, capsys):
     assert main(["taxonomy", "show", "user-authentication"]) == 0
     out = capsys.readouterr().out
     assert "kind: Feature" in out
-    assert "vocabulary: user, password" in out
+    assert "vocabulary: repo.taxonomy/user, repo.taxonomy/password" in out
 
 
 def test_cli_list_does_not_interleave_hyphen_sibling_with_subtree(tmp_path, monkeypatch, capsys):

@@ -12,6 +12,7 @@ from tcw.ids import FullId
 from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 from tcw.errors import TcwError
+from tests.fullids import fid
 from tests.projectfiles import write_config
 from tests.projectfiles import write_connected_config
 
@@ -24,6 +25,11 @@ def repo(tmp_path: Path, name: str) -> Path:
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
     write_sentinel(root, name.replace("_", "-"))
     return root
+
+
+def S(path: str) -> str:
+    """A capability of the project `solo`, as a record stores it (TCW-110)."""
+    return fid("solo", "capabilities", path)
 
 
 def write_cap(root: Path, path: str, *, id=None, body="", **meta) -> None:
@@ -100,7 +106,7 @@ def test_remove_deletes_local_capability_and_stages_nothing(tmp_path):
 def test_remove_ignores_unresolvable_reference_tokens(tmp_path):
     root = repo(tmp_path, "solo")
     write_cap(root, "x", id="cap-x00001", Status="Supported")
-    write_cap(root, "y", id="cap-y00001", Status="Blocked", **{"Blocked by": "ghost/path"})
+    write_cap(root, "y", id="cap-y00001", Status="Blocked", **{"Blocked by": S("ghost/path")})
     store(root).remove("x")
     assert store(root).get("x") is None
 
@@ -110,7 +116,7 @@ def test_remove_succeeds_after_referrer_repointed(tmp_path):
     write_cap(root, "old", id="cap-old001", Status="Supported")
     write_cap(root, "new", id="cap-new001", Status="Supported")
     write_cap(root, "other", id="cap-oth001", Status="Supported",
-              **{"Superseded by": "old"})
+              **{"Superseded by": S("old")})
     with pytest.raises(TcwError):
         store(root).remove("old")
     store(root).set("other", {"Superseded by": "new"})
@@ -235,7 +241,7 @@ def test_remove_does_not_proceed_when_comparing_folders_fails_for_another_reason
     root = repo(tmp_path, "solo")
     write_cap(root, "old", id="cap-old001", Status="Supported")
     write_cap(root, "other", id="cap-oth001", Status="Supported",
-              **{"Superseded by": "old"})
+              **{"Superseded by": S("old")})
     before = tree_hash(root)
 
     def refuse(self, other):
@@ -288,11 +294,11 @@ def test_remove_refuses_nested_override_folder(tmp_path):
 
 
 @pytest.mark.parametrize("field, target, value", [
-    ("Superseded by", "billing/old-refund", "billing/old-refund"),
-    ("Blocked by", "billing/old-refund", "billing/old-refund"),
-    ("Roles", "roles/admin", ["!roles/admin"]),
-    ("Roles", "roles/admin", "roles/other, roles/admin"),
-    ("When", "conditions/signed-in", "conditions/signed-in"),
+    ("Superseded by", "billing/old-refund", S("billing/old-refund")),
+    ("Blocked by", "billing/old-refund", S("billing/old-refund")),
+    ("Roles", "roles/admin", [f"!{S('roles/admin')}"]),
+    ("Roles", "roles/admin", f"{S('roles/other')}, {S('roles/admin')}"),
+    ("When", "conditions/signed-in", S("conditions/signed-in")),
 ])
 def test_remove_refuses_referenced_target(tmp_path, field, target, value):
     root = repo(tmp_path, "solo")
@@ -308,11 +314,12 @@ def test_remove_refuses_referenced_target(tmp_path, field, target, value):
 
 
 @pytest.mark.parametrize("field, value", [
-    ("Superseded by", " roles/admin "),     # check resolves the value as written
-    ("Blocked by", "!roles/admin"),         # `!` negates only in Roles/When
-    ("Blocked by", ["roles/admin"]),        # a list is not a single identifier
-    ("When", "roles/admin"),                # When tokens must be conditions/
-    ("Roles", "conditions/roles/admin"),
+    ("Superseded by", f" {S('roles/admin')} "),  # check reads the value as written
+    ("Blocked by", f"!{S('roles/admin')}"),     # `!` negates only in Roles/When
+    ("Blocked by", [S("roles/admin")]),         # a list is not a single identifier
+    ("When", S("roles/admin")),                 # When tokens must be conditions/
+    ("Roles", S("conditions/roles/admin")),
+    ("Superseded by", "roles/admin"),           # a 3.x value names nothing
 ])
 def test_remove_ignores_a_value_check_does_not_resolve_to_the_target(tmp_path, field, value):
     """`_referrers` reads each field exactly as `check` does, so a value `check`
@@ -395,7 +402,7 @@ def test_cli_rm_refusal_reports_referrer(tmp_path, monkeypatch, capsys):
     root = repo(tmp_path, "solo")
     write_cap(root, "old", id="cap-old001", Status="Supported")
     write_cap(root, "other", id="cap-oth001", Status="Supported",
-              **{"Superseded by": "old"})
+              **{"Superseded by": S("old")})
     monkeypatch.chdir(root)
     assert main(["capabilities", "rm", "old"]) == 3
     err = capsys.readouterr().err

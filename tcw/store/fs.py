@@ -28,14 +28,14 @@ import yaml
 
 from tcw.errors import BackendError, NotFound, Refused, TcwError, UsageError
 from tcw.findings import Finding
-from tcw.ids import FullId, MalformedId, id_path_problem, sort_input
+from tcw.ids import FullId, IdError, MalformedId, id_path_problem, parse_stored, sort_input
 from tcw.output import shown as _shown
 from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
 from tcw.store.base import (
     CAP_FIELDS, CAP_LIFECYCLES, MIGRATION_GUIDE, CAP_PRIORITIES, CAP_STATUSES,
     RETIRED_CAP_FIELDS, retired_key_problem,
     TAXONOMY_EDITABLE_FIELDS, _UNSET, AmbiguousRef, Capability, CapabilitiesStore,
-    CapabilityDetail, NotASlug, RefError, is_slug, slugify, StaleRevision,
+    CapabilityDetail, NotASlug, is_slug, slugify, StaleRevision,
     parse_connected_entry,
     parse_repository_declaration, ProvisionResult, RepositoryDeclaration,
     StoreDeclarationError, StoreLocationUnusable, StoreNotProvisioned,
@@ -1393,6 +1393,55 @@ class FsTreeStore:
         ID it came through."""
         return self.project_id if origin == "local" else origin
 
+    def _stored_ref(self, value, namespace: str, store=None):
+        """What a reference stored in this project's records names (TCW-110
+        Design 5.2, 6): a `tcw.locate.Outcome`. `store` is the store of
+        `namespace` already open for this project (this one for its own
+        namespace), read directly for its own and its inherited entries;
+        every other owner is read through the command's `Locator`. A value
+        in a 3.x form or none at all is an `error` outcome naming why."""
+        from tcw.locate import ERROR, FOUND, MISSING, Outcome
+        try:
+            full_id = parse_stored(value, namespace)
+        except IdError as error:
+            return Outcome(ERROR, message=str(error))
+        if store is None and namespace == self.COMPONENT:
+            store = self
+        if store is not None:
+            if full_id.project == store.project_id:
+                hit = store.get_local(full_id.id_path)
+                return Outcome(FOUND, hit) if hit else Outcome(MISSING)
+            if full_id.project in store._inherited():
+                hit = store.get_inherited(full_id.project, full_id.id_path)
+                return Outcome(FOUND, hit) if hit else Outcome(MISSING)
+        try:
+            return self.locator.read(full_id, named_by=self.project_root)
+        except (ValueError, OSError, TcwError) as error:
+            return Outcome(ERROR, message=str(error))
+
+    def _local_ref(self, value) -> "Term | Capability | None":
+        """This store's own entry that a stored reference of its namespace
+        names, or None for any other value: what a removal compares against,
+        never looking another project up."""
+        try:
+            full_id = parse_stored(value, self.COMPONENT)
+        except IdError:
+            return None
+        return self.get_local(full_id.id_path) if full_id.project == self.project_id \
+            else None
+
+    def _input_ref(self, text, label: str):
+        """The entry a reference value given to a write names, read as command
+        input is (TCW-110 Design 3.1), for the full identifier the write
+        stores (Design 5.3). A value naming nothing is a usage error."""
+        from tcw.locate import find_tree
+        try:
+            return find_tree(self, str(text))
+        except AmbiguousRef:            # before NotFound, its base class
+            raise UsageError(f"{label} ref '{text}' is ambiguous") from None
+        except NotFound:
+            raise _DanglingRef(f"{label} ref '{text}' does not resolve") from None
+
     @classmethod
     def open(cls, project_root: Path, _walk: "_FederationWalk | None" = None,
              locator=None):
@@ -1803,6 +1852,31 @@ def _normalize_taxonomy_kind(kind: str | None) -> str:
     return by_lower.get(str(kind).lower(), str(kind))
 
 
+class _DanglingRef(UsageError):
+    """A reference value given to a write names nothing."""
+
+
+class _RefInputProblem(UsageError):
+    """One reference value a capability write cannot store, worded as
+    `check` words it; collected, never raised out of the store."""
+
+
+def _ref_finding(label: str, ref, outcome) -> "tuple[str, str] | None":
+    """`(level, message)` for a stored reference that was not found, worded
+    as `check` reports it, or None when it was."""
+    from tcw.locate import ERROR, MISSING, UNRESOLVED
+    lead = f"{label} " if label else ""
+    if outcome.kind == MISSING:
+        return "error", f"dangling {lead}ref '{ref}'"
+    if outcome.kind == UNRESOLVED:
+        return "unresolved", f"{lead}ref '{ref}' could not be checked: {outcome.message}"
+    if outcome.kind == ERROR:
+        if outcome.message.startswith(repr(str(ref))):
+            return "error", f"{lead}{outcome.message}"      # its form, naming it
+        return "error", f"{lead}ref '{ref}' cannot be looked up: {outcome.message}"
+    return None
+
+
 def _wrong_kind_ref(ref: str, kind: str) -> str:
     """The one wording for "this vocabulary ref points at the wrong kind"."""
     return f"vocabulary ref '{ref}' points to {kind}, expected Vocabulary"
@@ -1942,6 +2016,10 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         st = self._inherited_stores().get(alias)
         return self._term_via(st, slug, alias) if st and st.get_local(slug) else None
 
+    def _inherited(self) -> dict[str, "FsTaxonomyStore"]:
+        """The projects whose entries this store reads as its own, by ID."""
+        return self._inherited_stores()
+
     def _found(self, target: "FullId | str") -> Term | None:
         """The entry an operation naming one existing object acts on: a full
         identifier of this project's own entry or of one it inherits, or text
@@ -2062,10 +2140,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         for label, fields in referrers:
             named = set()
             for field, ref in FsCapabilitiesStore._term_refs(fields):
-                try:
-                    hit = self.get(ref)
-                except AmbiguousRef:
-                    continue
+                hit = self._local_ref(ref)
                 if (hit is not None and hit.origin == "local"
                         and _in_folder(self.root / hit.slug, target, self.root)):
                     named.add(field)
@@ -2089,10 +2164,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             for field, refs in (("relatesTo", term.relates_to),
                                 ("vocabulary", vocabulary)):
                 for ref in refs:
-                    try:
-                        hit = self.get(ref)
-                    except AmbiguousRef:
-                        continue
+                    hit = self._local_ref(ref)
                     if (hit is not None and hit.origin == "local"
                             and _in_folder(self.root / hit.slug, target, self.root)):
                         out.append(f"{term.slug} ({field})")
@@ -2128,57 +2200,51 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
 
     # -- validation --
 
-    def _ref_problem(self, ref: str, expect_vocabulary: bool = False
-                     ) -> tuple[Term | None, str | None]:
-        """Resolve one taxonomy ref: `(term, problem)`.
-
-        `problem` is None when the ref resolves (and, with `expect_vocabulary`,
-        points at a Vocabulary), else one of `"dangling"`, `"ambiguous"`,
-        `"kind"`. The three callers — `check`, `update_term`, `add` — each render
-        those codes in their own wording; only `_wrong_kind_ref` is shared.
-        """
-        try:
-            term = self.get(ref)
-        except AmbiguousRef:
-            return None, "ambiguous"
-        if term is None:
-            return None, "dangling"
+    def _ref_problem(self, ref, label: str, expect_vocabulary: bool = False
+                     ) -> "tuple[Term | None, tuple[str, str] | None]":
+        """Resolve one stored taxonomy ref (TCW-110 Design 5.2): `(term,
+        problem)`, `problem` None when it names an entry (and, with
+        `expect_vocabulary`, a Vocabulary one), else `(level, message)` as
+        `check` reports it."""
+        from tcw.locate import FOUND
+        outcome = self._stored_ref(ref, "taxonomy")
+        if outcome.kind != FOUND:
+            return None, _ref_finding(label, ref, outcome)
+        term = outcome.value
         if expect_vocabulary and term.kind != "Vocabulary":
-            return term, "kind"
+            return term, ("error", _wrong_kind_ref(ref, term.kind))
         return term, None
 
-    def _require_ref(self, ref: str, label: str, expect_vocabulary: bool = False) -> Term:
-        """`_ref_problem` in raising form — the write paths (`add`, `update_term`)."""
-        term, problem = self._ref_problem(ref, expect_vocabulary)
-        if problem == "dangling":
-            raise UsageError(f"{label} ref '{ref}' does not resolve")
-        if problem == "ambiguous":
-            raise UsageError(f"{label} ref '{ref}' is ambiguous")
-        if problem == "kind":
+    def _require_ref(self, ref, label: str, expect_vocabulary: bool = False) -> str:
+        """A reference value given to a write (`add`, `update_term`), in any
+        input form, as the full identifier it stores — or a usage error."""
+        term = self._input_ref(ref, label)
+        if expect_vocabulary and term.kind != "Vocabulary":
             raise UsageError(_wrong_kind_ref(ref, term.kind))
-        return term
+        return str(term.full_id)
 
     def _resolve_vocab_ref(self, ref: str) -> str:
-        """A `--vocab` ref as it will be stored — or `ValueError`.
+        """A `--vocab` ref as it will be stored, its full identifier — or a
+        usage error.
 
-        A ref that already resolves is stored verbatim (nothing is qualified).
-        One that does not is retried as a *leaf slug* against the local tree,
-        and the full path it matched is what gets stored. The asymmetry is
-        deliberate: a leaf slug is an input convenience at the write boundary,
-        not a stored identity, so no read path widens (`get()` is unchanged and
-        `tcw taxonomy show zeta` still fails) while a stored ref always
-        resolves for `check`. Local terms only — an inherited tree stays
-        addressable as `alias/path`, like `get_inherited`.
+        A ref that names an entry as command input does is stored as that
+        entry's full identifier. One that does not is retried as a *leaf
+        slug* against the local tree, and the entry it matched is what gets
+        stored. The asymmetry is deliberate: a leaf slug is an input
+        convenience at the write boundary, not a stored identity, so no read
+        path widens (`tcw taxonomy show zeta` still fails) while a stored ref
+        always resolves for `check`. Local terms only.
         """
-        if self._ref_problem(ref, expect_vocabulary=True)[1] == "dangling":
+        try:
+            return self._require_ref(ref, "vocabulary", expect_vocabulary=True)
+        except _DanglingRef:
             matches = [s for s in self._local_slugs() if s.rsplit("/", 1)[-1] == ref]
             if len(matches) > 1:
                 raise UsageError(f"vocabulary ref '{ref}' is ambiguous: "
-                                 f"{', '.join(matches)}")
-            if matches:
-                ref = matches[0]
-        self._require_ref(ref, "vocabulary", expect_vocabulary=True)
-        return ref
+                                 f"{', '.join(matches)}") from None
+            if not matches:
+                raise
+            return self._require_ref(matches[0], "vocabulary", expect_vocabulary=True)
 
     def check(self, identifier: str | None = None) -> list[Finding]:
         problems: list[Finding] = []
@@ -2210,18 +2276,16 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                 found(problem)
             if term.kind not in TAXONOMY_KINDS:
                 found(f"unknown kind '{term.kind}'")
+            def report(problem) -> None:
+                if problem:
+                    problems.append(Finding(problem[0], self._where(term.slug), problem[1]))
             for ref in term.relates_to:
-                if (problem := self._ref_problem(ref)[1]):
-                    found(f"{problem} relatesTo ref '{ref}'")
+                report(self._ref_problem(ref, "relatesTo")[1])
             if term.kind == "Feature":
                 if not term.vocabulary:
                     found("Feature requires at least one vocabulary ref")
                 for ref in term.vocabulary:
-                    target, problem = self._ref_problem(ref, expect_vocabulary=True)
-                    if problem == "kind":
-                        found(_wrong_kind_ref(ref, target.kind))
-                    elif problem:
-                        found(f"{problem} vocabulary ref '{ref}'")
+                    report(self._ref_problem(ref, "vocabulary", expect_vocabulary=True)[1])
         return problems
 
     def _validation_resources(self, identifier: str) -> list[Path]:
@@ -2303,12 +2367,15 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             meta["name"] = provided["name"] if provided["name"] is not None else ""
         if "description" in provided:
             desc_text = provided["description"] if provided["description"] is not None else ""
+        # A reference given here, in any input form, is stored as its full
+        # identifier (TCW-110 Design 5.3); one this edit does not give is left
+        # as it is, and `check` reports it if it names nothing.
         if "relates_to" in provided:
-            meta["relatesTo"] = (provided["relates_to"]
-                                 if provided["relates_to"] is not None else [])
+            meta["relatesTo"] = [self._require_ref(r, "relatesTo")
+                                 for r in provided["relates_to"] or []]
         if "vocabulary" in provided:
-            meta["vocabulary"] = (provided["vocabulary"]
-                                  if provided["vocabulary"] is not None else [])
+            meta["vocabulary"] = [self._require_ref(r, "vocabulary", expect_vocabulary=True)
+                                  for r in provided["vocabulary"] or []]
         if "kind" in provided:
             new_kind = _normalize_taxonomy_kind(provided["kind"])
             if provided["kind"] is not None and new_kind not in TAXONOMY_KINDS:
@@ -2316,15 +2383,18 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                                  f"(choose: {', '.join(sorted(TAXONOMY_KINDS))})")
             meta["kind"] = new_kind if provided["kind"] is not None else "Vocabulary"
 
-        # Validate taxonomy refs (relatesTo, vocabulary)
-        for r in meta.get("relatesTo", []):
-            self._require_ref(r, "relatesTo")
+        # A Feature names at least one Vocabulary entry; when this edit makes
+        # the entry a Feature and keeps its vocabulary, the kept values are
+        # checked as stored.
         if meta.get("kind", "Vocabulary") == "Feature":
             vocs = meta.get("vocabulary", [])
             if not vocs:
                 raise UsageError("Feature requires at least one vocabulary ref")
-            for r in vocs:
-                self._require_ref(r, "vocabulary", expect_vocabulary=True)
+            if "vocabulary" not in provided:
+                for r in vocs:
+                    problem = self._ref_problem(r, "vocabulary", expect_vocabulary=True)[1]
+                    if problem:
+                        raise UsageError(problem[1])
 
         # Write atomically
         self._write_entry(d, meta, desc_text)
@@ -2334,6 +2404,11 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
 
 
 # ── FsCapabilitiesStore ──────────────────────────────────────────────────────
+
+# The capability fields that hold references (TCW-110 Design 5.1).
+_REF_FIELDS = ("Subject", "Feature", "Superseded by", "Blocked by", "Roles", "When")
+# `_stored_forms`' answer when the project has no taxonomy store to read.
+_NO_TAXONOMY = object()
 
 # Meta keys that are structural (not part of the locked CAP_FIELDS vocabulary).
 _CAP_STRUCTURAL = {"id", "name", "overrides", "prependedDocs", "appendedDocs"}
@@ -2603,6 +2678,10 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         return self._apply_override(st._capability(path, origin=alias),
                                     alias, self._override_index())
 
+    def _inherited(self) -> dict[str, "FsCapabilitiesStore"]:
+        """The projects whose capabilities this store reads as its own, by ID."""
+        return self.extends
+
     def _found(self, target: "FullId | str") -> Capability | None:
         """The capability an operation naming one existing object acts on: a
         full identifier of this project's own capability or of one it
@@ -2709,11 +2788,10 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         """`<folder> (<field>)` for every other local capability or override whose
         reference fields resolve to the local capability folder `target`.
 
-        Each field is read exactly as `check` reads it (`_ref_problems`,
-        `_check_globals`), so this refuses on precisely the references `check`
-        would report as dangling afterwards. A hit is compared by folder identity,
-        not spelling: `a/b/`, `x/../a/b` and a differently-cased `A/B` all
-        resolve, and `set` accepts each.
+        Each field is read as `check` reads it (`_ref_problems`,
+        `_check_globals`): a full identifier of this project's own capability
+        (TCW-110 Design 5.1), compared by folder identity. A value in any
+        other form names nothing here, and `check` reports it.
         """
         def tokens(field: str, raw) -> list[str]:
             if field in ("Superseded by", "Blocked by"):
@@ -2721,7 +2799,9 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             ns = "roles" if field == "Roles" else "conditions"
             toks = raw if isinstance(raw, list) else str(raw).split(",")
             refs = [str(s).strip().lstrip("!") for s in toks if str(s).strip()]
-            return [r for r in refs if r.startswith(f"{ns}/")]
+            return [r for r in refs
+                    if (hit := self._local_ref(r)) is not None
+                    and hit.path.startswith(f"{ns}/")]
 
         def same(a: Path) -> bool:
             return _same_folder(a, target)
@@ -2736,10 +2816,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 if field not in meta:
                     continue
                 for ref in tokens(field, meta[field]):
-                    try:
-                        hit = self.get(ref)
-                    except RefError:
-                        continue
+                    hit = self._local_ref(ref)
                     if hit is not None and hit.origin == "local" and same(self.root / hit.path):
                         out.append(f"{p} ({field})")
                         break
@@ -2783,6 +2860,10 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 raise UsageError(f"invalid Status '{v}' "
                                  f"(choose: {', '.join(sorted(CAP_STATUSES))})")
             out[k] = _as_list(v) if k == "Subject" else v
+        # Every reference supplied, in any input form, becomes the full
+        # identifier it names (TCW-110 Design 5.3) before it is checked or
+        # stored; one that names nothing is refused here.
+        out = self._stored_forms(out)
         # Fail closed on refs, in the one seam both `set` and `update_capability`
         # call before touching disk — so the CLI, `tcw serve`'s PATCH and any
         # future caller inherit it rather than each remembering to check.
@@ -2798,8 +2879,8 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         # the other four resolve against `self`, and a status-only repair should
         # not start failing because the project's taxonomy config is malformed.
         needs_taxonomy = bool(supplied.get("Subject")) or bool(supplied.get("Feature"))
-        problems = self._ref_problems(
-            supplied, self._taxonomy() if needs_taxonomy else None)
+        problems = [message for level, message in self._ref_problems(
+            supplied, self._taxonomy() if needs_taxonomy else None) if level == "error"]
         if problems:
             # All of them, joined — `check` reports every problem, and a write
             # that reported one at a time would cost a round trip per bad ref.
@@ -2807,6 +2888,72 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             # at 422 rather than 404.
             raise UsageError("; ".join(problems))
         return out
+
+    def _stored_forms(self, fields: dict) -> dict:
+        """`fields` with each reference value given (Subject, Feature,
+        Superseded by, Blocked by, Roles, When), in any input form of TCW-110
+        Design 3.1, replaced by the full identifier it names, `!` kept outside
+        it and a comma list kept a comma list. A value naming nothing is
+        refused, every problem worded as `check` words it and all of them
+        joined, so one write reports them all."""
+        out, problems = dict(fields), []
+        taxonomy = None
+        for key, value in fields.items():
+            if value is None or key not in _REF_FIELDS:
+                continue
+            if key in ("Subject", "Feature") and taxonomy is None:
+                taxonomy = self._taxonomy() or _NO_TAXONOMY
+            single = key in ("Superseded by", "Blocked by", "Feature")
+            tokens = [str(value).strip()] if single else [
+                str(t).strip() for t in (value if isinstance(value, list)
+                                         else str(value).split(",")) if str(t).strip()]
+            stored = []
+            for token in tokens:
+                negated = key in ("Roles", "When") and token.startswith("!")
+                text = token[1:] if negated else token
+                try:
+                    full_id = self._ref_input(key, text, token, taxonomy)
+                except _RefInputProblem as problem:
+                    problems.append(str(problem))
+                    continue
+                stored.append(("!" if negated else "") + str(full_id))
+            if single:
+                out[key] = stored[0] if stored else value
+            else:
+                out[key] = stored if isinstance(value, list) or key == "Subject" \
+                    else ", ".join(stored)
+        if problems:
+            raise UsageError("; ".join(problems))
+        return out
+
+    def _ref_input(self, key: str, text: str, token: str, taxonomy) -> FullId:
+        """The full identifier one reference value given to a write names;
+        `token` is the value as given, a `!` included."""
+        namespace = "taxonomy" if key in ("Subject", "Feature") else "capabilities"
+        noun = "ref" if namespace == "taxonomy" else "identifier"
+        try:
+            found = sort_input(text, namespace)
+        except IdError as error:
+            raise _RefInputProblem(f"{key} → {error}") from None
+        if key in ("Roles", "When"):
+            folder = "roles" if key == "Roles" else "conditions"
+            id_path = found.full_id.id_path if found.form == "a" else found.id_path
+            if not id_path.startswith(f"{folder}/"):
+                raise _RefInputProblem(f"{key} '{token}' must be a {folder}/ slug")
+        if namespace == "taxonomy" and taxonomy is _NO_TAXONOMY:
+            # No taxonomy store to read: an id-path is this project's own,
+            # stored unchecked, as it always was.
+            return found.full_id if found.form == "a" else \
+                FullId(self.project_id, "taxonomy", found.id_path)
+        store = taxonomy if namespace == "taxonomy" else self
+        try:
+            return store._input_ref(text, key).full_id
+        except _DanglingRef:
+            raise _RefInputProblem(f"{key} → dangling {noun} '{text}'") from None
+        except UsageError as error:
+            if "is ambiguous" in str(error):
+                raise _RefInputProblem(f"{key} → ambiguous {noun} '{text}'") from None
+            raise _RefInputProblem(f"{key} → {error}") from None
 
     def _write_meta(self, d: Path, meta: dict, *,
                     removed: tuple[Path, ...] = ()) -> None:
@@ -3011,8 +3158,8 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 found("Partial requires Gaps")
             if status == "Blocked" and "Blocked by" not in f:
                 found("Blocked requires Blocked by")
-            for problem in self._ref_problems(f, taxonomy):
-                found(problem)
+            for level, problem in self._ref_problems(f, taxonomy):
+                problems.append(Finding(level, where, problem))
             if unchecked and (f.get("Subject") or f.get("Feature")):
                 found(unchecked)
                 unchecked = ""
@@ -3048,8 +3195,8 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 # capability's composed fields, override included, were checked
                 # above; checking them here too reported each problem twice.
                 fields = self._set_fields(meta)
-                for problem in self._ref_problems(fields, taxonomy):
-                    found(problem)
+                for level, problem in self._ref_problems(fields, taxonomy):
+                    problems.append(Finding(level, self._where(p), problem))
                 if unchecked and (fields.get("Subject") or fields.get("Feature")):
                     found(unchecked)
                     unchecked = ""
@@ -3105,41 +3252,46 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             return f"overrides → ambiguous id '{target}' (in {', '.join(hits)})"
         return None
 
-    def _ref_problems(self, f: dict, taxonomy) -> list[str]:
-        """Every cross-object ref problem in `f`, worded exactly as `check`
-        reports it, minus the `<path>: ` location prefix.
+    def _ref_problems(self, f: dict, taxonomy) -> list[tuple[str, str]]:
+        """Every cross-object ref problem in `f`, as `(level, message)` worded
+        exactly as `check` reports it, minus the `<path>: ` location prefix.
 
-        The single renderer: `check` prefixes these, the write path raises them.
-        Two callers cannot disagree about what a problem *is* because there is
-        only one place that says it.
+        The single renderer: `check` prefixes these, the write path raises
+        the errors. Two callers cannot disagree about what a problem *is*
+        because there is only one place that says it.
         """
         out = []
         for key in ("Superseded by", "Blocked by"):
             if key in f and (e := self._ref_error(str(f[key]))):
-                out.append(f"{key} → {e}")
+                out.append((e[0], f"{key} → {e[1]}"))
         return (out + self._check_globals(f)
                 + self._check_subject(f, taxonomy)
                 + self._check_feature(f, taxonomy))
 
-    def _ref_error(self, identifier: str) -> str | None:
-        try:
-            if self.get(identifier) is None:
-                return f"dangling identifier '{identifier}'"
-        except AmbiguousRef:
-            return f"ambiguous identifier '{identifier}'"
-        return None
+    def _ref_error(self, identifier: str) -> "tuple[str, str] | None":
+        from tcw.locate import FOUND, MISSING
+        outcome = self._stored_ref(identifier, "capabilities")
+        if outcome.kind == FOUND:
+            return None
+        if outcome.kind == MISSING:
+            return "error", f"dangling identifier '{identifier}'"
+        return _ref_finding("", identifier, outcome)
 
-    def _check_globals(self, f) -> list[str]:
+    def _check_globals(self, f) -> list[tuple[str, str]]:
         out = []
         for ns, field in (("roles", "Roles"), ("conditions", "When")):
             raw = f.get(field, "")
             toks = raw if isinstance(raw, list) else str(raw).split(",")
             for tok in (str(s).strip() for s in toks if str(s).strip()):
                 ref = tok.lstrip("!")
-                if not ref.startswith(f"{ns}/"):
-                    out.append(f"{field} '{tok}' must be a {ns}/ slug")
+                try:
+                    id_path = parse_stored(ref, "capabilities").id_path
+                except IdError:
+                    id_path = None      # reported by `_ref_error` below
+                if id_path is not None and not id_path.startswith(f"{ns}/"):
+                    out.append(("error", f"{field} '{tok}' must be a {ns}/ slug"))
                 elif (e := self._ref_error(ref)):
-                    out.append(f"{field} → {e}")
+                    out.append((e[0], f"{field} → {e[1]}"))
         return out
 
     @staticmethod
@@ -3156,33 +3308,37 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             refs.append(("Feature", str(f["Feature"])))
         return refs
 
-    def _check_subject(self, f, taxonomy) -> list[str]:
+    def _term_problem(self, ref: str, taxonomy) -> "tuple[Term | None, tuple | None]":
+        from tcw.locate import FOUND, MISSING
+        outcome = self._stored_ref(ref, "taxonomy", store=taxonomy)
+        if outcome.kind == FOUND:
+            return outcome.value, None
+        if outcome.kind == MISSING:
+            return None, ("error", f"dangling ref '{ref}'")
+        return None, _ref_finding("", ref, outcome)
+
+    def _check_subject(self, f, taxonomy) -> list[tuple[str, str]]:
         subjects = [ref for field, ref in self._term_refs(f) if field == "Subject"]
         if not subjects or taxonomy is None:
             return []
         out = []
         for subj in subjects:
-            try:
-                if taxonomy.get(subj) is None:
-                    out.append(f"Subject → dangling ref '{subj}'")
-            except AmbiguousRef:
-                out.append(f"Subject → ambiguous ref '{subj}'")
+            _, problem = self._term_problem(subj, taxonomy)
+            if problem:
+                out.append((problem[0], f"Subject → {problem[1]}"))
         return out
 
-    def _check_feature(self, f, taxonomy) -> list[str]:
+    def _check_feature(self, f, taxonomy) -> list[tuple[str, str]]:
         feature = next((ref for field, ref in self._term_refs(f)
                         if field == "Feature"), None)
         if not feature or taxonomy is None:
             return []
-        try:
-            target = taxonomy.get(feature)
-        except AmbiguousRef:
-            return [f"Feature → ambiguous ref '{feature}'"]
-        if target is None:
-            return [f"Feature → dangling ref '{feature}'"]
+        target, problem = self._term_problem(feature, taxonomy)
+        if problem:
+            return [(problem[0], f"Feature → {problem[1]}")]
         if target.kind != "Feature":
-            return [f"Feature → ref '{feature}' points to "
-                    f"{target.kind}, expected Feature"]
+            return [("error", f"Feature → ref '{feature}' points to "
+                              f"{target.kind}, expected Feature")]
         return []
 
     # -- revision-bearing detail + update --

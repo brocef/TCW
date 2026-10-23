@@ -51,7 +51,7 @@ def test_update_a_term(records):
         "revision": revision, "fields": {"name": "Renamed", "relatesTo": ["admin"]}})
     assert answer.status == 200
     assert answer.json["term"]["name"] == "Renamed"
-    assert answer.json["term"]["relates_to"] == ["admin"]
+    assert answer.json["term"]["relates_to"] == ["r.taxonomy/admin"]   # stored in full
 
 
 def test_a_stale_term_edit_is_409(records):
@@ -351,7 +351,8 @@ def test_negation_is_accepted_on_roles_and_when(refusing):
                                                 "When": ["!conditions/offline"]})
     assert answer.status == 200, answer.body
     fields = answer.json["capability"]["fields"]
-    assert (fields["Roles"], fields["When"]) == (["!roles/admin"], ["!conditions/offline"])
+    assert (fields["Roles"], fields["When"]) == (["!r.capabilities/roles/admin"],
+                                                 ["!r.capabilities/conditions/offline"])
 
 
 def test_accepted_reference_values(refusing):

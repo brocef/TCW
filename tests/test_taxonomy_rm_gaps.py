@@ -12,6 +12,7 @@ from tcw.cli import main
 from tcw.store.fs import FsTaxonomyStore, init
 from nodeconfig import set_component_key
 from tcw.errors import TcwError
+from tests.fullids import fid
 
 
 def git(root: Path, *args: str) -> None:
@@ -58,7 +59,8 @@ def lists(root: Path, slug: str) -> bool:
 
 # ── a capability names the term ──────────────────────────────────────────────
 
-@pytest.mark.parametrize("field, value", [("Subject", ["zed"]), ("Feature", "zed")])
+@pytest.mark.parametrize("field, value", [("Subject", [fid("node", "taxonomy", "zed")]),
+                                          ("Feature", fid("node", "taxonomy", "zed"))])
 def test_a_capability_naming_the_term_refuses_the_removal(tmp_path, monkeypatch, capsys,
                                                           field, value):
     root = node(tmp_path)
@@ -73,7 +75,7 @@ def test_a_capability_naming_another_term_does_not_block(tmp_path, monkeypatch, 
     root = node(tmp_path)
     term(root, "zed")
     term(root, "other")
-    cap(root, "login", Subject=["other"])
+    cap(root, "login", Subject=[fid("node", "taxonomy", "other")])
     code, err = rm(root, monkeypatch, capsys, "zed")
     assert code == 0, err
     assert not lists(root, "zed")
@@ -154,7 +156,7 @@ def test_the_store_refuses_for_any_caller(tmp_path):
     goes through `FsTaxonomyStore.remove`, which is where the guard lives."""
     root = node(tmp_path)
     term(root, "zed")
-    cap(root, "login", Subject=["zed"])
+    cap(root, "login", Subject=[fid("node", "taxonomy", "zed")])
     with pytest.raises(TcwError, match="capability login"):
         FsTaxonomyStore.open(root).remove("zed")
     assert lists(root, "zed")
@@ -186,7 +188,7 @@ def test_a_reference_to_a_folder_under_the_term_refuses_the_removal(
     sub.mkdir()
     (sub / "f").write_text("x")
     assert lists(root, "zed/sub")
-    cap(root, "pay", Subject=["zed/sub"])
+    cap(root, "pay", Subject=[fid("node", "taxonomy", "zed/sub")])
     code, err = rm(root, monkeypatch, capsys, "zed")
     assert code == 3 and "capability pay (Subject)" in err, err
     assert lists(root, "zed") and lists(root, "zed/sub")
@@ -199,6 +201,7 @@ def test_a_term_naming_a_folder_under_the_term_refuses_the_removal(
     (root / "docs" / "taxonomy" / "zed" / "sub").mkdir()
     term(root, "other")
     meta = root / "docs" / "taxonomy" / "other" / "meta.yaml"
-    meta.write_text(yaml.safe_dump({"name": "other", "relatesTo": ["zed/sub"]}))
+    meta.write_text(yaml.safe_dump({"name": "other",
+                                    "relatesTo": [fid("node", "taxonomy", "zed/sub")]}))
     code, err = rm(root, monkeypatch, capsys, "zed")
     assert code == 3 and "other (relatesTo)" in err, err

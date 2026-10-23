@@ -72,7 +72,8 @@ def test_a_comma_in_a_field_value_sets_a_list(thing, run):
     taxonomy.add("B")
     code, _, err = run(thing, "capabilities", "set", "ns/do-a-thing", "--field", "Subject=a,b")
     assert code == 0, err
-    assert "Subject: a, b" in run(thing, "capabilities", "show", "ns/do-a-thing")[1]
+    assert "Subject: fx.taxonomy/a, fx.taxonomy/b" in \
+        run(thing, "capabilities", "show", "ns/do-a-thing")[1]
 
 
 @pytest.mark.parametrize("fields", [

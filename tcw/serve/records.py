@@ -11,12 +11,13 @@ from dataclasses import asdict, is_dataclass
 from http import HTTPStatus
 from typing import Any
 
+from tcw.errors import TcwError
 from tcw.findings import Finding
 from tcw.ids import identity
 from tcw.locate import find_tree
 from tcw.refs import resolve_tcw_ref
 from tcw.serve.server import Request, not_found, read_only, route, usage
-from tcw.store.base import AmbiguousRef, Capability, Term
+from tcw.store.base import Capability, Term
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
 from tcw.validate import ValidationTarget, validate
 
@@ -163,10 +164,11 @@ def _subjects_are_vocabulary(request: Request, fields: dict) -> None:
     for ref in subjects if isinstance(subjects, list) else str(subjects).split(","):
         ref = str(ref).strip()
         try:
-            term = taxonomy.get(ref)
-        except AmbiguousRef:
+            # Read as the store reads it before storing its full identifier.
+            term = find_tree(taxonomy, ref)
+        except TcwError:
             continue                    # the store's own message names it
-        if term is not None and term.kind != "Vocabulary":
+        if term.kind != "Vocabulary":
             raise usage(f"Subject: {ref} is a {term.kind}, not a vocabulary entry")
 
 

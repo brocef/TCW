@@ -15,6 +15,11 @@ ambiguous-*identifier* variants needed a federated fixture rather than a plain
 one — capabilities are path-addressed, so "ambiguous" means the same path in two
 extended stores, never a leaf-slug clash. An earlier revision of this file
 claimed full coverage while omitting them; adversarial review caught the claim.
+
+Since TCW-110 a stored reference is a full identifier (Design 5.1), so it can
+no longer be ambiguous: the ambiguous wordings are now the write path's, for
+an id-path given as input, and a stored value in a 3.x form is reported naming
+`tcw migrate` (Design 5.2).
 """
 
 import hashlib
@@ -23,9 +28,10 @@ import subprocess
 import pytest
 import yaml
 
-from tcw.store.base import AmbiguousRef, Term
+from tcw.store.base import Term
 from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 from tcw.errors import TcwError
+from tests.fullids import fid
 from tests.projectfiles import write_config
 from tests.projectfiles import write_connected_config
 
@@ -50,20 +56,34 @@ def write_cap(root, path, body="", **meta):
     (d / "description.md").write_text(body)
 
 
+def C(path: str) -> str:
+    """A capability of the project `repo`, as a record stores it."""
+    return fid("repo", "capabilities", path)
+
+
+def T(slug: str) -> str:
+    """A taxonomy entry of the project `repo`, as a record stores it."""
+    return fid("repo", "taxonomy", slug)
+
+
 class Tax:
-    """A taxonomy stub: `known` maps ref → kind; `ambiguous` refs raise."""
+    """A taxonomy stub for the project `repo`: `known` maps an id-path to
+    its kind. It inherits from nothing."""
 
-    def __init__(self, known=None, ambiguous=()):
+    project_id = "repo"
+
+    def __init__(self, known=None):
         self.known = known or {}
-        self.ambiguous = set(ambiguous)
 
-    def get(self, ref):
-        if ref in self.ambiguous:
-            raise AmbiguousRef(ref)
-        kind = self.known.get(ref)
+    def _inherited(self):
+        return {}
+
+    def get_local(self, slug):
+        kind = self.known.get(slug)
         return None if kind is None else Term(
-            slug=ref, name=ref, description="", kind=kind,
-            relates_to=[], vocabulary=[], attachments=[], origin="local")
+            slug=slug, name=slug, description="", kind=kind,
+            relates_to=[], vocabulary=[], attachments=[], origin="local",
+            owner="repo")
 
 
 def problems_for(tmp_path, taxonomy=None, **meta):
@@ -79,68 +99,79 @@ def problems_for(tmp_path, taxonomy=None, **meta):
 
 @pytest.mark.parametrize("field", ["Superseded by", "Blocked by"])
 def test_dangling_identifier_wording(tmp_path, field):
-    assert (f"{field} → dangling identifier 'routes/ghost'"
-            in problems_for(tmp_path, **{field: "routes/ghost"}))
+    assert (f"{field} → dangling identifier '{C('routes/ghost')}'"
+            in problems_for(tmp_path, **{field: C("routes/ghost")}))
 
 
 @pytest.mark.parametrize("field", ["Roles", "When"])
 def test_namespace_rule_wording_keeps_the_negation_marker(tmp_path, field):
     """The non-arrow variant. The token keeps its `!` here and loses it in the
     arrow messages — both shapes must survive the extraction."""
-    assert (f"{field} '!nope' must be a {'roles' if field == 'Roles' else 'conditions'}/ slug"
-            in problems_for(tmp_path, **{field: "!nope"}))
+    token = f"!{C('nope')}"
+    assert (f"{field} '{token}' must be a "
+            f"{'roles' if field == 'Roles' else 'conditions'}/ slug"
+            in problems_for(tmp_path, **{field: token}))
 
 
 def test_roles_dangling_identifier_wording_strips_the_negation_marker(tmp_path):
-    assert "Roles → dangling identifier 'roles/ghost'" in problems_for(
-        tmp_path, Roles="!roles/ghost")
+    assert f"Roles → dangling identifier '{C('roles/ghost')}'" in problems_for(
+        tmp_path, Roles=f"!{C('roles/ghost')}")
 
 
 def test_when_dangling_identifier_wording(tmp_path):
-    assert "When → dangling identifier 'conditions/ghost'" in problems_for(
-        tmp_path, When="conditions/ghost")
+    assert f"When → dangling identifier '{C('conditions/ghost')}'" in problems_for(
+        tmp_path, When=C("conditions/ghost"))
 
 
 def test_subject_dangling_ref_wording(tmp_path):
-    assert "Subject → dangling ref 'ghost'" in problems_for(
-        tmp_path, Subject="ghost", taxonomy=Tax({"user": "Vocabulary"}))
-
-
-def test_subject_ambiguous_ref_wording(tmp_path):
-    assert "Subject → ambiguous ref 'dup'" in problems_for(
-        tmp_path, Subject="dup", taxonomy=Tax(ambiguous=["dup"]))
+    assert f"Subject → dangling ref '{T('ghost')}'" in problems_for(
+        tmp_path, Subject=T("ghost"), taxonomy=Tax({"user": "Vocabulary"}))
 
 
 def test_feature_dangling_ref_wording(tmp_path):
-    assert "Feature → dangling ref 'ghost'" in problems_for(
-        tmp_path, Feature="ghost", taxonomy=Tax({"real": "Feature"}))
-
-
-def test_feature_ambiguous_ref_wording(tmp_path):
-    assert "Feature → ambiguous ref 'dup'" in problems_for(
-        tmp_path, Feature="dup", taxonomy=Tax(ambiguous=["dup"]))
+    assert f"Feature → dangling ref '{T('ghost')}'" in problems_for(
+        tmp_path, Feature=T("ghost"), taxonomy=Tax({"real": "Feature"}))
 
 
 def test_feature_wrong_kind_wording_is_one_line_with_a_single_space(tmp_path):
     """Written across two source lines; it must concatenate to exactly this."""
-    assert "Feature → ref 'user' points to Vocabulary, expected Feature" in problems_for(
-        tmp_path, Feature="user", taxonomy=Tax({"user": "Vocabulary"}))
+    assert (f"Feature → ref '{T('user')}' points to Vocabulary, expected Feature"
+            in problems_for(tmp_path, Feature=T("user"),
+                            taxonomy=Tax({"user": "Vocabulary"})))
+
+
+@pytest.mark.parametrize("field, value, namespace", [
+    ("Subject", "ghost", "taxonomy"),
+    ("Feature", "ghost", "taxonomy"),
+    ("Superseded by", "routes/ghost", "capabilities"),
+    ("Blocked by", "routes/ghost", "capabilities"),
+    ("Roles", "!roles/ghost", "capabilities"),
+    ("When", "conditions/ghost", "capabilities"),
+])
+def test_a_3x_value_is_reported_naming_the_field_and_tcw_migrate(
+        tmp_path, field, value, namespace):
+    """TCW-110 AC 11: a stored value in a 3.x form, with no `.` before its
+    first `/`, is reported where it is read."""
+    bare = value.lstrip("!")
+    assert (f"{field} → '{bare}' is a TCW 3.x reference; TCW 4 writes "
+            f"<project>.{namespace}/<id-path> (run 'tcw migrate' in this project)"
+            in problems_for(tmp_path, taxonomy=Tax(), **{field: value}))
 
 
 def test_the_location_prefix_is_the_capability_path(tmp_path):
     """The location `_ref_problems` must NOT include — the caller adds it, as
     the finding's `where`."""
     root = node(tmp_path)
-    write_cap(root, "routes/login", Status="Supported", Subject="ghost")
+    write_cap(root, "routes/login", Status="Supported", Subject=T("ghost"))
     out = FsCapabilitiesStore.open(root).check(taxonomy=Tax({"user": "Vocabulary"}))
-    assert ("docs/capabilities/routes/login", "Subject → dangling ref 'ghost'") \
+    assert ("docs/capabilities/routes/login", f"Subject → dangling ref '{T('ghost')}'") \
         in [(p.where, p.message) for p in out]
 
 
 def test_a_clean_capability_reports_nothing(tmp_path):
     """The control: every assertion above is about a string being present."""
     assert problems_for(
-        tmp_path, Subject="user", Feature="real",
+        tmp_path, Subject=T("user"), Feature=T("real"),
         taxonomy=Tax({"user": "Vocabulary", "real": "Feature"})) == []
 
 
@@ -161,9 +192,9 @@ class RecordingTax(Tax):
     def __bool__(self):
         return False
 
-    def get(self, ref):
-        self.calls.append(ref)
-        return super().get(ref)
+    def get_local(self, slug):
+        self.calls.append(slug)
+        return super().get_local(slug)
 
 
 def test_check_without_a_taxonomy_resolves_against_the_nodes_own(tmp_path):
@@ -171,15 +202,15 @@ def test_check_without_a_taxonomy_resolves_against_the_nodes_own(tmp_path):
     surfaces and `check` could disagree about *whether* a ref is checked."""
     root = node(tmp_path)
     (root / "docs" / "taxonomy").mkdir(parents=True)
-    write_cap(root, "x", Status="Supported", Subject="ghost")
+    write_cap(root, "x", Status="Supported", Subject=T("ghost"))
     problems = FsCapabilitiesStore.open(root).check()
-    assert any("Subject → dangling ref 'ghost'" in p.message for p in problems)
+    assert any(f"Subject → dangling ref '{T('ghost')}'" in p.message for p in problems)
 
 
 def test_an_explicitly_passed_falsey_taxonomy_still_wins(tmp_path):
     root = node(tmp_path)
     (root / "docs" / "taxonomy").mkdir(parents=True)
-    write_cap(root, "x", Status="Supported", Subject="user")
+    write_cap(root, "x", Status="Supported", Subject=T("user"))
     stub = RecordingTax({"user": "Vocabulary"})
     problems = FsCapabilitiesStore.open(root).check(taxonomy=stub)
     assert stub.calls == ["user"], "the injected stub was not consulted"
@@ -190,7 +221,7 @@ def test_a_node_without_a_taxonomy_component_still_skips_subject(tmp_path):
     """No `docs/taxonomy/` means nothing to resolve against — the existing
     degradation, not a new one."""
     root = node(tmp_path)
-    write_cap(root, "x", Status="Supported", Subject="ghost")
+    write_cap(root, "x", Status="Supported", Subject=T("ghost"))
     assert FsCapabilitiesStore.open(root).check() == []
 
 
@@ -212,7 +243,8 @@ def _node_with_taxonomy(tmp_path):
 @pytest.mark.parametrize("field,value,expected", [
     ("Subject", "no-such-term", "Subject → dangling ref 'no-such-term'"),
     ("Feature", "also-bogus", "Feature → dangling ref 'also-bogus'"),
-    ("Feature", "thing", "Feature → ref 'thing' points to Vocabulary, expected Feature"),
+    ("Feature", "thing",
+     "Feature → ref 'repo.taxonomy/thing' points to Vocabulary, expected Feature"),
     ("Superseded by", "nope", "Superseded by → dangling identifier 'nope'"),
     ("Blocked by", "nope2", "Blocked by → dangling identifier 'nope2'"),
     ("Roles", "roles/admin", "Roles → dangling identifier 'roles/admin'"),
@@ -263,8 +295,8 @@ def test_the_refusal_and_check_agree_word_for_word(tmp_path):
     root = _node_with_taxonomy(tmp_path)
     store = FsCapabilitiesStore.open(root)
     with pytest.raises(TcwError) as e:
-        store.set("web/editing", {"Subject": "no-such-term"})
-    write_cap(root, "mirror", Status="Supported", Subject="no-such-term")
+        store.set("web/editing", {"Subject": T("no-such-term")})
+    write_cap(root, "mirror", Status="Supported", Subject=T("no-such-term"))
     from_check = [p.message for p in FsCapabilitiesStore.open(root).check()
                   if p.where == "docs/capabilities/mirror"]
     assert str(e.value) in from_check
@@ -305,7 +337,7 @@ def test_add_with_valid_fields_writes_them(tmp_path):
     store.add("new/thing", name="Thing", status="Supported",
               fields={"Feature": "real-feature"})
     cap = FsCapabilitiesStore.open(root).get_local("new/thing")
-    assert cap is not None and cap.fields.get("Feature") == "real-feature"
+    assert cap is not None and cap.fields.get("Feature") == T("real-feature")
 
 
 def test_add_without_fields_is_unchanged(tmp_path):
@@ -355,10 +387,12 @@ def _two_bases(tmp_path):
     ("When", "conditions/dup", "When \u2192 ambiguous identifier 'conditions/dup'"),
 ])
 def test_ambiguous_identifier_wording(tmp_path, field, value, expected):
+    """An id-path given to a write that two extended projects both hold."""
     child = _two_bases(tmp_path)
-    write_cap(child, "x", Status="Supported", **{field: value})
-    out = [p.message for p in FsCapabilitiesStore.open(child).check()]
-    assert expected in out
+    write_cap(child, "x", Status="Supported")
+    with pytest.raises(TcwError) as e:
+        FsCapabilitiesStore.open(child).set("x", {field: value})
+    assert expected in str(e.value)
 
 
 # ── field values that are not strings ────────────────────────────────────────

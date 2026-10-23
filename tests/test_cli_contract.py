@@ -409,7 +409,7 @@ def test_tree_exit_codes(fx):
     assert run(fx, "capabilities", "show", "nosuch").code == 4
     ok(fx, "taxonomy", "add", "Gadget")
     meta = fx / "docs" / "taxonomy" / "gadget" / "meta.yaml"
-    meta.write_text(meta.read_text().replace("relatesTo: []", "relatesTo: [widget]"))
+    meta.write_text(meta.read_text().replace("relatesTo: []", "relatesTo: [fx.taxonomy/widget]"))
     assert run(fx, "taxonomy", "rm", "widget").code == 3
 
     ok(fx, "capabilities", "add", "ns/do-a-thing")
@@ -419,7 +419,8 @@ def test_tree_exit_codes(fx):
     ok(fx, "taxonomy", "add", "A")
     ok(fx, "taxonomy", "add", "B")
     ok(fx, *thing, "--field", "Subject=a,b")
-    assert "Subject: a, b" in ok(fx, "capabilities", "show", "ns/do-a-thing").out
+    assert "Subject: fx.taxonomy/a, fx.taxonomy/b" in \
+        ok(fx, "capabilities", "show", "ns/do-a-thing").out
     for fields in (["--field", "Status=Supported", "--field", "Status=Missing"],
                    ["--field", "Status"], ["--field", "Planning doc=x"],
                    ["--field", "Tracker=x"]):

@@ -9,6 +9,7 @@ import yaml
 from tcw.store.base import AmbiguousRef, RefError, Term
 from tcw.store.fs import FsCapabilitiesStore, heading_slug, write_sentinel
 from tcw.errors import TcwError
+from tests.fullids import fid
 from tests.projectfiles import write_config
 from tests.projectfiles import write_connected_config
 
@@ -45,25 +46,41 @@ def write_cap(root: Path, path: str, body: str = "", **meta) -> None:
     (d / "description.md").write_text(body)
 
 
+def T(slug: str) -> str:
+    """A taxonomy entry of the project `repo`, as a record stores it."""
+    return fid("repo", "taxonomy", slug)
+
+
+def C(path: str) -> str:
+    """A capability of the project `repo`, as a record stores it."""
+    return fid("repo", "capabilities", path)
+
+
 class StubTax:
-    """Minimal TaxonomyStore for the cross-component Subject check."""
+    """Minimal TaxonomyStore of the project `repo` for the cross-component
+    Subject check: it inherits nothing."""
+    project_id = "repo"
+
     def __init__(self, *known):
         self.known = set(known)
 
-    def get(self, ref):
-        return object() if ref in self.known else None
+    def _inherited(self):
+        return {}
+
+    def get_local(self, slug):
+        return Term(slug, slug) if slug in self.known else None
 
 
-class FeatureTax:
+class FeatureTax(StubTax):
     def __init__(self):
         self.terms = {
             "user": Term("user", "User", kind="Vocabulary"),
             "user-authentication": Term("user-authentication", "User Authentication",
-                                        kind="Feature", vocabulary=["user"]),
+                                        kind="Feature", vocabulary=[T("user")]),
         }
 
-    def get(self, ref):
-        return self.terms.get(ref)
+    def get_local(self, slug):
+        return self.terms.get(slug)
 
 
 def test_cli_path_prints_resolved_store_root_and_reserves_command(tmp_path, monkeypatch,
@@ -90,13 +107,6 @@ def test_cli_path_outside_capabilities_node_prints_no_path(tmp_path, monkeypatch
     output = capsys.readouterr()
     assert output.out == ""
     assert "no capabilities store here" in output.err
-
-
-class AmbiguousFeatureTax(FeatureTax):
-    def get(self, ref):
-        if ref == "user-authentication":
-            raise AmbiguousRef(ref)
-        return super().get(ref)
 
 
 # ── add + collision ──────────────────────────────────────────────────────────
@@ -204,15 +214,15 @@ def test_set_subject_comma_replaces(tmp_path):
     st = FsCapabilitiesStore.open(node(tmp_path))
     st.add("x")
     cap = st.set("x", {"Subject": "a,b,c"})
-    assert cap.fields["Subject"] == ["a", "b", "c"]
+    assert cap.fields["Subject"] == [T("a"), T("b"), T("c")]
 
 
 def test_check_resolves_each_subject(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "x", Status="Supported", Subject=["user", "ghost"])
+    write_cap(root, "x", Status="Supported", Subject=[T("user"), T("ghost")])
     problems = [str(f) for f in FsCapabilitiesStore.open(root).check(taxonomy=StubTax("user"))]
     assert any("Subject" in p and "ghost" in p for p in problems)
-    assert not any("Subject" in p and "'user'" in p for p in problems)
+    assert not any("Subject" in p and "/user'" in p for p in problems)
 
 
 # ── check: each failure class ────────────────────────────────────────────────
@@ -221,42 +231,45 @@ def test_check_clean(tmp_path):
     root = small_tree(tmp_path)
     write_cap(root, "roles/admin", Status="Supported")
     write_cap(root, "routes/profile", "Profile.", Status="Supported",
-              Subject="user", Roles="roles/admin")
+              Subject=T("user"), Roles=C("roles/admin"))
     assert FsCapabilitiesStore.open(root).check(taxonomy=StubTax("user")) == []
 
 
 def test_check_dangling_superseded(tmp_path):
     root = node(tmp_path)
     write_cap(root, "routes/old", Status="Supported",
-              Lifecycle="Deprecated", **{"Superseded by": "routes/ghost"})
+              Lifecycle="Deprecated", **{"Superseded by": C("routes/ghost")})
     assert any("Superseded by" in p for p in map(str, FsCapabilitiesStore.open(root).check()))
 
 
 def test_check_bad_subject_ref(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "routes/x", Status="Supported", Subject="nope/missing")
+    write_cap(root, "routes/x", Status="Supported", Subject=T("nope/missing"))
     problems = [str(f) for f in FsCapabilitiesStore.open(root).check(taxonomy=StubTax("user"))]
     assert any("Subject" in p and "dangling" in p for p in problems)
 
 
 def test_check_feature_ref_ok(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "routes/x", Status="Supported", Feature="user-authentication")
+    write_cap(root, "routes/x", Status="Supported", Feature=T("user-authentication"))
     assert FsCapabilitiesStore.open(root).check(taxonomy=FeatureTax()) == []
 
 
 def test_check_bad_feature_ref(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "routes/x", Status="Supported", Feature="user")
+    write_cap(root, "routes/x", Status="Supported", Feature=T("user"))
     problems = [str(f) for f in FsCapabilitiesStore.open(root).check(taxonomy=FeatureTax())]
     assert any("Feature" in p and "expected Feature" in p for p in problems)
 
 
-def test_check_ambiguous_feature_ref(tmp_path):
+def test_check_3x_feature_ref_names_tcw_migrate(tmp_path):
+    """A stored id-path is a 3.x value (TCW-110 Design 5.2): reported, never
+    read as an id-path that could be ambiguous."""
     root = node(tmp_path)
     write_cap(root, "routes/x", Status="Supported", Feature="user-authentication")
-    problems = [str(f) for f in FsCapabilitiesStore.open(root).check(taxonomy=AmbiguousFeatureTax())]
-    assert any("Feature" in p and "ambiguous" in p for p in problems)
+    problems = [str(f) for f in FsCapabilitiesStore.open(root).check(taxonomy=FeatureTax())]
+    assert any("Feature → 'user-authentication' is a TCW 3.x reference" in p
+               and "tcw migrate" in p for p in problems), problems
 
 
 def test_check_unknown_field(tmp_path):
@@ -273,7 +286,7 @@ def test_check_missing_required_when_field(tmp_path):
 
 def test_check_unresolved_role_slug(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "routes/x", Status="Supported", Roles="roles/ghost")
+    write_cap(root, "routes/x", Status="Supported", Roles=C("roles/ghost"))
     assert any("Roles" in p for p in map(str, FsCapabilitiesStore.open(root).check()))
 
 
@@ -305,7 +318,7 @@ def test_check_with_taxonomy(tmp_path):
     root = node(tmp_path)
     (root / "docs" / "taxonomy" / "user").mkdir(parents=True)
     (root / "docs" / "taxonomy" / "user" / "meta.yaml").write_text("name: User\n")
-    write_cap(root, "routes/x", Status="Supported", Subject="user")
+    write_cap(root, "routes/x", Status="Supported", Subject=T("user"))
     assert FsCapabilitiesStore.open(root).check(FsTaxonomyStore.open(root)) == []
 
 

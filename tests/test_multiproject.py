@@ -53,7 +53,7 @@ def test_capabilities_check_resolves_sibling_taxonomy(tmp_path):
     _extend_b_onto_a(repo)
     caps = FsCapabilitiesStore.open(repo / "project-b")
     caps.add("orders", "Place an order")
-    caps.set("orders", {"Subject": "project-a/account"})
+    caps.set("orders", {"Subject": "project-a.taxonomy/account"})
     node = find_component_project("capabilities", repo / "project-b")
     tax = FsTaxonomyStore.open(node)
     assert FsCapabilitiesStore.open(node).check(taxonomy=tax) == []

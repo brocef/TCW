@@ -1,4 +1,4 @@
-import { parseFullId } from "./identifier"
+import { fullIdText, parseFullId, type Namespace } from "./identifier"
 import type { CapabilityItem, TaxonomyItem, WorkItem } from "./types"
 import { folderOf } from "./work"
 
@@ -51,10 +51,10 @@ export interface TReferenceContext {
 
 const RESULT_LIMIT = 10
 
-/** The value a picker inserts for a term or capability, in the form the
- * server still stores until stored references are full identifiers
- * (TCW-110 Step 9): this project's own entry by its id-path, an inherited
- * one as `<owner>/<id-path>`. */
+/** The value a declaration picker and a link picker insert for a term or
+ * capability, in the 3.x form `capabilities.yaml` entries and `tcw://`
+ * links still take until TCW-110 Steps 10 and 11: this project's own entry
+ * by its id-path, an inherited one as `<owner>/<id-path>`. */
 function threeXRef(
     item: TaxonomyItem | CapabilityItem,
     projectId: string
@@ -64,6 +64,17 @@ function threeXRef(
     return found.project === projectId
         ? found.idPath
         : `${found.project}/${found.idPath}`
+}
+
+/** A route key as the full identifier a record stores: an id-path is the
+ * served project's own entry. */
+function asFullId(
+    key: string | undefined,
+    namespace: Namespace,
+    projectId: string
+): string | undefined {
+    if (key === undefined || parseFullId(key)) return key
+    return fullIdText(projectId, namespace, key)
 }
 
 function option(
@@ -108,14 +119,17 @@ export function referenceOptions(
     const current = context.currentIdentifier
     const selected = new Set(context.selected ?? [])
     const work = context.work.map((item) => option(item["full-id"], item.title))
-    const ref = (item: TaxonomyItem | CapabilityItem) =>
-        threeXRef(item, context.projectId)
+    // A stored reference is the entry's full identifier (TCW-110 Design 5.1).
     const taxonomy = context.taxonomy.map((item) =>
-        option(ref(item), item.name)
+        option(item["full-id"], item.name)
     )
     const capabilities = context.capabilities.map((item) =>
-        option(ref(item), item.name)
+        option(item["full-id"], item.name)
     )
+    const declared = (items: (TaxonomyItem | CapabilityItem)[]) =>
+        items.map((item) =>
+            option(threeXRef(item, context.projectId), item.name)
+        )
     if (field === "work-parent") {
         const excluded = current
             ? descendantsOf(current, context.work)
@@ -124,8 +138,10 @@ export function referenceOptions(
         return work.filter((item) => !excluded.has(item.identifier))
     }
     if (field.startsWith("declaration-"))
-        return (
-            field.startsWith("declaration-taxonomy") ? taxonomy : capabilities
+        return declared(
+            field.startsWith("declaration-taxonomy")
+                ? context.taxonomy
+                : context.capabilities
         ).filter((item) => !selected.has(item.identifier))
     if (field === "work-assignee") {
         const people = context.people ?? {}
@@ -148,44 +164,42 @@ export function referenceOptions(
     if (field === "taxonomy-vocabulary")
         return context.taxonomy
             .filter((item) => item.kind === "Vocabulary")
-            .map((item) => option(ref(item), item.name))
-    if (field === "taxonomy-relates")
+            .map((item) => option(item["full-id"], item.name))
+    if (field === "taxonomy-relates") {
+        const self = asFullId(current, "taxonomy", context.projectId)
         return taxonomy.filter(
-            (item) =>
-                item.identifier !== current && !selected.has(item.identifier)
+            (item) => item.identifier !== self && !selected.has(item.identifier)
         )
-    if (field === "taxonomy-parent") return taxonomy
+    }
+    if (field === "taxonomy-parent")
+        // A folder of this project's own store, named by its id-path.
+        return context.taxonomy
+            .map((item) => ({ found: parseFullId(item["full-id"]), item }))
+            .filter(({ found }) => found?.project === context.projectId)
+            .map(({ found, item }) => option(found?.idPath ?? "", item.name))
     if (field === "capability-feature")
         return context.taxonomy
             .filter((item) => item.kind === "Feature")
-            .map((item) => option(ref(item), item.name))
+            .map((item) => option(item["full-id"], item.name))
     if (field === "capability-subject")
         return context.taxonomy
             .filter((item) => item.kind === "Vocabulary")
-            .map((item) => option(ref(item), item.name))
+            .map((item) => option(item["full-id"], item.name))
             .filter((item) => !selected.has(item.identifier))
     if (field === "capability-roles" || field === "capability-when") {
-        // A role or condition is named by its path, `roles/…` or
-        // `conditions/…`, inherited ones included: the ledger resolves the
-        // bare path through `extends`.
+        // A role or condition is a capability under `roles/` or
+        // `conditions/`, inherited ones included.
         const prefix = field === "capability-roles" ? "roles/" : "conditions/"
-        const seen = new Set<string>()
         return context.capabilities
-            .map((item) => ({
-                idPath: parseFullId(item["full-id"])?.idPath ?? "",
-                name: item.name,
-            }))
-            .filter((item) => item.idPath.startsWith(prefix))
-            .map((item) => option(item.idPath, item.name))
-            .filter((item) => {
-                if (seen.has(item.identifier) || selected.has(item.identifier))
-                    return false
-                seen.add(item.identifier)
-                return true
-            })
+            .filter((item) =>
+                (parseFullId(item["full-id"])?.idPath ?? "").startsWith(prefix)
+            )
+            .map((item) => option(item["full-id"], item.name))
+            .filter((item) => !selected.has(item.identifier))
     }
+    const self = asFullId(current, "capabilities", context.projectId)
     return capabilities.filter(
-        (item) => item.identifier !== current && !selected.has(item.identifier)
+        (item) => item.identifier !== self && !selected.has(item.identifier)
     )
 }
 

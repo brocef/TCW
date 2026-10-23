@@ -88,17 +88,17 @@ describe("reference search", () => {
             referenceOptions("taxonomy-vocabulary", context).map(
                 (item) => item.identifier
             )
-        ).toEqual(["term"])
+        ).toEqual(["p.taxonomy/term"])
         expect(
             referenceOptions("capability-roles", context).map(
                 (item) => item.identifier
             )
-        ).toEqual(["roles/admin"])
+        ).toEqual(["p.capabilities/roles/admin"])
         expect(
             referenceOptions("capability-when", context).map(
                 (item) => item.identifier
             )
-        ).toEqual(["conditions/online"])
+        ).toEqual(["p.capabilities/conditions/online"])
     })
 })
 
@@ -145,13 +145,37 @@ describe("the fields of the autocomplete table", () => {
     })
 
     test("a subject and a feature's vocabulary are vocabulary entries, inherited included", () => {
-        expect(ids("capability-subject")).toEqual(["term", "base/shared"])
-        expect(ids("taxonomy-vocabulary")).toEqual(["term", "base/shared"])
-        expect(ids("capability-feature")).toEqual(["feature"])
+        // TCW-110 Design 5.1: the value a picker inserts is the full identifier.
+        expect(ids("capability-subject")).toEqual([
+            "p.taxonomy/term",
+            "base.taxonomy/shared",
+        ])
+        expect(ids("taxonomy-vocabulary")).toEqual([
+            "p.taxonomy/term",
+            "base.taxonomy/shared",
+        ])
+        expect(ids("capability-feature")).toEqual(["p.taxonomy/feature"])
     })
 
-    test("roles are roles capabilities by path, inherited included", () => {
-        expect(ids("capability-roles")).toEqual(["roles/admin", "roles/guest"])
+    test("roles are roles capabilities, inherited included", () => {
+        expect(ids("capability-roles")).toEqual([
+            "p.capabilities/roles/admin",
+            "base.capabilities/roles/guest",
+        ])
+    })
+
+    test("a capability's own entry is left out by its route key", () => {
+        expect(
+            ids("capability-blocked-by", { currentIdentifier: "web/editing" })
+        ).toEqual([
+            "p.capabilities/roles/admin",
+            "base.capabilities/roles/guest",
+            "p.capabilities/web/reading",
+        ])
+    })
+
+    test("a taxonomy parent is a folder of this project's own store", () => {
+        expect(ids("taxonomy-parent")).toEqual(["term", "feature"])
     })
 
     test("declaration lists offer the ledger's entries", () => {

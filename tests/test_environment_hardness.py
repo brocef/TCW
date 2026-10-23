@@ -239,7 +239,8 @@ class TestLoneProject:
         st = FsTaxonomyStore.open(root)
         st.add("Thing")
         d = root / "docs" / "taxonomy" / "thing"
-        (d / "meta.yaml").write_text(yaml.safe_dump({"name": "Thing", "relatesTo": ["nope"]}))
+        nope = f"{st.project_id}.taxonomy/nope"
+        (d / "meta.yaml").write_text(yaml.safe_dump({"name": "Thing", "relatesTo": [nope]}))
         problems = [str(f) for f in st.check()]
         assert any("dangling" in p for p in problems)
 
@@ -291,7 +292,7 @@ class TestLoneProject:
         caps.add("routes/x", status="Supported")
         meta_path = root / "docs" / "capabilities" / "routes" / "x" / "meta.yaml"
         meta = load_yaml(meta_path)
-        meta["Subject"] = ["ghost"]
+        meta["Subject"] = [f"{tax.project_id}.taxonomy/ghost"]
         meta_path.write_text(
             yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
         problems = [str(f) for f in caps.check(taxonomy=tax)]
@@ -358,7 +359,7 @@ class TestNestedMonorepo:
         FsTaxonomyStore.open(root).add("User")
         caps = FsCapabilitiesStore.open(child_a)
         caps.add("routes/profile", status="Supported")
-        caps.set("routes/profile", {"Subject": "root/user"})
+        caps.set("routes/profile", {"Subject": "root.taxonomy/user"})
         assert caps.check(taxonomy=FsTaxonomyStore.open(child_a)) == []
 
     def test_nested_deep_children_found(self, tmp_path):
@@ -438,7 +439,7 @@ class TestSiblingNodes:
         FsTaxonomyStore.open(parent).add("User")
         caps = FsCapabilitiesStore.open(left)
         caps.add("routes/profile", status="Supported")
-        caps.set("routes/profile", {"Subject": "parent/user"})
+        caps.set("routes/profile", {"Subject": "parent.taxonomy/user"})
         st = FsTaxonomyStore.open(left)
         assert caps.check(taxonomy=st) == []
 

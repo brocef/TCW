@@ -62,7 +62,7 @@ def test_rm_of_a_referenced_term_is_refused(project, run):
     run(project, "taxonomy", "add", "Invoice")
     run(project, "taxonomy", "add", "Payment")
     meta = project / "docs" / "taxonomy" / "payment" / "meta.yaml"
-    meta.write_text(meta.read_text().replace("relatesTo: []", "relatesTo: [invoice]"))
+    meta.write_text(meta.read_text().replace("relatesTo: []", "relatesTo: [fx.taxonomy/invoice]"))
     code, out, err = run(project, "taxonomy", "rm", "invoice")
     assert (code, out) == (3, "")
     assert "payment" in err

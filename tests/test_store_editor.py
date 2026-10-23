@@ -163,7 +163,7 @@ def test_update_term_name_and_relatesto(tmp_path):
     detail = st.update_term("admin", name="Administrator",
                             relates_to=["user"])
     assert detail.term.name == "Administrator"
-    assert detail.term.relates_to == ["user"]
+    assert detail.term.relates_to == ["test-project.taxonomy/user"]   # stored in full
 
 
 def test_update_term_partial_unchanged(tmp_path):

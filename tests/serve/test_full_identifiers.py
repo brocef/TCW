@@ -56,3 +56,13 @@ def test_an_inherited_entry_is_read_only_named_by_its_full_identifier(served):
                           {"revision": revision, "fields": {"name": "Mine"}})
     assert answer.status == 403, answer.body
     assert answer.json["error"].startswith(f"{full_id} is inherited from 'core'")
+
+
+def test_ac8_a_web_edit_stores_the_full_identifier_of_a_reference(served):
+    """TCW-110 Design 5.3: a reference typed as an id-path is stored in full."""
+    revision = served.get("/api/taxonomy/term").json["coreRevision"]
+    answer = served.patch("/api/taxonomy/term", {"revision": revision,
+                                                 "fields": {"relatesTo": ["shared"]}})
+    assert answer.status == 200, answer.body
+    meta = served.root / "docs" / "taxonomy" / "term" / "meta.yaml"
+    assert "core.taxonomy/shared" in meta.read_text()
