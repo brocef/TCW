@@ -438,6 +438,24 @@ the 3.x chain; with parent links:
   that is not on this machine is "not on this machine", not "unknown". The
   same condition replaces "a manifest or `projects:` entry" in TCW-110
   Design 6.1's table, in TCW-110's code.
+- **A search answer and a manifest that disagree** (decided by the
+  dispatching session on 2026-10-23, answering TCW-115's handoff on this
+  ticket). Because (b) and (c) read other projects' manifests before the
+  search, a manifest that becomes readable later (a parent fetched, or an
+  ancestor found later in the same command) can place a project somewhere
+  other than the folder the search finds for it. TCW never switches folders
+  silently. When a lookup is decided by a manifest entry of a project other
+  than the asking one, and the search from the asking project finds that ID
+  in a different folder (or finds it where the entry says it is not on this
+  machine), the lookup is a graph problem, recorded against the deciding
+  manifest, in the shape of TCW-115 Design 7.4:
+  `'<id>' is found at <folder> by the search from <asking root>, but <file> places it at <other folder>; add an entry for '<id>' to .tcw/tcw-manifest.local.yaml in <asking root>, which that lookup reads first, to say which folder it is`.
+  The same holds within one command when the search answered first and a
+  manifest consulted by that lookup is found later: once the walk is done,
+  each answer the search gave is checked against the manifests its lookup
+  would now consult. The asking project's own manifests decide before the
+  search and are never compared with it (TCW-107 Design 2.2), so an entry
+  there settles the conflict.
 
 3.5. **`projects:` is refused.** A `.tcw/tcw-config.yaml` holding a top-level
 `projects` key has the problem `'projects' is not a TCW 4.0 key: name
@@ -1201,6 +1219,27 @@ it on `FsProjectRegistry.open(<the active project's root>)`.
     `prettier --check`. `pnpm typecheck`, which runs a repository-wide
     `prettier --check .` first (`package.json:15-17`), is not a condition: it
     fails on files this item does not touch.
+35. **A manifest that disagrees with the search is a graph problem** (Design
+    3.4, decided 2026-10-23). `app: [core, lib]`; `lib` is at `<tmp>/lib`,
+    next to `app` at `<tmp>/app`, and nothing in `app`'s manifests places it;
+    `core` is placed by `app`'s manifest at `<tmp>/repos/core`, and `core`'s
+    manifest gives `lib: ../lib` (`<tmp>/repos/lib`, which does not exist).
+    In `app`, `tcw projects list` exits 1 and `tcw validate` exits 1 with an
+    error naming both `<tmp>/lib` and `<tmp>/repos/lib` and containing
+    `.tcw/tcw-manifest.local.yaml`; it never reports `lib` as not on this
+    machine. With an entry `lib: ../lib` in `app`'s
+    `.tcw/tcw-manifest.local.yaml`, `tcw validate` in `app` exits 0 and the
+    row for `lib` is present with `found.file` that manifest. Without `core`'s
+    entry for `lib`, `lib` is found by the search with no finding.
+36. **A manifest entry's "not on this machine" names the folder it checked**
+    (TCW-107's qa, decided by the dispatching session on 2026-10-23). A
+    manifest entry `lib2: ../lib2` whose folder is absent gives, in the
+    `unresolved` finding `tcw validate` prints and in the exit-5 message of a
+    command that needs `lib2`, the full resolved folder, as the error lines
+    for a wrong folder do, never the relative text `../lib2` alone. In a
+    linked git worktree, where a relative entry that leaves the repository is
+    read from the main checkout's position, the finding names the folder
+    beside the main checkout.
 
 ### Coverage
 
@@ -1221,6 +1260,7 @@ it on `FsProjectRegistry.open(<the active project's root>)`.
 | 3.2 the interface; `parent()`, `entry()`, `declared_upstream_ids()` gone | 9, 16, 17, 28 |
 | 3.3 `get` answers for the family only | 9, 16, 29 |
 | 3.4 TCW-107's lookup: (b) reverse load order; (c) descendants found so far, listed or not; 2.10; 2.11 (a); the 2.12 bullet for a project outside the graph; the 2.12 rows | 22 (b and 2.11 a); 30 (c, listing order); 29 (c, an unlisted descendant); 16 (the 2.12 bullet: a descendant's other parent found from it, not added to the family); 9, 18, 20 and 6 (the 2.12 rows: an ID named only by `parents:` or `children:`, including an ancestor's `children:`, and not here is "not on this machine", never "unknown") |
+| 3.4 a search answer and a manifest that disagree (decided 2026-10-23); TCW-107's "not on this machine" naming the resolved folder | 35; 36 |
 | 3.5 `projects:` and `connected-projects` refused: a graph problem in the active project and a descendant, unreadable links in an ancestor; upstream and `jira` block gone; earlier items' fixtures converted | 8, 21, 31 |
 | 3.6 `extends` held to the links; exit 7 when what lies above is unknown; whose links decide | 19, 9 (a project outside the family) |
 | 3.7 a sibling's objects readable by full identifier | 9 |
@@ -1301,6 +1341,17 @@ it on `FsProjectRegistry.open(<the active project's root>)`.
 
 Decisions, each with its reason:
 
+- **A search answer and a manifest that disagree are a graph problem**
+  (decided by the dispatching session on 2026-10-23, answering TCW-115's
+  handoff; Design 3.4, AC 35). Reason: switching folders silently would move
+  where every later command finds a project, and only the person can say
+  which folder is right; the message names both folders and the personal
+  manifest entry that settles it, as TCW-115 Design 7.4's does.
+- **"Not on this machine" from a manifest entry names the resolved folder**
+  (decided by the dispatching session on 2026-10-23, from TCW-107's qa; AC
+  36). Reason: one form of path in every manifest finding, and the form that
+  says which folder was actually checked, which in a linked worktree differs
+  from the text the entry holds.
 - **TCW-110 lands before this item** (user, 2026-10-22). The children's order
   is TCW-106, TCW-107, TCW-110, TCW-108, TCW-111. So a sibling is read by
   full identifier (Design 3.7), the records gate no longer depends on
