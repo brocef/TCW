@@ -436,9 +436,24 @@ export function App() {
         [selected]
     )
 
+    // The stage of the file last opened in the editor, so that the item's
+    // page comes back on that stage's tab rather than on the item's own.
+    const [fileStage, setFileStage] = useState<{
+        folder: string
+        stage: string
+    } | null>(null)
+
     // False when the user chose to stay on a page with unsaved changes.
-    const navigateTo = (nextAxis: Axis, key: string | null): boolean => {
-        if (!confirmLeave()) return false
+    // `saved` is for a form that has just saved its work: the `dirty` this
+    // render holds is still the form's, so asking would offer to discard
+    // what is already saved.
+    const navigateTo = (
+        nextAxis: Axis,
+        key: string | null,
+        saved = false
+    ): boolean => {
+        if (!saved && !confirmLeave()) return false
+        setFileStage(null)
         setProblem("")
         setEditor(null)
         setWorkMode(null)
@@ -847,6 +862,7 @@ export function App() {
                 },
                 true
             )
+            setFileStage({ folder: selected, stage })
         } catch (error) {
             showToast(
                 `Could not open ${path}: ${error instanceof Error ? error.message : String(error)}`
@@ -880,6 +896,7 @@ export function App() {
             },
             true
         )
+        setFileStage({ folder: selected, stage })
     }
     const openNewItem = () => {
         enterWorkMode({ mode: "new" })
@@ -1239,7 +1256,7 @@ export function App() {
                                     setDirty(false)
                                     setAllWork(null)
                                     void reloadBoard()
-                                    if (folder) navigateTo("work", folder)
+                                    if (folder) navigateTo("work", folder, true)
                                 }}
                                 onCancel={leaveWorkMode}
                                 onDirty={setDirty}
@@ -1290,6 +1307,10 @@ export function App() {
                                 readFile={readFile}
                                 onRetry={retryDetail}
                                 editing={{
+                                    openStage:
+                                        fileStage?.folder === workDetail.folder
+                                            ? fileStage.stage
+                                            : undefined,
                                     onEditFile: (stage, path) =>
                                         void openFile(stage, path),
                                     onNewFile: (stage, kind) =>

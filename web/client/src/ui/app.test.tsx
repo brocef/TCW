@@ -296,6 +296,35 @@ test("Create asks where the new document goes, then edits it", async () => {
     })
 })
 
+test("coming back from a stage file's editor shows that stage's tab", async () => {
+    serve({}, [
+        ["/api/work/2026-10-01-a$", 200, workDetail("2026-10-01-a")],
+        [
+            /^POST \/api\/work\/2026-10-01-a\/files$/,
+            200,
+            { path: "lessons/lessons.md", template: "" },
+        ],
+    ])
+    renderApp("/work/2026-10-01-a")
+    // The item is at `ask`; the file edited is another stage's.
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: "Lessons" }))
+    fireEvent.click(
+        within(screen.getByRole("tabpanel")).getByRole("button", {
+            name: "Create",
+        })
+    )
+    expect(
+        await screen.findByRole("heading", {
+            name: "Create lessons/lessons.md",
+        })
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(await screen.findByRole("tab", { name: "Lessons" })).toHaveAttribute(
+        "aria-selected",
+        "true"
+    )
+})
+
 const allPaths = (fetch: ReturnType<typeof serve>) =>
     fetch.calls
         .map((call) => call.path)
@@ -335,6 +364,32 @@ test("unsaved comment text is asked about before a form replaces the page", asyn
         expect(
             await screen.findByRole("combobox", { name: "Parent" })
         ).toBeInTheDocument()
+    } finally {
+        confirm.mockRestore()
+    }
+})
+
+test("a saved new item opens its page without asking about unsaved changes", async () => {
+    serve({}, [
+        [/^POST \/api\/work$/, 201, { "full-id": "p.work/2026-10-02-new" }],
+        ["/api/work/2026-10-02-new$", 200, workDetail("2026-10-02-new")],
+    ])
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false)
+    try {
+        renderApp("/work")
+        fireEvent.click(
+            await screen.findByRole("button", { name: "+ New item" })
+        )
+        fireEvent.change(screen.getByRole("textbox", { name: "Title" }), {
+            target: { value: "New" },
+        })
+        fireEvent.click(screen.getByRole("button", { name: "Save" }))
+        await waitFor(() =>
+            expect(screen.getByTestId("where")).toHaveTextContent(
+                "/work/2026-10-02-new"
+            )
+        )
+        expect(confirm).not.toHaveBeenCalled()
     } finally {
         confirm.mockRestore()
     }

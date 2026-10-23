@@ -224,6 +224,10 @@ export type TWorkPageEditing = {
     commentBox?: ReactNode
     /** The declaration file's section. */
     declaration?: ReactNode
+    /** The stage whose tab opens, when it is not the item's own: the stage
+     * of the file the page was last left to edit, so that coming back from
+     * the editor shows that file. */
+    openStage?: string
 }
 
 /** A work item's page: title, folder, stage, properties, the request when the
@@ -331,7 +335,7 @@ export function WorkPage({
                 key={detail.folder}
                 project={project}
                 detail={detail}
-                current={item?.stage ?? null}
+                current={editing.openStage ?? item?.stage ?? null}
                 readFile={readFile}
                 onEditFile={editing.onEditFile}
                 onNewFile={editing.onNewFile}
