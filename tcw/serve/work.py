@@ -13,7 +13,7 @@ files on disk stay usable; otherwise every failure is an error.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timezone
 from http import HTTPStatus
 from pathlib import Path
@@ -34,7 +34,7 @@ from tcw.work.layout import Layout
 from tcw.work.model import (
     PRIORITIES, SIZES, STAGES, UNSET, Changes, Item, Slug, inbox_stage, start_stage,
 )
-from tcw.work.open import read_work_config, work_path
+from tcw.work.open import name_item, read_work_config, work_path
 from tcw.work.record import item_record, readable
 
 LOCAL, BACKEND = "local", "backend"
@@ -363,27 +363,40 @@ def parse_changes(sent: Any) -> Changes:
     return Changes(**values)
 
 
-def checked_reference(ctx: WorkContext, what: str, text: str) -> dict | None:
-    """A `parent` or `blocked-by` a write adds: an item of this project, or
-    a full slug naming another project's item, which is kept with a warning
-    because it is not checked here. Anything else is refused."""
-    slug = Slug.typed(text, ctx.backend.project)
+def checked_reference(ctx: WorkContext, what: str, text: str
+                      ) -> tuple[Slug, dict | None]:
+    """The item a `parent` or `blocked-by` a write adds names, as the full
+    identifier to store however it was typed (TCW-110 Design 3.3), and a
+    warning when it is another project's item, which is kept unchecked here.
+    An item of this project that is not here is refused."""
+    slug = name_item(text, lambda: ctx.backend, ctx.root)
     if slug.project != ctx.backend.project:
-        return {"severity": "warning", "where": what,
-                "message": f"{slug} is in project '{slug.project}', which this "
-                           f"page does not check; make sure it exists"}
+        return slug, {"severity": "warning", "where": what,
+                      "message": f"{slug} is in project '{slug.project}', which this "
+                                 f"page does not check; make sure it exists"}
     if slug.folder not in item_folders(ctx):
         raise usage(f"{what}: {text} is not an item of this project")
-    return None
+    return slug, None
 
 
-def references(ctx: WorkContext, changes: Changes) -> list[dict]:
+def references(ctx: WorkContext, changes: Changes) -> tuple[Changes, list[dict]]:
+    """`changes` with each item it adds named by full identifier, and the
+    warnings about the ones this page cannot check."""
     notes = []
-    if changes.parent is not UNSET and changes.parent is not None:
-        notes.append(checked_reference(ctx, "parent", changes.parent))
+    parent = changes.parent
+    if parent is not UNSET and parent is not None:
+        parent, note = checked_reference(ctx, "parent", parent)
+        notes.append(note)
+    blockers = []
     for blocker in changes.add_blocked_by:
-        notes.append(checked_reference(ctx, "blocked-by", blocker))
-    return [n for n in notes if n]
+        slug, note = checked_reference(ctx, "blocked-by", blocker)
+        blockers.append(slug)
+        notes.append(note)
+    removed = tuple(name_item(t, lambda: ctx.backend, ctx.root)
+                    for t in changes.remove_blocked_by)
+    resolved = replace(changes, parent=parent, add_blocked_by=tuple(blockers),
+                       remove_blocked_by=removed)
+    return resolved, [n for n in notes if n]
 
 
 def _changed(changes: Changes) -> list[str]:
@@ -412,7 +425,7 @@ def edit(request: Request):
     missing = [n for n in changed if n not in expected]
     if missing:
         raise usage(f"expected must hold the loaded value of {', '.join(missing)}")
-    notes = references(ctx, changes)
+    changes, notes = references(ctx, changes)
     with request.lock:
         record = item_record(ctx.backend.read(folder), [], ctx.layout)
         stale = [n for n in changed if not _same(expected[n], record[n])]
@@ -448,7 +461,7 @@ def add_blocks(request: Request):
     writable(ctx)
     folder = item_folder(ctx, request.param(1))
     slug = ctx.slug(folder)
-    target = Slug.typed(request.field("target"), slug.project)
+    target = name_item(request.field("target"), lambda: ctx.backend, ctx.root)
     if request.body.get("expected") is not False:
         raise usage("expected must be false: the target as loaded did not list "
                     "this item")
@@ -498,7 +511,7 @@ def create(request: Request):
                                  "parent") if props.get(k)},
         "tags": {"add": props.get("tags") or []},
         "blocked-by": {"add": props.get("blocked-by") or []}})
-    notes = references(ctx, changes)
+    changes, notes = references(ctx, changes)
     if ctx.owner == BACKEND:
         # A parent in another project is the backend's to accept or refuse (a
         # ticket on the same site can be one); a blocker must be an item here.

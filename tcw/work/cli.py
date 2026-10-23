@@ -23,15 +23,15 @@ from tcw.store.fs import FsProjectRegistry, find_project_root
 from tcw.stdin import read_piped_stdin
 from tcw.work.advance import advance as advance_item, discard as discard_item
 from tcw.work.backend import Query, WorkBackend
-from tcw.work.jira.backend import KEY, JiraBackend
+from tcw.work.jira.backend import JiraBackend
 from tcw.work.jira.tickets import adopt, inbox, user_name
 from tcw.work.gates import project_reader
 from tcw.work.model import (
     STAGES, UNSET, Changes, Slug, completion_stage, inbox_stage, stage as table_stage,
     start_stage,
 )
-from tcw.work.open import (delegate, open_backend, open_for_update, open_project,
-                           read_work_config)
+from tcw.work.open import (delegate, existing_item, name_item, open_backend,
+                           open_for_update, read_work_config, resolve_work_input)
 from tcw.work.record import item_record, readable
 
 NAME = "work"
@@ -49,21 +49,33 @@ def project_root(here: Path | None = None) -> Path:
 
 def resolve_item(arg: str, here: Path | None = None
                  ) -> tuple[Slug, WorkBackend, Path]:
-    """The slug `arg` names, the backend that holds it, and this project's
-    root. A full slug or a bare folder name, matched exactly; another
-    project's slug opens that project for reading."""
+    """The item `arg` names, the backend that holds it, and this project's
+    root: a full identifier or its address, a folder name, or a tracker key,
+    alone or in a full identifier (TCW-110 Design 3.1). Another project's
+    item opens that project for reading."""
     root = project_root(here)
-    backend = open_backend(root)
-    if isinstance(backend, JiraBackend) and isinstance(arg, str) and KEY.fullmatch(arg):
-        # A ticket key typed where an item is named (TCW-71 Design 2.6).
-        folder = backend.lookup(arg)
-        if folder is None:
-            raise NotFound(f"no work item here carries the Jira key {arg}")
-        return Slug(backend.project, folder), backend, root
-    slug = Slug.typed(arg, backend.project)
-    if slug.project != backend.project:
-        backend = open_project(slug.project, root)
+    slug, backend = resolve_work_input(arg, lambda: open_backend(root), root)
     return slug, backend, root
+
+
+def _references(changes: Changes, backend: WorkBackend, root: Path) -> Changes:
+    """`changes` with each item it names (`--parent`, `--blocked-by`,
+    `--unblocked-by`) turned into that item's full identifier, read from its
+    owner, so what is stored is the folder the backend holds however the
+    item was typed (TCW-110 Design 3.3). A blocker being removed need not
+    exist any more: removing a reference to a deleted item is how it is
+    cleaned up."""
+    def named(text) -> Slug:
+        return existing_item(text, lambda: backend, root)[0]
+
+    def sorted_(text) -> Slug:
+        return resolve_work_input(text, lambda: backend, root)[0]
+    parent = changes.parent
+    if parent is not UNSET and parent is not None:
+        parent = named(parent)
+    return replace(changes, parent=parent,
+                   add_blocked_by=tuple(named(t) for t in changes.add_blocked_by),
+                   remove_blocked_by=tuple(sorted_(t) for t in changes.remove_blocked_by))
 
 
 def _own(slug: Slug, backend: WorkBackend, root: Path) -> WorkBackend:
@@ -227,6 +239,7 @@ def _new(args) -> int:
         complexity=_optional(args.complexity), assignee=assignee,
         parent=_optional(args.parent), add_tags=tuple(args.tag or ()),
         add_blocked_by=tuple(args.blocked_by or ()))
+    changes = _references(changes, backend, root)
     # A failure after creation carries the name; `tcw.cli.main` prints it.
     item = new_item(backend, args.title, changes, stage=args.stage, request=request)
     print(item.slug)
@@ -245,7 +258,7 @@ def _list(args) -> int:
     for tag in sorted(tags or ()):
         if tag not in backend.config.tags:
             _say(f"warning: tag '{tag}' is not in this project's registry")
-    parent = Slug.typed(args.parent, backend.project) if args.parent else None
+    parent = existing_item(args.parent, lambda: backend, root)[0] if args.parent else None
     query = Query(stages=frozenset(args.stage) if args.stage else None,
                   parent=parent, assignee=assignee, tags=tags,
                   all=args.all)
@@ -337,11 +350,15 @@ def _edit(args) -> int:
         add_tags=tuple(args.tag or ()), remove_tags=tuple(args.untag or ()),
         add_blocked_by=tuple(args.blocked_by or ()),
         remove_blocked_by=tuple(args.unblocked_by or ()))
-    targets = [Slug.typed(t, slug.project) for t in args.blocks or ()]
-    if changes == Changes() and not targets and not args.assign_me:
+    if changes == Changes() and not args.blocks and not args.assign_me:
         raise UsageError("nothing to change; give at least one property flag")
     own = _own(slug, backend, root)
     own.read(slug.folder)
+    changes = _references(changes, own, root)
+    # A full identifier is taken as written: `blocks_target` opens its owner
+    # for writing, which reads it, and refuses a project only `--project`
+    # reaches rather than looking it up here.
+    targets = [name_item(t, lambda: own, root) for t in args.blocks or ()]
     if args.assign_me:
         # Asked of this project's own backend, after `_own` has refused
         # another project's item and the read has found it, and before

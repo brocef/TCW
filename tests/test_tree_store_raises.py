@@ -11,7 +11,8 @@ them. Besides the four exit classes it allows the reference errors (which are
 `NotFound` and `UsageError` themselves), `NotASlug` (a `UsageError` the
 taxonomy CLI catches to name `--slug`), `StaleRevision` (a conflict the web
 viewer answers with its own status, not a CLI exit) and
-`StoreLocationUnusable` (a store-opening error, raised before any operation).
+`StoreLocationUnusable` (a store-opening error, raised before any operation)
+and `MalformedId` (a `UsageError` naming the identifier rule, TCW-110).
 """
 
 import ast
@@ -22,7 +23,8 @@ import tcw
 FS = Path(tcw.__file__).resolve().parent / "store" / "fs.py"
 
 ALLOWED = {"NotFound", "UsageError", "Refused", "BackendError", "RefError",
-           "AmbiguousRef", "NotASlug", "StaleRevision", "StoreLocationUnusable"}
+           "AmbiguousRef", "NotASlug", "StaleRevision", "StoreLocationUnusable",
+           "MalformedId"}
 
 
 def _region(tree: ast.Module) -> list[ast.stmt]:

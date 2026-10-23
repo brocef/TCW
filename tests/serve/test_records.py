@@ -433,13 +433,13 @@ def test_a_link_to_another_projects_item_is_other_project(tmp_path, personal_on,
 
 
 def test_an_inherited_term_reads_by_an_encoded_slash(inheriting):
-    found = detail(inheriting, "taxonomy", "base%2Fshared")
+    found = detail(inheriting, "taxonomy", "base.taxonomy%2Fshared")
     assert (found["term"]["full-id"], found["term"]["owner"]) == \
         ("base.taxonomy/shared", "base")
 
 
 def test_an_inherited_capability_reads_by_an_encoded_slash(inheriting):
-    found = detail(inheriting, "capabilities", "base%2Fshared-cap")
+    found = detail(inheriting, "capabilities", "base.capabilities%2Fshared-cap")
     assert found["capability"]["owner"] == "base"
 
 

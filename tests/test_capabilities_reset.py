@@ -104,9 +104,9 @@ def test_reset_qualified_placement_variant(tmp_path):
     """An override can live at the alias-qualified folder; reset finds it by id."""
     base, child = federated(tmp_path)
     write_cap(child, "auth/login", id="cap-loc999", Status="Missing")   # local shadow at bare path
-    store(child).set("base/auth/login", {"Status": "Partial"})
+    store(child).set("base.capabilities/auth/login", {"Status": "Partial"})
     assert (child / "docs/capabilities/base/auth/login").is_dir()
-    store(child).reset("base/auth/login")
+    store(child).reset("base.capabilities/auth/login")
     assert not (child / "docs/capabilities/base/auth/login").exists()
     assert store(child).get("base/auth/login").status == "Supported"
     assert (child / "docs/capabilities/auth/login").is_dir()            # local shadow untouched

@@ -297,9 +297,9 @@ def _assert_reads_core(app: Path, term_slug: str = "argument") -> None:
                     ("capabilities", "extends", "add", "core")):
         out = _tcw(app, *command)
         assert out.returncode == 0, (command, out.stderr)
-    out = _tcw(app, "taxonomy", "show", f"core/{term_slug}")
+    out = _tcw(app, "taxonomy", "show", f"core.taxonomy/{term_slug}")
     assert out.returncode == 0, out.stderr
-    out = _tcw(app, "capabilities", "show", "core/arguments/build-an-argument")
+    out = _tcw(app, "capabilities", "show", "core.capabilities/arguments/build-an-argument")
     assert out.returncode == 0, out.stderr
     out = _tcw(app, "validate")
     assert out.returncode == 0, out.stderr
@@ -334,8 +334,8 @@ def test_the_override_variable_redirects_an_upstream_from_the_cli(tmp_path):
     app = _reader(tmp_path / "app", "app", {"upstream": {"core": "../core"}})
     assert _tcw(app, "taxonomy", "extends", "add", "core").returncode == 0
     env = {"TCW_PROJECT_CORE": str(tmp_path / "other-core")}
-    assert _tcw(app, "taxonomy", "show", "core/premise", env=env).returncode == 0
-    assert _tcw(app, "taxonomy", "show", "core/argument", env=env).returncode != 0
+    assert _tcw(app, "taxonomy", "show", "core.taxonomy/premise", env=env).returncode == 0
+    assert _tcw(app, "taxonomy", "show", "core.taxonomy/argument", env=env).returncode != 0
     listed = _tcw(app, "taxonomy", "list", env=env).stdout
     assert "premise" in listed and "argument" not in listed, listed
 

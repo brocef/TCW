@@ -12,7 +12,8 @@ from http import HTTPStatus
 from typing import Any
 
 from tcw.findings import Finding
-from tcw.ids import IdError, identity, looks_full, parse_full_id
+from tcw.ids import identity
+from tcw.locate import find_tree
 from tcw.refs import resolve_tcw_ref
 from tcw.serve.server import Request, not_found, read_only, route, usage
 from tcw.store.base import AmbiguousRef, Capability, Term
@@ -75,19 +76,15 @@ def _capabilities(request: Request) -> FsCapabilitiesStore:
     return FsCapabilitiesStore.open(request.root)
 
 
-def _store_ref(store: FsTaxonomyStore | FsCapabilitiesStore, key: str) -> str:
-    """The text the store's `get` reads for a route key: the id-path of this
-    project's own entry, or an inherited entry's full identifier, which the
-    store still reads as `<owner>/<id-path>`."""
-    if not looks_full(key):
-        return key
-    try:
-        full_id = parse_full_id(key, store.COMPONENT)
-    except IdError as error:
-        raise usage(str(error)) from None
-    if full_id.project == store.project_id:
-        return full_id.id_path
-    return f"{full_id.project}/{full_id.id_path}"
+def _route_target(store: FsTaxonomyStore | FsCapabilitiesStore, key: str):
+    """The entry a route key names, read as command input is (TCW-110 Design
+    3.1): this project's id-path, or a full identifier. An entry of a project
+    this one does not inherit from is not served here."""
+    found = find_tree(store, key)          # a usage error is 400, not found 404
+    if found.origin == "local" and found.owner != store.project_id:
+        raise not_found(f"{found.full_id} belongs to project '{found.owner}', "
+                        f"which this project does not inherit from")
+    return found
 
 
 # -- taxonomy ---------------------------------------------------------------------
@@ -99,7 +96,7 @@ def list_terms(request: Request):
 
 def get_term(request: Request):
     store = _taxonomy(request)
-    detail = store.get_term_detail(_store_ref(store, request.param(1)))
+    detail = store.get_term_detail(_route_target(store, request.param(1)).full_id)
     if detail is None:
         raise not_found(f"no such term: {request.param(1)}")
     return HTTPStatus.OK, {"term": jsonable(detail.term),
@@ -140,13 +137,12 @@ def update_term(request: Request):
     # it was read; the client always sends the `coreRevision` it last read.
     changes["core_revision"] = request.field("revision")
     store = _taxonomy(request)
-    ref = _store_ref(store, request.param(1))
-    found = store.get(ref)
-    if found is not None and found.origin != "local":
+    found = _route_target(store, request.param(1))
+    if found.origin != "local":
         raise read_only(f"{found.full_id} is inherited from '{found.owner}'; "
                         f"change it there")
     with request.lock:
-        detail = store.update_term(ref, **changes)
+        detail = store.update_term(found.full_id, **changes)
     response = {"term": jsonable(detail.term), "coreRevision": detail.core_revision}
     return HTTPStatus.OK, checked(response, request,
                                   ValidationTarget("taxonomy", detail.term.slug))
@@ -180,7 +176,7 @@ def list_capabilities(request: Request):
 
 def get_capability(request: Request):
     store = _capabilities(request)
-    detail = store.get_capability_detail(_store_ref(store, request.param(1)))
+    detail = store.get_capability_detail(_route_target(store, request.param(1)).full_id)
     if detail is None:
         raise not_found(f"no such capability: {request.param(1)}")
     return HTTPStatus.OK, {"capability": jsonable(detail.capability),
@@ -218,16 +214,15 @@ def update_capability(request: Request):
     # it was read; the client always sends the `coreRevision` it last read.
     changes["core_revision"] = request.field("revision")
     store = _capabilities(request)
-    ref = _store_ref(store, request.param(1))
-    found = store.get(ref)
-    if found is not None and found.origin != "local":
+    found = _route_target(store, request.param(1))
+    if found.origin != "local":
         raise read_only(f"{found.full_id} is inherited from '{found.owner}'; "
                         f"change it there, or override it in this project with "
-                        f"`tcw capabilities set {ref} --field <name>=<value>`")
+                        f"`tcw capabilities set {found.full_id} --field <name>=<value>`")
     if fields:
         _subjects_are_vocabulary(request, fields)
     with request.lock:
-        detail = store.update_capability(ref, **changes)
+        detail = store.update_capability(found.full_id, **changes)
     response = {"capability": jsonable(detail.capability),
                 "coreRevision": detail.core_revision}
     return HTTPStatus.OK, checked(response, request,

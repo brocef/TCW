@@ -12,7 +12,8 @@ import yaml
 
 from tcw.errors import ProjectGraphError, Unreachable, UnknownProject
 from tcw.ids import FullId
-from tcw.locate import ERROR, FOUND, MISSING, UNRESOLVED, Locator, outcome_of
+from tcw.locate import (ERROR, FOUND, MISSING, UNRESOLVED, Locator, outcome_of,
+                        three_x_hint)
 from tcw.store import project as project_module
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tcw.store.project import FsProjectRegistry, begin_command, end_command
@@ -211,3 +212,21 @@ def test_one_locator_and_one_registry_per_command(pair, command, monkeypatch):
         locator.owner_root("elsewhere", named_by=core)
     assert len(built) == 1
     assert project_module._OPEN is not None
+
+
+@pytest.mark.parametrize("id_path", ["Cli/x", "local/x", "x"])
+def test_the_3x_hint_looks_nothing_up_unless_the_first_part_is_a_project_id(
+        pair, monkeypatch, id_path):
+    """Design 3.4: the hint is tried only for a multi-part id-path whose first
+    part is a valid project ID."""
+    app, _ = pair
+    locator = Locator.of(app)
+    monkeypatch.setattr(locator.registry, "project_folder",
+                        lambda *a: pytest.fail("looked up"))
+    assert three_x_hint(locator, "capabilities", id_path) == ""
+
+
+def test_the_3x_hint_for_a_project_that_is_found(pair):
+    app, _ = pair
+    assert three_x_hint(Locator.of(app), "taxonomy", "core/term") == \
+        "; to name an object in project 'core', write core.taxonomy/term"

@@ -181,3 +181,85 @@ def test_an_address_names_the_item_too(tcw, demo):
     folder = made.partition("/")[2]
     assert tcw(["work", "show", addr("demo", "work", folder)], demo).out == \
         tcw(["work", "show", folder], demo).out
+
+
+# -- what commands accept (TCW-110 Design 3, Step 8) ------------------------------------
+
+
+def test_ac7_an_object_address_shows_the_item(tcw, demo):
+    made = _new(tcw, demo, "Add login")
+    shown = tcw(["work", "show", addr("demo", "work", f"{TODAY}-add-login")], demo)
+    assert shown.code == 0, shown.err
+    assert shown.out.splitlines()[0] == f"full-id: {made}"
+
+
+def test_ac7_another_namespace_is_a_usage_error_naming_work(tcw, demo):
+    found = tcw(["work", "show", "demo.taxonomy/term"], demo)
+    assert found.code == 2
+    assert "work" in found.err
+
+
+def test_ac7_a_3x_reference_is_not_found_with_the_identifier_to_write(tcw, demo):
+    _new(tcw, demo, "Add login")
+    found = tcw(["work", "show", f"demo/{TODAY}-add-login"], demo)
+    assert found.code == 4
+    assert f"write demo.work/{TODAY}-add-login" in found.err
+
+
+def test_ac7_list_parent_and_edit_blocks_take_a_full_identifier(tcw, demo):
+    epic = _new(tcw, demo, "Epic")
+    child = _new(tcw, demo, "Part")
+    assert tcw(["work", "edit", child, "--parent", epic], demo).code == 0
+    assert tcw(["work", "list", "--parent", epic], demo).out == f"{child}\n"
+    other = _new(tcw, demo, "Other")
+    edited = tcw(["work", "edit", other, "--blocks", epic], demo)
+    assert edited.code == 0, edited.err
+    assert _item_yaml(demo, f"{TODAY}-epic")["blocked-by"] == [other]
+
+
+def test_ac7_a_folder_name_is_stored_as_the_full_identifier(tcw, demo):
+    """Design 3.3: what is stored is the full identifier however it was typed."""
+    _new(tcw, demo, "Epic")
+    _new(tcw, demo, "Part")
+    assert tcw(["work", "edit", f"{TODAY}-part", "--parent", f"{TODAY}-epic",
+                "--blocked-by", f"{TODAY}-epic"], demo).code == 0
+    stored = _item_yaml(demo, f"{TODAY}-part")
+    assert stored["parent"] == wid("demo", f"{TODAY}-epic")
+    assert stored["blocked-by"] == [wid("demo", f"{TODAY}-epic")]
+
+
+@pytest.mark.parametrize("typed", ["TCW-120", "demo.work/TCW-120"])
+def test_ac10_a_key_in_a_files_project_is_never_a_folder_name(tcw, demo, typed):
+    found = tcw(["work", "show", typed], demo)
+    assert found.code == 4
+    assert "no work item in project 'demo' carries the key TCW-120" in found.err
+
+
+def test_ac25_a_reference_that_is_not_there_stops_the_edit(tcw, demo):
+    _new(tcw, demo, "Other")
+    _new(tcw, demo, "Mine")
+    path = demo / "docs" / "work" / f"{TODAY}-mine" / "item.yaml"
+    before = path.read_bytes()
+    for flag in ("--parent", "--blocked-by"):
+        found = tcw(["work", "edit", f"{TODAY}-mine", flag, f"{TODAY}-OTHER"], demo)
+        assert found.code == 4, (flag, found.err)
+        found = tcw(["work", "edit", f"{TODAY}-mine", flag, f"{TODAY}-nothing"], demo)
+        assert found.code == 4, (flag, found.err)
+    assert path.read_bytes() == before
+
+
+def test_a_new_item_refuses_a_parent_that_is_not_there(tcw, demo):
+    found = tcw(["work", "new", "Part", "--parent", f"{TODAY}-nothing"], demo)
+    assert found.code == 4
+    assert not list((demo / "docs" / "work").glob(f"{TODAY}-part"))
+
+
+def test_removing_a_blocker_that_no_longer_exists_is_allowed(tcw, demo):
+    _new(tcw, demo, "Mine")
+    path = demo / "docs" / "work" / f"{TODAY}-mine" / "item.yaml"
+    document = yaml.safe_load(path.read_text())
+    document["blocked-by"] = [wid("demo", f"{TODAY}-gone")]
+    path.write_text(yaml.safe_dump(document))
+    found = tcw(["work", "edit", f"{TODAY}-mine", "--unblocked-by", f"{TODAY}-gone"], demo)
+    assert found.code == 0, found.err
+    assert "blocked-by" not in _item_yaml(demo, f"{TODAY}-mine")

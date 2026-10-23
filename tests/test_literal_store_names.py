@@ -12,7 +12,8 @@ import pytest
 
 from tcw.cli import main
 from tcw.serve import TcwServer
-from tcw.store.fs import init
+from tcw.ids import FullId
+from tcw.store.fs import FsCapabilitiesStore, init
 
 
 def git(root: Path, *args: str) -> str:
@@ -52,16 +53,28 @@ def test_the_web_answers_404_for_an_encoded_slash(root):
 # ── criterion 2: a glob-named capability writes only itself ─────────────────
 #
 # Its staging half went with TCW-73, which stages nothing: what is left is that
-# writing `a*` changes `a*` and never its neighbour.
+# writing `a*` changes `a*` and never its neighbour. Since TCW-110 no command
+# creates or names `a*` (it breaks the identifier rule), so the folder is made
+# by hand and written through the store with a full identifier built in code.
+
+def test_a_glob_named_capability_is_refused_and_writes_nothing(root, capsys):
+    assert main(["capabilities", "add", "a*", "Star"]) == 2
+    assert "invalid path 'a*'" in capsys.readouterr().err
+    assert not (root / "docs" / "capabilities" / "a*").exists()
+
 
 def test_writing_a_glob_named_capability_leaves_its_neighbour_alone(root, capsys):
-    assert main(["capabilities", "add", "a*", "Star"]) == 0
+    star = root / "docs" / "capabilities" / "a*"
+    star.mkdir(parents=True)
+    (star / "meta.yaml").write_text("id: cap-star01\nname: Star\nStatus: Missing\n")
+    (star / "description.md").write_text("")
     assert main(["capabilities", "add", "abc", "Abc"]) == 0
     git(root, "add", "-A")
     git(root, "commit", "-qm", "seed")
     neighbour = root / "docs" / "capabilities" / "abc" / "meta.yaml"
     neighbour.write_text(neighbour.read_text() + "# mine, not yet saved\n")
-    assert main(["capabilities", "set", "a*", "--field", "Status=Partial"]) == 0
+    FsCapabilitiesStore.open(root).set(FullId("node", "capabilities", "a*"),
+                                       {"Status": "Partial"})
     assert git(root, "diff", "--cached", "--name-only") == ""
     assert sorted(git(root, "diff", "--name-only").split()) == [
         "docs/capabilities/a*/meta.yaml", "docs/capabilities/abc/meta.yaml"]

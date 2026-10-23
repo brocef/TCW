@@ -28,6 +28,7 @@ import yaml
 
 from tcw.errors import BackendError, NotFound, Refused, TcwError, UsageError
 from tcw.findings import Finding
+from tcw.ids import FullId, MalformedId, id_path_problem, sort_input
 from tcw.output import shown as _shown
 from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
 from tcw.store.base import (
@@ -1147,6 +1148,54 @@ def _safe_store_id(value: str, label: str) -> str:
     return v
 
 
+def exact_child(parent: Path, name: str) -> "bool | str":
+    """Whether `parent` holds an entry spelled exactly `name`: True when it
+    does, the entry's own spelling when one differs from `name` only in
+    letter case, and False when there is none. A disk that ignores case
+    finds `Cli` for `cli`; reading the listing keeps an id-path
+    case-sensitive there (TCW-110 Design 1.1)."""
+    try:
+        names = os.listdir(parent)
+    except OSError:
+        return False
+    if name in names:
+        return True
+    folded = name.casefold()
+    return next((entry for entry in names if entry.casefold() == folded), False)
+
+
+def exact_path(root: Path, id_path: str) -> "bool | str":
+    """`exact_child` for each part of `id_path` below `root`: True when every
+    folder is spelled as given, the spelling on disk when some differ only in
+    case, False when one is missing."""
+    spelled, folder = [], Path(root)
+    for part in id_path.split("/"):
+        found = exact_child(folder, part)
+        if found is False:
+            return False
+        name = part if found is True else found
+        spelled.append(name)
+        folder = folder / name
+    on_disk = "/".join(spelled)
+    return True if on_disk == id_path else on_disk
+
+
+def _check_id_path(id_path: str, label: str) -> None:
+    """Refuse a new object's id-path that breaks the identifier rule (TCW-110
+    Design 1.6), before anything is written."""
+    problem = id_path_problem(id_path)
+    if problem:
+        raise MalformedId(f"invalid {label} {id_path!r}: {problem}")
+
+
+def _bad_name(id_path: str) -> str | None:
+    """Why a folder's name breaks the identifier rule, as `check` reports it
+    (Design 1.6), or None."""
+    problem = id_path_problem(id_path)
+    return (f"its folder name breaks the identifier rule ({problem}); rename it "
+            f"by hand") if problem else None
+
+
 def _umask() -> int:
     """The process umask, read without leaving it changed."""
     current = os.umask(0)
@@ -1805,6 +1854,8 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         )
 
     def get_local(self, slug: str) -> Term | None:
+        """This store's own project's entry at the id-path `slug`, every
+        folder spelled exactly as given, or None."""
         # A ref is joined onto the store root, so it is bounded input like any
         # other store id: one that escapes (`../capabilities/thing`) resolves to
         # nothing rather than raising — `get()` is documented to return None for
@@ -1816,8 +1867,10 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             return None
         d = self.root / slug
         # Order matters: the cheap stat first, so a miss pays no `resolve()`;
-        # containment second; the read (`_term`) only after both.
-        return self._term(slug) if d.is_dir() and self._entry_readable(d) else None
+        # containment second; the spelling, read from the listings, third;
+        # the read (`_term`) only after all three.
+        return self._term(slug) if d.is_dir() and self._entry_readable(d) \
+            and exact_path(self.root, slug) is True else None
 
     def _local_slugs(self) -> list[str]:
         # `list` must not advertise what `show`/`rm` refuse. Note `rglob` does
@@ -1860,6 +1913,14 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         head, _, rest = ref.partition("/")
         if head in inherited_stores:                   # prefixed (B.6.1)
             return self.get_inherited(head, rest)
+        return self.get_view(ref)
+
+    def get_view(self, slug: str) -> Term | None:
+        """An id-path read as the active project sees it (TCW-110 Design 3.1
+        form d): the local entry first, else the one inherited entry at that
+        path. `AmbiguousRef` when two inherited projects both hold it."""
+        ref = slug
+        inherited_stores = self._inherited_stores()
         local = self.get_local(ref)                    # bare-wins-local (B.6.2)
         if local is not None:
             return local
@@ -1876,8 +1937,24 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         return None
 
     def get_inherited(self, alias: str, slug: str) -> Term | None:
+        """The entry at id-path `slug` in project `alias`, one this store
+        inherits from, as this project sees it, or None."""
         st = self._inherited_stores().get(alias)
         return self._term_via(st, slug, alias) if st and st.get_local(slug) else None
+
+    def _found(self, target: "FullId | str") -> Term | None:
+        """The entry an operation naming one existing object acts on: a full
+        identifier of this project's own entry or of one it inherits, or text
+        sorted as command input is (TCW-110 Design 3.1), an id-path read by
+        `get_view`. Another project's entry is not this store's to act on."""
+        if isinstance(target, str):
+            found = sort_input(target, "taxonomy")
+            if found.form == "d":
+                return self.get_view(found.id_path)
+            target = found.full_id
+        if target.project == self.project_id:
+            return self.get_local(target.id_path)
+        return self.get_inherited(target.project, target.id_path)
 
     def search(self, query: str) -> list[Term]:
         q = query.lower()
@@ -1897,7 +1974,9 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                            f"digits and single hyphens")
         if parent:
             parent = _safe_store_id(parent, "parent")
+            _check_id_path(parent.strip("/"), "parent")
         full = f"{parent.strip('/')}/{leaf}" if parent else leaf
+        _check_id_path(full, "slug")
         if parent and not (self.root / parent).is_dir():
             raise UsageError(f"parent term does not exist: {parent}")
         kind = _normalize_taxonomy_kind(kind)
@@ -1923,8 +2002,8 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         self._write_entry(d, meta, description)
         return self._term(full)
 
-    def remove(self, ref: str) -> None:
-        term = self.get(ref)
+    def remove(self, ref: "FullId | str") -> None:
+        term = self._found(ref)
         # The exact listed spelling only, as `FsCapabilitiesStore.remove`: on a
         # case-insensitive disk `ADMIN` resolves to the `admin` folder but echoes
         # the spelling back as the slug, and git would not find that path.
@@ -2117,7 +2196,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             problems += self._legacy_config_problems()
 
         if identifier is not None:
-            selected = self.get(identifier)
+            selected = self.get_view(identifier)
             if selected is None:
                 return [Finding("error", self._where(self.root),
                                 f"no such term: {identifier}")]
@@ -2127,6 +2206,8 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         for term in terms:
             def found(message: str) -> None:
                 problems.append(Finding("error", self._where(term.slug), message))
+            if (problem := _bad_name(term.slug)):
+                found(problem)
             if term.kind not in TAXONOMY_KINDS:
                 found(f"unknown kind '{term.kind}'")
             for ref in term.relates_to:
@@ -2153,7 +2234,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         if local_folder.is_dir() and self._within_store(local_folder):
             owner, folder = self, local_folder
         else:
-            term = self.get(identifier)
+            term = self.get_view(identifier)
             if term is None:
                 return []
             owner = (
@@ -2168,8 +2249,8 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
 
     # -- revision-bearing detail + update --
 
-    def get_term_detail(self, ref: str) -> "TermDetail" | None:
-        term = self.get(ref)
+    def get_term_detail(self, ref: "FullId | str") -> "TermDetail" | None:
+        term = self._found(ref)
         if term is None:
             return None
         # Inherited terms' files live under the source store's root, not ours.
@@ -2181,12 +2262,12 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         meta_text, desc_text = owner._entry_texts(d)
         return TermDetail(term=term, core_revision=_revision_multi(meta_text, desc_text))
 
-    def update_term(self, ref: str, *,
+    def update_term(self, ref: "FullId | str", *,
                     name=_UNSET, description=_UNSET, relates_to=_UNSET,
                     vocabulary=_UNSET, kind=_UNSET,
                     core_revision: str | None = None) -> "TermDetail":
         # Resolve the term (must be local)
-        term = self.get(ref)
+        term = self._found(ref)
         if term is None:
             raise NotFound(f"no such term: {ref}")
         if term.origin != "local":
@@ -2451,12 +2532,15 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         )
 
     def get_local(self, path: str) -> Capability | None:
+        """This store's own project's capability at the id-path `path`, every
+        folder spelled exactly as given, or None."""
         d = self.root / path
         # Reordered rather than extended: the old one-expression form called
         # `load_yaml` inside the condition, so a containment test appended to
         # the end would parse a meta.yaml outside the store before rejecting it.
         # The stat stays first so a miss pays no `resolve()`.
-        if not (path and self._is_capability(d) and self._entry_readable(d)):
+        if not (path and self._is_capability(d) and self._entry_readable(d)
+                and exact_path(self.root, path) is True):
             return None
         return None if load_yaml(d / "meta.yaml").get("overrides") else self._capability(path)
 
@@ -2488,6 +2572,14 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         head, _, rest = identifier.partition("/")
         if head in self.extends:                         # prefixed
             return self.get_inherited(head, rest)
+        return self.get_view(identifier)
+
+    def get_view(self, path: str) -> Capability | None:
+        """An id-path read as the active project sees it (TCW-110 Design 3.1
+        form d): the local capability first, else the one inherited at that
+        path, its local override applied. `AmbiguousRef` when two extended
+        projects both hold it."""
+        identifier = path
         local = self.get_local(identifier)               # bare-wins-local
         if local is not None:
             return local
@@ -2502,11 +2594,28 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         return None
 
     def get_inherited(self, alias: str, path: str) -> Capability | None:
+        """The capability at id-path `path` in project `alias`, one this store
+        extends, as this project sees it (its local override applied), or
+        None."""
         st = self.extends.get(alias)
         if not (st and st.get_local(path)):
             return None
         return self._apply_override(st._capability(path, origin=alias),
                                     alias, self._override_index())
+
+    def _found(self, target: "FullId | str") -> Capability | None:
+        """The capability an operation naming one existing object acts on: a
+        full identifier of this project's own capability or of one it
+        extends, or text sorted as command input is (TCW-110 Design 3.1), an
+        id-path read by `get_view`."""
+        if isinstance(target, str):
+            found = sort_input(target, "capabilities")
+            if found.form == "d":
+                return self.get_view(found.id_path)
+            target = found.full_id
+        if target.project == self.project_id:
+            return self.get_local(target.id_path)
+        return self.get_inherited(target.project, target.id_path)
 
     def _status_is_local(self, cap: Capability) -> bool:
         """True iff `cap`'s Status is a local decision, not an inherited default.
@@ -2534,6 +2643,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     def add(self, identifier, name=None, status="Missing", body="",
             fields=None) -> Capability:
         path = _safe_store_id(identifier, "path")
+        _check_id_path(path, "path")
         if status not in CAP_STATUSES:
             raise UsageError(f"invalid Status '{status}' "
                              f"(choose: {', '.join(sorted(CAP_STATUSES))})")
@@ -2561,8 +2671,8 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         self._write_entry(d, meta, body)
         return self._capability(path)
 
-    def remove(self, identifier: str) -> None:
-        cap = self.get(identifier)
+    def remove(self, identifier: "FullId | str") -> None:
+        cap = self._found(identifier)
         # The exact listed spelling only. `get` resolves `routes/`, `./routes`,
         # or `Routes` on a case-insensitive disk, to the `routes` folder but
         # echoes the spelling back as the path, so everything below that works
@@ -2635,14 +2745,14 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                         break
         return out
 
-    def reset(self, identifier: str) -> None:
-        # A standalone local capability is not an override — `remove` deletes it.
-        if self.get_local(identifier) is not None:
-            raise Refused(f"'{identifier}' is a local capability, not an override "
-                             f"(use `tcw capabilities rm` to delete it)")
-        cap = self.get(identifier)                     # federated; may raise AmbiguousRef
+    def reset(self, identifier: "FullId | str") -> None:
+        cap = self._found(identifier)                  # federated; may raise AmbiguousRef
         if cap is None:
             raise NotFound(f"no such capability: {identifier}")
+        # A standalone local capability is not an override — `remove` deletes it.
+        if cap.origin == "local":
+            raise Refused(f"'{identifier}' is a local capability, not an override "
+                             f"(use `tcw capabilities rm` to delete it)")
         # Find the override by the same upstream-id keys `_write_target` writes,
         # so we drop whatever folder `set` materialized (bare or alias-qualified).
         ov_index = self._override_index()
@@ -2714,7 +2824,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
               yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))],
             owned_dir=d if owned else None, removed=removed)
 
-    def _write_target(self, identifier: str) -> tuple[Path, dict, bool]:
+    def _write_target(self, identifier: "FullId | str") -> tuple[Path, dict, bool]:
         """Resolve a write to `(folder, meta, is_override)`.
 
         A local capability writes to its own folder. An *inherited* one writes to
@@ -2724,13 +2834,12 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         `show` accepts; the placement is an FS detail (another store would record
         the same delta keyed by the upstream id its own way).
         """
-        local = self.get_local(identifier)
-        if local is not None:
-            d = self.root / local.path
-            return d, load_yaml(d / "meta.yaml"), False
-        cap = self.get(identifier)                     # federated; may raise AmbiguousRef
+        cap = self._found(identifier)                  # federated; may raise AmbiguousRef
         if cap is None:
             raise NotFound(f"no such capability: {identifier}")
+        if cap.origin == "local":
+            d = self.root / cap.path
+            return d, load_yaml(d / "meta.yaml"), False
         ov_index = self._override_index()
         ov = ov_index.get(cap.id) or ov_index.get(f"{cap.origin}/{cap.id}")
         if ov is not None:
@@ -2766,14 +2875,14 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 meta[k] = v
         return meta
 
-    def set(self, identifier: str, fields: dict) -> Capability:
+    def set(self, identifier: "FullId | str", fields: dict) -> Capability:
         norm = self._validate_fields(fields)           # validate before touching disk
         d, meta, is_override = self._write_target(identifier)
         # `_write_meta` owns the mkdir and the rollback: `_write_target` can
         # materialize a fresh override directory, and a refused write must not
         # leave an empty one behind.
         self._write_meta(d, self._merge_meta(meta, norm, is_override))
-        return self.get(identifier)                    # the composed (post-merge) entry
+        return self._found(identifier)                 # the composed (post-merge) entry
 
     # -- federation config --
 
@@ -2850,7 +2959,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         if identifier is None:
             problems += self._legacy_config_problems()     # see FsTaxonomyStore.check
 
-        selected = self.get(identifier) if identifier is not None else None
+        selected = self.get_view(identifier) if identifier is not None else None
         if identifier is not None and selected is None:
             return [Finding("error", self._where(self.root),
                             f"no such capability: {identifier}")]
@@ -2874,6 +2983,8 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
 
             def found(message: str) -> None:
                 problems.append(Finding("error", where, message))
+            if (bad := _bad_name(cap.path)):
+                found(bad)
             f = cap.fields
             if not cap.id:
                 found("missing id")
@@ -2954,7 +3065,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         if (local_folder / "meta.yaml").is_file() and self._entry_readable(local_folder):
             owner, folder = self, local_folder
         else:
-            cap = self.get(identifier)
+            cap = self.get_view(identifier)
             if cap is None:
                 return []
             owner = self if cap.origin == "local" else self.extends[cap.origin]
@@ -3076,8 +3187,8 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
 
     # -- revision-bearing detail + update --
 
-    def get_capability_detail(self, identifier: str) -> "CapabilityDetail" | None:
-        cap = self.get(identifier)
+    def get_capability_detail(self, identifier: "FullId | str") -> "CapabilityDetail" | None:
+        cap = self._found(identifier)
         if cap is None:
             return None
         owner = self if cap.origin == "local" else self.extends[cap.origin]
@@ -3091,7 +3202,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             texts += self._entry_texts(ov[0]) if ov else ["", ""]
         return CapabilityDetail(capability=cap, core_revision=_revision_multi(*texts))
 
-    def update_capability(self, identifier, *, body=_UNSET, fields=_UNSET,
+    def update_capability(self, identifier: "FullId | str", *, body=_UNSET, fields=_UNSET,
                           core_revision: str | None = None) -> "CapabilityDetail":
         norm = self._validate_fields(fields) \
             if fields is not _UNSET and fields is not None else {}

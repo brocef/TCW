@@ -14,8 +14,9 @@ import sys
 
 from tcw import exit as codes
 from tcw.cli_help import command, group
-from tcw.errors import BackendError, NotFound, UsageError
+from tcw.errors import BackendError, UsageError
 from tcw.ids import identity
+from tcw.locate import find_tree, find_tree_writable
 from tcw.output import changed, print_json
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import CAP_STATUSES, Capability
@@ -67,9 +68,7 @@ def _search(args: argparse.Namespace) -> int:
 
 
 def _show(args: argparse.Namespace) -> int:
-    cap = _store().get(args.id)
-    if cap is None:
-        raise NotFound(f"no such capability: '{args.id}'")
+    cap = find_tree(_store(), args.id)
     if args.json:
         print_json("capability", _detail(cap))
         return codes.OK
@@ -120,15 +119,16 @@ def _fields(args: argparse.Namespace) -> dict:
 def _set(args: argparse.Namespace) -> int:
     fields = _fields(args)
     st = _store()
-    st.set(args.id, fields)
+    st.set(find_tree_writable(st, args.id).full_id, fields)
     changed(st.changed)
     return codes.OK
 
 
 def _reset(args: argparse.Namespace) -> int:
     st = _store()
+    target = find_tree_writable(st, args.id).full_id
     try:
-        st.reset(args.id)
+        st.reset(target)
     finally:
         # A removal that stops partway has still deleted files; name them.
         changed(st.changed)
@@ -137,8 +137,9 @@ def _reset(args: argparse.Namespace) -> int:
 
 def _rm(args: argparse.Namespace) -> int:
     st = _store()
+    target = find_tree_writable(st, args.id).full_id
     try:
-        st.remove(args.id)
+        st.remove(target)
     finally:
         # A removal that stops partway has still deleted files; name them.
         changed(st.changed)
@@ -238,9 +239,12 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     ps = command(g, "show", help="read a capability", prints="the record, or --json",
                  writes="nothing", examples=["capabilities show billing/refund",
-                                             "capabilities show shared/web/login --json"])
+                                             "capabilities show shared.capabilities/web/login "
+                                             "--json"])
     ps.add_argument("id", metavar="path",
-                    help="capability path, e.g. web/login (alias-prefixed if inherited)")
+                    help="the capability: its full identifier "
+                         "(<project>.capabilities/<path>), or its path in this "
+                         "project, e.g. web/login")
     ps.add_argument("--json", action="store_true",
                     help='print {"schema": 2, "capability": {...}}')
     ps.set_defaults(func=_show)
@@ -267,7 +271,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                    examples=["capabilities set billing/refund --status Supported",
                              "capabilities set billing/refund --field Subject=invoice,payment"])
     pset.add_argument("id", metavar="path",
-                      help="capability path to update; an inherited one gains a local override")
+                      help="the capability to update: its full identifier or its path; "
+                           "an inherited one gains a local override")
     pset.add_argument("--status", choices=sorted(CAP_STATUSES),
                       help="the same as --field Status=<status>")
     pset.add_argument("--field", action="append", metavar="K=V",
@@ -278,13 +283,16 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     prst = command(g, "reset", help="drop a local override, inheriting again",
                    prints="nothing", writes="removes the override, named on stderr",
                    examples=["capabilities reset web/login"])
-    prst.add_argument("id", metavar="path", help="path of the local override to drop")
+    prst.add_argument("id", metavar="path", help="the inherited capability whose local "
+                                                 "override to drop: its full identifier "
+                                                 "or its path")
     prst.set_defaults(func=_reset)
 
     prm = command(g, "rm", help="remove a local capability", prints="nothing",
                   writes="removes its files, each named on stderr",
                   examples=["capabilities rm billing/refund"])
-    prm.add_argument("id", metavar="path", help="path of the local capability to remove")
+    prm.add_argument("id", metavar="path", help="the local capability to remove: its "
+                                                "full identifier or its path")
     prm.set_defaults(func=_rm)
 
     pse = command(g, "search", help="capabilities whose name or body holds the text",

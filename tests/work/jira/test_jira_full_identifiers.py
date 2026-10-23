@@ -102,3 +102,31 @@ def test_ac9a_validate_remote_reports_each_3x_ticket_once(jira_project, monkeypa
 ])
 def test_a_3x_value_is_project_slash_folder(value, is_3x):
     assert three_x_item(value) is is_3x
+
+
+# -- what commands accept (TCW-110 Design 3.1, 3.2) ---------------------------------------
+
+
+def test_ac9_a_key_in_a_full_identifier_shows_the_item(jira_project, tcw):
+    made = tcw(["new", "Add login"], jira_project.root).out.strip()
+    key = made.split("/", 1)[1].split("-add", 1)[0]
+    for typed in (f"tcw.work/{key}", f"tcw://tcw.work/{key}"):
+        shown = tcw(["show", typed], jira_project.root)
+        assert shown.code == 0, shown.err
+        assert shown.out.splitlines()[0] == f"full-id: {made}"
+
+
+def test_ac10_a_key_no_folder_carries_is_not_found_naming_the_project(jira_project, tcw):
+    for typed in ("TCW-999", "tcw.work/TCW-999"):
+        found = tcw(["show", typed], jira_project.root)
+        assert found.code == 4
+        assert "no work item in project 'tcw' carries the key TCW-999" in found.err
+
+
+def test_a_parent_given_by_key_is_stored_as_its_full_identifier(jira_project, tcw):
+    epic = tcw(["new", "Epic"], jira_project.root).out.strip()
+    key = epic.split("/", 1)[1].split("-epic", 1)[0]
+    made = tcw(["new", "Part", "--parent", key], jira_project.root)
+    assert made.code == 0, made.err
+    shown = tcw(["show", made.out.strip()], jira_project.root).out
+    assert f"parent: {epic}" in shown

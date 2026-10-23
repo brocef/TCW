@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tcw.ids import FullId
 from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 from tcw.errors import TcwError
@@ -135,13 +136,13 @@ def test_remove_path_escaping_store_changes_nothing(tmp_path):
     outside.mkdir(parents=True)
     (outside / "meta.yaml").write_text("id: cap-out001\nname: Thing\nStatus: Supported\n")
     before = tree_hash(root)
-    with pytest.raises(TcwError, match="no such capability"):
+    with pytest.raises(TcwError, match="is not a full identifier"):
         store(root).remove("../taxonomy/thing")
     _assert_nothing_removed(root, before)
     assert (outside / "meta.yaml").is_file()
 
 
-@pytest.mark.parametrize("ref", ["auth/login", "base/auth/login"])
+@pytest.mark.parametrize("ref", ["auth/login", "base.capabilities/auth/login"])
 def test_remove_inherited_refuses_bare_and_qualified(tmp_path, ref):
     base, child = federated(tmp_path)
     before_base, before_child = tree_hash(base), tree_hash(child)
@@ -207,7 +208,9 @@ def test_remove_treats_a_glob_character_in_the_path_literally(tmp_path):
     write_cap(root, "a*", id="cap-ast001", Status="Supported")
     write_cap(root, "abc", id="cap-abc001", Status="Supported")
     subprocess.run(["git", "-C", str(root), "commit", "-qm", "seed"], check=True)
-    store(root).remove("a*")
+    # The name breaks the identifier rule, so only a full identifier built in
+    # code names it; a command refuses the text (TCW-110 Design 1.6).
+    store(root).remove(FullId("solo", "capabilities", "a*"))
     assert store(root).get("a*") is None
     assert store(root).get("abc") is not None
     assert (root / "docs" / "capabilities" / "abc" / "meta.yaml").is_file()
@@ -259,14 +262,16 @@ def test_remove_nested_check_respects_the_path_boundary(tmp_path):
 @pytest.mark.parametrize("ref", ["routes/", "./routes", "routes/.", "routes//", "Routes",
                                  "routes/login/.."])
 def test_remove_refuses_non_canonical_path_spelling(tmp_path, ref):
-    """`get` resolves these spellings to the `routes` folder but reports the
+    """`get` resolved these spellings to the `routes` folder but reported the
     spelling back as the path, so the nested check compared against the wrong
-    prefix and `git rm -rf` took `routes/login` with it."""
+    prefix and `git rm -rf` took `routes/login` with it. Since TCW-110 the
+    letter case is not found and the rest break the identifier rule."""
     root = repo(tmp_path, "solo")
     write_cap(root, "routes", id="cap-rou001", Status="Supported")
     write_cap(root, "routes/login", id="cap-log001", Status="Supported")
     before = tree_hash(root)
-    with pytest.raises(TcwError, match="no such capability"):
+    with pytest.raises(TcwError, match="no such capability|names no capabilities "
+                                       "object|is not a full identifier"):
         store(root).remove(ref)
     _assert_nothing_removed(root, before)
 
@@ -285,12 +290,6 @@ def test_remove_refuses_nested_override_folder(tmp_path):
 @pytest.mark.parametrize("field, target, value", [
     ("Superseded by", "billing/old-refund", "billing/old-refund"),
     ("Blocked by", "billing/old-refund", "billing/old-refund"),
-    # `set` accepts a loose spelling, because `get` resolves it.
-    ("Superseded by", "billing/old-refund", "billing/old-refund/"),
-    ("Blocked by", "billing/old-refund", "./billing//old-refund"),
-    # `..` through a folder that exists resolves too, on every filesystem.
-    ("Superseded by", "billing/old-refund", "billing/old-refund/../old-refund"),
-    ("Blocked by", "billing/old-refund", "roles/../billing/old-refund"),
     ("Roles", "roles/admin", ["!roles/admin"]),
     ("Roles", "roles/admin", "roles/other, roles/admin"),
     ("When", "conditions/signed-in", "conditions/signed-in"),
@@ -372,7 +371,7 @@ def test_cli_rm_unknown_path(tmp_path, monkeypatch, capsys):
     assert main(["capabilities", "rm", "nope"]) == 4
     out, err = capsys.readouterr()
     assert out == ""
-    assert "tcw capabilities rm: no such capability: nope" in err
+    assert "tcw capabilities rm: no such capability: 'nope'" in err
 
 
 def test_cli_rm_ambiguous(tmp_path, monkeypatch, capsys):

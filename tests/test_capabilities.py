@@ -656,7 +656,7 @@ def test_cli_set_inherited_path(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(child)
     from tcw.cli import main
 
-    assert main(["capabilities", "set", "base/moderation/report-content",
+    assert main(["capabilities", "set", "base.capabilities/moderation/report-content",
                  "--status", "Missing"]) == 0
     assert capsys.readouterr().out == ""
     assert FsCapabilitiesStore.open(child).get(
@@ -687,7 +687,8 @@ def test_cli_set_ambiguous_ref_reports_ambiguity(tmp_path, monkeypatch, capsys):
     assert main(["capabilities", "set", "x/thing", "--status", "Missing"]) == 2
     err = capsys.readouterr().err
     assert "ambiguous" in err and "x/thing" in err     # not a bare, unexplained path
-    assert main(["capabilities", "set", "one/x/thing", "--status", "Missing"]) == 0
+    assert main(["capabilities", "set", "one.capabilities/x/thing",
+                 "--status", "Missing"]) == 0
 
 
 def test_the_capabilities_store_has_no_attachment_surface_to_regress(tmp_path):

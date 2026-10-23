@@ -236,10 +236,10 @@ def test_transitive_extends_flattens_terms_by_owning_project(tmp_path):
     assert st.get("deep").origin == "charlie"
     assert [str(term.full_id) for term in st.search("transitive needle")] == ["charlie.taxonomy/deep"]
 
-    detail = st.get_term_detail("charlie/deep")
+    detail = st.get_term_detail("charlie.taxonomy/deep")
     assert detail is not None
     assert detail.term.origin == "charlie"
-    assert st._validation_resources("charlie/deep") == [
+    assert st._validation_resources("deep") == [
         c / "docs/taxonomy/deep/meta.yaml",
         c / "docs/taxonomy/deep/description.md",
     ]
@@ -307,7 +307,7 @@ def test_transitive_extends_crosses_a_second_hop_through_a_moved_tree(tmp_path):
         ("charlie.taxonomy/shared", "charlie"),
     }
     assert st.check() == []
-    assert st._validation_resources("charlie/deep") == [
+    assert st._validation_resources("deep") == [
         c / "docs/taxonomy/deep/meta.yaml",
         c / "docs/taxonomy/deep/description.md",
     ]
@@ -343,7 +343,7 @@ def test_get_term_detail_of_inherited_term(tmp_path):
     # in the web viewer). Detail must resolve against the owning store.
     cons, _ = consumer_with_shared(tmp_path)
     st = FsTaxonomyStore.open(cons)
-    detail = st.get_term_detail("shared/Argument")
+    detail = st.get_term_detail("shared.taxonomy/Argument")
     assert detail is not None
     assert detail.term.name == "Argument"
     assert detail.term.origin == "shared"                 # origin preserved
@@ -372,7 +372,7 @@ def test_rm_refuses_ref_escaping_the_store(tmp_path):
     (outside / "meta.yaml").write_text("name: Thing\n")
     st = FsTaxonomyStore.open(root)
     assert st.get("../capabilities/thing") is None
-    with pytest.raises(TcwError, match="no such term"):
+    with pytest.raises(TcwError, match="is not a full identifier"):
         st.remove("../capabilities/thing")
     assert outside.is_dir()
 

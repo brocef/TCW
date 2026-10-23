@@ -11,8 +11,9 @@ import argparse
 
 from tcw import exit as codes
 from tcw.cli_help import command, group
-from tcw.errors import BackendError, NotFound, UsageError
+from tcw.errors import BackendError, UsageError
 from tcw.ids import identity
+from tcw.locate import find_tree, find_tree_writable
 from tcw.output import changed, print_json
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import NotASlug, Term
@@ -37,13 +38,6 @@ def _detail(term: Term) -> dict:
     return {**_record(term), "vocabulary": list(term.vocabulary),
             "relatesTo": list(term.relates_to), "attachments": list(term.attachments),
             "description": term.description}
-
-
-def _get(st: FsTaxonomyStore, ref: str) -> Term:
-    term = st.get(ref)
-    if term is None:
-        raise NotFound(f"no such term: '{ref}'")
-    return term
 
 
 def _ordered(terms: list[Term], project_id: str) -> list[Term]:
@@ -75,7 +69,7 @@ def _search(args: argparse.Namespace) -> int:
 
 
 def _show(args: argparse.Namespace) -> int:
-    term = _get(_store(), args.path)
+    term = find_tree(_store(), args.path)
     detail = _detail(term)
     if args.json:
         print_json("term", detail)
@@ -113,8 +107,9 @@ def _add(args: argparse.Namespace) -> int:
 
 def _rm(args: argparse.Namespace) -> int:
     st = _store()
+    target = find_tree_writable(st, args.path).full_id
     try:
-        st.remove(args.path)
+        st.remove(target)
     finally:
         # A removal that stops partway has still deleted files; name them.
         changed(st.changed)
@@ -164,9 +159,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     ps = command(g, "show", help="read an entry", prints="the record, or --json",
                  writes="nothing", examples=["taxonomy show invoice",
-                                             "taxonomy show shared/invoice --json"])
+                                             "taxonomy show shared.taxonomy/invoice --json"])
     ps.add_argument("path",
-                    help="term path, e.g. event/log-batch (alias-prefixed if inherited)")
+                    help="the entry: its full identifier (<project>.taxonomy/<path>), "
+                         "or its path in this project, e.g. event/log-batch")
     ps.add_argument("--json", action="store_true",
                     help='print {"schema": 2, "term": {...}}')
     ps.set_defaults(func=_show)
@@ -177,7 +173,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pr = command(g, "rm", help="remove a local entry", prints="nothing",
                  writes="removes the entry's files, each named on stderr",
                  examples=["taxonomy rm invoice/refund"])
-    pr.add_argument("path", help="path of the local term to remove")
+    pr.add_argument("path", help="the local entry to remove: its full identifier "
+                                 "or its path")
     pr.set_defaults(func=_rm)
 
     pse = command(g, "search", help="entries whose name or description holds the text",

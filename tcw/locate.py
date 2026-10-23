@@ -14,8 +14,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from tcw.errors import BackendError, NotFound, ProjectGraphError, Unreachable
-from tcw.ids import FullId
+from tcw.errors import (BackendError, NotFound, ProjectGraphError, Refused, TcwError,
+                        Unreachable)
+from tcw.ids import FullId, is_project_id, sort_input
 from tcw.store.project import FsProjectRegistry
 
 #: Design 6.3's four answers.
@@ -95,11 +96,15 @@ class Locator:
         if full_id.project in _inherited(active, full_id.namespace):
             return _answer(active.get_inherited(full_id.project, full_id.id_path), full_id)
         try:
-            root = self.owner_root(full_id.project, named_by)
+            owner = self.owner_store(full_id.project, full_id.namespace, named_by)
         except (Unreachable, ProjectGraphError) as error:
             return outcome_of(error)
-        owner = self._store(full_id.project, full_id.namespace, root)
         return _answer(owner.get_local(full_id.id_path), full_id)
+
+    def owner_store(self, project_id: str, namespace: str, named_by: Path):
+        """The `namespace` store of project `project_id`, as the project at
+        `named_by` finds it; raises as `owner_root` does."""
+        return self._store(project_id, namespace, self.owner_root(project_id, named_by))
 
     def _store(self, project_id: str, namespace: str, root: Path):
         from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
@@ -130,6 +135,88 @@ class Locator:
             return _answer(None, full_id)
         except BackendError as error:
             return Outcome(ERROR, message=str(error))
+
+
+def find_tree(store, text: str):
+    """The taxonomy entry or capability that command input `text` names, as
+    the project `store` belongs to sees it (TCW-110 Design 3.1): a full
+    identifier of its own entry, of one it inherits (override applied), or of
+    another project's own entry; or an id-path read local first, then
+    inherited. Raises `NotFound` (exit 4) for nothing there, a usage error for
+    text in no form, and the lookup's own error for a project TCW cannot
+    find."""
+    namespace = store.COMPONENT
+    found = sort_input(text, namespace)
+    if found.form == "d":
+        hit = store.get_view(found.id_path)
+        if hit is None:
+            raise NotFound(_no_such(namespace, text) + _spelled(store, found.id_path)
+                           + _three_x_hint(store, namespace, found.id_path))
+        return hit
+    full_id = found.full_id
+    if full_id.project == store.project_id:
+        owner = store
+        hit = store.get_local(full_id.id_path)
+    elif full_id.project in _inherited(store, namespace):
+        owner = _inherited(store, namespace)[full_id.project]
+        hit = store.get_inherited(full_id.project, full_id.id_path)
+    else:
+        locator = store.locator
+        owner = locator.owner_store(full_id.project, namespace, locator.root)
+        hit = owner.get_local(full_id.id_path)
+    if hit is None:
+        raise NotFound(_no_such(namespace, text) + _spelled(owner, full_id.id_path))
+    return hit
+
+
+def find_tree_writable(store, text: str):
+    """`find_tree`, refusing an entry that belongs to a project `store` does
+    not inherit from: a command changes only this project's own entries and
+    its overrides of inherited ones (as `_own` does for work items)."""
+    hit = find_tree(store, text)
+    if hit.owner != store.project_id and hit.owner not in _inherited(store, store.COMPONENT):
+        raise Refused(f"{hit.full_id} belongs to project '{hit.owner}'; change it there")
+    return hit
+
+
+def three_x_hint(locator: "Locator", namespace: str, id_path: str) -> str:
+    """Design 3.4: when a multi-part id-path that was not found starts with
+    the ID of a project TCW can locate, the text to add to the not-found
+    message; otherwise "". Looking never changes the outcome: every answer
+    but a folder, every error included, gives no hint."""
+    first, slash, rest = id_path.partition("/")
+    if not slash or not is_project_id(first):
+        return ""
+    try:
+        locator.owner_root(first, locator.root)
+    except (TcwError, OSError, ValueError):
+        return ""
+    return (f"; to name an object in project '{first}', write "
+            f"{first}.{namespace}/{rest}")
+
+
+def _three_x_hint(store, namespace: str, id_path: str) -> str:
+    try:
+        locator = store.locator
+    except (TcwError, OSError, ValueError):
+        return ""
+    return three_x_hint(locator, namespace, id_path)
+
+
+def _spelled(store, id_path: str) -> str:
+    """When `id_path` was not found only because a folder's letter case
+    differs (a disk that ignores case finds it), the spelling on disk, for
+    the not-found message (Design 1.1)."""
+    from tcw.store.fs import exact_path
+    on_disk = exact_path(store.root, id_path)
+    return f" (the folder is spelled {on_disk})" if isinstance(on_disk, str) else ""
+
+
+def _no_such(namespace: str, text: str) -> str:
+    return f"no such {_SINGULAR[namespace]}: '{text}'"
+
+
+_SINGULAR = {"taxonomy": "term", "capabilities": "capability"}
 
 
 def _inherited(store, namespace: str) -> dict:

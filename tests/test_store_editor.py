@@ -219,7 +219,7 @@ def test_update_term_refuses_inherited(tmp_path):
     FsTaxonomyStore.open(cons).extends_add("shared")
     st = FsTaxonomyStore.open(cons)
     with pytest.raises(TcwError, match="cannot update inherited"):
-        st.update_term("shared/widget", name="X")
+        st.update_term("shared.taxonomy/widget", name="X")
 
 
 def test_update_term_dangling_relatesto_rejected(tmp_path):

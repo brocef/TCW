@@ -18,10 +18,11 @@ from typing import Callable
 
 from tcw.errors import (BackendError, ConfigError, NotFound, ProjectGraphError, Refused,
                         Unreachable)
+from tcw.ids import FullId, sort_input
 from tcw.store.fs import FsProjectRegistry, WorkLocation, git_root
 from tcw.work.backend import WorkBackend
 from tcw.work.config import WorkConfig
-from tcw.work.jira.backend import JiraBackend, link_exists
+from tcw.work.jira.backend import KEY, JiraBackend, link_exists
 from tcw.work.fs_backend import FsWorkBackend
 from tcw.work.model import Changes, Slug, inbox_stage
 
@@ -97,6 +98,79 @@ def open_project(project_id: str, here: Path) -> WorkBackend:
     except ValueError as error:
         raise BackendError(str(error)) from None
     return open_backend(locator.owner_root(project_id, locator.root), personal=False)
+
+
+def resolve_work_input(text, active: Callable[[], WorkBackend], root: Path
+                       ) -> tuple[Slug, WorkBackend]:
+    """The item that command input `text` names, sorted by TCW-110 Design
+    3.1, and the backend that holds it. `active` gives the active project's
+    backend and is called only when the item is the active project's: a key
+    alone (form b), an id-path (form d), or a full identifier naming this
+    project. Another project's full identifier opens that project's backend
+    alone (Design 6.1). A key is looked up in its project's backend, never
+    read as a folder name (Design 3.2)."""
+    found = sort_input(str(text) if isinstance(text, FullId) else text, "work", KEY)
+    if found.form == "b":
+        backend = active()
+        return _by_key(backend, found.key), backend
+    if found.form == "d":
+        backend = active()
+        if "/" in found.id_path:
+            # A work item's id-path is one folder until TCW-111, so several
+            # parts name nothing; a 3.x `<project>/<folder>` reads this way.
+            from tcw.locate import Locator, three_x_hint
+            try:
+                hint = three_x_hint(Locator.of(Path(root)), "work", found.id_path)
+            except (ValueError, OSError):
+                hint = ""
+            raise NotFound(f"no work item {text} in project '{backend.project}'{hint}")
+        return Slug(backend.project, found.id_path), backend
+    project = found.full_id.project
+    backend = active() if project == _active_id(root, active) \
+        else open_project(project, root)
+    if found.form == "c":
+        return _by_key(backend, found.key), backend
+    return Slug.of(found.full_id), backend
+
+
+def _active_id(root: Path, active: Callable[[], WorkBackend]) -> str:
+    """The active project's ID, read from its configuration rather than by
+    opening its backend; from the backend when no registry opens here."""
+    try:
+        return FsProjectRegistry.open(Path(root)).current.id
+    except (ValueError, OSError):
+        return active().project
+
+
+def _by_key(backend: WorkBackend, key: str) -> Slug:
+    folder = backend.lookup(key)
+    if folder is None:
+        raise NotFound(f"no work item in project '{backend.project}' carries "
+                       f"the key {key}")
+    return Slug(backend.project, folder)
+
+
+def name_item(text, active: Callable[[], WorkBackend], root: Path) -> Slug:
+    """The full identifier of the item `text` names, opening no backend for a
+    full identifier: its owner is opened later by whatever writes to it or
+    checks it. A key or a folder name is resolved as `resolve_work_input`
+    does."""
+    found = sort_input(str(text) if isinstance(text, FullId) else text, "work", KEY)
+    if found.form == "a":
+        return Slug.of(found.full_id)
+    return resolve_work_input(text, active, root)[0]
+
+
+def existing_item(text, active: Callable[[], WorkBackend], root: Path
+                  ) -> tuple[Slug, WorkBackend]:
+    """`resolve_work_input`, and the item must be there: a reference a
+    command is about to store is read from its owner's backend first, by
+    its folder alone, so a misspelt or wrong-case one stops the command
+    (exit 4) before anything is written (TCW-110 AC 25)."""
+    slug, backend = resolve_work_input(text, active, root)
+    if not backend.is_item_folder(slug.folder):
+        raise NotFound(f"no work item {slug}")
+    return slug, backend
 
 
 # ---------------------------------------------------------------------------

@@ -374,10 +374,26 @@ class TaxonomyStore(ABC):
 
     @abstractmethod
     def get(self, ref: str) -> Term | None:
-        """Resolve a reference (B.6) to a term, or None if it resolves to nothing.
+        """Resolve a 3.x reference (B.6) to a term, or None if it resolves to
+        nothing. Raises `AmbiguousRef` when a bare ref matches multiple
+        extended taxonomies. Kept for the stored references and links that
+        have not moved to full identifiers yet (TCW-110)."""
 
-        Raises `AmbiguousRef` when a bare ref matches multiple extended taxonomies.
-        """
+    @abstractmethod
+    def get_local(self, slug: str) -> Term | None:
+        """This store's own project's entry at the id-path `slug`, every
+        folder spelled exactly as given, or None."""
+
+    @abstractmethod
+    def get_inherited(self, owner: str, slug: str) -> Term | None:
+        """The entry at id-path `slug` in project `owner`, one this store
+        inherits from, as this project sees it, or None."""
+
+    @abstractmethod
+    def get_view(self, slug: str) -> Term | None:
+        """An id-path read as the active project sees it (TCW-110 Design 3.1
+        form d): the local entry first, else the one inherited entry at that
+        path. Raises `AmbiguousRef` when two inherited projects both hold it."""
 
     @abstractmethod
     def add(self, name: str, slug: str | None = None, parent: str | None = None,
@@ -386,8 +402,9 @@ class TaxonomyStore(ABC):
         """Create a local term under `parent` (root by default). Refuse a collision."""
 
     @abstractmethod
-    def remove(self, ref: str) -> None:
-        """Remove a local term, writing nothing when refused. Raise `ValueError`
+    def remove(self, ref: "FullId | str") -> None:
+        """Remove a local term, writing nothing when refused. `ref` is a full
+        identifier, or text read as command input is (TCW-110 Design 3.1). Raise `ValueError`
         when nothing resolves, the term is inherited, another term is nested under
         it, another local term's `relatesTo` or `vocabulary` still resolves to it,
         or a local capability's `Subject` or `Feature` does — including when the
@@ -412,15 +429,13 @@ class TaxonomyStore(ABC):
         """Drop an inherited project ID. Refuse if it isn't present."""
 
     @abstractmethod
-    def get_term_detail(self, ref: str) -> "TermDetail" | None:
-        """Resolve a reference to its term plus a core revision token.
-
-        Returns ``None`` when the ref resolves to nothing (same as ``get``).
-        Raises ``AmbiguousRef`` on collisions.
+    def get_term_detail(self, ref: "FullId | str") -> "TermDetail" | None:
+        """The term `ref` names (a full identifier, or command input) plus a
+        core revision token. Returns ``None`` when it names nothing.
         """
 
     @abstractmethod
-    def update_term(self, ref: str, *,
+    def update_term(self, ref: "FullId | str", *,
                     name: Any = _UNSET,
                     description: Any = _UNSET,
                     relates_to: Any = _UNSET,
@@ -547,8 +562,27 @@ class CapabilitiesStore(ABC):
 
     @abstractmethod
     def get(self, identifier: str) -> Capability | None:
-        """Resolve a path (A.6) to its capability, or None. Raises `AmbiguousRef`
-        when a bare ref matches multiple extended stores."""
+        """Resolve a 3.x path (A.6) to its capability, or None. Raises
+        `AmbiguousRef` when a bare ref matches multiple extended stores. Kept
+        for the stored references and links that have not moved to full
+        identifiers yet (TCW-110)."""
+
+    @abstractmethod
+    def get_local(self, path: str) -> Capability | None:
+        """This store's own project's capability at the id-path `path`, every
+        folder spelled exactly as given, or None."""
+
+    @abstractmethod
+    def get_inherited(self, owner: str, path: str) -> Capability | None:
+        """The capability at id-path `path` in project `owner`, one this store
+        extends, as this project sees it (its local override applied), or
+        None."""
+
+    @abstractmethod
+    def get_view(self, path: str) -> Capability | None:
+        """An id-path read as the active project sees it (TCW-110 Design 3.1
+        form d): the local capability first, else the one inherited at that
+        path. Raises `AmbiguousRef` when two extended projects both hold it."""
 
     @abstractmethod
     def add(self, identifier: str, name: str | None = None, status: str = "Missing",
@@ -558,10 +592,11 @@ class CapabilitiesStore(ABC):
         anything is written, so a create carrying a bad field writes nothing."""
 
     @abstractmethod
-    def remove(self, identifier: str) -> None:
-        """Delete the local capability at `identifier`, writing nothing when
-        refused. Raise `AmbiguousRef` when a bare ref matches multiple extended
-        stores, and `ValueError` when:
+    def remove(self, identifier: "FullId | str") -> None:
+        """Delete the local capability `identifier` names (a full identifier,
+        or text read as command input is, TCW-110 Design 3.1), writing nothing
+        when refused. Raise `AmbiguousRef` when an id-path matches multiple
+        extended stores, and `ValueError` when:
 
         - nothing resolves;
         - the capability is inherited, overridden locally or not (an override
@@ -575,16 +610,16 @@ class CapabilitiesStore(ABC):
         Never mutates an extended store."""
 
     @abstractmethod
-    def reset(self, identifier: str) -> None:
+    def reset(self, identifier: "FullId | str") -> None:
         """Drop the local override at `identifier`, re-inheriting the upstream
         capability verbatim. Raise `ValueError` when there is no override (a
         standalone local capability is not an override — the `remove` operation,
         driven by `tcw capabilities rm`, deletes it; a bare
-        inherited path has nothing to drop), or `AmbiguousRef` when a bare ref
+        inherited path has nothing to drop), or `AmbiguousRef` when an id-path
         matches multiple extended stores. Never mutates an extended store."""
 
     @abstractmethod
-    def set(self, identifier: str, fields: dict[str, Any]) -> Capability:
+    def set(self, identifier: "FullId | str", fields: dict[str, Any]) -> Capability:
         """Update/insert metadata fields on the capability at `identifier`;
         return it. Keys must be in CAP_FIELDS; a Status value must be in
         CAP_STATUSES. `Subject` accepts a list (or a comma string). Other
@@ -608,12 +643,12 @@ class CapabilitiesStore(ABC):
         (cross-component) Subject/Feature refs, as error findings."""
 
     @abstractmethod
-    def get_capability_detail(self, identifier: str) -> "CapabilityDetail" | None:
-        """Resolve a path to its capability plus a revision token.
-        Returns ``None`` for dangling identifiers."""
+    def get_capability_detail(self, identifier: "FullId | str") -> "CapabilityDetail" | None:
+        """The capability `identifier` names plus a revision token.
+        Returns ``None`` when it names nothing."""
 
     @abstractmethod
-    def update_capability(self, identifier: str, *,
+    def update_capability(self, identifier: "FullId | str", *,
                           body: Any = _UNSET,
                           fields: Any = _UNSET,
                           core_revision: str | None = None) -> "CapabilityDetail":

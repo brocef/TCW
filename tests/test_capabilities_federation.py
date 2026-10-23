@@ -250,7 +250,7 @@ def ov_meta(child: Path, path: str) -> dict:
 def test_set_inherited_qualified(tmp_path):
     base, child = child_of(tmp_path, {
         "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
-    cap = store(child).set("base/moderation/report-content", {"Status": "Missing"})
+    cap = store(child).set("base.capabilities/moderation/report-content", {"Status": "Missing"})
     assert cap.status == "Missing" and cap.origin == "base"
     assert store(child).get("moderation/report-content").status == "Missing"
     assert store(base).get("moderation/report-content").status == "Supported"
@@ -341,7 +341,7 @@ def test_set_inherited_falls_back_when_local_occupies_path(tmp_path):
     write_cap(child, "auth/login", id="cap-loc001", Status="Missing")
     before = (child / "docs" / "capabilities" / "auth" / "login" / "meta.yaml").read_bytes()
 
-    store(child).set("base/auth/login", {"Status": "Partial", "Gaps": "wip"})
+    store(child).set("base.capabilities/auth/login", {"Status": "Partial", "Gaps": "wip"})
 
     assert (child / "docs" / "capabilities" / "auth" / "login"
             / "meta.yaml").read_bytes() == before          # local untouched
@@ -365,8 +365,8 @@ def test_set_second_alias_same_path(tmp_path):
     st.extends_add("base")
     st.extends_add("base2")
 
-    store(child).set("base/a/thing", {"Status": "Missing"})
-    store(child).set("base2/a/thing", {"Status": "Omitted"})
+    store(child).set("base.capabilities/a/thing", {"Status": "Missing"})
+    store(child).set("base2.capabilities/a/thing", {"Status": "Omitted"})
 
     assert store(child).get("base/a/thing").status == "Missing"
     assert store(child).get("base2/a/thing").status == "Omitted"
@@ -374,7 +374,7 @@ def test_set_second_alias_same_path(tmp_path):
     assert ov_meta(child, "base2/a/thing")["overrides"] == "base2/cap-two"
     assert store(child).check() == []
     # Re-entrant: each updates its own override in place.
-    store(child).set("base2/a/thing", {"Status": "Partial", "Gaps": "x"})
+    store(child).set("base2.capabilities/a/thing", {"Status": "Partial", "Gaps": "x"})
     assert store(child).get("base2/a/thing").status == "Partial"
     assert store(child).get("base/a/thing").status == "Missing"
 

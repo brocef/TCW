@@ -124,9 +124,9 @@ def test_the_guard_sees_a_git_word_in_the_taxonomy_commands():
     """Mutation check (AC 5): `"run git commit first"` in any `tcw/taxonomy/`
     function is reported."""
     source = (PACKAGE / "taxonomy/cli.py").read_text(encoding="utf-8")
-    broken = source.replace("        st.remove(args.path)\n",
+    broken = source.replace("        st.remove(target)\n",
                             "        print(\"run git commit first\")\n"
-                            "        st.remove(args.path)\n", 1)
+                            "        st.remove(target)\n", 1)
     assert broken != source
     assert git_word_offenders("taxonomy/cli.py", broken)
 

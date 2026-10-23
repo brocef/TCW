@@ -30,6 +30,7 @@ from tcw.findings import Finding
 from tcw.ids import IdError, id_part_problem, is_project_id, looks_full
 from tcw.output import shown
 from tcw.store.base import normalize_tag
+from tcw.store.fs import exact_child
 from tcw.work.backend import Comment, Query
 from tcw.work.config import WorkConfig
 from tcw.work.fs_backend import ITEM_FILE, WORDS, report_mentions
@@ -122,7 +123,8 @@ def link_exists(work_path: Path, folder: str) -> bool:
     `lookup` uses: the key in the name is authoritative, so no read of the
     ticket is needed, and a work link stays offline (R20)."""
     return folder_key(folder) is not None and "/" not in folder \
-        and (Path(work_path) / folder).is_dir()
+        and (Path(work_path) / folder).is_dir() \
+        and exact_child(Path(work_path), folder) is True
 
 
 def jira_store_problems(work_path: Path, jira: JiraConfig) -> list[Finding]:
@@ -344,6 +346,10 @@ class JiraBackend:
         key = folder_key(folder)
         if key is None or "/" in folder or not (self.work_path / folder).is_dir():
             raise NotFound(f"no work item {Slug(self.project, folder)}")
+        spelled = exact_child(self.work_path, folder)
+        if spelled is not True:
+            raise NotFound(f"no work item {Slug(self.project, folder)} (the folder "
+                           f"is spelled {spelled})")
         return key
 
     # -- reading -----------------------------------------------------------------

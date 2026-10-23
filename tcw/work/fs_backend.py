@@ -31,7 +31,7 @@ from tcw.errors import BackendError, MovedWithoutNote, NotFound, Refused, UsageE
 from tcw.findings import Finding
 from tcw.output import shown
 from tcw.store.base import normalize_tag
-from tcw.store.fs import _atomic_write_all, _umask
+from tcw.store.fs import _atomic_write_all, _umask, exact_child
 from tcw.work.backend import Comment, Query
 from tcw.work.config import MIGRATION_GUIDE, WorkConfig
 from tcw.work.layout import Layout
@@ -259,6 +259,12 @@ class FsWorkBackend:
         path = self.work_path / folder
         if "/" in folder or not is_item_folder(path):
             raise NotFound(f"no work item {Slug(self.project, folder)}")
+        # A disk that ignores letter case finds the folder by another
+        # spelling; an id-path is compared exactly (TCW-110 Design 1.1).
+        spelled = exact_child(self.work_path, folder)
+        if spelled is not True:
+            raise NotFound(f"no work item {Slug(self.project, folder)} (the folder "
+                           f"is spelled {spelled})")
         return path
 
     def _load(self, folder: str) -> tuple[Item, str]:
@@ -481,7 +487,8 @@ class FsWorkBackend:
         return None
 
     def is_item_folder(self, folder: str) -> bool:
-        return "/" not in folder and is_item_folder(self.work_path / folder)
+        return "/" not in folder and is_item_folder(self.work_path / folder) \
+            and exact_child(self.work_path, folder) is True
 
     def read_request(self, folder: str) -> str | None:
         self._folder(folder)
