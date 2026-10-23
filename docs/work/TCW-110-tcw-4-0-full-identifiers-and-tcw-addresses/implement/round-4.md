@@ -147,4 +147,5 @@ run had not reached; each was run until it was understood.
 
 ## The suite
 
-SUITE_RESULT
+`.venv/bin/pytest -q -p no:cacheprovider`, run in full as CI runs it, at `b55205a9`
+(2026-10-23), on the `tcw110-fix` branch: `5759 passed, 114 skipped in 589.80s`.
