@@ -33,3 +33,12 @@ I can scaffold this layout with `tcw init --work-path <path> work`. TCW refuses 
 never moves a store that holds a work item: that move is mine to make. Those
 refusals leave nothing behind. TCW never commits what it writes there; the
 store's files are mine to commit.
+
+The location is a plain path relative to the project, or a folder address:
+`tcw://<project>.path/<folder>` names a folder in that project's root, and
+`tcw://<project>.<namespace>.path/<folder>` one inside that project's own
+store, wherever its checkout sits on this machine. It is resolved from the
+project whose configuration holds it. An absolute path or one starting with
+`~` is refused in the shared `.tcw/tcw-config.yaml`; a folder that sits
+elsewhere on one machine is placed by an entry in
+`.tcw/tcw-manifest.local.yaml`.

@@ -1,0 +1,4 @@
+name: Full identifier
+relatesTo:
+    - reference
+    - namespace

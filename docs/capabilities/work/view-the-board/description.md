@@ -13,3 +13,7 @@ different sets. `--json` prints each item's full record, the same one
 A folder in the work store that is not an item, or a plain file, is ignored.
 An item whose `item.yaml` cannot be read makes `list` exit 1 naming the file,
 because a list that silently left it out would read as complete.
+
+`tcw work list` prints one full identifier per line. In a project that keeps
+its items in Jira, a ticket whose `TCW Item` field still holds a TCW 3.x value
+is left out, and one warning says how many were and names tcw migrate.

@@ -89,3 +89,9 @@ unfinished item's `capabilities.yaml` declares — and only reads; a
 `capabilities.yaml` already reported as malformed is not reported again. A Jira
 that cannot be reached is exit 5. In a project that keeps its items in files,
 `--remote` is a usage error (exit 2).
+
+`tcw validate` also checks the form of every reference stored in a record
+and every `tcw://` address, and reports one still in a TCW 3.x form as needing
+tcw migrate. It fails two stores that are the same folder or one inside the
+other, among this project's three stores and those of every project it can
+locate, and a store location that loops back to a store already followed.

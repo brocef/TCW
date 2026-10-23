@@ -29,3 +29,10 @@ ledger of its own. When my project does keep a ledger, a path is still read as
 an inherited one when its first segment names a project my ledger extends; and
 a first segment that names both a child and a namespace my ledger already shows
 is refused as ambiguous instead of guessed at.
+
+Since TCW 4.0 each entry in an item's `capabilities.yaml` is a full
+identifier, such as `server.capabilities/x`, so the ledger that answers for
+it is the one its project names, rather than one guessed from the first
+folder name. An entry for a project this one extends is read through this
+project's own view of it. An entry still in a TCW 3.x form is reported as
+needing tcw migrate.

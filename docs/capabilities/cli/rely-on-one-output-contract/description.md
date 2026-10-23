@@ -47,3 +47,9 @@ with a `Prints:` line (what goes to standard output) and a `Writes:` line (what
 files it changes, or `nothing`), and closes with examples I can copy. Every
 option has one long spelling; a repeatable option takes one value each time it
 is given.
+
+Every list prints full identifiers, `<project>.<namespace>/<id-path>`, one per
+line. Every JSON record of a taxonomy entry, capability or work item carries
+`full-id` and `owner`, the ID of the project that holds it, in place of the
+3.x `slug`, `qualified`, `path` and `origin` keys, and every JSON document
+says `"schema": 2`.

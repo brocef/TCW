@@ -9,3 +9,9 @@ An item whose `item.yaml` cannot be read — not valid YAML, an unknown key, a m
 `tcw work path <slug>` prints the item's folder; `tcw work path <slug> <stage>` prints the stage's document or folder in it; `--next` names the next numbered round of a stage that loops, and `--handoff` the path for a note to whoever resumes the stage. None of them writes anything. `tcw work path` with no slug prints the work store's folder.
 
 Errors keep stdout empty and exit non-zero — 4 for an item that does not exist — so piping into `jq` fails cleanly rather than on a fragment.
+
+Since TCW 4.0 an object is named by its full identifier,
+`<project>.<namespace>/<id-path>`: commands print it, and accept it, its
+`tcw://` address, or the id-path alone for an object of the project I am in.
+A work item can also be named by its tracker key, bare or as
+`<project>.work/<KEY>`.

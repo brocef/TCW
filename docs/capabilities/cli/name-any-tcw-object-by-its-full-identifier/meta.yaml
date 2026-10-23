@@ -1,0 +1,7 @@
+id: cap-7cafec
+name: Name any TCW object by its full identifier
+Status: Supported
+Subject:
+    - full-identifier
+    - tcw-address
+Feature: project-registry

@@ -17,3 +17,8 @@ Jira lets the item be assigned to.
 
 Typing `tcw://` in a document offers the objects of all three axes and inserts
 the reference; a work item is inserted as `tcw://W/<folder>`.
+
+The suggestions insert full identifiers for references and
+`tcw://<project>.<namespace>/<id-path>` addresses for links, and a reference
+typed as an id-path is stored as the full identifier of this project's own
+entry.

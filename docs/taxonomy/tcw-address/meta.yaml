@@ -1,0 +1,4 @@
+name: tcw:// address
+relatesTo:
+    - full-identifier
+    - reference
