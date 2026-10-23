@@ -9,7 +9,7 @@ exists in filesystem mode.
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -20,19 +20,15 @@ from tcw.work.advance import run_post
 from tcw.work.config import WorkConfig
 from tcw.work.jira import jql
 from tcw.work.jira.backend import (
-    ITEM_FILE, KEY, JiraBackend, Refusal, _jira, _named, choose_transition, field_id,
-    folder_key,
+    ITEM_FILE, KEY, JiraBackend, Refusal, _jira, _named, choose_transition, folder_key,
 )
 from tcw.work.jira.client import (
     JiraClient, TrackerError, TrackerNotFound, TrackerRequestInvalid,
 )
-from tcw.work.jira.config import (
-    DEFAULT_ISSUE_TYPE, DEFAULT_PRIORITY_NAMES, parse_delegation_block,
-)
 from tcw.work.jira.mapping import document_text, text_document
 from tcw.work.layout import Layout
 from tcw.work.model import (
-    DEFAULT_PRIORITY, PRIORITIES, Slug, check_encodable, inbox_stage, start_stage,
+    DEFAULT_PRIORITY, Slug, check_encodable, inbox_stage, start_stage,
     title_words,
 )
 
@@ -310,52 +306,27 @@ def create_fields(backend: JiraBackend) -> tuple[str, ...]:
 # -- delegation into a Jira-mode project (Design 8) ----------------------------------------
 
 
-@dataclass(frozen=True)
-class _Connection:
-    """What a client reads from its configuration. The site and the
-    credential names always come from one file, so a token is never sent to a
-    site another file named."""
-    site: str
-    email_env: str
-    token_env: str
-    timeout: float
-
-
 def delegate_to_jira(project_id: str, title: str, request: str | None,
-                     priority: str | None, *, root: Path | None = None, block: Any = None,
+                     priority: str | None, *, root: Path,
                      report: Callable[[str], None] = _say) -> str:
-    """Create a ticket in a Jira-mode project's inbox, and make it an item
-    there when its checkout here allows. Returns the slug, or the key when
-    the ticket stays in the inbox. Runs no gates and no hooks: creation is not
-    a move."""
+    """Create a ticket in the inbox of the Jira-mode project at `root`, on
+    this machine, and make it an item there when its checkout allows.
+    Returns the slug, or the key when the ticket stays in the inbox. Runs no
+    gates and no hooks: creation is not a move."""
     if not isinstance(title, str) or not title.strip():
         raise UsageError("a title must not be empty")
     check_encodable(title, "the title")
     if request is not None:
         check_encodable(request, "the request")
     from tcw.work.open import open_backend
-    backend: JiraBackend | None = None
-    if root is not None:
-        # Another project: read from its tcw-config.yaml alone (TCW-72 AC 9).
-        backend = jira_backend(open_backend(root, report=report, personal=False))
-        site, jira_project = backend.jira.site, backend.jira.project
-        client, priorities = backend.client, backend.jira.priorities
-        meta = backend.metadata()
-        issue_type, field = meta.issue_type.id, meta.field_ids["project"]
-        has_priority = meta.has_priority
-        inbox_status = backend.statuses[inbox_stage()]
-    else:
-        target, problems = parse_delegation_block(
-            block, ("projects", project_id, "jira"))
-        if problems:
-            raise BackendError("; ".join(str(p) for p in problems))
-        site, jira_project = target.site, target.project
-        client = JiraClient(_Connection(target.site, target.email_env, target.token_env,
-                                        target.timeout))
-        priorities = dict(zip(PRIORITIES, DEFAULT_PRIORITY_NAMES))
-        issue_type, field, has_priority = _remote_metadata(client, jira_project,
-                                                           target.project_field)
-        inbox_status = target.inbox_status
+    # Another project: read from its tcw-config.yaml alone (TCW-72 AC 9).
+    backend = jira_backend(open_backend(root, report=report, personal=False))
+    site, jira_project = backend.jira.site, backend.jira.project
+    client, priorities = backend.client, backend.jira.priorities
+    meta = backend.metadata()
+    issue_type, field = meta.issue_type.id, meta.field_ids["project"]
+    has_priority = meta.has_priority
+    inbox_status = backend.statuses[inbox_stage()]
     if priority is not None and not has_priority:
         raise Refused(f"Jira project {jira_project} has no Priority field, so an item "
                       f"there has no priority to set")
@@ -399,28 +370,6 @@ def delegate_to_jira(project_id: str, title: str, request: str | None,
     return str(slug)
 
 
-def _remote_metadata(client: JiraClient, jira_project: str,
-                     project_field: str) -> tuple[str, str, bool]:
-    """The default issue type's id, the TCW Project field's id, and whether
-    Priority exists, read from the target's own create metadata."""
-    with _jira():
-        project = client.project(jira_project)
-        types = [t for t in project.get("issueTypes") or []
-                 if isinstance(t, dict) and t.get("name") == DEFAULT_ISSUE_TYPE]
-        if not types:
-            raise BackendError(f"Jira project {jira_project} has no "
-                               f"{DEFAULT_ISSUE_TYPE} issue type to delegate with")
-        fields = client.create_metadata(jira_project, str(types[0]["id"]))
-    named = [f for f in fields if isinstance(f, dict) and f.get("name") == project_field]
-    if len(named) != 1:
-        raise BackendError(f"Jira project {jira_project} has {len(named)} fields named "
-                           f"{project_field!r}; the connected-project jira block's "
-                           f"fields.project must name exactly one")
-    has_priority = any(isinstance(f, dict) and field_id(f) == "priority"
-                       for f in fields)
-    return str(types[0]["id"]), field_id(named[0]), has_priority
-
-
 def _move_to(client: JiraClient, key: str, status: str) -> None:
     """Move `key` to `status` by the choice rule, unless it is there."""
     with _jira():
@@ -435,12 +384,10 @@ def _move_to(client: JiraClient, key: str, status: str) -> None:
         client.apply_transition(key, chosen.id)
 
 
-def _cannot_make_item(backend: JiraBackend | None, project_id: str,
+def _cannot_make_item(backend: JiraBackend, project_id: str,
                       key: str) -> str | None:
     """Why the item cannot be made in the target here, or None (Design 8
     step 4)."""
-    if backend is None:
-        return f"{project_id} is not on this machine"
     from tcw.work.open import uncommitted_changes
     if not backend.work_path.is_dir():
         return f"{project_id} has no work store at {backend.work_path}"

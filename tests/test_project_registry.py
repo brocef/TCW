@@ -429,7 +429,10 @@ def test_an_unprovisioned_declaration_is_unreachable_at_its_locator(tmp_path, mo
 @pytest.mark.parametrize(
     "entry, expected",
     [
-        ("      nonsense: 1\n", "unknown key(s) nonsense; expected 'jira'"),
+        ("      nonsense: 1\n", "unknown key(s) nonsense; expected nothing after the ID"),
+        # TCW-108 Design 7.2: TCW 4.0 files only into a project on this machine.
+        ("      jira:\n        site: x\n", "TCW 4.0 files only into a project on this machine, so an entry "
+         "holds no 'jira' block; remove it"),
         # TCW-107 Design 3.1: a location goes in the manifest.
         ("      path: ''\n", "a location goes in .tcw/tcw-manifest.yaml"),
         ("      repository:\n        ref: main\n", "a location goes in .tcw/tcw-manifest.yaml"),

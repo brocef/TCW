@@ -614,34 +614,31 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
     from tcw.findings import Finding
     from tcw.work.fs_backend import FsWorkBackend, read_all, work_store_problems
     from tcw.work.jira.backend import JiraBackend, jira_store_problems
-    from tcw.work.jira.config import connected_block_problems
     from tcw.work.gates import project_reader, records_problems
     from tcw.work.model import TERMINAL, stage as table_stage
     from tcw.work.open import open_backend, reference_resolver
     from tcw.work.references import reference_problems, stage_problems
 
     config_file = _config_file(project_root)
-    blocks = [Finding("error", config_file, str(problem))
-              for problem in connected_block_problems(registry.config())]
     try:
         backend = open_backend(project_root)
     except ConfigError:
         # Already reported, file by file, by `config_findings`.
-        return blocks, None
+        return [], None
     except BackendError as error:
-        return [Finding("error", config_file, _config_message(error, project_root)), *blocks], None
+        return [Finding("error", config_file, _config_message(error, project_root))], None
     if isinstance(backend, JiraBackend):
         # Offline: nothing Jira owns is checked here (TCW-71 Design 9.1).
         # Rounds and declarations are files in both modes, so they are
         # checked here too.
-        return [*blocks, *jira_store_problems(backend.work_path, backend.jira),
+        return [*jira_store_problems(backend.work_path, backend.jira),
                 *round_findings(backend.work_path, backend.project, backend.layout),
                 *_declaration_findings(backend.layout, backend.project)], None
     if not isinstance(backend, FsWorkBackend):
-        return blocks, None
+        return [], None
     layout = backend.layout
-    findings = [*blocks, *work_store_problems(backend.work_path, backend.project,
-                                              backend.config),
+    findings = [*work_store_problems(backend.work_path, backend.project,
+                                     backend.config),
                 *round_findings(backend.work_path, backend.project, layout)]
     items, unreadable = read_all(backend.work_path, backend.project, backend.enabled)
 

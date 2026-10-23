@@ -149,12 +149,11 @@ Every command exits with one of these codes. The numbers live in
 | 7    | Something this project inherits is not available here.                       | A project it inherits from is not on this machine, or that project's parent links could not be read, and the command needs what it passes down.                                                                                                                                        |
 
 Creating an item in another project (`tcw work new --project <id>`) shows how
-the codes fit together. When the target is declared, is not on this machine,
-and this project's entry for it has a `jira` block, TCW creates the ticket in
-that project's Jira inbox, prints its key and exits 0. Every other case where
-the target cannot be written to is refused with exit code 3, as the table
-says. [Working across repositories](multi-repo.md#creating-an-item-in-another-project)
-walks through all five cases.
+the codes fit together. TCW creates the item only in a project that is on this
+machine and that this project may write into (a Jira-mode project gets a ticket
+in its Jira inbox), prints its name and exits 0. Every case where the target
+cannot be written to (it is read-only from here, nothing here declares it, or it
+is not on this machine) is refused with exit code 3, as the table says.
 
 ## Using the rules from a script
 

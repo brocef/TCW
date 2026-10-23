@@ -453,7 +453,6 @@ def test_ac14_the_variable_decides(tmp_path):
 @pytest.mark.parametrize("relations", [
     {"upstream": {"lib": None}},
     {"upstream": {"lib": {}}},
-    {"children": {"lib": {"jira": {"project": "LIB"}}}},
 ])
 def test_ac15_projects_entries_holding_only_an_id_are_accepted(tmp_path, relations):
     app = proj(tmp_path / "app", "app", **relations)

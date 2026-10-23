@@ -575,16 +575,6 @@ class FsProjectRegistry(ProjectRegistry):
         return (f"'{project_id}' is a read-only upstream project here (reached "
                 f"through '{declarer}')")
 
-    def entry(self, project_id: str) -> ConnectedProject | None:
-        """The first `projects` entry in this graph naming
-        `project_id`, whether or not that project is on this machine."""
-        self._load_graph()
-        for cfg in self._cache.values():
-            for entries in (cfg.parent, cfg.children, cfg.upstream):
-                if project_id in entries:
-                    return entries[project_id]
-        return None
-
     def overrides(self) -> list[ProjectOverride]:
         """The `TCW_PROJECT_*` locators that took effect in this graph.
 

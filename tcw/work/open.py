@@ -202,7 +202,7 @@ def uncommitted_changes(path: Path, project_id: str | None = None) -> list[str]:
 
 def _check_declared(registry: FsProjectRegistry, project_id: str) -> None:
     """The first two conditions of delegation: declared, and not upstream."""
-    if registry.get(project_id) is None and registry.entry(project_id) is None \
+    if registry.get(project_id) is None \
             and registry.unreachable_project(project_id) is None:
         raise Refused(f"no project '{project_id}' is declared here")
     reason = registry.read_only_reason(project_id)
@@ -216,10 +216,6 @@ def _check_target(registry: FsProjectRegistry, project_id: str) -> Path:
     _check_declared(registry, project_id)
     project = registry.get(project_id)
     if project is None:
-        entry = registry.entry(project_id)
-        if entry is not None and entry.jira is not None:
-            raise Refused(f"project '{project_id}' is not on this machine, and "
-                          f"--blocks never creates a ticket")
         absent = registry.unreachable_project(project_id)
         if absent is not None and absent.message:
             # TCW-107 Design 6.2, as `open_project` reports it.
@@ -247,11 +243,6 @@ def delegate(project_id: str, title: str, request: str | None,
     _check_declared(registry, project_id)
     say = report or (lambda line: print(line, file=sys.stderr))
     project = registry.get(project_id)
-    entry = registry.entry(project_id)
-    if project is None and entry is not None and entry.jira is not None:
-        from tcw.work.jira.tickets import delegate_to_jira
-        return delegate_to_jira(project_id, title, request, priority,
-                                block=entry.jira, report=say)
     if project is not None and read_work_config(Path(project.locator),
                                                 personal=False).backend == "jira":
         from tcw.work.jira.tickets import delegate_to_jira

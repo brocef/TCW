@@ -6,11 +6,10 @@ import shutil
 import pytest
 import yaml
 
-from tests.work.jira.conftest import EMAIL_ENV, TOKEN_ENV, jira_config
-from tests.work.jira.fake import FIELDS, SITE
+from tests.work.jira.conftest import jira_config
+from tests.work.jira.fake import FIELDS
 from tests.work.projects import commit_all, connect, make_project
 from tests.projectfiles import config_file, write_config_file, write_local_config
-from tests.projectfiles import write_connected_config_file
 
 ITEM, PROJECT = FIELDS["TCW Item"], FIELDS["TCW Project"]
 
@@ -65,46 +64,11 @@ def test_no_route_to_request_keeps_it_in_the_inbox(pair, fake, tcw):
     assert fake.tickets["TCW-1"].status == "To Do"
 
 
-def block_for(p, block):
-    path = config_file(p)
-    doc = yaml.safe_load(path.read_text())
-    # The entry's location is in the manifest `connect` wrote (TCW-107).
-    doc["projects"]["children"]["tcw"] = {"jira": block}
-    write_connected_config_file(path, yaml.safe_dump(doc, sort_keys=False))
-
-
-BLOCK = {"site": SITE, "project": "TCW", "inbox-status": "To Do",
-         "credentials": {"email-env": EMAIL_ENV, "token-env": TOKEN_ENV},
-         "fields": {"project": "TCW Project"}}
-
-
-def test_a_target_not_here_with_a_jira_block(pair, fake, tcw):
-    p, target, _ = pair
-    shutil.rmtree(target)
-    block_for(p, BLOCK)
-    result = tcw(["new", "Add export", "--project", "tcw", "--priority", "high"], p)
-    assert (result.code, result.out.strip()) == (0, "TCW-1")
-    ticket = fake.tickets["TCW-1"]
-    assert (ticket.status, ticket.priority, ticket.custom[PROJECT]) == (
-        "To Do", "High", "tcw")
-    assert ITEM not in ticket.custom
-    assert "not on this machine" in result.err
-
-
 def test_a_target_not_here_without_a_block(pair, fake, tcw):
     p, target, _ = pair
     shutil.rmtree(target)
     assert tcw(["new", "Add export", "--project", "tcw"], p).code == 3
     assert fake.log == []
-
-
-def test_the_block_is_only_read_when_the_target_is_not_here(pair, fake, tcw):
-    p, _, _ = pair
-    block_for(p, dict(BLOCK, site="https://elsewhere.atlassian.net"))
-    commit_all(p)
-    result = tcw(["new", "Add export", "--project", "tcw"], p)
-    assert result.code == 0, result.err
-    assert fake.tickets["TCW-1"].custom[ITEM] == "tcw.work/TCW-1-add-export"
 
 
 def test_other_property_flags_are_usage_errors(pair, fake, tcw):
@@ -115,8 +79,13 @@ def test_other_property_flags_are_usage_errors(pair, fake, tcw):
 
 def test_a_refused_inbox_move_prints_the_created_key(pair, fake, tcw):
     p, target, _ = pair
-    shutil.rmtree(target)
-    block_for(p, {**BLOCK, "inbox-status": "Specifying"})
+    # The target's inbox is a status a new ticket is not created in.
+    path = config_file(target)
+    doc = yaml.safe_load(path.read_text())
+    doc["work"]["stages"]["inbox"]["status"] = "Specifying"
+    doc["work"]["stages"]["spec"]["status"] = "To Do"
+    write_config_file(path, yaml.safe_dump(doc, sort_keys=False))
+    commit_all(target)
     flow = fake.projects["TCW"]
     flow.transitions = [t for t in flow.transitions if t.to != "Specifying"]
     result = tcw(["new", "Add export", "--project", "tcw"], p)

@@ -932,10 +932,6 @@ class ConnectedProject:
     manifest's to say (TCW-107 Design 3.1)."""
 
     id: str
-    # The entry's optional `jira` block, kept unparsed: the store layer imports
-    # nothing from `tcw.work`, and the Jira backend checks its shape when
-    # delegation reads it (TCW-71).
-    jira: Any = field(default=None, compare=False, hash=False)
 
 
 @dataclass(frozen=True)
@@ -1086,10 +1082,11 @@ def parse_connected_entry(
     """Parse one `projects` entry into a `ConnectedProject` plus problems.
 
     An entry names its project by ID alone (TCW-107 Design 3.1): it is empty
-    (`lib:`), an empty mapping, or a mapping holding only `jira`, the
-    delegation block. Where the project is, is a manifest's to say, so a
-    location here is refused with the entry to write in
-    `.tcw/tcw-manifest.yaml` instead. Pure and filesystem-free.
+    (`lib:`) or an empty mapping. Where the project is, is a manifest's to
+    say, so a location here is refused with the entry to write in
+    `.tcw/tcw-manifest.yaml` instead; a `jira` block is refused, since TCW
+    4.0 files only into a project on this machine (TCW-108 Design 7.2).
+    Pure and filesystem-free.
     """
     if raw is None:
         return ConnectedProject(id=project_id), []
@@ -1099,13 +1096,16 @@ def parse_connected_entry(
                       f"here: write '{project_id}:' here and "
                       f"'{_manifest_entry(project_id, raw)}' under projects: there"]
     if not isinstance(raw, dict):
-        return None, [f"{where}: expected nothing after the ID, or a mapping holding "
-                      f"only 'jira', got {type(raw).__name__}"]
-    unknown = {k for k in set(raw) - {"jira"} if follows_naming_rule(k)}
+        return None, [f"{where}: expected nothing after the ID, got "
+                      f"{type(raw).__name__}"]
+    if "jira" in raw:
+        return None, [f"{where}: TCW 4.0 files only into a project on this machine, "
+                      f"so an entry holds no 'jira' block; remove it"]
+    unknown = {k for k in raw if follows_naming_rule(k)}
     if unknown:
         return None, [f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
-                      f"expected 'jira'"]
-    return ConnectedProject(id=project_id, jira=raw.get("jira")), []
+                      f"expected nothing after the ID"]
+    return ConnectedProject(id=project_id), []
 
 
 def _manifest_entry(project_id: str, raw: Any) -> str:

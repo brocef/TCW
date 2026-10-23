@@ -35,7 +35,6 @@ REQUIRED = ("site", "project", "credentials", "fields")
 CREDENTIAL_KEYS = ("email-env", "token-env")
 FIELD_KEYS = ("project", "item", "effort", "complexity")
 REQUIRED_FIELDS = ("project", "item")
-DELEGATION_KEYS = ("site", "project", "inbox-status", "credentials", "fields")
 
 
 @dataclass(frozen=True)
@@ -61,19 +60,6 @@ class JiraConfig:
         default_factory=lambda: dict(zip(PRIORITIES, DEFAULT_PRIORITY_NAMES)))
     issue_type: str = DEFAULT_ISSUE_TYPE
     inbox_query: str | None = None
-    timeout: float = DEFAULT_TIMEOUT
-
-
-@dataclass(frozen=True)
-class DelegationTarget:
-    """A connected project's `jira` block: what delegation needs to create a
-    ticket in a Jira-mode project that is not on this machine."""
-    site: str
-    project: str
-    inbox_status: str
-    email_env: str
-    token_env: str
-    project_field: str
     timeout: float = DEFAULT_TIMEOUT
 
 
@@ -225,55 +211,3 @@ def parse_jira_config(raw: Any) -> tuple[JiraConfig | None, list[ConfigProblem]]
                       token_env=credentials[1], fields=fields, priorities=priorities,
                       issue_type=issue_type, inbox_query=inbox_query,
                       timeout=timeout), problems
-
-
-def parse_delegation_block(raw: Any, where: KeyPath
-                           ) -> tuple[DelegationTarget | None, list[ConfigProblem]]:
-    """A connected project's `jira` block, `{site, project, inbox-status,
-    credentials: {email-env, token-env}, fields: {project}}`, with the same
-    rules as `work.jira`. `where` is the entry's key path."""
-    where = tuple(where)
-    problems = _Problems()
-    block = _mapping(raw, where, problems)
-    if block is None:
-        return None, problems
-    _unknown(block, DELEGATION_KEYS, where, problems)
-    _missing(block, DELEGATION_KEYS, where, problems)
-    site = _site(block, where, problems) if "site" in block else None
-    project = _project(block, where, problems) if "project" in block else None
-    inbox = _text(block, "inbox-status", where, problems) if "inbox-status" in block \
-        else None
-    credentials = (_credentials(block, where, problems)
-                   if "credentials" in block else None)
-    project_field = None
-    if "fields" in block:
-        path = (*where, "fields")
-        given = _mapping(block["fields"], path, problems)
-        if given is not None:
-            _unknown(given, ("project",), path, problems)
-            if not _missing(given, ("project",), path, problems):
-                project_field = _text(given, "project", path, problems)
-    if problems:
-        return None, problems
-    return DelegationTarget(site=site, project=project, inbox_status=inbox,
-                            email_env=credentials[0], token_env=credentials[1],
-                            project_field=project_field), problems
-
-
-def connected_block_problems(raw_config: Any) -> list[ConfigProblem]:
-    """The problems of every `jira` block among a project's own
-    `projects` entries, by key path."""
-    problems: list[ConfigProblem] = []
-    sections = raw_config.get("projects") if isinstance(raw_config, dict) \
-        else None
-    if not isinstance(sections, dict):
-        return problems
-    for relation, entries in sections.items():
-        if not isinstance(entries, dict):
-            continue
-        for project_id, entry in entries.items():
-            if isinstance(entry, dict) and "jira" in entry:
-                problems.extend(parse_delegation_block(
-                    entry["jira"], ("projects", str(relation),
-                                    str(project_id), "jira"))[1])
-    return problems

@@ -35,8 +35,7 @@ from tcw.cli import build_parser, main
 from tcw.errors import BackendError, Refused
 from tcw.work.jira.backend import JiraBackend
 from tcw.work.model import Item, Slug
-from tests.work.jira.conftest import EMAIL_ENV, ME, TOKEN_ENV, fake, jira_config  # noqa: F401
-from tests.work.jira.fake import SITE
+from tests.work.jira.conftest import ME, fake, jira_config  # noqa: F401
 from tests.projectfiles import config_file, write_config, write_config_file, write_local_config
 from tests.projectfiles import write_connected_config, write_connected_config_file
 
@@ -542,20 +541,16 @@ def test_tickets_list_prints_keys_only(jira_fx, fake):  # noqa: F811
 
 @pytest.fixture
 def graph(tmp_path, fake):  # noqa: F811
-    """`fx` with a present child `other`, an upstream `up`, a declared child
-    `absent` not here, and `absentj`, not here but reachable through Jira."""
+    """`fx` with a present child `other`, an upstream `up` and a declared child
+    `absent` not here."""
     roots = {}
     for name in ("fx", "other", "up"):
         roots[name] = tmp_path / name
         roots[name].mkdir()
         ok(roots[name], "init", "--id", name)
-    block = {"site": SITE, "project": "TCW", "inbox-status": "To Do",
-             "credentials": {"email-env": EMAIL_ENV, "token-env": TOKEN_ENV},
-             "fields": {"project": "TCW Project"}}
     document = yaml.safe_load((roots["fx"] / ".tcw/tcw-config.yaml").read_text())
     document["projects"] = {
-        "children": {"other": "../other", "absent": "../absent",
-                     "absentj": {"path": "../absentj", "jira": block}},
+        "children": {"other": "../other", "absent": "../absent"},
         "upstream": {"up": "../up"}}
     write_connected_config(roots["fx"], yaml.safe_dump(document))
     for name in ("other", "up"):
@@ -593,16 +588,12 @@ def test_delegation_that_is_refused_writes_nothing(graph, target, says):
     assert {name: snapshot(root) for name, root in graph.items()} == before
 
 
-def test_delegation_through_jira_and_blocks(graph, fake, monkeypatch, capsys):  # noqa: F811
+def test_blocks_into_a_project_not_here_is_refused(graph, monkeypatch):
+    # TCW 4.0 files only into a project on this machine (TCW-108 Design 7.2).
     monkeypatch.chdir(graph["fx"])
-    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
-    assert main(["work", "new", "x", "--project", "absentj"]) == 0
-    key = capsys.readouterr().out.strip()
-    assert re.fullmatch(r"TCW-\d+", key) and fake.tickets[key].status == "To Do"
-
     mine = new(graph["fx"], "Mine")
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
-    assert main(["work", "edit", mine, "--blocks", "absentj.work/x"]) == 3
+    assert main(["work", "edit", mine, "--blocks", "absent.work/x"]) == 3
 
 
 # -- AC 28: people in Jira mode ---------------------------------------------------

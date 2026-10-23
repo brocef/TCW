@@ -13,10 +13,8 @@ import pytest
 import yaml
 
 from tcw.cli import main
-from tests.work.jira.fake import SITE, FakeJira
 from tests.work.projects import commit_all, connect, git, make_project, write_item
 from tests.projectfiles import write_config
-from tests.projectfiles import write_connected_config
 
 TODAY = date.today().isoformat()
 
@@ -371,20 +369,9 @@ def test_show_of_an_absent_or_undeclared_project(tcw, pq):
     assert unknown.code == 1 and "check the spelling" in unknown.err
 
 
-def test_jira_block_delegation_and_blocks(tcw, pq, monkeypatch):
+def test_blocks_into_a_project_not_here_is_refused(tcw, pq):
     root, q = pq
     shutil.rmtree(q)
-    FakeJira().install(monkeypatch)
-    monkeypatch.setenv("Q_EMAIL", "dev@example.test")
-    monkeypatch.setenv("Q_TOKEN", "token")
-    doc = yaml.safe_load((root / ".tcw/tcw-config.yaml").read_text())
-    doc["projects"]["children"]["q"] = {"path": "../q", "jira": {
-        "site": SITE, "project": "TCW", "inbox-status": "To Do",
-        "credentials": {"email-env": "Q_EMAIL", "token-env": "Q_TOKEN"},
-        "fields": {"project": "TCW Project"}}}
-    write_connected_config(root, yaml.safe_dump(doc))
-    r = tcw(["new", "T", "--project", "q"], root)
-    assert (r.code, r.out.strip()) == (0, "TCW-1")
     write_item(root, "2026-10-01-a", {"title": "a", "stage": "spec"})
     assert tcw(["edit", "2026-10-01-a", "--blocks", "q.work/2026-10-01-x"], root).code == 3
 

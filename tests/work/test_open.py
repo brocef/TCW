@@ -16,7 +16,7 @@ from tcw.work.open import (
     delegate, open_backend, open_for_update, open_project, uncommitted_changes,
 )
 from tcw.work.model import Changes
-from tests.work.jira.fake import SITE, FakeJira
+from tests.work.jira.fake import SITE
 from tests.work.projects import commit_all, connect, git, make_project
 from tests.projectfiles import config_file, write_config_file
 from tests.projectfiles import write_connected_config, write_connected_config_file
@@ -155,14 +155,6 @@ def test_an_upstream_project_is_read_only(tmp_path):
         open_for_update("r", p)
 
 
-def test_an_absent_upstream_with_a_jira_block_is_still_upstream(tmp_path):
-    p = make_project(tmp_path, "p")
-    write_connected_config(p, **{"projects": {"upstream": {
-        "r": {"path": "../r", "jira": {"site": "x"}}}}})
-    with pytest.raises(Refused, match="read-only"):
-        delegate("r", "T", None, None, here=p)
-
-
 def test_a_declared_absent_project_is_refused(pq):
     p, q = pq
     shutil.rmtree(q)
@@ -170,27 +162,26 @@ def test_a_declared_absent_project_is_refused(pq):
         delegate("q", "T", None, None, here=p)
 
 
-def test_an_absent_project_with_a_jira_block(pq, monkeypatch):
+def test_a_jira_block_in_an_entry_is_refused(pq):
+    """TCW 4.0 files only into a project on this machine (TCW-108 Design
+    7.2): an entry's `jira` block is a configuration problem naming the
+    entry, whatever it holds."""
+    from tcw.store.project import FsProjectRegistry
     p, q = pq
-    shutil.rmtree(q)
-    fake = FakeJira().install(monkeypatch)
-    monkeypatch.setenv("Q_EMAIL", "dev@example.test")
-    monkeypatch.setenv("Q_TOKEN", "token")
-    write_connected_config(p, **{"projects": {"children": {
-        "q": {"path": "../q", "jira": JIRA_BLOCK}}}})
-    assert delegate("q", "T", None, None, here=p) == "TCW-1"
-    assert fake.tickets["TCW-1"].status == "To Do"
-    with pytest.raises(Refused):
-        open_for_update("q", p)
+    write_connected_config(p, **{"projects": {"children": {"q": {"jira": JIRA_BLOCK}}}})
+    problems = [f.message for f in FsProjectRegistry.open(p).check()]
+    assert any("projects.children.q" in m and "jira" in m for m in problems), problems
 
 
-def test_a_malformed_jira_block_is_named(pq):
+def test_an_absent_project_names_no_jira_block(pq):
     p, q = pq
     shutil.rmtree(q)
-    write_connected_config(p, **{"projects": {"children": {
-        "q": {"path": "../q", "jira": {"site": "x"}}}}})
-    with pytest.raises(BackendError, match="projects.q.jira.site"):
+    with pytest.raises(Refused) as refused:
         delegate("q", "T", None, None, here=p)
+    assert "jira" not in str(refused.value)
+    with pytest.raises(Refused) as refused:
+        open_for_update("q", p)
+    assert "jira" not in str(refused.value) and "ticket" not in str(refused.value)
 
 
 def test_a_missing_work_store_is_refused(pq):

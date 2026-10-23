@@ -61,6 +61,8 @@ def test_the_refusals_of_tcw_107_s_reader_are_kept():
         ({"projects": {"sideways": {"a": None}}}, "unknown projects keys: sideways"),
         ({"projects": {"children": ["a"]}}, "projects.children must be a mapping"),
         ({"projects": {"children": {"A": None}}}, "children key: project ID must match"),
+        ({"projects": {"children": {"a": {"jira": {"project": "X"}}}}},
+         "projects.children.a: TCW 4.0 files only into a project on this machine"),
     ]:
         out, problems = translate_projects({"id": "me", **raw}, FILE)
         assert any(words in problem for problem in problems), (raw, problems)
