@@ -340,4 +340,6 @@ restored (`mutate.py` in the scratchpad). Every one went red unless said.
 
 `.venv/bin/pytest -q -p no:cacheprovider`, run in full as CI runs it:
 
-SUITE_RESULT
+`5440 passed, 118 skipped in 497.74s`, at `cd51a2ba` (2026-10-23). An earlier
+run gave 3 failed, 5437 passed; all three were the capability records that
+named `tcw project provision` before TCW-115 adds it, reworded in `a066bb63`.
