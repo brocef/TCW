@@ -52,16 +52,16 @@ project, not `TCW` (`tests/work/jira/test_jira_scenario.py:51-56`). The
 worktree's own `.tcw/tcw-config.yaml`, though, names the Jira backend and
 the live board, so any 4.0 code that reads it can reach that board.
 
-| # | How 4.0 code would reach it | The rule |
-| - | --- | --- |
-| 1 | `.venv/bin/tcw`, `.venv/bin/python -m tcw`, or any Python that imports `tcw` (`python -c "import tcw"` from the worktree root imports the worktree's `tcw/`, because the current folder comes first on the module search path), run with the current folder inside the worktree: `work list` and `show` read the live board; `work new`, `edit` and `advance` write 4.0 `TCW Item` values (`tcw/work/jira/backend.py:708`, `:893`, `:898`, `tcw/work/jira/tickets.py:181`, `:388`) | The 4.0 code is run only by the suite (whose projects are under `tmp_path`) and inside throwaway project folders under the scratchpad (QA), with the current folder set there. Never from a folder inside the worktree. |
-| 2 | The `pre` hooks `python scripts/require_artifact.py spec\|plan` (bound in `tcw-config.yaml`), which run the `tcw` found on `PATH` | Never put `.venv/bin` first on `PATH` in a shell that runs a lifecycle command. A command that needs it (the e2e run, Verification) sets it for that one command only (`PATH=.venv/bin:$PATH pnpm test:e2e`), never with `export`. |
-| 3 | The `completed` stage's `pre: tcw validate`, the same `PATH` lookup | Rule 2. |
-| 4 | `docs/guide/examples/commit-item-after-move.sh`, run after each move | Runs only git, never `tcw` code. Run from the worktree, it commits the item's folder onto `v4`, which is where this item's documents live; that is intended. |
-| 5 | `scripts/remote_session_setup.sh --force` run from the worktree, which reinstalls the shared pyenv editable install from the worktree (`pip install -e "${root}[dev]"`), after which every `tcw` on `PATH` is 4.0 | Never run it from the worktree. The worktree has its own `.venv`, installed with `.venv/bin/pip install -e '.[dev]'` (CLAUDE.md, "Working in a git worktree"). |
-| 6 | Merging `v4` into `main`, or switching the primary checkout to another branch, which turns the `PATH` `tcw` into 4.0 | Not done by this item. `v4` reaches `main` only after TCW-116 has migrated this repository's records; the primary checkout stays on `main`. |
-| 7 | `tcw serve` run with `.venv/bin/tcw` from the worktree, which serves the live board, where a parent or blocker saved from the page writes a 4.0 value | Never. The web checks use the suite's served fixtures and `web/e2e`'s fake launcher (`tests.serve.jira_launcher`). |
-| 8 | Evals: no Jira, but `python -m evals.run_evals` with the pyenv interpreter puts the pyenv `bin` folder first on the agent's `PATH`, so the agent would run `main`'s 3.x code and measure the wrong thing | This item runs no evals. If one is run, it is run with `.venv/bin/python -m evals.run_evals`, and its `isolation_problems` are read. |
+| #   | How 4.0 code would reach it                                                                                                                                                                                                                                                                                                                                                                                                                                                        | The rule                                                                                                                                                                                                                           |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `.venv/bin/tcw`, `.venv/bin/python -m tcw`, or any Python that imports `tcw` (`python -c "import tcw"` from the worktree root imports the worktree's `tcw/`, because the current folder comes first on the module search path), run with the current folder inside the worktree: `work list` and `show` read the live board; `work new`, `edit` and `advance` write 4.0 `TCW Item` values (`tcw/work/jira/backend.py:708`, `:893`, `:898`, `tcw/work/jira/tickets.py:181`, `:388`) | The 4.0 code is run only by the suite (whose projects are under `tmp_path`) and inside throwaway project folders under the scratchpad (QA), with the current folder set there. Never from a folder inside the worktree.            |
+| 2   | The `pre` hooks `python scripts/require_artifact.py spec\|plan` (bound in `tcw-config.yaml`), which run the `tcw` found on `PATH`                                                                                                                                                                                                                                                                                                                                                  | Never put `.venv/bin` first on `PATH` in a shell that runs a lifecycle command. A command that needs it (the e2e run, Verification) sets it for that one command only (`PATH=.venv/bin:$PATH pnpm test:e2e`), never with `export`. |
+| 3   | The `completed` stage's `pre: tcw validate`, the same `PATH` lookup                                                                                                                                                                                                                                                                                                                                                                                                                | Rule 2.                                                                                                                                                                                                                            |
+| 4   | `docs/guide/examples/commit-item-after-move.sh`, run after each move                                                                                                                                                                                                                                                                                                                                                                                                               | Runs only git, never `tcw` code. Run from the worktree, it commits the item's folder onto `v4`, which is where this item's documents live; that is intended.                                                                       |
+| 5   | `scripts/remote_session_setup.sh --force` run from the worktree, which reinstalls the shared pyenv editable install from the worktree (`pip install -e "${root}[dev]"`), after which every `tcw` on `PATH` is 4.0                                                                                                                                                                                                                                                                  | Never run it from the worktree. The worktree has its own `.venv`, installed with `.venv/bin/pip install -e '.[dev]'` (CLAUDE.md, "Working in a git worktree").                                                                     |
+| 6   | Merging `v4` into `main`, or switching the primary checkout to another branch, which turns the `PATH` `tcw` into 4.0                                                                                                                                                                                                                                                                                                                                                               | Not done by this item. `v4` reaches `main` only after TCW-116 has migrated this repository's records; the primary checkout stays on `main`.                                                                                        |
+| 7   | `tcw serve` run with `.venv/bin/tcw` from the worktree, which serves the live board, where a parent or blocker saved from the page writes a 4.0 value                                                                                                                                                                                                                                                                                                                              | Never. The web checks use the suite's served fixtures and `web/e2e`'s fake launcher (`tests.serve.jira_launcher`).                                                                                                                 |
+| 8   | Evals: no Jira, but `python -m evals.run_evals` with the pyenv interpreter puts the pyenv `bin` folder first on the agent's `PATH`, so the agent would run `main`'s 3.x code and measure the wrong thing                                                                                                                                                                                                                                                                           | This item runs no evals. If one is run, it is run with `.venv/bin/python -m evals.run_evals`, and its `isolation_problems` are read.                                                                                               |
 
 ## Step 0 — start from what TCW-106 and TCW-107 left
 
@@ -124,7 +124,7 @@ Design 1 and 2 and nothing that reads a disk:
   `[A-Za-z0-9][A-Za-z0-9_-]*`, at most `ID_PART_LIMIT = 128`), and the
   project rule: `KEY_PATTERN` and not in `RESERVED_PROJECT_IDS`, so
   `local.work/x` is refused (spec 1.1, AC 1). No limit on a whole
-  identifier's length: that is TCW-111's (Step 17).
+  identifier's length: that is TCW-111's (its Step 2, at the start of its Part 3; Step 17 here records the handoff).
 - `FullId`, a frozen class `(project, namespace, id_path)`. Its constructor
   does not validate, so a folder whose name breaks 1.1 can still be printed
   (Design 1.6); only the parsers refuse. `str()` is
@@ -144,7 +144,7 @@ Design 1 and 2 and nothing that reads a disk:
   used on these types (a subclass with a different constructor refuses it);
   `with_id_path` is.
 - `FolderAddress`, a frozen dataclass `(project, namespace | None,
-  folder_path)`, `str()` its one spelling (Design 2.3, trailing `/` kept as
+folder_path)`, `str()` its one spelling (Design 2.3, trailing `/` kept as
   written), and `same_target(a, b)` comparing with a trailing `/` ignored.
 - `IdError(UsageError)` (exit 2) with subclasses `MalformedId` and
   `ThreeXReference`, each message naming the rule broken (AC 1, AC 2).
@@ -341,7 +341,7 @@ files-backend project `demo` built with `tests/work/projects.py`'s
   `"full-id"`. `moveHint` (`:120-122`) unchanged (it prints what it is given).
 - `web/client/src/ui/work-forms.tsx:227`, `:397` (`currentIdentifier`),
   `:554-569` and `:786-795` (the create answer and `slug.slice(slug.indexOf("/")
-  + 1)`): read `"full-id"` and `folderOf`.
+    - 1)`): read `"full-id"`and`folderOf`.
 - `web/client/src/ui/work-views.tsx:53-74` (`SlugLink`) through the new
   `work.ts`; `:245` builds `fullIdText(project.id, "work", detail.folder)`;
   the `slug` props at `:60` (`SlugLink`) and `:351` (`StageHint`) are given
@@ -368,7 +368,7 @@ files-backend project `demo` built with `tests/work/projects.py`'s
   `ui/work-forms.test.tsx`, `ui/work-views.test.tsx`, `ui/app.test.tsx`,
   `ui/shared-components.test.tsx`) move to the new keys. `model/work.test.ts`
   gains AC 20a's `isLocal("demo.work/x", demo)`, `isLocal("core.work/x",
-  demo)`, `projectOf("demo.work/x") === "demo"` and `folderOf` of it `x`.
+demo)`, `projectOf("demo.work/x") === "demo"` and `folderOf` of it `x`.
 - `pnpm build` rewrites `tcw/serve/dist`.
 
 **Changes, tests.** Every test that compares `<project>/<folder>` text or a
@@ -424,7 +424,7 @@ with a term `term`, a capability `cli/x`, and a project `core` inherited
 through `taxonomy.extends: [core]` and `capabilities.extends: [core]`:
 
 - AC 4: `tcw taxonomy list` prints `demo.taxonomy/term`, `tcw capabilities
-  list` prints `demo.capabilities/cli/x`, an inherited entry prints
+list` prints `demo.capabilities/cli/x`, an inherited entry prints
   `core.taxonomy/<slug>`; `add` prints the new full identifier.
 - AC 5: `tcw taxonomy show term` and `tcw capabilities show cli/x` start
   `full-id:`, `owner: demo`, and print no `path:` or `origin:`.
@@ -466,7 +466,7 @@ through `taxonomy.extends: [core]` and `capabilities.extends: [core]`:
   would fail for the wrong reason. The 3.x link grammar itself stays until
   Step 10.
 - `tcw/taxonomy/cli.py`: `_record` (`:31-33`) is `{**identity(term.full_id),
-  "name", "kind"}`; `_print_terms` (`:59-65`), `_add` (`:109`) print
+"name", "kind"}`; `_print_terms` (`:59-65`), `_add` (`:109`) print
   `full_id`; `_show` (`:82-83`) starts `full-id:`, `owner:`; `_ordered`
   (`:49-56`) sorts by `(owner != project, owner, term.full_id.parts)`;
   `prints=` (`:142`, `:151`, `:183`) say "one full identifier per line" and
@@ -502,7 +502,7 @@ through `taxonomy.extends: [core]` and `capabilities.extends: [core]`:
   `item.path`.
 - `web/client/src/model/reference-search.ts:253` and `:256` (the taxonomy
   and capability halves of `tcwLinkOptions`, which read `item.qualified ??
-  item.slug` and `item.qualified ?? item.path`): `tcw://T/${threeXRef(item)}`
+item.slug` and `item.qualified ?? item.path`): `tcw://T/${threeXRef(item)}`
   and `tcw://C/${threeXRef(item)}` until Step 10, because the types below
   drop those fields and `tsc` would fail at this step otherwise.
 - `web/client/src/ui/content-views.tsx:210-224`, `:258`, `:530` and
@@ -569,8 +569,8 @@ fixture) and no `extends`:
 - `Locator(app).owner_root("core", named_by=app)` returns `core`'s root;
   with `core`'s folder deleted it raises `Unreachable`; for `cor` (named by
   nothing, nothing next to `app` declares it) `UnknownProject` with `no
-  project with ID 'cor' is known or found near this one; check the
-  spelling`; with two folders next to `app` declaring `id: lib` (named by
+project with ID 'cor' is known or found near this one; check the
+spelling`; with two folders next to `app` declaring `id: lib` (named by
   nothing in `projects:`) `ProjectGraphError` naming both folders.
 - `owner_root(<app's own id>, app)` returns `app` without a lookup.
 - `read(FullId("core", "taxonomy", "term"), named_by=app)` returns `core`'s
@@ -650,6 +650,7 @@ capabilities store opens its project's taxonomy at `:2758` (`_taxonomy`). Both o
 `self.project_root`, so a store opened from its owner's root would build a
 second registry. Both pass `locator=self.locator`. (`tcw/work/gates.py:453`,
 reached from `:472`, is Step 11's.)
+
 - `tcw/work/open.py:210-241` (`reference_resolver`) and
   `tcw/work/references.py:13-67`: a new answer `ERROR` carrying the message,
   for `ProjectGraphError` and `UnknownProject`, reported as an `error`
@@ -674,13 +675,13 @@ reached from `:472`, is Step 11's.)
 - AC 9 (rest): `tcw work show <project>.work/<KEY>` shows the item.
 - AC 10: in a files project `demo`, `tcw work show TCW-120` and
   `tcw work show demo.work/TCW-120` each exit 4 with `no work item in project
-  'demo' carries the key TCW-120`; with the Jira fake (in
+'demo' carries the key TCW-120`; with the Jira fake (in
   `tests/work/jira/test_jira_full_identifiers.py`), `tcw work show <KEY>` for
   a key no folder carries exits 4 with the same message for its project.
 - AC 13a (command half): `tcw taxonomy show cor.taxonomy/term` exits 1 with
   `check the spelling`; with two sibling folders declaring `id: lib` (an ID
   no `projects:` entry names, spec AC 13a), `tcw taxonomy show
-  lib.taxonomy/term` exits 1.
+lib.taxonomy/term` exits 1.
 - The 3.4 hint never changes the exit: `tcw capabilities show cli/nope`,
   where `cli` is a valid project ID that nothing names and nothing near
   finds, exits 4 with the plain not-found message and no hint; the same
@@ -692,7 +693,7 @@ reached from `:472`, is Step 11's.)
   rule.
 - AC 23 (first three parts): `app` extending `core`, `core`'s `cli/x` at
   `Missing`, `app`'s 3.x override setting `Supported`: `capabilities list
-  --json` and `show core.capabilities/cli/x --json` both give `Supported`;
+--json` and `show core.capabilities/cli/x --json` both give `Supported`;
   `set core.capabilities/cli/x --status Partial` changes `app`'s override and
   leaves `core`'s `meta.yaml` byte for byte.
 - AC 25: `tcw capabilities show Cli/x` and `show demo.capabilities/Cli/x`
@@ -719,51 +720,53 @@ reached from `:472`, is Step 11's.)
   lookup with no prefix branch (form `d`). Each store also gains
   `_found(target: FullId | str)`: a `FullId` of the store's own project →
   `get_local(id_path)`; of an owner it extends → `get_inherited(owner,
-  id_path)`; a `str` (an id-path, form `d`) → `get_view`. Nothing is renamed,
+id_path)`; a `str` (an id-path, form `d`) → `get_view`. Nothing is renamed,
   so a caller that has not moved yet keeps working unchanged until its own
   step. Every caller of `get` today, and what it calls from this step on:
 
-  | Caller | What it passes | From this step |
-  | --- | --- | --- |
-  | `tcw/taxonomy/cli.py:43` (`_get`), `tcw/capabilities/cli.py:69` (`show`) | command input | `find_tree` (below) |
-  | taxonomy `remove` (`tcw/store/fs.py:1868`), `get_term_detail` (`:2112`), `update_term` (`:2129`) | command input or a web route key | `_found(target)`, the target a `FullId` from `find_tree` or the route |
-  | capabilities `remove` (`:2503`), `reset` (`:2581`), `_write_target` (`:2669`), `set`'s re-read after the write (`:2714`), `get_capability_detail` (`:3017`) | command input or a web route key | `_found(target)`; `_write_target` takes the `FullId`, so an inherited owner reaches its override branch as `core/cli/x` does today |
-  | both `check(identifier)` (`:2060`, `:2790`) and both `_validation_resources` (`:2096`, `:2894`) | the id-path of an object the command or the web route has just written (`ValidationTarget`, `tcw/serve/records.py:126`) | `get_view` |
-  | `tcw/serve/records.py:116`, `:192` (the two `PATCH` handlers' inherited-entry check) | a web route key | `_found` of the sorted key, replacing Step 6's translation |
-  | `_capability_referrers` (`:1927`), taxonomy `_referrers` (`:1954`), `_ref_problem` (`:2002`), capabilities `_referrers` (`:2568`), `_ref_error` (`:2952`), `_check_subject` (`:2992`), `_check_feature` (`:3004`), `tcw/serve/records.py:142` (`_subjects_are_vocabulary`) | a stored reference | unchanged here: `get`, until Step 9 moves them to `_stored_ref` |
-  | `tcw/refs.py:111`, `:116` | a 3.x link's `ns_ref` | unchanged here: `get`, until Step 10 |
-  | `tcw/work/gates.py:409`, `:434` | a `capabilities.yaml` entry's path, a term | unchanged here: `get`, until Step 11 |
+    | Caller                                                                                                                                                                                                                                                                     | What it passes                                                                                                          | From this step                                                                                                                     |
+    | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+    | `tcw/taxonomy/cli.py:43` (`_get`), `tcw/capabilities/cli.py:69` (`show`)                                                                                                                                                                                                   | command input                                                                                                           | `find_tree` (below)                                                                                                                |
+    | taxonomy `remove` (`tcw/store/fs.py:1868`), `get_term_detail` (`:2112`), `update_term` (`:2129`)                                                                                                                                                                           | command input or a web route key                                                                                        | `_found(target)`, the target a `FullId` from `find_tree` or the route                                                              |
+    | capabilities `remove` (`:2503`), `reset` (`:2581`), `_write_target` (`:2669`), `set`'s re-read after the write (`:2714`), `get_capability_detail` (`:3017`)                                                                                                                | command input or a web route key                                                                                        | `_found(target)`; `_write_target` takes the `FullId`, so an inherited owner reaches its override branch as `core/cli/x` does today |
+    | both `check(identifier)` (`:2060`, `:2790`) and both `_validation_resources` (`:2096`, `:2894`)                                                                                                                                                                            | the id-path of an object the command or the web route has just written (`ValidationTarget`, `tcw/serve/records.py:126`) | `get_view`                                                                                                                         |
+    | `tcw/serve/records.py:116`, `:192` (the two `PATCH` handlers' inherited-entry check)                                                                                                                                                                                       | a web route key                                                                                                         | `_found` of the sorted key, replacing Step 6's translation                                                                         |
+    | `_capability_referrers` (`:1927`), taxonomy `_referrers` (`:1954`), `_ref_problem` (`:2002`), capabilities `_referrers` (`:2568`), `_ref_error` (`:2952`), `_check_subject` (`:2992`), `_check_feature` (`:3004`), `tcw/serve/records.py:142` (`_subjects_are_vocabulary`) | a stored reference                                                                                                      | unchanged here: `get`, until Step 9 moves them to `_stored_ref`                                                                    |
+    | `tcw/refs.py:111`, `:116`                                                                                                                                                                                                                                                  | a 3.x link's `ns_ref`                                                                                                   | unchanged here: `get`, until Step 10                                                                                               |
+    | `tcw/work/gates.py:409`, `:434`                                                                                                                                                                                                                                            | a `capabilities.yaml` entry's path, a term                                                                              | unchanged here: `get`, until Step 11                                                                                               |
 
-  The tests that call a store's `get` directly (49 calls, in
-  `tests/test_capabilities.py`, `test_capabilities_federation.py`,
-  `test_taxonomy.py`, `test_store_editor.py`, `test_environment_hardness.py`
-  and `test_eval_grading.py`) keep calling it until Step 11.
+    The tests that call a store's `get` directly (49 calls, in
+    `tests/test_capabilities.py`, `test_capabilities_federation.py`,
+    `test_taxonomy.py`, `test_store_editor.py`, `test_environment_hardness.py`
+    and `test_eval_grading.py`) keep calling it until Step 11.
+
 - **The store interface** (`tcw/store/base.py`), changed in this step so the
   abstract classes say what the file-system stores now do (the litmus test
   of `docs/lifecycle/abstraction.md`: another kind of store implements the
   same three reads). `TaxonomyStore` (`:346`) declares, beside `get`
   until Step 11:
-  - `get_local(slug: str) -> Term | None`: the store's own project's entry
-    at that id-path, or `None`;
-  - `get_inherited(owner: str, slug: str) -> Term | None`: the entry at that
-    id-path in the project `owner` (a project ID this store extends), as
-    this project sees it, override applied, or `None`;
-  - `get_view(slug: str) -> Term | None`: an id-path read the way form `d`
-    is, local first and then inherited, with no prefix branch.
+    - `get_local(slug: str) -> Term | None`: the store's own project's entry
+      at that id-path, or `None`;
+    - `get_inherited(owner: str, slug: str) -> Term | None`: the entry at that
+      id-path in the project `owner` (a project ID this store extends), as
+      this project sees it, override applied, or `None`;
+    - `get_view(slug: str) -> Term | None`: an id-path read the way form `d`
+      is, local first and then inherited, with no prefix branch.
 
-  `CapabilitiesStore` (`:511`) declares the same three with `path: str`
-  and `Capability`. Every operation that names one existing object takes
-  `target: FullId | str` in place of `ref: str` / `identifier: str`: a
-  `FullId`, or text read by `sort_input` as command input is (below):
-  taxonomy `remove`, `get_term_detail`, `update_term`; capabilities `remove`,
-  `reset`, `set`, `get_capability_detail`, `update_capability`. `add` (it
-  names an object that does not exist yet), `check(identifier)` (an id-path
-  in the store's own project, `str | None`) and `search` keep their types.
-  The `AmbiguousRef` sentences of the docstrings (`:368`, `:408`, `:536`,
-  `:549`, `:569`) go: a form-`d` lookup takes the local entry
-  first, and a full identifier names one owner. The docstrings of
-  `get_local`, `get_inherited` and `get_view` are the ones written on the
-  file-system methods.
+    `CapabilitiesStore` (`:511`) declares the same three with `path: str`
+    and `Capability`. Every operation that names one existing object takes
+    `target: FullId | str` in place of `ref: str` / `identifier: str`: a
+    `FullId`, or text read by `sort_input` as command input is (below):
+    taxonomy `remove`, `get_term_detail`, `update_term`; capabilities `remove`,
+    `reset`, `set`, `get_capability_detail`, `update_capability`. `add` (it
+    names an object that does not exist yet), `check(identifier)` (an id-path
+    in the store's own project, `str | None`) and `search` keep their types.
+    The `AmbiguousRef` sentences of the docstrings (`:368`, `:408`, `:536`,
+    `:549`, `:569`) go: a form-`d` lookup takes the local entry
+    first, and a full identifier names one owner. The docstrings of
+    `get_local`, `get_inherited` and `get_view` are the ones written on the
+    file-system methods.
+
 - **Note for implement — `_found` and text.** `_found(target: FullId | str)`
   above reads a `str` with `sort_input(text, namespace)`, not as an id-path:
   form `a` text goes the way a `FullId` does, form `d` to `get_view`, and
@@ -786,10 +789,10 @@ reached from `:472`, is Step 11's.)
   "belongs to project '<id>'; change it there"), like `_own` for work
   (`tcw/work/cli.py:69-74`).
 - `tcw/work/open.py`: `resolve_work_input(text, backend, root) -> (Slug,
-  backend)`: `sort_input(text, "work", KEY)`; form `b` → `backend.lookup`;
+backend)`: `sort_input(text, "work", KEY)`; form `b` → `backend.lookup`;
   form `c` → the named project's backend (`open_project`) `lookup`; for
   either, `None` is `NotFound` (exit 4) with `no work item in project
-  '<id>' carries the key <KEY>` (Design 3.2), in every backend, never a
+'<id>' carries the key <KEY>` (Design 3.2), in every backend, never a
   folder read; forms `a` and `d` as Step 4; the 3.4 hint for a two-part
   `d`, by the same rule as `find_tree`'s.
 - `tcw/work/cli.py`: `resolve_item` (`:50-66`) calls `resolve_work_input`;
@@ -832,8 +835,8 @@ use the alias-prefixed `core/…` input today) moved to `core.<namespace>/…`.
 
 - AC 8 (tree part): `tcw capabilities set cli/x --field Subject=term` writes
   `Subject: [demo.taxonomy/term]`; `tcw taxonomy add Pay --kind feature
-  --vocab term` writes `vocabulary: [demo.taxonomy/term]`; a `PATCH
-  /api/taxonomy/<key>` with `relatesTo: ["term"]` writes
+--vocab term` writes `vocabulary: [demo.taxonomy/term]`; a `PATCH
+/api/taxonomy/<key>` with `relatesTo: ["term"]` writes
   `relatesTo: [demo.taxonomy/term]`.
 - `web/client/src/model/reference-search.test.ts`: the taxonomy and
   capability pickers offer `demo.taxonomy/term` and
@@ -907,7 +910,7 @@ fixtures' `meta.yaml` values written through `tests/fullids.py`.
   deleted the first is `unresolved` and the run exits 0.
 - AC 13a (validate half): `[t](tcw://cor.taxonomy/term)` exits 1 with an error
   at the link containing `no project with ID 'cor'` and `check the
-  spelling`; `[t](tcw://lib.taxonomy/term)` with two siblings declaring
+spelling`; `[t](tcw://lib.taxonomy/term)` with two siblings declaring
   `id: lib` reports an error at the link naming both folders.
 - A folder address in a link (`tcw://core.path/docs`) is checked for form and
   that `core` can be located, not for the folder (Design 6.4).
@@ -972,7 +975,7 @@ step deletes; it moves to `resolve_address`.
   deleted it is "could not check"; `app.capabilities/x` with no such
   capability in `app` fails.
 - AC 23 (last part): `app` extending `core`, `changed:
-  [core.capabilities/cli/x]`: `route_capability_path`'s answer is `app`'s own
+[core.capabilities/cli/x]`: `route_capability_path`'s answer is `app`'s own
   ledger (a unit test of the function), and the gate reads `app`'s override.
 - `taxonomy: changed: [core.taxonomy/term]` is checked against `core`'s own
   taxonomy when `app` does not extend it.
@@ -1000,8 +1003,8 @@ step deletes; it moves to `resolve_address`.
   (`tcw/work/gates.py:356`), which goes with the first-folder rule above,
   and its `child_ids` also fills the no-ledger message (`:377-379`). That
   message no longer lists child projects: it reads `<path>: this project
-  ('<id>') keeps no capabilities ledger; name the ledger's project in the
-  entry (<project>.capabilities/<path>)`. TCW-108 relies on this
+('<id>') keeps no capabilities ledger; name the ledger's project in the
+entry (<project>.capabilities/<path>)`. TCW-108 relies on this
   (`docs/work/TCW-108-*/spec/spec.md:309-314`).
 - `tcw/work/gates.py:101-148` (`parse_declarations`) unchanged: it reads
   strings; the routing judges them.
@@ -1080,7 +1083,7 @@ git repositories side by side under `tmp_path`:
   `<workspace's work store>/app`; `p2` → `tcw://p1.work.path/x` and `p1` →
   `tcw://p2.work.path/y` make `tcw work list` in `p2` exit 1 with
   `store locations loop: p2 work -> p1 work -> p2 work`; `work.path:
-  tcw://p2.work.path/x` in `p2` fails the same way. (The nesting half is
+tcw://p2.work.path/x` in `p2` fails the same way. (The nesting half is
   Step 14's.)
 - AC 17: `work.path: tcw://gone.path/w` with `app`'s `.tcw/tcw-manifest.yaml`
   placing `gone` at `../gone` (absent) and no `work.repository`:
@@ -1095,7 +1098,7 @@ git repositories side by side under `tmp_path`:
 **Changes**
 
 - `tcw/store/fs.py`: one function, `store_location(project_root, component,
-  configured, *, locator, chain=()) -> Path` (Design 7.5), holding what both
+configured, *, locator, chain=()) -> Path` (Design 7.5), holding what both
   `_local_root` hooks do today (`:86-92`, `:1311-1320`): `None` → the default
   `docs/<component>`; a plain path → `anchor_configured_path(...) / value`
   (`:1212-1247`, unchanged); an address → `parse_address`; an object address
@@ -1204,36 +1207,36 @@ folders at `05d42988` finds these, each with what this plan does to it.
 The reviewer repeats the search on the finished change and checks it against
 this list.
 
-| Hit | What it splits | Disposition |
-| --- | --- | --- |
-| `tcw/refs.py:71` | a 3.x link | deleted, Step 10 |
-| `tcw/refs.py:135-136` | a 3.x work ref | deleted, Step 10 |
-| `tcw/work/model.py:52` | a 3.x slug | replaced by `tcw/ids.py`, Step 4 |
-| `tcw/work/gates.py:353` | a `capabilities.yaml` entry's first folder | deleted, Step 11 |
-| `tcw/work/gates.py:423` | the same, for removals | replaced by an owner test, Step 11 |
-| `tcw/store/fs.py:1801` | the 3.x alias prefix (taxonomy `get`) | deleted with `get`, Step 11 |
-| `tcw/store/fs.py:2426` | the 3.x alias prefix (capabilities `get`) | deleted with `get`, Step 11 |
-| `tcw/serve/work.py:492` | delegation's answer | `looks_full`, Step 4 |
-| `tcw/store/fs.py:2914-2915` | the 3.x `overrides:` pointer `<alias>/<cap-id>` | kept: the pointer is out of scope until TCW-112 (spec Non-goals); it is neither an identifier nor a link |
-| `tcw/store/fs.py:1136` | an id-path, in `_safe_store_id` | kept: an id-path already separated |
-| `tcw/store/fs.py:1736`, `:2336`, `:2487` | an id-path's last part, for a display name | kept: id-path |
-| `tcw/store/fs.py:2035` | an id-path's last part (`--vocab` leaf input) | kept: id-path |
-| `tcw/store/fs.py:2046`, `:2779` | an id-path's first part (collision check) | kept: id-path |
-| `tcw/store/fs.py:2420` | an id-path's first part (`--namespace` filter) | kept: id-path |
-| `tcw/taxonomy/cli.py:56` | an id-path, for sorting | becomes `full_id.parts`, Step 6 |
-| `tcw/validate.py:500` | a work folder name (one part until TCW-111) | kept: id-path |
-| `tcw/work/fs_backend.py:260`, `tcw/work/jira/backend.py:329` | a folder name | kept: id-path |
-| `tcw/serve/files.py:136` | a file path inside an item | kept: path on disk |
-| `tcw/store/checkouts.py:53` | a repository URL | kept: URL |
-| `web/client/src/model/work.ts:9`, `:14` | a slug | replaced by `identifier.ts`, Step 4 |
-| `web/client/src/ui/work-forms.tsx:795` | a slug | replaced, Step 4 |
-| `web/client/src/model/reference-search.ts:247` | a slug, for a 3.x link | deleted, Step 10 |
-| `web/client/src/model/reference-search.ts:230`, `:234` | a typed capability id-path, one segment at a time | kept: id-path (its source becomes the id-path of `full-id`, Step 6) |
-| `web/client/src/ui/route-utils.ts:41`, `:48` | a URL path of the page | kept: URL |
-| `web/client/src/model/api.ts:91` | a file path inside an item | kept: path on disk |
-| `web/client/src/ui/work-document-tabs.tsx:133` | a file path inside an item (`<stage>/<file>`) | kept: path on disk |
-| `web/client/src/model/tree.ts:16`, `:169` | a route key, which for an inherited entry is a full identifier (spec 4.5) | replaced, Step 6: both call `keySegments(key)` in `identifier.ts`, which gives `[<project>.<namespace>, ...id-path parts]` for a full identifier and the id-path's parts otherwise, so the split of a full identifier happens in the identifier module |
-| `web/client/src/model/tree.ts:30` | the parent of a tree node's own path, which the tree built by joining `keySegments` | kept: the tree's own path, never parsed as an identifier |
+| Hit                                                          | What it splits                                                                      | Disposition                                                                                                                                                                                                                                            |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tcw/refs.py:71`                                             | a 3.x link                                                                          | deleted, Step 10                                                                                                                                                                                                                                       |
+| `tcw/refs.py:135-136`                                        | a 3.x work ref                                                                      | deleted, Step 10                                                                                                                                                                                                                                       |
+| `tcw/work/model.py:52`                                       | a 3.x slug                                                                          | replaced by `tcw/ids.py`, Step 4                                                                                                                                                                                                                       |
+| `tcw/work/gates.py:353`                                      | a `capabilities.yaml` entry's first folder                                          | deleted, Step 11                                                                                                                                                                                                                                       |
+| `tcw/work/gates.py:423`                                      | the same, for removals                                                              | replaced by an owner test, Step 11                                                                                                                                                                                                                     |
+| `tcw/store/fs.py:1801`                                       | the 3.x alias prefix (taxonomy `get`)                                               | deleted with `get`, Step 11                                                                                                                                                                                                                            |
+| `tcw/store/fs.py:2426`                                       | the 3.x alias prefix (capabilities `get`)                                           | deleted with `get`, Step 11                                                                                                                                                                                                                            |
+| `tcw/serve/work.py:492`                                      | delegation's answer                                                                 | `looks_full`, Step 4                                                                                                                                                                                                                                   |
+| `tcw/store/fs.py:2914-2915`                                  | the 3.x `overrides:` pointer `<alias>/<cap-id>`                                     | kept: the pointer is out of scope until TCW-112 (spec Non-goals); it is neither an identifier nor a link                                                                                                                                               |
+| `tcw/store/fs.py:1136`                                       | an id-path, in `_safe_store_id`                                                     | kept: an id-path already separated                                                                                                                                                                                                                     |
+| `tcw/store/fs.py:1736`, `:2336`, `:2487`                     | an id-path's last part, for a display name                                          | kept: id-path                                                                                                                                                                                                                                          |
+| `tcw/store/fs.py:2035`                                       | an id-path's last part (`--vocab` leaf input)                                       | kept: id-path                                                                                                                                                                                                                                          |
+| `tcw/store/fs.py:2046`, `:2779`                              | an id-path's first part (collision check)                                           | kept: id-path                                                                                                                                                                                                                                          |
+| `tcw/store/fs.py:2420`                                       | an id-path's first part (`--namespace` filter)                                      | kept: id-path                                                                                                                                                                                                                                          |
+| `tcw/taxonomy/cli.py:56`                                     | an id-path, for sorting                                                             | becomes `full_id.parts`, Step 6                                                                                                                                                                                                                        |
+| `tcw/validate.py:500`                                        | a work folder name (one part until TCW-111)                                         | kept: id-path                                                                                                                                                                                                                                          |
+| `tcw/work/fs_backend.py:260`, `tcw/work/jira/backend.py:329` | a folder name                                                                       | kept: id-path                                                                                                                                                                                                                                          |
+| `tcw/serve/files.py:136`                                     | a file path inside an item                                                          | kept: path on disk                                                                                                                                                                                                                                     |
+| `tcw/store/checkouts.py:53`                                  | a repository URL                                                                    | kept: URL                                                                                                                                                                                                                                              |
+| `web/client/src/model/work.ts:9`, `:14`                      | a slug                                                                              | replaced by `identifier.ts`, Step 4                                                                                                                                                                                                                    |
+| `web/client/src/ui/work-forms.tsx:795`                       | a slug                                                                              | replaced, Step 4                                                                                                                                                                                                                                       |
+| `web/client/src/model/reference-search.ts:247`               | a slug, for a 3.x link                                                              | deleted, Step 10                                                                                                                                                                                                                                       |
+| `web/client/src/model/reference-search.ts:230`, `:234`       | a typed capability id-path, one segment at a time                                   | kept: id-path (its source becomes the id-path of `full-id`, Step 6)                                                                                                                                                                                    |
+| `web/client/src/ui/route-utils.ts:41`, `:48`                 | a URL path of the page                                                              | kept: URL                                                                                                                                                                                                                                              |
+| `web/client/src/model/api.ts:91`                             | a file path inside an item                                                          | kept: path on disk                                                                                                                                                                                                                                     |
+| `web/client/src/ui/work-document-tabs.tsx:133`               | a file path inside an item (`<stage>/<file>`)                                       | kept: path on disk                                                                                                                                                                                                                                     |
+| `web/client/src/model/tree.ts:16`, `:169`                    | a route key, which for an inherited entry is a full identifier (spec 4.5)           | replaced, Step 6: both call `keySegments(key)` in `identifier.ts`, which gives `[<project>.<namespace>, ...id-path parts]` for a full identifier and the id-path's parts otherwise, so the split of a full identifier happens in the identifier module |
+| `web/client/src/model/tree.ts:30`                            | the parent of a tree node's own path, which the tree built by joining `keySegments` | kept: the tree's own path, never parsed as an identifier                                                                                                                                                                                               |
 
 Related hits that test a leading `/` rather than split (`tcw/cli.py:463`,
 `tcw/serve/server.py:284`, `tcw/store/base.py:850`, `:981`) are paths on disk
@@ -1315,41 +1318,41 @@ Comments the dispatching session posts (the text is in the implement round):
   `c`, `w`, which the 4.0 grammar no longer needs reserved.
 - **TCW-117:** what each deferred document (Step 18) must say, so nothing is
   lost before TCW-117 writes it:
-  - `README.md` and `docs/guide/linking-and-validation.md`: the `tcw://`
-    grammar (`tcw://<project>.<namespace>/<id-path>` and the `.path`
-    folder addresses), links to any project TCW can locate, and 3.x links
-    reported as needing `tcw migrate`;
-  - `docs/guide/multi-repo.md` and `skills/configure/references/*`: a store
-    location is a relative path or a `.path` address; absolute and `~`
-    paths are refused in the shared file; stores may not nest or coincide;
-  - `docs/guide/jira.md`: `TCW Item` holds the full identifier; tickets
-    still holding a 3.x value are left out of `tcw work list` with one
-    warning, and reported by `tcw validate --remote`;
-  - `docs/guide/cli.md`, `docs/guide/configuration.md` and
-    `skills/configure/references/work.md`: records carry `full-id` and
-    `owner`, and every JSON document is `"schema": 2` (they show 1);
-  - `docs/use-cases.md`: UC-4's address
-    (`tcw://workspace.path/docs/app/work`), and UC-6's gap closed for
-    taxonomy and capability links;
-  - `skills/*/SKILL.md`: every component's names and input forms;
-  - `tcw/work/procedures/pause-work.md:22` and
-    `tcw/work/procedures/search.md:27`, which teach bare slugs and
-    `<project>/<folder>`.
+    - `README.md` and `docs/guide/linking-and-validation.md`: the `tcw://`
+      grammar (`tcw://<project>.<namespace>/<id-path>` and the `.path`
+      folder addresses), links to any project TCW can locate, and 3.x links
+      reported as needing `tcw migrate`;
+    - `docs/guide/multi-repo.md` and `skills/configure/references/*`: a store
+      location is a relative path or a `.path` address; absolute and `~`
+      paths are refused in the shared file; stores may not nest or coincide;
+    - `docs/guide/jira.md`: `TCW Item` holds the full identifier; tickets
+      still holding a 3.x value are left out of `tcw work list` with one
+      warning, and reported by `tcw validate --remote`;
+    - `docs/guide/cli.md`, `docs/guide/configuration.md` and
+      `skills/configure/references/work.md`: records carry `full-id` and
+      `owner`, and every JSON document is `"schema": 2` (they show 1);
+    - `docs/use-cases.md`: UC-4's address
+      (`tcw://workspace.path/docs/app/work`), and UC-6's gap closed for
+      taxonomy and capability links;
+    - `skills/*/SKILL.md`: every component's names and input forms;
+    - `tcw/work/procedures/pause-work.md:22` and
+      `tcw/work/procedures/search.md:27`, which teach bare slugs and
+      `<project>/<folder>`.
 
 ## Step 18 — Documentation Sync
 
 Each documentation entry, evaluated with the `documentation-sync` skill:
 
-| Entry | Fires? | Answer |
-| --- | --- | --- |
-| `README.md` [Public-API] | yes: every printed name, `tcw://` links, store locations | Deferred to TCW-117, which rewrites the user-facing documents for 4.0 in one pass; what it must say is in Step 17's note; recorded in the implement round. |
-| `docs/guide/jira.md` [Jira-Change] | yes: `TCW Item` holds the full identifier; `tcw work list` leaves 3.x tickets out with a warning | Deferred to TCW-117, as above. |
-| `docs/guide/<topic>.md` [Guide-Topic-Change] | yes: linking and validation, multi-repo store locations, the CLI output contract | Deferred to TCW-117. |
-| `docs/release-notes/upcoming/<folder>.md` [Public-API] | yes | Written: one name for every record and how to type it; `tcw://` links; JSON `"schema": 2`; store locations as `.path` addresses, and absolute paths refused; stores may not nest; 3.x names reported as needing `tcw migrate`; tickets left out until migrated. |
-| `docs/changelogs/upcoming/<folder>.md` [Any-Code-Change] | yes | Written, under Added (`tcw/ids.py`, `tcw/locate.py`, `store_location`, the client's `identifier.ts`), Changed (records, `print_json`, `refs.py`, routing, `open_project`, the inherited route key), Removed (`parse_tcw_uri`, `.qualified`, the stores' `get`, first-folder routing, `_shared_work_paths`), Internal (the sweep guard). |
-| `skills/<component>/SKILL.md` [Skill-Driven-Component] | yes: every component's names | Deferred to TCW-117. |
-| `skills/configure/references/<document>.md` [Configuration-Key-Change] | yes: `<component>.path` takes a `.path` address and no longer an absolute path | Deferred to TCW-117. |
-| `docs/use-cases.md` [Project-Setup-Change] | yes: UC-4's store location, UC-6's gap closed for taxonomy and capability links | Deferred to TCW-117, which owns `docs/use-cases.md` for 4.0. |
+| Entry                                                                  | Fires?                                                                                           | Answer                                                                                                                                                                                                                                                                                                                                  |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `README.md` [Public-API]                                               | yes: every printed name, `tcw://` links, store locations                                         | Deferred to TCW-117, which rewrites the user-facing documents for 4.0 in one pass; what it must say is in Step 17's note; recorded in the implement round.                                                                                                                                                                              |
+| `docs/guide/jira.md` [Jira-Change]                                     | yes: `TCW Item` holds the full identifier; `tcw work list` leaves 3.x tickets out with a warning | Deferred to TCW-117, as above.                                                                                                                                                                                                                                                                                                          |
+| `docs/guide/<topic>.md` [Guide-Topic-Change]                           | yes: linking and validation, multi-repo store locations, the CLI output contract                 | Deferred to TCW-117.                                                                                                                                                                                                                                                                                                                    |
+| `docs/release-notes/upcoming/<folder>.md` [Public-API]                 | yes                                                                                              | Written: one name for every record and how to type it; `tcw://` links; JSON `"schema": 2`; store locations as `.path` addresses, and absolute paths refused; stores may not nest; 3.x names reported as needing `tcw migrate`; tickets left out until migrated.                                                                         |
+| `docs/changelogs/upcoming/<folder>.md` [Any-Code-Change]               | yes                                                                                              | Written, under Added (`tcw/ids.py`, `tcw/locate.py`, `store_location`, the client's `identifier.ts`), Changed (records, `print_json`, `refs.py`, routing, `open_project`, the inherited route key), Removed (`parse_tcw_uri`, `.qualified`, the stores' `get`, first-folder routing, `_shared_work_paths`), Internal (the sweep guard). |
+| `skills/<component>/SKILL.md` [Skill-Driven-Component]                 | yes: every component's names                                                                     | Deferred to TCW-117.                                                                                                                                                                                                                                                                                                                    |
+| `skills/configure/references/<document>.md` [Configuration-Key-Change] | yes: `<component>.path` takes a `.path` address and no longer an absolute path                   | Deferred to TCW-117.                                                                                                                                                                                                                                                                                                                    |
+| `docs/use-cases.md` [Project-Setup-Change]                             | yes: UC-4's store location, UC-6's gap closed for taxonomy and capability links                  | Deferred to TCW-117, which owns `docs/use-cases.md` for 4.0.                                                                                                                                                                                                                                                                            |
 
 The two `upcoming/` files are named
 `TCW-110-tcw-4-0-full-identifiers-and-tcw-addresses.md`, and are formatted
@@ -1408,36 +1411,36 @@ review"); none is planned around here.
 
 ## Self-review against the spec
 
-| AC | Step |
-| --- | --- |
-| 1 | 1 (identifiers, `local.work/x`), 2, 4 (`Slug` equals `FullId`) |
-| 2 | 1 (Python), 2 (Node) |
-| 3 | 10 |
-| 4 | 4 (work), 6 (taxonomy, capabilities) |
-| 5 | 4, 6 |
-| 6 | 4, 6 |
-| 7 | 4 (folder, full identifier), 8 (address, wrong namespace, 3.x hint, options) |
-| 8 | 4 (work), 9 (`--field`, `--vocab`, the `PATCH` route) |
-| 9 | 5 (new, key, untracked), 8 (`<project>.work/<KEY>`) |
-| 9a | 5 |
-| 10 | 8 (files project, and the Jira fake) |
-| 11 | 4 (`item.yaml`), 9 (`Subject`), 11 (`capabilities.yaml`) |
-| 12 | 11 |
-| 13 | 10 |
-| 13a | 8 (command), 10 (validate; the duplicate is `lib`) |
-| 14 | 13 |
-| 15 | 13 (resolution, loops), 14 (nesting) |
-| 16 | 14 (including a Jira-mode `workspace`) |
-| 17 | 13 |
-| 18 | 8 |
-| 19 | 4 |
-| 20 | 6 (records, the inherited route key), 8 (a parent written through the web), 10 (suggestions, `/api/resolve`) |
-| 20a | 4 (model), 6 (`itemKey`, inherited included), Verification (served page) |
-| 21 | 15 |
-| 22 | 19 |
-| 23 | 8 (list, show, set), 11 (route) |
-| 24 | 12 |
-| 25 | 8 |
+| AC  | Step                                                                                                         |
+| --- | ------------------------------------------------------------------------------------------------------------ |
+| 1   | 1 (identifiers, `local.work/x`), 2, 4 (`Slug` equals `FullId`)                                               |
+| 2   | 1 (Python), 2 (Node)                                                                                         |
+| 3   | 10                                                                                                           |
+| 4   | 4 (work), 6 (taxonomy, capabilities)                                                                         |
+| 5   | 4, 6                                                                                                         |
+| 6   | 4, 6                                                                                                         |
+| 7   | 4 (folder, full identifier), 8 (address, wrong namespace, 3.x hint, options)                                 |
+| 8   | 4 (work), 9 (`--field`, `--vocab`, the `PATCH` route)                                                        |
+| 9   | 5 (new, key, untracked), 8 (`<project>.work/<KEY>`)                                                          |
+| 9a  | 5                                                                                                            |
+| 10  | 8 (files project, and the Jira fake)                                                                         |
+| 11  | 4 (`item.yaml`), 9 (`Subject`), 11 (`capabilities.yaml`)                                                     |
+| 12  | 11                                                                                                           |
+| 13  | 10                                                                                                           |
+| 13a | 8 (command), 10 (validate; the duplicate is `lib`)                                                           |
+| 14  | 13                                                                                                           |
+| 15  | 13 (resolution, loops), 14 (nesting)                                                                         |
+| 16  | 14 (including a Jira-mode `workspace`)                                                                       |
+| 17  | 13                                                                                                           |
+| 18  | 8                                                                                                            |
+| 19  | 4                                                                                                            |
+| 20  | 6 (records, the inherited route key), 8 (a parent written through the web), 10 (suggestions, `/api/resolve`) |
+| 20a | 4 (model), 6 (`itemKey`, inherited included), Verification (served page)                                     |
+| 21  | 15                                                                                                           |
+| 22  | 19                                                                                                           |
+| 23  | 8 (list, show, set), 11 (route)                                                                              |
+| 24  | 12                                                                                                           |
+| 25  | 8                                                                                                            |
 
 Every design rule of the spec's Coverage table maps to a step through these
 criteria; 1.5 (one type, one parser) is Steps 1, 2 and 15; 6.1's four
