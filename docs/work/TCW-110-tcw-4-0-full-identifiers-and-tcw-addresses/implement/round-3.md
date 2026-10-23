@@ -100,4 +100,5 @@ Each change was put back to `HEAD` with the new tests in place:
 
 ## The suite
 
-SUITE_RESULT
+`.venv/bin/pytest -q -p no:cacheprovider`, run in full as CI runs it, at `d04642af`
+(2026-10-23): `5759 passed, 114 skipped in 516.12s`.
