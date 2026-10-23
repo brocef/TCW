@@ -29,10 +29,15 @@ Every command that resolves connected projects honours the same variable,
 because it is read when the connections are loaded rather than by any one
 command. `tcw validate` notes on standard error each variable in effect and
 where it points, so a connection that resolves only because of a variable is
-never a mystery to the next person reading it. A committed manifest entry the
-variable overrides is reported only when that entry is itself wrong, and then as
-a warning rather than an error, since it does not decide on this machine; an
-overridden entry that is correct is not reported at all.
+never a mystery to the next person reading it. A committed manifest entry that
+the variable or my personal manifest overrides is still checked, since it is
+what anyone without the override uses, and there are three outcomes. If it
+points at a folder that is not on this machine, it is still reported as
+unresolved, as any such entry is, and the report names the override. If it is
+wrong in any other way — the folder holds no TCW project, holds a 3.x project,
+has a version that cannot be read, or declares another ID — it is a warning
+rather than an error, since it does not decide on this machine; that warning
+names the override too. If it is correct, it is not reported at all.
 
 **My statement reaches a component store too, not only a project.** When a
 store's declared home repository is the repository of a project located here,

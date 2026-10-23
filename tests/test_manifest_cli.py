@@ -313,6 +313,28 @@ def test_ac8a_an_overridden_entry_is_a_warning(tmp_path):
     assert any(line.startswith("error: .tcw/tcw-manifest.yaml:") for line in lines)
 
 
+def test_ac8a_an_overridden_missing_entry_names_the_override(tmp_path):
+    app, lib = pair(tmp_path)
+    write_manifest(app, {"lib": "../gone"})
+    ran, lines = validated(app)
+    assert ran.code == 0, ran
+    unresolved = [line for line in lines if line.startswith("unresolved:")]
+    assert len(unresolved) == 1 and "../gone" in unresolved[0], lines
+    assert "overridden on this machine" not in unresolved[0]
+    alone = unresolved[0]
+    env = personal_env(tmp_path)
+    write_manifest(app, {"lib": "../lib"}, local=True)
+    for env, by in ((env, manifest_path(app, True)),
+                    ({"TCW_PROJECT_LIB": str(lib)}, "TCW_PROJECT_LIB")):
+        ran, lines = validated(app, env)
+        assert ran.code == 0, ran
+        assert not [line for line in lines if line.startswith(("error:", "warning:"))], lines
+        unresolved = [line for line in lines
+                      if line.startswith("unresolved: .tcw/tcw-manifest.yaml:")]
+        assert len(unresolved) == 1 and "../gone" in unresolved[0], lines
+        assert unresolved[0] == f"{alone} (overridden on this machine by {by})", lines
+
+
 def test_ac9_next_to_and_enclosing(tmp_path):
     app, _ = pair(tmp_path)
     assert listed(app)["lib"]["found"] == {"by": "search"}

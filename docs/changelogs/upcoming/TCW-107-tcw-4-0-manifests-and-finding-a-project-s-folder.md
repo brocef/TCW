@@ -21,7 +21,7 @@
 - `tcw projects list --json`: `found` on each row. (TCW-107)
 - `tcw validate`: every entry of the current project's two manifests is
   checked; a committed entry overridden on this machine, when wrong, is a
-  warning; a
+  warning, and any finding for such an entry names the override; a
   tracked `.tcw/tcw-manifest.local.yaml` is a warning. (TCW-107)
 - `tcw.store.project.personal_file(root, name)`: in a linked worktree with no
   personal file of its own, the main checkout's; `Origin.root` in

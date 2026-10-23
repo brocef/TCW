@@ -1604,8 +1604,9 @@ class FsProjectRegistry(ProjectRegistry):
         entry whose folder is not here, or empty, is `unresolved`; one whose
         folder is wrong is an `error`, or a `warning` when the shared entry
         does not decide on this machine because the personal manifest or
-        `TCW_PROJECT_<ID>` places the project. A manifest with a format
-        problem is already a graph problem, and gives nothing here."""
+        `TCW_PROJECT_<ID>` places the project. Either finding for such an
+        entry names the override. A manifest with a format problem is
+        already a graph problem, and gives nothing here."""
         self._load_graph()
         manifests = self._manifests_of(self.project_root) or []
         personal = {entry_id: file for file, _, entries in manifests
@@ -1616,19 +1617,17 @@ class FsProjectRegistry(ProjectRegistry):
                 answer = self._entry_answer(entry, base, record=False)
                 if answer.folder is not None:
                     continue
-                if answer.problem is None:
-                    findings.append(Finding("unresolved", str(file), answer.message))
-                    continue
                 by = None
                 if file.name != LOCAL_MANIFEST_NAME:
                     by = (str(personal[entry.id]) if entry.id in personal
                           else self._variable_places(entry.id))
-                if by is None:
-                    findings.append(Finding("error", str(file), answer.problem))
+                overridden = "" if by is None else f" (overridden on this machine by {by})"
+                if answer.problem is None:
+                    findings.append(Finding("unresolved", str(file),
+                                            answer.message + overridden))
                 else:
-                    findings.append(Finding(
-                        "warning", str(file),
-                        f"{answer.problem} (overridden on this machine by {by})"))
+                    findings.append(Finding("error" if by is None else "warning",
+                                            str(file), answer.problem + overridden))
         return findings
 
     @staticmethod
