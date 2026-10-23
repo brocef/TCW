@@ -27,7 +27,7 @@ from tcw.errors import (
     BackendError, MovedWithoutNote, NotFound, Refused, TcwError, Unreachable, UsageError,
 )
 from tcw.findings import Finding
-from tcw.ids import IdError
+from tcw.ids import IdError, id_part_problem, is_project_id, looks_full
 from tcw.output import shown
 from tcw.store.base import normalize_tag
 from tcw.work.backend import Comment, Query
@@ -69,6 +69,21 @@ NOTE_WINDOW = 10
 
 def _warn(line: str) -> None:
     print(line, file=sys.stderr)
+
+
+def three_x_item(value: Any) -> bool:
+    """Whether a `TCW Item` value is the 3.x `<project>/<folder>` that
+    `tcw migrate` converts (TCW-110 Design 5.2)."""
+    if not isinstance(value, str) or looks_full(value):
+        return False
+    project, slash, folder = value.partition("/")
+    return bool(slash) and is_project_id(project) and id_part_problem(folder) is None
+
+
+def three_x_item_message(value: str) -> str:
+    """What a 3.x `TCW Item` value is reported with by `validate --remote`."""
+    return (f"TCW Item {value} is a TCW 3.x value; run 'tcw migrate' in this "
+            f"project to convert it")
 
 
 @contextmanager
@@ -466,11 +481,15 @@ class JiraBackend:
         with _jira():
             issues = self.client.search(text, read_fields(meta.field_ids))
         found = []
+        three_x = []
         for issue in issues:
             fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
             if fields.get(meta.field_ids["project"]) != self.project:
                 continue
             value = fields.get(meta.field_ids["item"])
+            if three_x_item(value):
+                three_x.append(str(issue.get("key")))
+                continue
             slug = self._slug_of(value)
             if slug is None or slug.project != self.project \
                     or folder_key(slug.folder) is None \
@@ -481,6 +500,13 @@ class JiraBackend:
                       f"repository)")
                 continue
             found.append((slug, issue))
+        if three_x:
+            many = len(three_x) != 1
+            _warn(f"warning: {len(three_x)} Jira ticket{'s' if many else ''} of this "
+                  f"project {'hold' if many else 'holds'} a TCW 3.x TCW Item value and "
+                  f"{'are' if many else 'is'} left out ({', '.join(three_x)}); run "
+                  f"'tcw migrate' in this project to convert "
+                  f"{'them' if many else 'it'}")
         return [item for item in self._items(found) if query.matches(item)]
 
     def read_request(self, folder: str) -> str | None:

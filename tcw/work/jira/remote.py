@@ -22,7 +22,7 @@ from tcw.findings import Finding
 from tcw.work.jira import jql
 from tcw.work.jira.backend import (
     KEY_FOLDER, IssueType, JiraBackend, Refusal, _chunks, _jira, choose_transition,
-    field_id, folder_key, link_exists,
+    field_id, folder_key, link_exists, three_x_item, three_x_item_message,
 )
 from tcw.work.jira.client import (
     TrackerNotFound, TrackerPermissionError, TrackerRequestInvalid,
@@ -460,6 +460,9 @@ def _items_and_tickets(run: _Run, folders: Mapping[str, list[str]],
                        ids: Mapping[str, str]) -> None:
     backend = run.backend
     inbox_status = backend.statuses.get(inbox_stage())
+    # The keys whose 3.x `TCW Item` was reported at their item, so the
+    # second direction does not report them again at the key.
+    reported: set[str] = set()
     for key, names in folders.items():
         for name in names:
             slug = Slug(backend.project, name)
@@ -477,9 +480,12 @@ def _items_and_tickets(run: _Run, folders: Mapping[str, list[str]],
             if fields.get(ids["project"]) != backend.project:
                 run.error(where, f"its ticket's TCW Project is "
                                  f"{fields.get(ids['project'])!r}, not {backend.project!r}")
-            if fields.get(ids["item"]) != str(slug):
-                run.error(where, f"its ticket's TCW Item is {fields.get(ids['item'])!r}, "
-                                 f"not {str(slug)!r}")
+            value = fields.get(ids["item"])
+            if three_x_item(value):
+                reported.add(key)
+                run.error(where, f"its ticket's {three_x_item_message(value)}")
+            elif value != str(slug):
+                run.error(where, f"its ticket's TCW Item is {value!r}, not {str(slug)!r}")
             if _get(fields, "status", "name") == inbox_status:
                 run.warning(where, f"its ticket is at the inbox status "
                                    f"{inbox_status!r}; move it on with `tcw work advance "
@@ -491,7 +497,12 @@ def _items_and_tickets(run: _Run, folders: Mapping[str, list[str]],
         fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
         if fields.get(ids["project"]) != backend.project:
             continue
-        slug = backend._slug_of(fields.get(ids["item"]))
+        value = fields.get(ids["item"])
+        if three_x_item(value):
+            if str(issue.get("key")) not in reported:
+                run.error(str(issue.get("key")), f"its {three_x_item_message(value)}")
+            continue
+        slug = backend._slug_of(value)
         if slug is None or slug.project != backend.project:
             continue
         if not link_exists(backend.work_path, slug.folder):
