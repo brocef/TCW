@@ -528,6 +528,16 @@ def test_ac22_a_found_folder_not_ending_in_the_subfolder_gives_no_answer(
     registry = FsProjectRegistry.open(core)
     assert registry.found("server") == {"by": "variable", "name": "TCW_PROJECT_SERVER"}
     assert registry.checkout_of(APP_URL) is None
+    # The store then resolves as it would with no match: with neither the
+    # checkout nor the cache holding it, it is not provisioned here.
+    with pytest.raises(StoreNotProvisioned) as found_elsewhere:
+        WorkLocation.open(core)
+    monkeypatch.delenv("TCW_PROJECT_SERVER")
+    write_manifest(core, {"server": "../app-repo/apps/server"})
+    assert FsProjectRegistry.open(core).checkout_of(APP_URL) is None
+    with pytest.raises(StoreNotProvisioned) as no_match:
+        WorkLocation.open(core)
+    assert str(found_elsewhere.value) == str(no_match.value)
 
 
 def test_ac22_the_rung_reads_manifests_in_the_lookups_order(tmp_path):

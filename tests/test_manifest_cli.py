@@ -286,6 +286,10 @@ def test_ac8_an_uninitialised_submodule_is_not_on_this_machine(tmp_path):
     assert ran.code == 0, ran
     unresolved = [line for line in lines if line.startswith("unresolved:")]
     assert len(unresolved) == 1 and "'lib'" in unresolved[0], lines
+    assert listed(clone)["lib"]["present"] is False
+    (clone / "docs" / "work").mkdir(parents=True, exist_ok=True)
+    shown = tcw(clone, "work", "show", "lib/x")
+    assert shown.code == 5 and "not on this machine" in shown.err, shown
 
 
 def test_ac8a_an_overridden_entry_is_a_warning(tmp_path):

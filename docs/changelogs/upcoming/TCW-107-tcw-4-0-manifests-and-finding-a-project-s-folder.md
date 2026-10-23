@@ -20,7 +20,8 @@
   `Unreachable` takes `project` and `repository`. (TCW-107)
 - `tcw projects list --json`: `found` on each row. (TCW-107)
 - `tcw validate`: every entry of the current project's two manifests is
-  checked; a committed entry overridden on this machine is a warning; a
+  checked; a committed entry overridden on this machine, when wrong, is a
+  warning; a
   tracked `.tcw/tcw-manifest.local.yaml` is a warning. (TCW-107)
 - `tcw.store.project.personal_file(root, name)`: in a linked worktree with no
   personal file of its own, the main checkout's; `Origin.root` in
@@ -53,6 +54,12 @@
   `ignore_personal_file` is `ignore_personal_files`. (TCW-107)
 - In a linked worktree, the search for a project's folder lists the folders
   next to the main checkout and those enclosing it. (TCW-107)
+- On macOS only, the search for a project's folder never tests `Desktop`,
+  `Documents` or `Downloads` directly in the home folder as a folder next to
+  a project, unless the project is already inside one. (TCW-107)
+- A manifest entry whose `repository` URL or branch begins with `-` is
+  refused as a manifest problem, so it can never reach git as an option.
+  (TCW-107)
 
 ## Removed
 
