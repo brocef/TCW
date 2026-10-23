@@ -82,10 +82,14 @@ def test_init_refuses_a_store_location_given_as_an_address(tmp_path, capsys, mon
                                                            option, component):
     """Turned into a path, `tcw://qq.path/board` collapses to `tcw:/qq.path/board`
     and would be written as a plain folder of that name. The project being
-    created cannot yet be found through the registry, so init refuses."""
-    root = repository(tmp_path / "p")
-    code, _, err = run(capsys, monkeypatch, root, "init", "--id", "p",
-                       option, "tcw://qq.path/board", component)
-    assert code == 2, err
-    assert ".tcw/tcw-config.yaml by hand" in err, err
-    assert sorted(p.name for p in root.iterdir()) == [".git"]
+    created cannot yet be found through the registry, so init refuses. The
+    scheme is matched in any case: `TCW://` would otherwise become a folder
+    named `TCW:`."""
+    for n, address in enumerate(["tcw://qq.path/board", "TCW://qq.path/board",
+                                 "Tcw://qq.path/board"]):
+        root = repository(tmp_path / f"p{n}")
+        code, _, err = run(capsys, monkeypatch, root, "init", "--id", "p",
+                           option, address, component)
+        assert code == 2, (address, err)
+        assert ".tcw/tcw-config.yaml by hand" in err, (address, err)
+        assert sorted(p.name for p in root.iterdir()) == [".git"], address

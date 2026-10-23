@@ -57,9 +57,11 @@ def run_init(components: list[str], project_id: str | None = None,
     # Checked on the text: as a `Path`, `tcw://` collapses to `tcw:/` and
     # would be scaffolded as a plain folder of that name. Resolving the
     # address needs the project to exist already, which here it may not.
+    # The scheme is matched in any case, as URL schemes are: `TCW://` would
+    # otherwise become a folder named `TCW:`.
     given = {**(paths or {}), **({"work": work_path} if work_path is not None else {})}
     for c, text in given.items():
-        if text.startswith("tcw:"):
+        if text.casefold().startswith("tcw:"):
             raise UsageError(
                 f"--{c}-path {text!r}: init takes a path relative to the "
                 f"project; a store location given as a tcw:// address is written "
