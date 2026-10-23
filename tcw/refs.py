@@ -138,7 +138,7 @@ def _resolve_work(project_root: Path, namespace: str | None, ref: str) -> Resolv
     """A 3.0 work reference: the item read through its project's backend. Found
     at any stage is OK; `NotFound` is missing; a project declared but not on
     this machine is unresolved (TCW-70 Design 12.1)."""
-    from tcw.errors import BackendError, NotFound, Unreachable
+    from tcw.errors import BackendError, NotFound, ProjectGraphError, Unreachable
     from tcw.work.jira.backend import JiraBackend, link_exists
     from tcw.work.open import open_backend, open_project
 
@@ -166,7 +166,7 @@ def _resolve_work(project_root: Path, namespace: str | None, ref: str) -> Resolv
         return ResolveResult(False, "W", None, f"unresolved: {error}")
     except NotFound as error:
         return ResolveResult(False, "W", None, str(error))
-    except BackendError as error:
+    except (BackendError, ProjectGraphError) as error:
         return ResolveResult(False, "W", None, str(error))
     if namespace is None:
         return ResolveResult(True, "W", folder, "")

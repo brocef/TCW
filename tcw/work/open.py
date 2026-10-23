@@ -16,7 +16,8 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-from tcw.errors import BackendError, ConfigError, NotFound, Refused, Unreachable
+from tcw.errors import (BackendError, ConfigError, NotFound, ProjectGraphError, Refused,
+                        Unreachable)
 from tcw.store.fs import FsProjectRegistry, WorkLocation, git_root
 from tcw.work.backend import WorkBackend
 from tcw.work.config import WorkConfig
@@ -86,23 +87,16 @@ def _registry(here: Path) -> FsProjectRegistry:
 
 
 def open_project(project_id: str, here: Path) -> WorkBackend:
-    """Another project's backend, for reading. `NotFound` when nothing here
-    declares the id; `Unreachable` when it is declared but not on this
-    machine."""
-    registry = _registry(here)
-    project = registry.get(project_id)
-    if project is None:
-        absent = registry.unreachable_project(project_id)
-        if absent is not None and absent.message:
-            # TCW-107 Design 6.2: where its manifest places it, and the
-            # command that fetches it when the entry names a repository.
-            raise Unreachable(absent.message, project=project_id,
-                              repository=absent.repository)
-        if absent or registry.entry(project_id):
-            raise Unreachable(f"project '{project_id}' is declared but is not on "
-                              f"this machine", project=project_id)
-        raise NotFound(f"no project '{project_id}' is declared here")
-    return open_backend(Path(project.locator), personal=False)
+    """Another project's backend, for reading: any project TCW can locate,
+    not only one `projects:` names (TCW-110 Design 6.1). `Unreachable` when
+    it is named but not on this machine; `UnknownProject` for an ID nothing
+    knows and `ProjectGraphError` for a problem in the project graph."""
+    from tcw.locate import Locator
+    try:
+        locator = Locator.of(Path(here))
+    except ValueError as error:
+        raise BackendError(str(error)) from None
+    return open_backend(locator.owner_root(project_id, locator.root), personal=False)
 
 
 # ---------------------------------------------------------------------------
@@ -221,22 +215,24 @@ def reference_resolver(project_root: Path) -> Callable[[Slug], str]:
     """How `validate` answers a reference into another project: `found`,
     `missing` or `unresolved`, opening each project once. A Jira-mode project
     is answered by its folders, so no reference needs Jira (TCW-71 R20). A
-    project that is here but cannot be opened or read answers `broken`."""
-    from tcw.work.references import BROKEN, FOUND, MISSING, UNRESOLVED
+    project that is here but cannot be opened or read answers `broken`; one
+    that cannot be looked up, `GraphError` with the reason (TCW-110 Design
+    6.3)."""
+    from tcw.work.references import BROKEN, FOUND, MISSING, UNRESOLVED, GraphError
     opened: dict[str, object] = {}
 
-    def resolve(ref: Slug) -> str:
+    def resolve(ref: Slug) -> "str | GraphError":
         if ref.project not in opened:
             try:
                 opened[ref.project] = open_project(ref.project, project_root)
-            except NotFound:
-                opened[ref.project] = MISSING
             except Unreachable:
                 opened[ref.project] = UNRESOLVED
+            except ProjectGraphError as error:
+                opened[ref.project] = GraphError(str(error))
             except BackendError:
                 opened[ref.project] = BROKEN
         other = opened[ref.project]
-        if isinstance(other, str):
+        if isinstance(other, (str, GraphError)):
             return other
         if isinstance(other, JiraBackend):
             return FOUND if link_exists(other.work_path, ref.folder) else MISSING

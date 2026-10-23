@@ -10,7 +10,7 @@ from typing import Callable, Iterable
 from tcw.work.layout import Layout
 from tcw.work.model import DOCUMENT, FLOW, ROUNDS, STAGES, Item, Slug, position, stage as table_stage
 
-WARNING, UNRESOLVED = "warning", "unresolved"
+WARNING, UNRESOLVED, ERROR = "warning", "unresolved", "error"
 FOUND, MISSING = "found", "missing"
 # The project is on this machine but its work store could not be opened or
 # read: a fault in that project, reported here as a warning so this project's
@@ -19,21 +19,29 @@ BROKEN = "broken"
 
 
 @dataclass(frozen=True)
+class GraphError:
+    """The answer for a reference whose project cannot be looked up: an ID
+    nothing knows, or a problem in the project graph (TCW-110 Design 6.3).
+    `message` says which."""
+    message: str
+
+
+@dataclass(frozen=True)
 class Problem:
-    level: str  # warning, or unresolved (neither a warning nor an error)
+    level: str  # warning, error, or unresolved (neither a warning nor an error)
     slug: Slug  # the item the problem is reported against
     message: str
 
 
 def reference_problems(items: Iterable[Item], current_project: str,
-                       resolve: Callable[[Slug], str]) -> list[Problem]:
+                       resolve: Callable[[Slug], "str | GraphError"]) -> list[Problem]:
     """Every `parent` and `blocked-by` that points at nothing.
 
     Pass **every** item, finished ones included, or a reference to a completed
     blocker looks missing. A reference into another project goes through
     `resolve`, which answers `found`, `missing`, `unresolved` (that project
-    cannot be reached from here) or `broken` (it is here, and its work store
-    cannot be read).
+    cannot be reached from here), `broken` (it is here, and its work store
+    cannot be read) or a `GraphError` (it cannot be looked up).
     """
     items = list(items)
     known = {item.slug for item in items}
@@ -46,7 +54,11 @@ def reference_problems(items: Iterable[Item], current_project: str,
                 answer = FOUND if ref in known else MISSING
             else:
                 answer = resolve(ref)
-            if answer == MISSING:
+            if isinstance(answer, GraphError):
+                problems.append(Problem(ERROR, item.slug,
+                                        f"{field} {ref} cannot be looked up: "
+                                        f"{answer.message}"))
+            elif answer == MISSING:
                 problems.append(Problem(WARNING, item.slug,
                                         f"{field} references a missing item, {ref}"))
             elif answer == UNRESOLVED:

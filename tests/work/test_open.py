@@ -7,7 +7,7 @@ import shutil
 import pytest
 import yaml
 
-from tcw.errors import BackendError, NotFound, Refused, Unreachable
+from tcw.errors import BackendError, NotFound, Refused, Unreachable, UnknownProject
 from tcw.work.backend import Query
 from tcw.work.config import MIGRATION_GUIDE
 from tcw.work.fs_backend import FsWorkBackend
@@ -99,7 +99,7 @@ def test_open_project_reads_another_project(pq):
 
 def test_open_project_not_declared_and_absent(pq):
     p, q = pq
-    with pytest.raises(NotFound):
+    with pytest.raises(UnknownProject, match="check the spelling"):
         open_project("nobody", p)
     shutil.rmtree(q)
     with pytest.raises(Unreachable):

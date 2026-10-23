@@ -367,7 +367,8 @@ def test_show_of_an_absent_or_undeclared_project(tcw, pq):
     root, q = pq
     shutil.rmtree(q)
     assert tcw(["show", "q.work/2026-10-01-x"], root).code == 5
-    assert tcw(["show", "nobody.work/2026-10-01-x"], root).code == 4
+    unknown = tcw(["show", "nobody.work/2026-10-01-x"], root)
+    assert unknown.code == 1 and "check the spelling" in unknown.err
 
 
 def test_jira_block_delegation_and_blocks(tcw, pq, monkeypatch):

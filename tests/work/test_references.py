@@ -4,7 +4,7 @@ from datetime import date
 
 from tcw.work.layout import Layout
 from tcw.work.model import STAGES, Item, Slug
-from tcw.work.references import reference_problems, stage_problems
+from tcw.work.references import GraphError, reference_problems, stage_problems
 
 ALL = frozenset(s.name for s in STAGES)
 
@@ -46,6 +46,18 @@ def test_cross_project_references_go_through_resolve():
     assert sorted(p.level for p in problems) == ["unresolved", "warning"]
     unresolved = next(p for p in problems if p.level == "unresolved")
     assert "far.work/x" in unresolved.message
+
+
+def test_a_project_that_cannot_be_looked_up_is_an_error_naming_the_reference():
+    """TCW-110 Design 6.3: an ID nothing knows, or a problem in the project
+    graph, is an error, not a missing item and not an absence."""
+    ref = Slug("cor", "x")
+    a = item("a", parent=ref)
+    [problem] = reference_problems(
+        [a], "tcw", lambda _: GraphError("no project with ID 'cor' is known"))
+    assert problem.level == "error"
+    assert "parent cor.work/x" in problem.message
+    assert "no project with ID 'cor' is known" in problem.message
 
 
 def write(path):

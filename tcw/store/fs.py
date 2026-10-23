@@ -954,16 +954,20 @@ class _FederationWalk:
     which is the one the cost was in.
     """
 
-    __slots__ = ("seen", "built")
+    __slots__ = ("seen", "built", "active_root")
 
     def __init__(self, seen: "frozenset[Path]" = frozenset(),
-                 built: "dict | None" = None):
+                 built: "dict | None" = None, active_root: Path | None = None):
         self.seen = seen
         self.built = {} if built is None else built
+        # The root of the project the command acts on, whose `Locator` every
+        # store opened on this walk uses (TCW-110 Design 6.1): None until a
+        # store sets it, so the first store's own project is the active one.
+        self.active_root = active_root
 
     def descend(self, project_root: Path) -> "_FederationWalk":
         """The walk as seen one project further down. Shares `built`."""
-        return _FederationWalk(self.seen | {project_root}, self.built)
+        return _FederationWalk(self.seen | {project_root}, self.built, self.active_root)
 
 
 class _FederationCycles:
@@ -1312,6 +1316,27 @@ class FsTreeStore:
         # family only to learn what that one file holds.
         project_id = self._config().get("id")
         self.project_id = project_id if isinstance(project_id, str) else ""
+        # The project the command acts on: this store's own unless it was
+        # opened for another, as an inherited store or an owner's store read
+        # by `Locator.read` is (see `_walk_for`).
+        self._active_root = self.project_root
+
+    def _walk_for(self, walk: "_FederationWalk | None") -> "_FederationWalk":
+        """The walk this store resolves its `extends` on, carrying the active
+        project's root, which this store adopts."""
+        if walk is not None and walk.active_root is not None:
+            self._active_root = walk.active_root
+            return walk
+        return _FederationWalk(*((walk.seen, walk.built) if walk else ()),
+                               active_root=self._active_root)
+
+    @property
+    def locator(self):
+        """The command's one `Locator`, for the active project (TCW-110
+        Design 6.1): a reference read here, or a location written in this
+        project's file, is looked up on that project's registry."""
+        from tcw.locate import Locator
+        return Locator.of(self._active_root)
 
     def owner_of(self, origin: str) -> str:
         """The ID of the project that holds an entry resolved through
@@ -1320,9 +1345,14 @@ class FsTreeStore:
         return self.project_id if origin == "local" else origin
 
     @classmethod
-    def open(cls, project_root: Path, _walk: "_FederationWalk | None" = None):
+    def open(cls, project_root: Path, _walk: "_FederationWalk | None" = None,
+             locator=None):
         """Resolve this project's store for this component. The ladder is
         `resolve_store`, shared with the work store.
+
+        `locator` is the command's `Locator` when the store opened is not the
+        active project's own (TCW-110 Design 6.1): the store then looks
+        projects up on that one registry. None means it is the active one.
 
         `_walk` is private and carries the federation walk's state: the projects
         already on this path, so `extends` can resolve a sibling's store without
@@ -1330,6 +1360,9 @@ class FsTreeStore:
         anywhere on the walk, so a shared subtree is built once. Callers outside
         federation never pass it.
         """
+        if locator is not None and (_walk is None or _walk.active_root is None):
+            _walk = _FederationWalk(*((_walk.seen, _walk.built) if _walk else ()),
+                                    active_root=locator.root)
         return resolve_store(cls, project_root, _walk=_walk)
 
     @classmethod
@@ -1748,7 +1781,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         # already refuses by project id.
         self.extends, self.extends_cycles = _extended_component_stores(
             self.project_root, self.config, self._extends_label(), "taxonomy",
-            walk=_walk,
+            walk=self._walk_for(_walk),
         )
 
     # -- reads --
@@ -1932,7 +1965,8 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         removal, because whether it names the term cannot then be known.
         """
         try:
-            caps = FsCapabilitiesStore.open(self.project_root)
+            caps = FsCapabilitiesStore.open(
+                self.project_root, _walk=_FederationWalk(active_root=self._active_root))
             if not caps.root.is_dir():
                 return []
             local = caps.list_all(local_only=True)
@@ -2273,7 +2307,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         # already refuses by project id.
         self.extends, self.extends_cycles = _extended_component_stores(
             self.project_root, self.config, self._extends_label(), "capabilities",
-            walk=_walk,
+            walk=self._walk_for(_walk),
         )
 
     # -- resolution --
@@ -2783,7 +2817,8 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         """
         # A taxonomy that is present and cannot open raises: that is a broken
         # configuration, not "this project has no taxonomy".
-        return (FsTaxonomyStore.open(self.project_root)
+        return (FsTaxonomyStore.open(
+                    self.project_root, _walk=_FederationWalk(active_root=self._active_root))
                 if tree_store_present(self.project_root, "taxonomy") else None)
 
     def check(self, taxonomy=None, identifier: str | None = None) -> list[Finding]:

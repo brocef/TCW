@@ -59,12 +59,14 @@ def test_references_into_other_projects(tmp_path):
     import shutil
     shutil.rmtree(q)
     found, _ = findings(p)
-    assert by_severity(found, "error") == []
     [unresolved] = by_severity(found, "unresolved")
     assert "q.work/2026-10-01-x" in unresolved.message
     assert "blocked-by" in unresolved.message
-    [missing] = by_severity(found, "warning")
-    assert "nobody.work/2026-10-01-y" in missing.message
+    # TCW-110 Design 6.3: an ID nothing knows is an error naming the reference.
+    [unknown] = by_severity(found, "error")
+    assert "nobody.work/2026-10-01-y" in unknown.message
+    assert "check the spelling" in unknown.message
+    assert by_severity(found, "warning") == []
 
 
 def test_a_reference_found_in_another_project_is_fine(tmp_path):
