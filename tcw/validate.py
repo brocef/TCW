@@ -747,7 +747,6 @@ def _store_overlaps(locator) -> list[Finding]:
     roots: dict[str, Path] = {locator.project_id: locator.root}
     for project in [*registry.ancestors(), *registry.descendants()]:
         roots.setdefault(project.id, Path(project.locator))
-    named = list(registry.declared_upstream_ids())
 
     def locate(project_id: str, named_by: Path) -> None:
         if project_id in roots:
@@ -757,8 +756,6 @@ def _store_overlaps(locator) -> list[Finding]:
         except (Unreachable, ProjectGraphError):
             pass                 # reported where the name is written
 
-    for project_id in named:
-        locate(project_id, locator.root)
     stores: list[tuple[str, str, Path]] = []
     done: set[str] = set()
     while len(done) < len(roots):

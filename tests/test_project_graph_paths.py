@@ -37,7 +37,9 @@ def test_an_override_in_other_letter_case_is_the_node_it_names(tmp_path, monkeyp
     config(root, "root", children={"kid": "kid"})
     config(root / "kid", "kid", parent={"root": ".."})
     monkeypatch.setenv("TCW_PROJECT_KID", str(tmp_path / "root" / "kid"))
-    registry = FsProjectRegistry.open(root / "kid")
+    # From the parent, which looks its child up (an ancestor's children are
+    # not followed from below, TCW-108 Design 3.1).
+    registry = FsProjectRegistry.open(root)
     assert [o.problem for o in registry.overrides()] == [None]
 
 

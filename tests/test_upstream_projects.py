@@ -8,6 +8,7 @@ code under test branches on."""
 
 from pathlib import Path
 
+from tcw.store.base import ParentLink
 from tcw.store.project import FsProjectRegistry
 from tests.projectfiles import write_manifest
 from tests.projectfiles import write_connected_config
@@ -28,7 +29,8 @@ def test_a_bare_path_upstream_loads_without_naming_the_reader(tmp_path):
     assert registry.check() == []
     assert registry.get("core") is not None
     assert Path(registry.get("core").locator) == (tmp_path / "core").resolve()
-    assert registry.declared_upstream_ids() == ["core"]
+    # A 3.x upstream is a parent passing nothing (TCW-108 Design 3.5).
+    assert registry.parents() == [ParentLink("core", frozenset())]
 
 
 def test_a_mapping_upstream_loads_by_its_path(tmp_path):
@@ -134,14 +136,16 @@ def test_an_upstream_is_read_only_from_its_declarer(tmp_path):
     assert reason is not None and "read-only" in reason and "'a'" in reason
 
 
-def test_an_upstream_is_read_only_from_the_declarers_sibling_and_parent(tmp_path):
-    """A narrower rule — "an upstream of this node or an ancestor" — lets both
-    of these write into it."""
+def test_an_upstream_is_outside_the_family_of_the_declarers_sibling_and_parent(tmp_path):
+    """From `b` and from `r`, `core` is a sibling's or a descendant's other
+    parent, outside the family (TCW-108 Design 3.1, 3.3), so nothing there
+    may write into it: `_check_declared` refuses a project the family does
+    not hold."""
     root = _family(tmp_path)
     for node in (root / "b", root):
         registry = FsProjectRegistry.open(node)
         assert registry.check() == [], registry.check()
-        assert registry.read_only_reason("core") is not None, node
+        assert registry.get("core") is None, node
 
 
 def test_family_members_stay_writable(tmp_path):
@@ -161,7 +165,8 @@ def test_the_upstream_writes_to_itself_from_its_own_checkout(tmp_path):
 def test_a_self_upstream_is_a_problem(tmp_path):
     config(tmp_path / "app", "id: app\nprojects:\n  upstream:\n"
                               "    app: .\n")
-    assert any("own upstream" in p
+    # A parent of itself: a loop (TCW-108 Design 4.7).
+    assert any("loop in parents: app -> app" in p
                for p in map(str, FsProjectRegistry.open(tmp_path / "app").check()))
 
 
@@ -171,31 +176,9 @@ def test_an_upstream_that_is_also_a_child_is_a_problem(tmp_path):
     config(tmp_path / "app" / "core", "id: core\nprojects:\n  parent:\n"
                                        "    app: ..\n")
     problems = [str(f) for f in FsProjectRegistry.open(tmp_path / "app").check()]
-    assert any("declared upstream" in p and "core" in p for p in problems), problems
-
-
-def test_an_upstream_that_is_also_a_sibling_is_a_problem(tmp_path):
-    """The migration's forbidden middle state: a package's parent declares core
-    upstream while the root still lists core as a child."""
-    config(tmp_path / "r", "id: r\nprojects:\n  children:\n"
-                            "    a: a\n    core: core\n")
-    config(tmp_path / "r" / "a", "id: a\nprojects:\n  parent:\n"
-                                  "    r: ..\n  upstream:\n    core: ../core\n")
-    config(tmp_path / "r" / "core", "id: core\nprojects:\n  parent:\n"
-                                     "    r: ..\n")
-    problems = [str(f) for f in FsProjectRegistry.open(tmp_path / "r" / "a").check()]
-    assert any("declared upstream" in p and "core" in p for p in problems), problems
-
-
-def test_an_upstream_that_is_also_a_grandparent_is_a_problem(tmp_path):
-    config(tmp_path / "gp", "id: gp\nprojects:\n  children:\n    mid: mid\n")
-    config(tmp_path / "gp" / "mid", "id: mid\nprojects:\n  parent:\n"
-                                     "    gp: ..\n  children:\n    kid: kid\n")
-    config(tmp_path / "gp" / "mid" / "kid", "id: kid\nprojects:\n"
-                                             "  parent:\n    mid: ..\n"
-                                             "  upstream:\n    gp: ../..\n")
-    problems = [str(f) for f in FsProjectRegistry.open(tmp_path / "gp" / "mid" / "kid").check()]
-    assert any("declared upstream" in p and "'gp'" in p for p in problems), problems
+    # Named both as a parent and as a child (TCW-108 Design 1.3).
+    assert any("'core' is named both as a parent and as a child" in p
+               for p in problems), problems
 
 
 def test_two_declarers_of_one_folder_are_one_project(tmp_path):
@@ -205,41 +188,14 @@ def test_two_declarers_of_one_folder_are_one_project(tmp_path):
     assert FsProjectRegistry.open(root).check() == []
 
 
-def test_two_declarers_of_different_folders_name_both(tmp_path):
-    root = _family(tmp_path)
-    config(tmp_path / "core2", "id: core\n")
-    config(root / "b", "id: b\nprojects:\n  parent:\n"
-                        "    r: ..\n  upstream:\n    core: ../../core2\n")
-    problems = [str(f) for f in FsProjectRegistry.open(root).check()]
-    duplicate = [p for p in problems if "duplicate project id 'core'" in p]
-    assert duplicate and "'a'" in duplicate[0] and "'b'" in duplicate[0], problems
-
-
 # ── migration ────────────────────────────────────────────────────────────────
-
-def _moved_root(tmp_path: Path) -> Path:
-    """Step 1 done: the root reads core as upstream; core still names it parent."""
-    config(tmp_path / "r", "id: r\nprojects:\n  upstream:\n"
-                            "    core: core\n")
-    config(tmp_path / "r" / "core", "id: core\nprojects:\n  parent:\n"
-                                     "    r: ..\n")
-    return tmp_path / "r"
-
-
-def test_a_parent_claim_answered_by_an_upstream_declaration_is_a_warning(tmp_path):
-    root = _moved_root(tmp_path)
-    for node in (root, root / "core"):
-        registry = FsProjectRegistry.open(node)
-        assert registry.check() == [], (node, registry.check())
-        assert any("core" in w and "upstream" in w and "parent" in w
-                   for w in registry.warnings()), (node, registry.warnings())
-
 
 def test_the_reverse_migration_order_still_fails(tmp_path):
     config(tmp_path / "r", "id: r\nprojects:\n  children:\n"
                             "    core: core\n")
     config(tmp_path / "r" / "core", "id: core\n")
-    assert any("nonreciprocal connection" in p
+    # TCW-108 Design 2.5: a listed child must name the lister.
+    assert any("'core' is listed as a child of 'r' but does not name 'r'" in p
                for p in map(str, FsProjectRegistry.open(tmp_path / "r").check()))
 
 
@@ -442,11 +398,13 @@ def _listed(where):
     return {p["id"]: p for p in json.loads(out.stdout)["projects"]}
 
 
-@pytest.mark.parametrize("where", ["a", "a/pkg"])
-def test_projects_list_names_the_upstream(tmp_path, where):
+def test_projects_list_names_the_upstream_as_a_parent(tmp_path):
     root, _ = _cli_family(tmp_path)
     _with_package(root)
-    assert _listed(root / where)["core"]["relation"] == "upstream"
+    # A parent row (TCW-108 Design 3.5, 8.1); from `a/pkg` it is an ancestor
+    # beyond the parents, which the list does not show.
+    assert _listed(root / "a")["core"]["relation"] == "parent"
+    assert "core" not in _listed(root / "a" / "pkg")
 
 
 def test_projects_list_names_an_absent_upstream(tmp_path):
@@ -454,7 +412,7 @@ def test_projects_list_names_an_absent_upstream(tmp_path):
     import shutil
     shutil.rmtree(tmp_path / "core")
     core = _listed(root / "a")["core"]
-    assert (core["relation"], core["present"]) == ("upstream", False)
+    assert (core["relation"], core["present"]) == ("parent", False)
 
 
 def test_projects_list_without_an_upstream(tmp_path):

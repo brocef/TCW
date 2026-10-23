@@ -38,20 +38,20 @@ def _clean(done) -> str:
 def test_an_override_in_other_letter_case_works_from_the_worktree(workspace, monkeypatch):  # noqa: F811
     app, wt = linked(workspace)
     monkeypatch.setenv("TCW_PROJECT_PKG_B", str(_upper_app(app / "pkg-b", app)))
-    out = _clean(validate(wt / "pkg-a"))
+    out = _clean(validate(wt))
     assert "warning:" in out and "TCW_PROJECT_PKG_B" in out, out
 
 
 def test_an_override_upper_cased_throughout_works_from_the_worktree(workspace, monkeypatch):  # noqa: F811
     app, wt = linked(workspace)
     monkeypatch.setenv("TCW_PROJECT_PKG_B", str(app / "pkg-b").upper())
-    _clean(validate(wt / "pkg-a"))
+    _clean(validate(wt))
 
 
 def test_an_override_in_other_letter_case_from_the_primary_checkout(workspace, monkeypatch):  # noqa: F811
     app, _wt = linked(workspace)
     monkeypatch.setenv("TCW_PROJECT_PKG_B", str(_upper_app(app / "pkg-b", app)))
-    out = _clean(validate(app / "pkg-a"))
+    out = _clean(validate(app))
     assert "warning:" not in out, out
 
 
@@ -70,7 +70,7 @@ def test_an_override_naming_the_worktree_copy_in_other_letter_case(workspace, mo
     mapping, not Rule 1 — it passes on the code before this change too."""
     app, wt = linked(workspace)
     monkeypatch.setenv("TCW_PROJECT_PKG_B", str(_upper_app(wt / "pkg-b", app)))
-    out = _clean(validate(wt / "pkg-a"))
+    out = _clean(validate(wt))
     assert "warning:" not in out, out
 
 

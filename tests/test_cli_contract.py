@@ -574,7 +574,8 @@ def test_naming_projects_that_are_not_here(graph):
     absent = run(graph["fx"], "work", "show", "absent.work/x")
     # TCW-107 Design 6.2: where its manifest entry places it.
     assert absent.code == 5 and "project 'absent' is not on this machine" in absent.err
-    assert "places it at ../absent" in absent.err
+    # TCW-108 AC 36: the folder the entry was resolved to, not its text.
+    assert f"places it at {(graph['fx'].parent / 'absent').resolve()}" in absent.err
 
 
 @pytest.mark.parametrize("target, says", [("ghost", None), ("absent", None),

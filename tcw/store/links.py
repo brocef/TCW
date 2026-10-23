@@ -225,12 +225,20 @@ def _relation(value: Any, label: str, problems: list) -> list[str]:
 
 
 def _extended(raw: dict) -> dict[str, list[str]]:
-    """The IDs each axis's `extends` names, ignoring a malformed list, which
-    the store reading it reports."""
+    """The IDs each axis's `extends` names, ignoring a malformed list and an
+    entry that is not a project ID, which the store reading it reports."""
     found: dict[str, list[str]] = {}
     for axis in ("taxonomy", "capabilities"):
         section = raw.get(axis)
         value = section.get("extends") if isinstance(section, dict) else None
-        found[axis] = [v for v in value if isinstance(v, str)] \
+        found[axis] = [v for v in value if isinstance(v, str) and _valid(v)] \
             if isinstance(value, list) else []
     return found
+
+
+def _valid(text: str) -> bool:
+    try:
+        validate_project_id(text)
+    except ValueError:
+        return False
+    return True

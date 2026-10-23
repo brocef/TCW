@@ -483,7 +483,8 @@ def test_extending_a_declared_but_absent_project_says_so(tmp_path):
     assert "'base'" in message
     # TCW-107 Design 6.2: a project not on this machine.
     assert "project 'base' is not on this machine" in message
-    assert "places it at ../base" in message
+    # TCW-108 AC 36: the folder the entry was resolved to, not its text.
+    assert f"places it at {(tmp_path / 'base').resolve()}" in message
 
 
 def test_extending_a_project_that_was_never_declared_is_unchanged(tmp_path):

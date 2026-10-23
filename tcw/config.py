@@ -615,7 +615,7 @@ def load_config(project_root: Path, *, personal: bool = True) -> Config:
     the configuration; every problem found is in `problems`.
 
     `personal=False` reads `built-in` and `tcw-config.yaml` only: how another
-    project (an upstream, a delegation target, the project of an item named by
+    project (a parent, a delegation target, the project of an item named by
     its full slug) is read, since personal files apply only to the project a
     command acts on.
     """

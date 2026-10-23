@@ -201,13 +201,14 @@ def uncommitted_changes(path: Path, project_id: str | None = None) -> list[str]:
 
 
 def _check_declared(registry: FsProjectRegistry, project_id: str) -> None:
-    """The first two conditions of delegation: declared, and not upstream."""
+    """The first two conditions of delegation: in the family, and reached
+    across links both sides declare (TCW-108 Design 7.1)."""
     if registry.get(project_id) is None \
             and registry.unreachable_project(project_id) is None:
         raise Refused(f"no project '{project_id}' is declared here")
     reason = registry.read_only_reason(project_id)
     if reason is not None:
-        raise Refused(f"{reason}; an upstream project is read-only from here")
+        raise Refused(reason)
 
 
 def _check_target(registry: FsProjectRegistry, project_id: str) -> Path:

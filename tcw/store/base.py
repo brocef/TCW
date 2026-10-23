@@ -391,48 +391,62 @@ class ProjectRegistry(ABC):
     def current(self) -> Project:
         """The project from which this registry was opened."""
 
-    def declared_parent_id(self, project_id: str | None = None) -> str | None:
-        """The id of the declared parent, whether or not this store can reach it.
+    @abstractmethod
+    def parents(self, project_id: str | None = None) -> list[ParentLink]:
+        """The project's declared parent links, in listing order, whether or
+        not each parent is on this machine (TCW-108 Design 1, 3.2). Empty for
+        a project with none, for one whose own links could not be read, and
+        for one not on this machine."""
 
-        `parent()` answers with a `Project`, so it can only answer for a project
-        this store actually has — which made every "declared but not here"
-        relation indistinguishable from "never declared", the one thing
-        `UnreachableProject` exists to prevent. The id is known from the
-        declaration alone, so it is answerable either way.
+    def link_state(self, project_id: str) -> str:
+        """`here`, `missing` (not on this machine) or `unreadable` (on this
+        machine, its own parent links could not be read, Design 6.6). The
+        default is right for a store with no unreadable state."""
+        return "here" if self.get(project_id) is not None else "missing"
 
-        The default is the reachable answer, which is correct for a store that
-        always sees the whole graph.
-        """
-        parent = self.parent(project_id)
-        return None if parent is None else parent.id
+    def load_order(self, project_id: str | None = None) -> LoadOrder:
+        """The project's load order (Design 4), computed from the declared
+        links alone by `load_order_of`, so every store orders a family the
+        same way. Raises `ProjectGraphError` on a loop (Design 4.7)."""
+        from tcw.errors import ProjectGraphError
+        start = project_id or self.current.id
+        links: dict[str, list[ParentLink]] = {}
+        missing: set[str] = set()
+        unreadable: set[str] = set()
+        pending = [start]
+        while pending:
+            pid = pending.pop()
+            if pid in links or pid in missing or pid in unreadable:
+                continue
+            state = self.link_state(pid)
+            if state == "missing":
+                missing.add(pid)
+            elif state == "unreadable":
+                unreadable.add(pid)
+            else:
+                links[pid] = self.parents(pid)
+                pending.extend(link.id for link in reversed(links[pid]))
+        try:
+            return load_order_of(start, links, missing=missing, unreadable=unreadable)
+        except ValueError:
+            raise ProjectGraphError(loop_message(find_loop(links, [start]))) from None
 
     def declared_child_ids(self, project_id: str | None = None) -> list[str]:
-        """The ids of the declared children, reachable or not. See
-        `declared_parent_id`."""
+        """The IDs of the declared children, on this machine or not: the
+        committed list, then the personal list's additions (Design 2.1)."""
         return [child.id for child in self.children(project_id)]
-
-    def declared_upstream_ids(self, project_id: str | None = None) -> list[str]:
-        """The ids of the declared upstream projects, reachable or not.
-
-        An upstream is a project this one reads from — its taxonomy, its
-        capabilities, its work items by reference — and never writes to, and
-        which does not name this project back. It is neither parent nor child,
-        so no walk over those relations reaches it. A registry that keeps no
-        such relation has none."""
-        return []
 
     def read_only_reason(self, project_id: str,
                          from_id: str | None = None) -> str | None:
         """Why `from_id` (default: the current project) may not write to
         `project_id`, or None when it may.
 
-        **The one place the write rule lives.** A project is writable from a
-        project only when the project reaches it by `parent` and `children`
-        connections alone, each followed as declared by the project it starts
-        from. Anything else the graph holds was reached across an upstream
-        connection and is read-only there — however many projects declare it, and
-        from whichever side of the family it is named. A registry with no
-        upstream relation has nothing read-only."""
+        **The one place the write rule lives** until TCW-114 (Design 7.1). A
+        project is writable only when reached across links both sides
+        declare: up to a parent that lists the child, or down to a listed
+        child. A project reached across a parent link the parent does not
+        list is read-only. A registry whose links are always declared both
+        ways has nothing read-only."""
         return None
 
     def warnings(self) -> list[str]:
@@ -471,31 +485,24 @@ class ProjectRegistry(ABC):
         """Return a connected project by canonical ID."""
 
     @abstractmethod
-    def parent(self, project_id: str | None = None) -> Project | None:
-        """Return the direct parent of a project, if any."""
-
-    @abstractmethod
     def children(self, project_id: str | None = None) -> list[Project]:
         """Return the direct children of a project."""
 
     @abstractmethod
     def ancestors(self, project_id: str | None = None) -> list[Project]:
-        """Return direct parent first, then the remaining ancestors."""
+        """The project's load order without the project itself, farthest
+        first, keeping those on this machine."""
 
     @abstractmethod
     def descendants(self, project_id: str | None = None) -> list[Project]:
-        """Return every descendant in deterministic depth-first order."""
+        """The projects below this one through listed children, breadth
+        first, those on this machine."""
 
     @abstractmethod
     def projects(self) -> list["Project"]:
-        """Every project in the graph, the current one included.
-
-        Deliberately not `current + ancestors + descendants`: a graph is not a
-        line, and that triple omits a sibling, a sibling of an ancestor, and
-        anything else reached by a shape nobody enumerated. A caller asking
-        "what does this checkout have" wants the set, and reconstructing it from
-        relations is how the set silently loses a member.
-        """
+        """The family: the current project, its ancestors and its
+        descendants (Design 3.3). Never a sibling, nor a project read only
+        to answer a lookup or another project's load order."""
 
     @abstractmethod
     def check(self) -> "list[Finding]":

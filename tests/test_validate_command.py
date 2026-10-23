@@ -227,14 +227,3 @@ def test_a_config_finding_names_the_file_relative_to_the_project(project, run, c
     assert code == 1
     assert out and all(line.startswith("error: .tcw/tcw-config.yaml: ") for line in out), out
 
-
-def test_the_former_child_warning_names_its_file_once(tmp_path, run):
-    top = make_project(tmp_path, "top")
-    kid = make_project(tmp_path, "kid")
-    write_connected_config(top, "id: top\nprojects:\n  upstream:\n    kid: ../kid\n")
-    write_connected_config(kid, "id: kid\nprojects:\n  parent:\n    top: ../top\n")
-    code, out, _ = run(top)
-    [line] = about(out, "read as an upstream")
-    assert code == 0 and line.startswith("warning: "), line
-    assert line.count("tcw-config.yaml") == 1, line
-    assert line.split(": ", 2)[1].endswith("kid/.tcw/tcw-config.yaml"), line

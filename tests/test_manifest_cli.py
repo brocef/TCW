@@ -25,6 +25,12 @@ from tests.test_project_files_cli import personal_env, tcw
 NO_ENTRY = "no manifest lists it, and no folder next to {} or enclosing it declares it"
 
 
+def gone(tmp_path: Path, name: str = "gone") -> str:
+    """The folder an entry `../<name>` in `app`'s manifest is resolved to,
+    which "not on this machine" names (TCW-108 AC 36)."""
+    return str((tmp_path / name).resolve())
+
+
 def proj(root: Path, project_id: str, **relations) -> Path:
     data: dict = {"id": project_id}
     if relations:
@@ -157,24 +163,29 @@ def test_ac5_an_ancestors_manifest(tmp_path):
     assert str(shared / ".tcw") not in ran.out + ran.err
 
 
-def test_ac5a_an_upstreams_manifest_is_not_read(tmp_path):
+def test_ac5a_a_former_upstreams_manifest_is_an_ancestors(tmp_path):
+    """TCW-108 Design 3.4: a 3.x upstream is a parent, and its manifest
+    counts as an ancestor's."""
     app = proj(tmp_path / "app", "app", upstream=["lib", "y"])
     lib = proj(tmp_path / "lib", "lib")
     proj(tmp_path / "x" / "y", "y")
     write_manifest(lib, {"y": "../x/y"})
     rows = listed(app)
     assert rows["lib"]["present"] is True
-    assert rows["y"]["present"] is False
+    assert rows["y"]["present"] is True
+    assert rows["y"]["found"]["file"] == manifest_path(lib)
 
 
 def test_ac6_a_descendants_manifest_and_the_order(tmp_path):
-    docs = proj(tmp_path / "docs", "docs", children=["shared"], upstream=["core"])
+    # `core` is a listed child after `shared`: every parent is found before
+    # any child is looked up (TCW-108 Design 3.4, 2.11 a).
+    docs = proj(tmp_path / "docs", "docs", children=["shared", "core"])
     shared = proj(tmp_path / "docs" / "shared", "shared", parent=["docs"])
-    proj(tmp_path / "x" / "core", "core")
+    proj(tmp_path / "x" / "core", "core", parent=["docs"])
     write_manifest(docs, {"shared": "shared"})
     write_manifest(shared, {"core": "../../x/core"})
     assert listed(docs)["core"]["found"]["file"] == manifest_path(shared)
-    copy = proj(tmp_path / "y" / "core", "core")
+    copy = proj(tmp_path / "y" / "core", "core", parent=["docs"])
     write_manifest(docs, {"core": "../y/core"})
     row = listed(docs)["core"]
     assert (row["path"], row["found"]["file"]) == (str(copy), manifest_path(docs))
@@ -190,7 +201,7 @@ def test_ac7_an_entry_decides_and_a_project_not_here(tmp_path):
     assert ran.code == 0, ran
     unresolved = [line for line in lines if line.startswith("unresolved:")]
     assert len(unresolved) == 1, lines
-    assert "'lib'" in unresolved[0] and "../gone" in unresolved[0]
+    assert "'lib'" in unresolved[0] and gone(tmp_path) in unresolved[0]
     assert "tcw project provision" not in unresolved[0]
     write_manifest(app, {"lib": {"path": "../gone",
                                  "repository": "https://example.invalid/lib.git"}})
@@ -206,10 +217,10 @@ def test_ac7_an_entry_decides_and_a_project_not_here(tmp_path):
     ran, lines = validated(app, env)
     mine = [line for line in lines
             if line.startswith("unresolved: .tcw/tcw-manifest.local.yaml:")]
-    assert len(mine) == 1 and "../gone2" in mine[0], lines
+    assert len(mine) == 1 and gone(tmp_path, "gone2") in mine[0], lines
     assert "example.invalid" not in mine[0]
     shown = tcw(app, "work", "show", "lib.work/x", env=env)
-    assert shown.code == 5 and "../gone2" in shown.err, shown
+    assert shown.code == 5 and gone(tmp_path, "gone2") in shown.err, shown
     assert "example.invalid" not in shown.err
     # No manifest, and no `lib` anywhere.
     for path in app.glob(".tcw/tcw-manifest*.yaml"):
@@ -224,7 +235,8 @@ def test_ac7_an_entry_decides_and_a_project_not_here(tmp_path):
     assert [line for line in lines if line.startswith("unresolved:")] == [
         f"unresolved: .tcw/tcw-config.yaml: project 'lib' is not on this machine: "
         f"{NO_ENTRY.format(app)}; add it to .tcw/tcw-manifest.yaml or "
-        f".tcw/tcw-manifest.local.yaml"]
+        f".tcw/tcw-manifest.local.yaml; could not check what it passes down to "
+        f"'app' or the projects above it"]               # TCW-108 Design 6.5 (a)
 
 
 @pytest.mark.parametrize("names", [False, True])
@@ -263,7 +275,7 @@ def test_ac8_an_empty_folder_is_not_on_this_machine(tmp_path, contents):
     assert ran.code == 0, ran
     assert not [line for line in lines if line.startswith("error:")]
     unresolved = [line for line in lines if line.startswith("unresolved:")]
-    assert len(unresolved) == 1 and "'lib'" in unresolved[0] and "../gone" in unresolved[0]
+    assert len(unresolved) == 1 and "'lib'" in unresolved[0] and gone(tmp_path) in unresolved[0]
     assert listed(app)["lib"]["present"] is False
     assert tcw(app, "work", "show", "lib.work/x").code == 5
     (folder / ".DS_Store").write_text("x")
@@ -319,9 +331,11 @@ def test_ac8a_an_overridden_missing_entry_names_the_override(tmp_path):
     ran, lines = validated(app)
     assert ran.code == 0, ran
     unresolved = [line for line in lines if line.startswith("unresolved:")]
-    assert len(unresolved) == 1 and "../gone" in unresolved[0], lines
+    assert len(unresolved) == 1 and gone(tmp_path) in unresolved[0], lines
     assert "overridden on this machine" not in unresolved[0]
-    alone = unresolved[0]
+    # What could not be checked for `lib` is said only while it is missing
+    # (TCW-108 Design 6.5); overridden, it is here.
+    alone = unresolved[0].split("; could not check")[0]
     env = personal_env(tmp_path)
     write_manifest(app, {"lib": "../lib"}, local=True)
     for env, by in ((env, manifest_path(app, True)),
@@ -331,7 +345,7 @@ def test_ac8a_an_overridden_missing_entry_names_the_override(tmp_path):
         assert not [line for line in lines if line.startswith(("error:", "warning:"))], lines
         unresolved = [line for line in lines
                       if line.startswith("unresolved: .tcw/tcw-manifest.yaml:")]
-        assert len(unresolved) == 1 and "../gone" in unresolved[0], lines
+        assert len(unresolved) == 1 and gone(tmp_path) in unresolved[0], lines
         assert unresolved[0] == f"{alone} (overridden on this machine by {by})", lines
 
 
@@ -404,7 +418,9 @@ def test_ac12_one_folder_per_id(tmp_path):
     two = proj(tmp_path / "c2", "core")
     write_manifest(app, {"lib": "lib", "core": "../c1"})
     write_manifest(lib, {"core": "../../c2"})
-    ran, lines = validated(app)
+    # From `lib`: a descendant's other parents are not followed from `app`
+    # (TCW-108 Design 3.1).
+    ran, lines = validated(lib)
     errors = " ".join(lines)
     assert ran.code == 1 and "duplicate project id 'core'" in errors
     assert str(one) in errors and str(two) in errors
@@ -456,7 +472,8 @@ def test_ac14_the_variable_decides(tmp_path):
 ])
 def test_ac15_projects_entries_holding_only_an_id_are_accepted(tmp_path, relations):
     app = proj(tmp_path / "app", "app", **relations)
-    proj(tmp_path / "lib", "lib", parent=["app"])
+    # `lib` names nothing: naming `app` back would be a loop (TCW-108 4.7).
+    proj(tmp_path / "lib", "lib")
     ran = tcw(app, "projects", "list")
     assert ran.code == 0, ran
     assert ran.out.split() == ["app", "lib"]
@@ -563,7 +580,8 @@ def test_delegating_to_a_project_not_on_this_machine_says_where(tmp_path, entry)
         manifest = write_manifest(app, {"lib": {
             "path": "../lib", "repository": "https://example.invalid/lib.git"}})
         expected = (f"project 'lib' is not on this machine: {manifest.resolve()} places it "
-                    f"at ../lib, from https://example.invalid/lib.git; fetch it with "
+                    f"at {gone(tmp_path, 'lib')}, from https://example.invalid/lib.git; "
+                    f"fetch it with "
                     f"'tcw project provision lib'")
     ran = tcw(app, "work", "new", "x", "--project", "lib")
     assert ran.code == 3, ran

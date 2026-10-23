@@ -1,9 +1,8 @@
 """`tcw projects` — the projects this one is connected to (TCW-73 Design 2).
 
-`tcw projects list` replaces the 2.8 command that listed parent and child
-projects: one project ID per line, this project first, then its parent, its
-children and the upstream projects it may read, each once, whether or not it
-is on this machine.
+`tcw projects list` prints one project ID per line: this project first, then
+its parents in listing order, then its children (TCW-108 Design 8.1), each
+once, whether or not it is on this machine.
 """
 
 from __future__ import annotations
@@ -24,8 +23,8 @@ def connected(root: Path) -> list[dict]:
     how TCW found a project on this machine other than this one (TCW-107
     Design 6.1), and is None for this one and for one not here."""
     from tcw.store.project import FsProjectRegistry
-    # A registry problem — an invalid ID, a parent that does not name this
-    # project back — is an error, as `validate` reports it, never a project
+    # A registry problem — an invalid ID, a listed child that does not name
+    # this project back — is an error, as `validate` reports it, never a project
     # quietly left off the list.
     registry = FsProjectRegistry.open(root).require_valid()
     here = registry.current
@@ -43,14 +42,10 @@ def connected(root: Path) -> list[dict]:
                      "path": str(project.locator) if project is not None else None,
                      "found": registry.found(project_id)})
 
-    add(registry.declared_parent_id(), "parent")
+    for link in registry.parents():
+        add(link.id, "parent")
     for child in registry.declared_child_ids():
         add(child, "child")
-    # An upstream declared by an ancestor is readable from here too, as the
-    # registry reads it (`FsProjectRegistry.declared_upstream_ids`).
-    for declarer in [here.id, *(a.id for a in registry.ancestors(here.id))]:
-        for upstream in registry.declared_upstream_ids(declarer):
-            add(upstream, "upstream")
     return rows
 
 

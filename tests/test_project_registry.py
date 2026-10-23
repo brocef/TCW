@@ -120,9 +120,10 @@ def test_relative_layout_and_transitive_descendants(tmp_path):
         "child-project",
         "deep-project",
     ]
+    # Farthest first: the load order without the project (TCW-108 Design 3.2).
     assert [p.id for p in registry.ancestors("deep-project")] == [
-        "child-project",
         "root-project",
+        "child-project",
     ]
 
 
@@ -158,8 +159,10 @@ def test_nonreciprocal_connection_fails(tmp_path):
         "    child-project: ../child\n",
     )
     config(child, "id: child-project\n")
+    # TCW-108 Design 2.5 (AC 6): a listed child must name the lister.
     assert any(
-        "nonreciprocal connection" in problem
+        "'child-project' is listed as a child of 'root-project' but does not name "
+        "'root-project' among its parents" in problem
         for problem in _texts(FsProjectRegistry.open(root).check())
     )
 
@@ -337,7 +340,9 @@ def test_an_absent_parent_leaves_the_child_usable(tmp_path):
     registry = FsProjectRegistry.open(child)
     registry.require_valid()
     assert registry.current.id == "child-project"
-    assert registry.parent() is None
+    # Declared, and not on this machine (TCW-108 AC 28).
+    assert [link.id for link in registry.parents()] == ["root-project"]
+    assert registry.get("root-project") is None
     assert registry.unreachable_project("root-project") is not None
     assert registry.unreachable_project("nobody") is None
 
@@ -358,7 +363,8 @@ def test_an_absent_counterpart_does_not_disprove_reciprocity(tmp_path):
     )
     registry = FsProjectRegistry.open(child)
     registry.require_valid()
-    assert registry.parent().id == "root-project"
+    assert [link.id for link in registry.parents()] == ["root-project"]
+    assert registry.get("root-project") is not None
 
 
 def test_a_correct_pair_still_validates(tmp_path):
@@ -473,8 +479,10 @@ def test_a_project_placed_with_a_repository_names_the_command_that_fetches_it(tm
         "path": "../child", "repository": "https://example.invalid/child.git"}})
     note = unreachable_project_note(FsProjectRegistry.open(parent), "child-project")
     # TCW-107 Design 6.2.
+    # TCW-108 AC 36: the folder the entry was resolved to.
     assert note == (f"project 'child-project' is not on this machine: {manifest.resolve()} "
-                    f"places it at ../child, from https://example.invalid/child.git; "
+                    f"places it at {(tmp_path / 'child').resolve()}, from "
+                    f"https://example.invalid/child.git; "
                     f"fetch it with 'tcw project provision child-project'")
 
 
@@ -485,7 +493,7 @@ def test_a_project_placed_with_no_repository_does_not_say_to_provision(tmp_path)
     config(parent, "id: root-project\nprojects:\n  children:\n"
                    "    child-project: ../child\n")
     note = unreachable_project_note(FsProjectRegistry.open(parent), "child-project")
-    assert note.endswith("places it at ../child"), note
+    assert note.endswith(f"places it at {(tmp_path / 'child').resolve()}"), note
     assert "provision" not in note
 
 
@@ -510,7 +518,8 @@ def test_a_project_another_route_resolved_is_not_reported_unreachable(tmp_path):
     )
     registry = FsProjectRegistry.open(child)
     registry.require_valid()
-    assert registry.parent().id == "root-project"
+    assert [link.id for link in registry.parents()] == ["root-project"]
+    assert registry.get("root-project") is not None
     assert registry.unreachable() == []
     assert registry.unreachable_project("child-project") is None
 
@@ -546,15 +555,15 @@ def test_a_directory_that_is_not_a_node_is_still_refused(tmp_path):
 # ── a declared relation this checkout does not have ─────────────────────────
 
 def test_a_declared_parent_that_is_absent_is_still_a_declared_parent(tmp_path):
-    """`parent()` answers with a Project, so it can only answer for a project
-    this checkout has — which made "declared but not here" indistinguishable from
-    "never declared", the one thing `UnreachableProject` exists to prevent."""
+    """`get()` answers with a Project, so it can only answer for a project
+    this checkout has; `parents()` names the declared parent whether or not it
+    is here, so "declared but not here" is not "never declared"."""
     child = tmp_path / "child"
     config(child, "id: child-project\nprojects:\n  parent:\n"
                   f"    away-project: {tmp_path / 'away'}\n")
     registry = FsProjectRegistry.open(child).require_valid()
-    assert registry.parent() is None
-    assert registry.declared_parent_id() == "away-project"
+    assert registry.get("away-project") is None
+    assert [link.id for link in registry.parents()] == ["away-project"]
     assert [u.id for u in registry.unreachable()] == ["away-project"]
 
 
@@ -868,9 +877,9 @@ def test_checkout_of_ignores_a_project_the_graph_does_not_hold(tmp_path):
     assert FsProjectRegistry.open(child).checkout_of(url) is None
 
 
-def test_checkout_of_reads_a_siblings_manifest(tmp_path):
-    """A project the graph follows that is neither an ancestor nor a
-    descendant, here a sibling, is read after them (TCW-107 Design 6.4)."""
+def test_checkout_of_never_reads_a_siblings_manifest(tmp_path):
+    """A sibling is not in the family (TCW-108 Design 3.3), so its manifest
+    is not among those `checkout_of` reads (Design 3.4's order)."""
     url = "https://github.invalid/acme/z.git"
     config(tmp_path / "ws", "id: ws\nprojects:\n  children:\n    a: a\n    b: b\n")
     config(tmp_path / "ws" / "a", "id: a\nprojects:\n  parent:\n    ws: ..\n"
@@ -882,4 +891,4 @@ def test_checkout_of_reads_a_siblings_manifest(tmp_path):
     write_manifest(tmp_path / "ws" / "b", {"z": {"path": "../z",
                                                  "repository": f"{url}#main"}})
     registry = FsProjectRegistry.open(tmp_path / "ws" / "a")
-    assert registry.checkout_of(url) == (tmp_path / "ws" / "z").resolve()
+    assert registry.checkout_of(url) is None

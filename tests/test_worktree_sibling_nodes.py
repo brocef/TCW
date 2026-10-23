@@ -83,7 +83,9 @@ def test_a_node_only_the_primary_checkout_has_still_resolves_there(workspace):
     done = validate(workspace / "app-wt" / "pkg-a")
     assert done.returncode == 0, done.stdout + done.stderr
     from tcw.store.project import FsProjectRegistry
-    registry = FsProjectRegistry.open(workspace / "app-wt" / "pkg-a")
+    # From their parent: a sibling is not in `pkg-a`'s family (TCW-108
+    # Design 3.3).
+    registry = FsProjectRegistry.open(workspace / "app-wt")
     where = {p.id: Path(p.locator).resolve() for p in registry.projects()}
     assert where["pkg-c"] == (app / "pkg-c").resolve()          # only main has it
     assert where["pkg-b"] == (workspace / "app-wt" / "pkg-b").resolve()
@@ -105,9 +107,11 @@ def test_a_nested_repository_is_not_taken_for_the_worktree_copy(workspace):
     done = validate(workspace / "app-wt" / "pkg-a")
     assert done.returncode == 0, done.stdout + done.stderr
     from tcw.store.project import FsProjectRegistry
-    where = {p.id: Path(p.locator).resolve()
-             for p in FsProjectRegistry.open(workspace / "app-wt" / "pkg-a").projects()}
-    assert where["vendor"] == (app / "vendor").resolve()
+    # `vendor` is a sibling of `app-repo`, outside `pkg-a`'s family (TCW-108
+    # Design 3.3), so it is looked up as a full identifier naming it would be.
+    registry = FsProjectRegistry.open(workspace / "app-wt" / "pkg-a")
+    assert registry.project_folder("vendor", workspace).resolve() == \
+        (app / "vendor").resolve()
 
 
 def with_submodule(workspace: Path, tmp_path: Path, *, named_by_workspace: bool) -> Path:
@@ -152,6 +156,10 @@ def test_one_id_in_two_repositories_is_still_a_duplicate(workspace):
     ws_cfg = config_file(workspace)
     write_connected_config_file(ws_cfg, ws_cfg.read_text() + "    pkg-b: other\n")
     git(workspace / "app", "worktree", "add", "-q", "../app-wt", "-b", "feature")
-    done = validate(workspace / "app-wt" / "pkg-a")
-    assert done.returncode == 1 and "duplicate project id 'pkg-b'" in done.stdout + done.stderr, \
-        done.stdout + done.stderr
+    from tcw.errors import ProjectGraphError
+    from tcw.store.project import FsProjectRegistry
+    # The workspace's children are not followed from below (TCW-108 Design
+    # 3.1), so the second lookup is the one a full identifier makes.
+    registry = FsProjectRegistry.open(workspace / "app-wt")
+    with pytest.raises(ProjectGraphError, match="duplicate project id 'pkg-b'"):
+        registry.project_folder("pkg-b", workspace)

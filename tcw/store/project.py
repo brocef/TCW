@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -13,17 +13,18 @@ import yaml
 
 from tcw.findings import Finding
 from tcw.store.base import (
-    ConnectedProject, Project, ProjectOverride, ProjectRegistry,
-    UnreachableProject, parse_connected_entry, retired_key_problem,
+    LoadOrder, ParentLink, Project, ProjectOverride, ProjectRegistry,
+    UnreachableProject, find_loop, load_order_of, loop_message, retired_key_problem,
 )
 from tcw.errors import ProjectGraphError, Unreachable, UnknownProject
 from tcw.project_files import (LEGACY_PROJECT, LEGACY_SENTINEL, LOCAL_MANIFEST,
                                LOCAL_MANIFEST_NAME, MANIFEST, PROJECT_ID_PATTERN,
-                               RESERVED_PROJECT_IDS, SENTINEL, TCW_FOLDER,
+                               SENTINEL, TCW_FOLDER,
                                personal_files_skipped, root_of,
                                validate_project_id, version_problem)
 from tcw.store.manifest import ManifestEntry, parse_manifest
 from tcw.store.checkouts import normalized_url
+from tcw.store.links import parse_children, parse_parents, translate_projects
 from tcw.store.yaml_source import UniqueKeyLoader as _UniqueKeyLoader, load as _load_named_yaml
 
 def override_variable(project_id: str) -> str:
@@ -294,11 +295,18 @@ def _search(registry: "FsProjectRegistry", project_id: str,
 
 @dataclass(frozen=True)
 class _Config:
+    """One project's configuration as the walk read it (TCW-108 Design 1, 2).
+
+    `links` is its `parents:`, in order, or None when they could not be read,
+    `link_problem` then saying why (Design 6.6). `children` is its committed
+    `children:`, the entries that are valid IDs; for an ancestor or a project
+    read only for a lookup, it is read only as a list of names (Design 2.5)."""
+
     project: Project
     path: Path
-    parent: dict[str, ConnectedProject]
-    children: dict[str, ConnectedProject]
-    upstream: dict[str, ConnectedProject]
+    links: list[ParentLink] | None
+    link_problem: str | None
+    children: list[str]
     raw: dict[str, Any]
 
 
@@ -323,24 +331,34 @@ def _same_repository(marker: Path, main: Path) -> bool:
 
 
 class FsProjectRegistry(ProjectRegistry):
-    """A project graph loaded solely by following declared config locators."""
+    """The family of the project at `project_root`, found by following its
+    parent links up and its listed children down (TCW-108 Design 3)."""
 
     def __init__(self, project_root: Path):
         self.project_root = project_root.resolve()
+        # The family (Design 3.3): the active project, its ancestors and its
+        # descendants, by configuration path and by ID, in the order read.
         self._cache: dict[Path, _Config] = {}
         self._by_id: dict[str, _Config] = {}
+        # Projects read only to answer a lookup or a load order (Design 3.4,
+        # 4.6), never part of the family: `get`, `ancestors`, `descendants`
+        # and `projects` do not read these.
+        self._outside: dict[Path, _Config] = {}
+        self._outside_by_id: dict[str, _Config] = {}
+        # Every project read, family or not, by ID in the order read (the
+        # order Design 4.7 names a loop's first member by); the role each
+        # configuration was read in; the configurations whose parents have
+        # been walked up; and, for each one, the configuration whose link
+        # first reached it.
+        self._read_order: list[str] = []
+        self._roles: dict[Path, str] = {}
+        self._walked: set[Path] = set()
+        self._reached_from: dict[Path, Path] = {}
         # The same problems twice, in step: rendered for the refusals that
         # raise them, and as findings for `check()` (TCW-73 Design 6.3).
         self._problems: list[str] = []
         self._findings: list[Finding] = []
         self._unreachable: list[UnreachableProject] = []
-        # Configs reached only across an `upstream` edge. Loaded as far as their
-        # own file and no further: their connections are not the reader's to
-        # load, check or write, so nothing beyond an upstream enters this graph.
-        self._upstream_only: set[Path] = set()
-        # Who declared each config as an upstream, by the config's path: named
-        # when two declarers disagree about where one project lives.
-        self._upstream_declarers: dict[Path, list[str]] = {}
         self._warnings: list[str] = []
         self._warning_findings: list[Finding] = []
         # Rule 0's answer per project id, memoised, so the disk is probed once
@@ -374,9 +392,7 @@ class FsProjectRegistry(ProjectRegistry):
         # configuration in the graph, for `found`.
         self._answers: dict[tuple[str, Path], _Answer] = {}
         self._placed: dict[Path, _Answer] = {}
-        # Configurations read only to learn a project's family, outside the
-        # walk, and the folders `project_folder` returned, by ID.
-        self._peeked: dict[Path, _Config | None] = {}
+        # The folders `project_folder` returned, by ID.
         self._found: dict[str, Path] = {}
 
     @classmethod
@@ -409,61 +425,77 @@ class FsProjectRegistry(ProjectRegistry):
         cfg = self._by_id.get(project_id)
         return cfg.project if cfg else None
 
-    def parent(self, project_id: str | None = None) -> Project | None:
-        cfg = self._config_for(project_id)
-        if not cfg or not cfg.parent:
-            return None
-        parent_id = next(iter(cfg.parent))
-        return self.get(parent_id)
+    def parents(self, project_id: str | None = None) -> list[ParentLink]:
+        """The project's declared parent links, in order; empty for one whose
+        links could not be read and for one not on this machine. Answers for
+        any project this registry has read, a descendant's other parents
+        included (Design 4.6)."""
+        cfg = self._any_config(project_id)
+        return list(cfg.links or []) if cfg else []
+
+    def link_state(self, project_id: str) -> str:
+        cfg = self._any_config(project_id)
+        if cfg is None:
+            return "missing"
+        return "unreadable" if cfg.link_problem is not None else "here"
 
     def children(self, project_id: str | None = None) -> list[Project]:
-        cfg = self._config_for(project_id)
-        if not cfg:
-            return []
-        return [
-            self._by_id[child_id].project
-            for child_id in cfg.children
-            if child_id in self._by_id
-        ]
-
-    def declared_parent_id(self, project_id: str | None = None) -> str | None:
-        cfg = self._config_for(project_id)
-        if not cfg or not cfg.parent:
-            return None
-        return next(iter(cfg.parent))
+        return [self._by_id[child_id].project
+                for child_id in self.declared_child_ids(project_id)
+                if child_id in self._by_id]
 
     def declared_child_ids(self, project_id: str | None = None) -> list[str]:
-        cfg = self._config_for(project_id)
+        cfg = self._any_config(project_id)
         return list(cfg.children) if cfg else []
 
-    def declared_upstream_ids(self, project_id: str | None = None) -> list[str]:
-        cfg = self._config_for(project_id)
-        return list(cfg.upstream) if cfg else []
+    def load_order(self, project_id: str | None = None, *,
+                   root: Path | None = None) -> LoadOrder:
+        """Design 4, for the active project, any project of the family, or
+        any other project the lookup can locate (Design 4.6). A project not
+        in the family is found at `root` when the caller holds its store,
+        else at the folder this command returned for it, else by the lookup
+        from the active project; its ancestors are read for this question
+        only and never join the family. A loop met here, after the walk, is
+        a `ProjectGraphError`, also added to `check()`."""
+        self._load_graph()
+        if project_id is not None:
+            self._walk_for(project_id, root)
+        try:
+            return super().load_order(project_id)
+        except ProjectGraphError as error:
+            cfg = self._any_config(project_id)
+            path = cfg.path if cfg else self._current_path
+            self._problem(path, str(error))
+            raise ProjectGraphError(f"{path}: {error}") from None
 
     def ancestors(self, project_id: str | None = None) -> list[Project]:
-        result: list[Project] = []
-        seen: set[str] = set()
-        current = self.parent(project_id)
-        while current and current.id not in seen:
-            result.append(current)
-            seen.add(current.id)
-            current = self.parent(current.id)
-        return result
+        """The load order without the project, the projects on this machine,
+        farthest first."""
+        ids = self.load_order(project_id).ids[:-1]
+        return [cfg.project for cfg in (self._any_config(pid) for pid in ids)
+                if cfg is not None]
 
     def descendants(self, project_id: str | None = None) -> list[Project]:
-        result: list[Project] = []
-
-        def visit(parent_id: str) -> None:
-            for child in self.children(parent_id):
-                result.append(child)
-                visit(child.id)
-
+        """The family's projects below this one, breadth first through each
+        project's listed children (Design 3.1)."""
         cfg = self._config_for(project_id)
-        if cfg:
-            visit(cfg.project.id)
+        if cfg is None:
+            return []
+        result: list[Project] = []
+        seen = {cfg.project.id}
+        queue = [cfg]
+        while queue:
+            for child_id in queue.pop(0).children:
+                child = self._by_id.get(child_id)
+                if child is None or child_id in seen:
+                    continue
+                seen.add(child_id)
+                result.append(child.project)
+                queue.append(child)
         return result
 
     def projects(self) -> list[Project]:
+        """The family, in the order the walk read it; never a sibling."""
         self._load_graph()
         return [cfg.project for cfg in self._by_id.values()]
 
@@ -514,20 +546,11 @@ class FsProjectRegistry(ProjectRegistry):
         return None
 
     def _manifest_order(self) -> list[Path]:
-        """The roots whose manifests `checkout_of` reads, in Design 2.2's order
-        from the active project: its own, its ancestors' nearest first, its
-        descendants' breadth first. Then every other project the graph follows
-        the connections of (a sibling, say), in the order the walk met them;
-        an upstream-only project's manifests are not read (Design 2.10)."""
+        """The roots whose manifests `checkout_of` reads, in the order the
+        lookup reads them from the active project (Design 3.4): its own, its
+        ancestors' in the reverse of its load order, then its descendants'
+        nearest first."""
         order, _ = self._family(self.project_root, "")
-        seen = {self._identity(root) for root in order}
-        for path, cfg in list(self._cache.items()):
-            if cfg is None or path in self._upstream_only:
-                continue
-            root = root_of(path)
-            if self._identity(root) not in seen:
-                seen.add(self._identity(root))
-                order.append(root)
         return order
 
     def check(self) -> list[Finding]:
@@ -542,38 +565,64 @@ class FsProjectRegistry(ProjectRegistry):
 
     def read_only_reason(self, project_id: str,
                          from_id: str | None = None) -> str | None:
+        """Design 7.1: None when `project_id` is reached from `from_id`
+        (default: the active project) across links both sides declare, up to
+        a parent whose `children:` lists the child, or down to a listed
+        child; otherwise the refusal, naming the first one-sided link on the
+        first route up in walk order. None for a project the family does not
+        hold, which the caller refuses on its own."""
         self._load_graph()
-        if project_id not in self._by_id:
-            # Not on this machine: still answerable from the declarations, so
-            # an absent upstream project is refused as upstream rather than
-            # treated as any other missing project.
-            reader = self._upstream_reader(project_id)
-            if reader is None:
-                return None
-            return (f"'{project_id}' is a read-only upstream project here "
-                    f"(reached through '{reader}')")
+        target = self._by_id.get(project_id)
         start = self._config_for(from_id)
-        if start is None:
+        if target is None or start is None:
             return None
         seen = {start.project.id}
         frontier = [start]
         while frontier:
-            cfg = frontier.pop()
+            cfg = frontier.pop(0)
             if cfg.project.id == project_id:
                 return None
-            for neighbor_id in (*cfg.children, *cfg.parent):
-                neighbor = self._by_id.get(neighbor_id)
-                if neighbor is None or neighbor_id in seen:
-                    continue
-                seen.add(neighbor_id)
-                frontier.append(neighbor)
-        declarer = next((cfg.project.id for cfg in self._cache.values()
-                         if project_id in cfg.upstream), None)
-        if declarer is None:
-            return (f"'{project_id}' is not connected to '{start.project.id}' as a "
-                    f"parent or child")
-        return (f"'{project_id}' is a read-only upstream project here (reached "
-                f"through '{declarer}')")
+            for neighbor in self._declared_both_ways(cfg):
+                if neighbor.project.id not in seen:
+                    seen.add(neighbor.project.id)
+                    frontier.append(neighbor)
+        route = self._route_up(start, project_id, set())
+        for child, parent in route or []:
+            if child.project.id not in parent.children:
+                return (f"'{project_id}' is read-only from here: '{parent.project.id}' "
+                        f"does not list '{child.project.id}' among its children")
+        return f"'{project_id}' is read-only from here"
+
+    def _declared_both_ways(self, cfg: _Config) -> list[_Config]:
+        """The family's projects one link from `cfg` that both sides declare:
+        each parent listing it as a child, then each listed child (which must
+        name it back, a graph problem otherwise, Design 2.5)."""
+        found = []
+        for link in cfg.links or []:
+            parent = self._by_id.get(link.id)
+            if parent is not None and cfg.project.id in parent.children:
+                found.append(parent)
+        for child_id in cfg.children:
+            child = self._by_id.get(child_id)
+            if child is not None:
+                found.append(child)
+        return found
+
+    def _route_up(self, cfg: _Config, project_id: str,
+                  seen: set[str]) -> list[tuple[_Config, _Config]] | None:
+        """The first route from `cfg` up its parent links to `project_id`,
+        depth first in listing order, as (child, parent) pairs."""
+        for link in cfg.links or []:
+            parent = self._by_id.get(link.id)
+            if parent is None or link.id in seen:
+                continue
+            seen.add(link.id)
+            if link.id == project_id:
+                return [(cfg, parent)]
+            rest = self._route_up(parent, project_id, seen)
+            if rest is not None:
+                return [(cfg, parent), *rest]
+        return None
 
     def overrides(self) -> list[ProjectOverride]:
         """The `TCW_PROJECT_*` locators that took effect in this graph.
@@ -619,114 +668,138 @@ class FsProjectRegistry(ProjectRegistry):
             return self._cache.get(self._canonical(self._current_path))
         return self._by_id.get(project_id)
 
+    def _any_config(self, project_id: str | None) -> _Config | None:
+        """A configuration this registry has read, in the family or not."""
+        self._load_graph()
+        if project_id is None:
+            return self._config_for(None)
+        return self._by_id.get(project_id) or self._outside_by_id.get(project_id)
+
     def _load_graph(self) -> None:
         if self._loaded:
             return
         self._loaded = True
-        self._visit(self._current_path, declared_id=None)
-        if self._canonical(self._current_path) in self._cache:
-            # Read whether or not anything is looked up, so their problems are
-            # reported (Design 1.8); a missing file costs one failed read.
-            self._manifests_of(self.project_root)
-        self._validate_reciprocity()
-        self._validate_upstreams()
-        self._validate_cycles()
+        cfg = self._visit(self._current_path, None, None, "active")
+        if cfg is None:
+            return
+        # Read whether or not anything is looked up, so their problems are
+        # reported (Design 1.8); a missing file costs one failed read.
+        self._manifests_of(self.project_root)
+        self._walk_up(cfg, "ancestor")
+        self._walk_down(cfg)
+        self._validate_name_back()
+        self._validate_loops()
+        self._recheck_search_answers()
         self._reconcile_overrides()
 
-    def _visit(self, config_path: Path, declared_id: str | None,
-               declared_in: Path | None = None,
-               via_upstream: bool = False) -> _Config | None:
-        """Load one config and, unless it was reached across an `upstream` edge,
-        every config its connections name.
-
-        A config reached across an upstream edge is loaded as far as its own
-        file: its id, so `get` finds it for `extends` and references, and
-        nothing it connects to. If the same folder is later reached through a
-        `parent` or `children` edge, it is one project reached both ways, and it
-        is loaded in full then."""
-        config_path = self._canonical(config_path)
-        if config_path in self._cache:
-            cfg = self._cache[config_path]
-            if declared_id and cfg.project.id != declared_id:
-                self._problem(
-                    config_path,
-                    f"registered key '{declared_id}' does not match target id '{cfg.project.id}'",
-                )
-            if config_path in self._upstream_only and not via_upstream:
-                self._upstream_only.discard(config_path)
-                # Read again with its connection problems recorded this time:
-                # they were not the reader's to check, and now they are.
-                cfg = self._read_config(config_path, declared_id, declared_in) or cfg
-                self._cache[config_path] = cfg
-                if self._by_id.get(cfg.project.id, cfg).path == config_path:
-                    self._by_id[cfg.project.id] = cfg
-                self._follow_edges(config_path, cfg)
-            return cfg
-        # No re-entry guard, and none is needed. The config is cached *before*
-        # its own edges are walked, so a cycle comes back to a cached config and
-        # the walk terminates on the cache hit above. The guard that used to sit
-        # here could therefore never fire, and the comments around it were the
-        # only thing making it look as though something caught a cycle at load
-        # time. `_validate_cycles` is what reports one.
-        cfg = self._read_config(config_path, declared_id, declared_in,
-                                quiet_connections=via_upstream)
-        if cfg is None:
-            return None
-        self._cache[config_path] = cfg
-        if via_upstream and declared_in is not None:
-            declarer = self._cache.get(self._canonical(declared_in))
-            if declarer is not None:
-                self._upstream_declarers.setdefault(config_path, []).append(
-                    declarer.project.id)
-        previous = self._by_id.get(cfg.project.id)
-        if previous and previous.path != config_path:
-            declarers = [*self._upstream_declarers.get(previous.path, []),
-                         *self._upstream_declarers.get(config_path, [])]
-            named = (f"; declared upstream by {', '.join(repr(d) for d in declarers)}"
-                     if declarers else "")
-            self._problem(
-                config_path,
-                f"duplicate project id '{cfg.project.id}' also used by {previous.path}"
-                f"{named}",
-            )
-        else:
-            self._by_id[cfg.project.id] = cfg
-        if via_upstream:
-            self._upstream_only.add(config_path)
-            return cfg
-        self._follow_edges(config_path, cfg)
-        return cfg
-
-    def _follow_edges(self, config_path: Path, cfg: _Config) -> None:
-        """The parent first, then the children in the order the configuration
-        lists them, then the upstreams (TCW-107 Design 2.11 a), so a project's
-        parent chain has been found by the time its children are looked up."""
-        for relation in (cfg.parent, cfg.children, cfg.upstream):
-            via_upstream = relation is cfg.upstream
-            for target_id in relation:
-                self._follow_id(config_path, target_id, via_upstream)
-
-    def _follow_id(self, config_path: Path, target_id: str,
-                   via_upstream: bool) -> None:
-        """One edge naming its project by ID alone, resolved by the lookup.
-        A problem is already recorded, and the edge is not followed."""
-        answer = self._locate(target_id, root_of(config_path))
-        if answer.problem is not None:
+    def _walk_up(self, cfg: _Config, role: str) -> None:
+        """Design 3.1, up: each parent in listing order, and that parent's
+        own parents before the next one. Nothing above a project whose links
+        could not be read is looked up (Design 6.6)."""
+        if cfg.path in self._walked:
             return
+        self._walked.add(cfg.path)
+        for link in cfg.links or []:
+            parent = self._follow(cfg, link.id, role)
+            if parent is not None:
+                self._walk_up(parent, role)
+
+    def _walk_down(self, start: _Config) -> None:
+        """Design 3.1, down: the active project's listed children, then
+        theirs, breadth first. An ancestor's children are never followed, so
+        a sibling is never reached, nor a descendant's other parents."""
+        queue, seen = [start], {start.path}
+        while queue:
+            cfg = queue.pop(0)
+            for child_id in cfg.children:
+                child = self._follow(cfg, child_id, "descendant")
+                if child is not None and self._roles.get(child.path) == "descendant" \
+                        and child.path not in seen:
+                    seen.add(child.path)
+                    queue.append(child)
+
+    def _walk_for(self, project_id: str, root: Path | None) -> None:
+        """Read `project_id` and its ancestors for a question about it
+        (Design 4.6): a descendant's other parents, or a project outside the
+        family and the projects above it, none of them joining the family."""
+        cfg = self._by_id.get(project_id) or self._outside_by_id.get(project_id)
+        if cfg is None:
+            folder = root
+            if folder is None:
+                folder = self._found.get(project_id)
+            if folder is None:
+                folder = self.project_folder(project_id, self.project_root)
+            cfg = self._config_at(Path(folder))
+            if cfg is None or cfg.project.id != project_id:
+                raise UnknownProject(f"no project with ID '{project_id}' is known or "
+                                     f"found near this one; check the spelling")
+        role = "ancestor" if self._roles.get(cfg.path) in ("active", "ancestor") \
+            else "outside"
+        self._walk_up(cfg, role)
+
+    def _follow(self, cfg: _Config, target_id: str, role: str) -> _Config | None:
+        """One link of `cfg`'s, resolved by the lookup and read in `role`; a
+        project not on this machine is recorded as not here, and a problem is
+        already recorded. A project linking to itself is itself (a loop)."""
+        if target_id == cfg.project.id:
+            return cfg
+        answer = self._locate(target_id, root_of(cfg.path))
+        if answer.problem is not None:
+            return None
         if answer.folder is None:
             self._unreachable_edge(
-                config_path, target_id, answer.entry_folder, message=answer.message,
+                cfg.path, target_id, answer.entry_folder, message=answer.message,
                 decided_by=answer.entry.file if answer.entry else None,
                 repository=answer.entry.repository if answer.entry else None)
-            return
+            return None
         target = self._canonical(answer.folder / SENTINEL)
         self._placed.setdefault(target, answer)
-        self._visit(target, target_id, config_path, via_upstream=via_upstream)
+        return self._visit(target, target_id, cfg.path, role)
+
+    def _visit(self, config_path: Path, declared_id: str | None,
+               declared_in: Path | None, role: str) -> _Config | None:
+        """Read one configuration in its role in the walk (`active`,
+        `ancestor`, `descendant`, or `outside` for one read only for a lookup
+        or a load order), once; a project reached twice is read once."""
+        config_path = self._canonical(config_path)
+        known = self._cache.get(config_path) or self._outside.get(config_path)
+        if known is not None:
+            if declared_id and known.project.id != declared_id:
+                self._problem(
+                    config_path,
+                    f"registered key '{declared_id}' does not match target id "
+                    f"'{known.project.id}'")
+            return known
+        if role == "outside":
+            # Its file's own problems are that project's to report, in a
+            # command run there; its links' are Design 6.6's.
+            marks = (len(self._problems), len(self._findings))
+            cfg = self._read_config(config_path, declared_id, declared_in, role)
+            del self._problems[marks[0]:]
+            del self._findings[marks[1]:]
+        else:
+            cfg = self._read_config(config_path, declared_id, declared_in, role)
+        if cfg is None:
+            return None
+        cache, by_id = ((self._outside, self._outside_by_id) if role == "outside"
+                        else (self._cache, self._by_id))
+        cache[config_path] = cfg
+        self._roles[config_path] = role
+        if declared_in is not None:
+            self._reached_from.setdefault(config_path, self._canonical(declared_in))
+        previous = self._by_id.get(cfg.project.id) or self._outside_by_id.get(
+            cfg.project.id)
+        if previous and previous.path != config_path:
+            self._problem(
+                config_path,
+                f"duplicate project id '{cfg.project.id}' also used by {previous.path}")
+        else:
+            by_id[cfg.project.id] = cfg
+            self._read_order.append(cfg.project.id)
+        return cfg
 
     def _read_config(self, path: Path, declared_id: str | None,
-                     declared_in: Path | None = None,
-                     quiet_connections: bool = False,
-                     ) -> _Config | None:
+                     declared_in: Path | None, role: str) -> _Config | None:
         if not path.is_file() and (root_of(path) / LEGACY_SENTINEL).is_file():
             # A 3.x project: present, and in a format this TCW does not read
             # (TCW-106 Design 4.2). Not "this machine does not have it". A
@@ -791,65 +864,52 @@ class FsProjectRegistry(ProjectRegistry):
                 path,
                 f"registered key '{declared_id}' does not match target id '{project_id}'",
             )
-        # An upstream's connections are its own business, not its readers': a
-        # problem in them must not refuse a command in a project that only reads
-        # it. Everything above — the file, its id — is still checked.
-        before_connections = len(self._problems)
-        retired = retired_key_problem(raw)
-        if retired:
-            self._problem(path, retired)
-        connected = raw.get("projects")
-        if connected is None:
-            connected = {}
-        if not isinstance(connected, dict):
-            self._problem(path, "projects must be a mapping")
-            connected = {}
-        unknown = set(connected) - {"parent", "children", "upstream"}
-        if unknown:
-            self._problem(path, f"unknown projects keys: {', '.join(sorted(map(str, unknown)))}")
-        children = self._relation(path, connected.get("children"), "children")
-        parent = self._relation(path, connected.get("parent"), "parent")
-        upstream = self._relation(path, connected.get("upstream"), "upstream")
-        if len(parent) > 1:
-            self._problem(path, "projects.parent must contain at most one entry")
-        if quiet_connections:
-            del self._problems[before_connections:]
-            del self._findings[before_connections:]
-        return _Config(
-            project=Project(project_id, root_of(path)),
-            path=path,
-            parent=parent,
-            children=children,
-            upstream=upstream,
-            raw=raw,
-        )
+        links, link_problem, children = self._read_links(path, raw, project_id, role)
+        return _Config(project=Project(project_id, root_of(path)), path=path,
+                       links=links, link_problem=link_problem, children=children,
+                       raw=raw)
 
-    def _relation(self, path: Path, value: Any,
-                  label: str) -> dict[str, ConnectedProject]:
-        if value is None:
-            return {}
-        if not isinstance(value, dict):
-            self._problem(path, f"projects.{label} must be a mapping")
-            return {}
-        result: dict[str, ConnectedProject] = {}
-        for project_id, raw in value.items():
-            try:
-                valid_id = validate_project_id(project_id if isinstance(project_id, str) else "")
-            except ValueError as error:
-                self._problem(path, f"{label} key: {error}")
-                continue
-            entry, problems = parse_connected_entry(
-                valid_id, raw, f"projects.{label}.{valid_id}")
-            if entry is None:
-                # A declaration that is present and wrong is an error, never an
-                # unreachable edge: the difference is whether we were told
-                # something incorrect or told nothing this machine can act on.
-                for problem in problems or [f"locator for '{valid_id}' must be a "
-                                            f"nonempty string"]:
-                    self._problem(path, problem)
-                continue
-            result[valid_id] = entry
-        return result
+    def _read_links(self, path: Path, raw: dict, project_id: str,
+                    role: str) -> tuple[list[ParentLink] | None, str | None, list[str]]:
+        """`parents:` and `children:` (Design 1, 2), and whose problems they
+        are (Design 1.3, 6.6). In the active project every problem is a graph
+        problem. In another project a `parents:` problem leaves its links
+        unknown instead; a descendant's `children:` problems, "named both as a
+        parent and as a child" among them, stay graph problems, and an
+        ancestor's `children:` is read only as names."""
+        retired = retired_key_problem(raw)
+        if retired is not None and role in ("active", "descendant"):
+            self._problem(path, retired)
+        translated, problems = translate_projects(raw, path)
+        if retired is not None and role not in ("active", "descendant"):
+            # Design 3.5: in an ancestor's file, its parents are unknown.
+            problems = [retired]
+        if problems:
+            link_problems = list(problems)
+            links, children, child_problems = None, [], []
+        else:
+            links, found = parse_parents(translated.get("parents"), str(path))
+            link_problems = [f"{key}: {message}" for key, message in found]
+            children, found = parse_children(translated.get("children"), str(path),
+                                             own_id=project_id)
+            child_problems = [f"{key}: {message}" for key, message in found]
+            parent_ids = {link.id for link in links or []}
+            listed = translated.get("children")
+            child_problems += [
+                f"children[{listed.index(child_id)}]: '{child_id}' is named both as "
+                f"a parent and as a child" for child_id in children
+                if child_id in parent_ids]
+        if role in ("active", "descendant"):
+            for problem in child_problems:
+                self._problem(path, problem)
+        if not link_problems:
+            return links or [], None, children
+        if role == "active" or (role == "descendant" and (problems or retired)):
+            # A `projects:` key in a descendant is a graph problem, as its
+            # `children:` problems are (Design 3.5).
+            for problem in link_problems:
+                self._problem(path, problem)
+        return None, f"{path}: {link_problems[0]}", children
 
     def _override_path(self, project_id: str) -> Path | None:
         """Rule 0: where `TCW_PROJECT_<ID>` says this project is, or None.
@@ -988,137 +1048,83 @@ class FsProjectRegistry(ProjectRegistry):
         folder = self._spellings.setdefault((found.st_dev, found.st_ino), root)
         return folder / SENTINEL
 
-    def _upstream_reader(self, project_id: str) -> str | None:
-        """A project in this graph declaring `project_id` as its upstream."""
-        return next((cfg.project.id for cfg in self._cache.values()
-                     if project_id in cfg.upstream), None)
-
-    def _read_as_upstream(self, cfg: _Config, parent_id: str, reader: str) -> None:
-        message = (f"'{cfg.project.id}' names '{parent_id}' as its parent, but is "
-                   f"read as an upstream project by '{reader}'; remove the parent "
-                   f"entry from '{cfg.project.id}' — an upstream need not name its "
-                   f"readers")
-        warning = f"{cfg.path}: {message}"
-        if warning not in self._warnings:
-            self._warnings.append(warning)
-            self._warning_findings.append(Finding("warning", str(cfg.path), message))
-
-    def _validate_reciprocity(self) -> None:
-        for cfg in self._cache.values():
-            if cfg.path in self._upstream_only:
-                # Its connections are not ours to check. The one thing worth
-                # saying is the migration's leftover: a parent claim its parent
-                # now answers by reading it as an upstream.
-                for parent_id, entry in cfg.parent.items():
-                    target = self._edge_target(cfg.path, parent_id)
-                    if target is None:
-                        # Its edges were not followed, so nothing looked its
-                        # parent up; by ID, as reciprocity is (Design 3.2).
-                        found = self._by_id.get(parent_id)
-                        target = found.path if found is not None else None
-                    parent = self._cache.get(target)
-                    if (parent is not None and cfg.project.id not in parent.children
-                            and (reader := self._upstream_reader(cfg.project.id))):
-                        self._read_as_upstream(cfg, parent_id, reader)
+    def _validate_name_back(self) -> None:
+        """Design 2.5: each child listed by the active project or by a
+        descendant, when it is here and its links could be read, names the
+        lister among its parents. A problem against the lister's file."""
+        for path, cfg in list(self._cache.items()):
+            if self._roles.get(path) not in ("active", "descendant"):
                 continue
-            for child_id, entry in cfg.children.items():
-                child = self._cache.get(self._edge_target(cfg.path, child_id))
-                if child is None:
+            for child_id in cfg.children:
+                child = self._cache.get(self._edge_target(path, child_id))
+                if child is None or child.links is None:
                     continue
-                reciprocal = child.parent.get(cfg.project.id)
-                if reciprocal is None:
+                if cfg.project.id not in {link.id for link in child.links}:
                     self._problem(
-                        child.path,
-                        f"nonreciprocal connection: parent '{cfg.project.id}' is not declared",
-                    )
-                if child.project.id != child_id:
-                    self._problem(
-                        child.path,
-                        f"registered key '{child_id}' does not match target id '{child.project.id}'",
-                    )
-            for parent_id, entry in cfg.parent.items():
-                parent = self._cache.get(self._edge_target(cfg.path, parent_id))
-                if parent is None:
-                    continue
-                reciprocal = parent.children.get(cfg.project.id)
-                if reciprocal is None:
-                    # The migration's middle state: the parent moved this project
-                    # from `children` to `upstream`, and this project has not yet
-                    # dropped its parent entry. A warning, so neither side is
-                    # blocked while the two repositories catch up.
-                    if (reader := self._upstream_reader(cfg.project.id)) is not None:
-                        self._read_as_upstream(cfg, parent_id, reader)
-                        continue
-                    self._problem(
-                        parent.path,
-                        f"nonreciprocal connection: child '{cfg.project.id}' is not declared",
-                    )
-                if parent.project.id != parent_id:
-                    self._problem(
-                        parent.path,
-                        f"registered key '{parent_id}' does not match target id '{parent.project.id}'",
-                    )
+                        path,
+                        f"'{child_id}' is listed as a child of '{cfg.project.id}' but "
+                        f"does not name '{cfg.project.id}' among its parents")
 
-    def _validate_upstreams(self) -> None:
-        """An upstream is read-only, so it cannot also be something its declarer
-        writes to — its own child or parent, or any project it reaches through
-        them. Checked from the declarer, not from the current project: the conflict
-        is in the declarer's connections, wherever the command was run."""
-        for cfg in list(self._cache.values()):
-            if cfg.path in self._upstream_only:
+    def _validate_loops(self) -> None:
+        """Design 4.7: a loop through the parent links of every project read,
+        against the configuration of its member read first."""
+        loop = find_loop(self._known_links(), self._read_order)
+        if loop is not None:
+            self._problem(self._any_config(loop[0]).path, loop_message(loop))
+
+    def _known_links(self) -> dict[str, list[ParentLink]]:
+        """Each project's links, for every project read whose links could be
+        read, in the order read."""
+        found = {}
+        for project_id in self._read_order:
+            cfg = self._by_id.get(project_id) or self._outside_by_id.get(project_id)
+            if cfg is not None and cfg.links is not None:
+                found[project_id] = cfg.links
+        return found
+
+    def _recheck_search_answers(self) -> None:
+        """Design 3.4, "a search answer and a manifest that disagree", within
+        one command: each folder the search gave is checked against the first
+        manifest entry for that ID that its lookup would now consult, other
+        than the asking project's own."""
+        for (project_id, asker), answer in list(self._answers.items()):
+            if answer.by != "search":
                 continue
-            for upstream_id in cfg.upstream:
-                if upstream_id == cfg.project.id:
-                    self._problem(cfg.path, f"'{upstream_id}' is declared as its own "
-                                            f"upstream")
-                elif (upstream_id in self._by_id and self.read_only_reason(
-                        upstream_id, from_id=cfg.project.id) is None):
-                    self._problem(
-                        cfg.path,
-                        f"'{upstream_id}' is declared upstream (read-only) by "
-                        f"'{cfg.project.id}', but '{cfg.project.id}' is also "
-                        f"connected to it as a parent or child; declare one or the "
-                        f"other")
+            roots, _ = self._family(asker, project_id)
+            entry = self._entry_from_others(project_id, roots)
+            if entry is None:
+                continue
+            decided = self._entry_answer(*entry, record=False)
+            self._search_conflict(project_id, asker, decided, [answer.folder])
 
-    def _validate_cycles(self) -> None:
-        """Report a cycle among the loaded projects. The only thing that does.
+    def _entry_from_others(self, project_id: str,
+                           roots: list[Path]) -> tuple[ManifestEntry, Path] | None:
+        """The first entry for `project_id` in the manifests of `roots` after
+        the first (the asking project's own), with the root its path is read
+        from."""
+        for root in roots[1:]:
+            for _, base, entries in self._manifests_of(root) or []:
+                if project_id in entries:
+                    return entries[project_id], base
+        return None
 
-        `children` edges only, and deliberately: every connection is declared
-        from both sides, so walking `parent` as well would make each legitimate
-        reciprocal pair a two-cycle. Reciprocity is what guarantees a `parent`
-        edge has a `children` counterpart here to be walked — so a cycle
-        expressed *purely* through `parent` edges is reported by
-        `_validate_reciprocity` as a missing counterpart rather than by this, and
-        that is the honest description of the coverage rather than a claim that
-        one check sees everything.
-
-        Nothing catches a cycle during the load itself. `_visit` caches a config
-        before walking its edges, so a cycle terminates on the cache hit; the
-        re-entry guard that used to sit there could never fire.
-        """
-        visited: set[str] = set()
-        active: set[str] = set()
-
-        def visit(project_id: str) -> None:
-            if project_id in active:
-                cfg = self._by_id.get(project_id)
-                self._problem(
-                    cfg.path if cfg else self._current_path,
-                    f"cycle in projects involving '{project_id}'",
-                )
-                return
-            if project_id in visited:
-                return
-            visited.add(project_id)
-            active.add(project_id)
-            cfg = self._by_id.get(project_id)
-            if cfg:
-                for child_id in cfg.children:
-                    visit(child_id)
-            active.remove(project_id)
-
-        for project_id in list(self._by_id):
-            visit(project_id)
+    def _search_conflict(self, project_id: str, asker: Path, decided: _Answer,
+                         matches: list[Path]) -> str | None:
+        """The recorded problem when the search from `asker` finds
+        `project_id` in another folder than the manifest entry that decided
+        `decided` places it, or None (Design 3.4, decided 2026-10-23)."""
+        placed = decided.folder or decided.entry_folder
+        if decided.entry is None or placed is None:
+            return None
+        for match in matches:
+            if self._identity(match) != self._identity(placed):
+                return self._recorded(
+                    decided.entry.file,
+                    f"'{project_id}' is found at {match} by the search from {asker}, "
+                    f"but {decided.entry.file} places it at {placed}; add an entry for "
+                    f"'{project_id}' to {LOCAL_MANIFEST} in {asker}, which that lookup "
+                    f"reads first, to say which folder it is")
+        return None
 
     def _reconcile_overrides(self) -> None:
         """Fill in `problem` for every override that did not deliver its project.
@@ -1206,11 +1212,13 @@ class FsProjectRegistry(ProjectRegistry):
             # Told where it is, and it is not a project. That is a refusal, not a
             # thing to obtain, and `run tcw provision` would contradict it.
             return
-        entry = UnreachableProject(id=project_id, locator=locator,
-                                   declared_in=config_path, message=message,
-                                   decided_by=decided_by, repository=repository)
-        if entry not in self._unreachable:
-            self._unreachable.append(entry)
+        if any(known.id == project_id for known in self._unreachable):
+            # One record per project, the first in walk order, however many
+            # links reach it (TCW-108 AC 20).
+            return
+        self._unreachable.append(UnreachableProject(
+            id=project_id, locator=locator, declared_in=config_path, message=message,
+            decided_by=decided_by, repository=repository))
 
     def unreachable_project(self, project_id: str) -> UnreachableProject | None:
         """The recorded entry for `project_id`, or None.
@@ -1246,18 +1254,11 @@ class FsProjectRegistry(ProjectRegistry):
         root = self._root_key(named_by)
         if root not in self._found_roots():
             raise ValueError(f"{named_by} is not a project this registry has found")
+        # Not in the family: its ancestors are read for the lookup, all of
+        # them, and its children are not followed (Design 3.4, the 2.12 bullet).
         cfg = self._config_at(root)
         if cfg is not None and cfg.project.id == project_id:
             return root
-        if cfg is not None and self._canonical(root / SENTINEL) not in self._cache:
-            # Not in the graph: its family is located from it, so the walk of
-            # Design 2.2 can read their manifests.
-            for family_id in (*cfg.parent, *cfg.children):
-                if family_id != project_id and self._known_folder(family_id) is None:
-                    answer = self._locate(family_id, root)
-                    if answer.folder is not None and self._checked(
-                            family_id, answer) is None:
-                        self._found.setdefault(family_id, answer.folder)
         answer = self._locate(project_id, root)
         if answer.problem is not None:
             raise ProjectGraphError(answer.problem)
@@ -1293,7 +1294,7 @@ class FsProjectRegistry(ProjectRegistry):
 
     def _found_roots(self) -> set[Path]:
         return {self.project_root, *(root_of(path) for path in self._cache),
-                *self._found.values()}
+                *(root_of(path) for path in self._outside), *self._found.values()}
 
     def _checked(self, project_id: str, answer: _Answer) -> str | None:
         """The problem, recorded, with a found folder: one that does not hold
@@ -1337,26 +1338,25 @@ class FsProjectRegistry(ProjectRegistry):
 
     def _known_folder(self, project_id: str) -> Path | None:
         """The folder this command has found for `project_id`, if any."""
-        cfg = self._by_id.get(project_id)
+        cfg = self._by_id.get(project_id) or self._outside_by_id.get(project_id)
         if cfg is not None:
             return root_of(cfg.path)
         return self._found.get(project_id)
 
     def _config_at(self, root: Path) -> _Config | None:
-        """The configuration of the project at `root`: the walk's, or read
-        quietly to learn the project's family, its problems left to the walk
-        or to `tcw validate` in that project."""
+        """The configuration of the project at `root`: the family's, or one
+        read for a lookup with its ancestors (Design 3.4, the 2.12 bullet),
+        never joining the family. None when it cannot be read."""
         path = self._canonical(root / SENTINEL)
-        if path in self._cache:
-            return self._cache[path]
-        if path not in self._peeked:
-            marks = (len(self._problems), len(self._findings), len(self._unreachable))
-            cfg = self._read_config(path, None, root, quiet_connections=True)
-            del self._problems[marks[0]:]
-            del self._findings[marks[1]:]
-            del self._unreachable[marks[2]:]
-            self._peeked[path] = cfg
-        return self._peeked[path]
+        known = self._cache.get(path) or self._outside.get(path)
+        if known is not None:
+            return known
+        if not path.is_file():
+            return None
+        cfg = self._visit(path, None, root, "outside")
+        if cfg is not None:
+            self._walk_up(cfg, "outside")
+        return cfg
 
     def _text(self, path: Path) -> str | Exception:
         """A file's text, or the error reading it, read at most once."""
@@ -1459,41 +1459,58 @@ class FsProjectRegistry(ProjectRegistry):
 
     def _family(self, named_by: Path, project_id: str) -> tuple[list[Path], set[str]]:
         """The roots whose manifests the lookup of `project_id` from
-        `named_by` consults, in Design 2.2's order, and every ID their
-        `projects:` entries name.
+        `named_by` consults, in Design 3.4's order, and every ID their
+        `parents:` and `children:` name.
 
-        `named_by`, then each ancestor nearest first, then each descendant
-        breadth first, children in the order the configuration lists them. A
-        project is consulted only once this command has found its folder. One
-        whose folder is the one being looked up is skipped; when its folder is
-        known the walk carries on through its configuration, and otherwise it
-        stops there. A record of the folders visited ends a cycle."""
-        cfg = self._config_at(named_by)
+        `named_by` first; then (b) its ancestors found so far, in the reverse
+        of its load order over the projects read so far (the depth-first
+        order when C3 finds none, with no warning); then (c) every project
+        read so far from which a chain of parent links leads up to it, fewest
+        links first and, at one distance, in the order read. A project whose
+        folder is the one being looked up is skipped."""
+        asker = self._known_config(named_by)
         order = [named_by]
-        named = _named_ids(cfg)
+        named = _named_ids(asker)
+        if asker is None:
+            return order, named
         seen = {self._identity(named_by)}
-
-        def member(member_id: str) -> tuple[Path | None, _Config | None]:
-            folder = self._known_folder(member_id)
-            if folder is None or self._identity(folder) in seen:
-                return None, None
-            seen.add(self._identity(folder))
-            here = self._config_at(folder)
-            if member_id != project_id:
-                order.append(folder)
-                named.update(_named_ids(here))
-            return folder, here
-
-        current = cfg
-        while current is not None and current.parent:
-            _, current = member(next(iter(current.parent)))
-        queue = [cfg] if cfg is not None else []
-        while queue:
-            for child_id in queue.pop(0).children:
-                folder, child = member(child_id)
-                if child is not None:
-                    queue.append(child)
+        links = self._known_links()
+        try:
+            above = load_order_of(asker.project.id, links).ids[:-1]
+        except ValueError:                     # a loop, reported on its own
+            above = _reached_up(asker.project.id, links)
+        for member_id in [*reversed(above), *self._below(asker.project.id, links)]:
+            cfg = self._by_id.get(member_id) or self._outside_by_id.get(member_id)
+            if cfg is None or member_id == project_id:
+                continue
+            root = root_of(cfg.path)
+            if self._identity(root) in seen:
+                continue
+            seen.add(self._identity(root))
+            order.append(root)
+            named.update(_named_ids(cfg))
         return order, named
+
+    def _known_config(self, root: Path) -> _Config | None:
+        path = self._canonical(root / SENTINEL)
+        return self._cache.get(path) or self._outside.get(path)
+
+    def _below(self, project_id: str, links: dict) -> list[str]:
+        """The projects read so far that reach `project_id` by parent links,
+        nearest first, and at one distance in the order read."""
+        place = {pid: index for index, pid in enumerate(self._read_order)}
+        found: list[str] = []
+        reached = {project_id}
+        frontier = [project_id]
+        while frontier:
+            layer = sorted({pid for pid, own in links.items()
+                            if pid not in reached
+                            and any(link.id in frontier for link in own)},
+                           key=lambda pid: place.get(pid, len(place)))
+            reached.update(layer)
+            found += layer
+            frontier = layer
+        return found
 
     def _locate(self, project_id: str, named_by: Path) -> _Answer:
         """Design 2.1-2.8, answered once per question for the whole command."""
@@ -1510,13 +1527,21 @@ class FsProjectRegistry(ProjectRegistry):
                                             if o.id == project_id and o.problem))
             return _Answer(folder=root_of(override), by="variable")
         roots, named = self._family(named_by, project_id)
-        for root in roots:
+        for index, root in enumerate(roots):
             manifests = self._manifests_of(root)
             if manifests is None:
                 return _Answer(problem=self._manifest_problem[self._root_key(root)])
             for _, base, entries in manifests:
                 if project_id in entries:
-                    return self._entry_answer(entries[project_id], base)
+                    answer = self._entry_answer(entries[project_id], base)
+                    if index == 0 or answer.problem is not None:
+                        return answer
+                    # Another project's manifest decided: the search from the
+                    # asking project must not disagree (Design 3.4).
+                    conflict = self._search_conflict(
+                        project_id, named_by, answer, self._searched(project_id, named_by))
+                    return answer if conflict is None else _Answer(
+                        problem=conflict, named=True)
         matches, problems = _search(self, project_id, named_by)
         if problems:
             rendered = [self._recorded(path, message) for path, message in problems]
@@ -1538,6 +1563,16 @@ class FsProjectRegistry(ProjectRegistry):
             f"project '{project_id}' is not on this machine: no manifest lists it, "
             f"and no folder next to {named_by} or enclosing it declares it; add it "
             f"to {MANIFEST} or {LOCAL_MANIFEST}"))
+
+    def _searched(self, project_id: str, named_by: Path) -> list[Path]:
+        """The distinct folders the search from `named_by` finds declaring
+        `project_id`, its problems left to a lookup that the search decides."""
+        matches, _ = _search(self, project_id, named_by)
+        distinct: dict[Any, Path] = {}
+        for match in matches:
+            folder = root_of(self._worktree_copy(_config_file(match / SENTINEL)))
+            distinct.setdefault(self._identity(folder), folder)
+        return list(distinct.values())
 
     def _entry_answer(self, entry: ManifestEntry, base: Path, *,
                       record: bool = True) -> _Answer:
@@ -1568,7 +1603,7 @@ class FsProjectRegistry(ProjectRegistry):
                     isinstance(listing, list) and [n for n, _ in listing] in ([], [".git"])):
                 only_git = isinstance(listing, list) and bool(listing)
                 return _Answer(entry=entry, entry_folder=folder, named=True,
-                               message=self._not_here(entry, only_git))
+                               message=self._not_here(entry, folder, only_git))
             if isinstance(listing, OSError):
                 wrong = (f"places it at {folder}, which cannot be listed, so whether "
                          f"it is empty is not known: {listing.strerror or listing}")
@@ -1601,6 +1636,12 @@ class FsProjectRegistry(ProjectRegistry):
         manifests = self._manifests_of(self.project_root) or []
         personal = {entry_id: file for file, _, entries in manifests
                     if file.name == LOCAL_MANIFEST_NAME for entry_id in entries}
+        # What could not be checked for a project this entry places (Design
+        # 6.5's last paragraph), added to its finding rather than given one
+        # of its own.
+        owned = self.manifest_files()
+        unchecked = {record["id"]: record["message"] for record in self._availability()
+                     if record["decided_by"] in owned}
         findings: list[Finding] = []
         for file, base, entries in manifests:
             for entry in entries.values():
@@ -1613,12 +1654,88 @@ class FsProjectRegistry(ProjectRegistry):
                           else self._variable_places(entry.id))
                 overridden = "" if by is None else f" (overridden on this machine by {by})"
                 if answer.problem is None:
+                    suffix = ""
+                    if entry.id in unchecked and unchecked[entry.id].startswith(
+                            answer.message):
+                        suffix = unchecked.pop(entry.id)[len(answer.message):]
                     findings.append(Finding("unresolved", str(file),
-                                            answer.message + overridden))
+                                            answer.message + suffix + overridden))
                 else:
                     findings.append(Finding("error" if by is None else "warning",
                                             str(file), answer.problem + overridden))
         return findings
+
+    def _availability(self) -> list[dict]:
+        """Design 6.5's rows (a), (b) and (d), one record per project of the
+        family's load order or listed by a member of the family below it
+        that is not on this machine or whose links could not be read: its
+        ID, its `where` (the file naming it), its message, and the manifest
+        whose entry decided where a missing one should be."""
+        self._load_graph()
+        here = self.current.id
+        try:
+            order = self.load_order()
+        except ProjectGraphError:
+            return []
+        records: dict[str, dict] = {}
+
+        def note(project_id: str, where: Path, row: str, lister: str) -> None:
+            cfg = self._any_config(project_id)
+            if cfg is not None and cfg.link_problem is None:
+                return
+            if cfg is not None:
+                text = (f"could not check what '{project_id}' passes down to "
+                        f"'{here}': {cfg.link_problem}" if row == "a" else
+                        f"could not check that '{project_id}' names '{lister}' as a "
+                        f"parent: {cfg.link_problem}")
+                records.setdefault(project_id, {"id": project_id, "where": where,
+                                                "message": text, "decided_by": None})
+                return
+            absent = self.unreachable_project(project_id)
+            if absent is None:
+                return
+            suffix = (f"; could not check what it passes down to '{here}' or the "
+                      f"projects above it" if row == "a" else
+                      f"; could not check that it names '{lister}' as a parent")
+            record = records.setdefault(project_id, {
+                "id": project_id, "where": Path(absent.declared_in),
+                "message": absent.message or (
+                    f"connected project '{project_id}' is declared but not reachable "
+                    f"in this checkout ({absent.locator})"),
+                "suffixes": [], "decided_by": absent.decided_by})
+            if suffix not in record["suffixes"]:
+                record["suffixes"].append(suffix)
+
+        for project_id in order.ids[:-1]:
+            if project_id in order.missing or project_id in order.unreadable:
+                note(project_id, self._naming_file(project_id), "a", here)
+        for member in [self.current, *self.descendants()]:
+            cfg = self._by_id[member.id]
+            for child_id in self.declared_child_ids(member.id):
+                if child_id not in order.ids:
+                    note(child_id, cfg.path, "b", member.id)
+        for record in records.values():
+            record["message"] += "".join(record.pop("suffixes", []))
+        return list(records.values())
+
+    def _naming_file(self, project_id: str) -> Path:
+        """The configuration whose link first named `project_id`."""
+        absent = self.unreachable_project(project_id)
+        if absent is not None:
+            return Path(absent.declared_in)
+        cfg = self._any_config(project_id)
+        return self._reached_from.get(cfg.path, self._current_path) if cfg \
+            else self._current_path
+
+    def availability_findings(self) -> list[Finding]:
+        """One `unresolved` finding per project Design 6.5 reports, except a
+        missing one whose deciding entry is in the active project's own
+        manifests: `manifest_findings` reports that one, with the same
+        suffixes (TCW-107 Design 5.1)."""
+        owned = self.manifest_files()
+        return [Finding("unresolved", str(record["where"]), record["message"])
+                for record in self._availability()
+                if record["decided_by"] is None or record["decided_by"] not in owned]
 
     @staticmethod
     def _variable_places(project_id: str) -> str | None:
@@ -1634,16 +1751,17 @@ class FsProjectRegistry(ProjectRegistry):
             return None
 
     @staticmethod
-    def _not_here(entry: ManifestEntry, only_git: bool) -> str:
+    def _not_here(entry: ManifestEntry, folder: Path, only_git: bool) -> str:
         """Design 6.2's message for a project its deciding entry places in a
-        folder that is not here, or empty."""
+        folder that is not here, or empty, naming the folder the entry was
+        resolved to, as the error lines for a wrong folder do (TCW-108 AC 36)."""
         message = (f"project '{entry.id}' is not on this machine: {entry.file} places "
-                   f"it at {entry.path}")
+                   f"it at {folder}")
         if entry.repository is None:
-            return message + (f"; {_holds_only_git(entry.path)}" if only_git else "")
+            return message + (f"; {_holds_only_git(str(folder))}" if only_git else "")
         fetch = f"fetch it with 'tcw project provision {entry.id}'"
         if only_git:
-            fetch = f"{_holds_only_git(entry.path)}, then {fetch}"
+            fetch = f"{_holds_only_git(str(folder))}, then {fetch}"
         return f"{message}, from {entry.repository}; {fetch}"
 
     def _search_candidates(self, named_by: Path):
@@ -1690,9 +1808,26 @@ class FsProjectRegistry(ProjectRegistry):
 
 
 def _named_ids(cfg: _Config | None) -> set[str]:
+    """The IDs a configuration's `parents:` and `children:` name; an
+    ancestor's `children:` counts, read as names (Design 3.4)."""
     if cfg is None:
         return set()
-    return {*cfg.parent, *cfg.children, *cfg.upstream}
+    return {*(link.id for link in cfg.links or []), *cfg.children}
+
+
+def _reached_up(project_id: str, links: dict) -> tuple[str, ...]:
+    """The projects above `project_id` by parent links, depth first in
+    listing order, for a graph with a loop, where there is no load order."""
+    placed: list[str] = []
+
+    def climb(pid: str) -> None:
+        for link in links.get(pid, ()):
+            if link.id not in placed and link.id != project_id:
+                placed.append(link.id)
+                climb(link.id)
+
+    climb(project_id)
+    return tuple(reversed(placed))
 
 
 def _not_utf8(error: UnicodeDecodeError) -> str:

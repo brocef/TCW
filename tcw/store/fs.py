@@ -329,7 +329,8 @@ def refuse_retired_config(start: Path | None = None) -> None:
 
     Outside a project, or with a config that does not parse, it says nothing:
     the command's own reading reports those. Another project's config is not
-    read here, so an upstream's own connections stay its own business.
+    read here, so a parent's own links stay its own business (TCW-108 Design
+    6.6).
     """
     root = find_project_root(start)
     if root is None:

@@ -82,7 +82,8 @@ def test_registered_topology_is_transitive_and_layout_independent(tmp_path):
     registry = FsProjectRegistry.open(root).require_valid()
     assert folders(registry.children()) == [child]
     assert folders(registry.descendants()) == [child, deep]
-    assert folders(FsProjectRegistry.open(deep).require_valid().ancestors()) == [child, root]
+    # The load order without the project, farthest first (TCW-108 Design 3.2).
+    assert folders(FsProjectRegistry.open(deep).require_valid().ancestors()) == [root, child]
 
 
 def test_valid_unregistered_nodes_and_decoy_trees_are_ignored(tmp_path):

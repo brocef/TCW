@@ -90,8 +90,10 @@ def test_an_entry_whose_folder_is_absent_is_not_on_this_machine(tmp_path):
     with pytest.raises(Unreachable) as raised:
         lookup(app, "lib")
     message = str(raised.value)
+    # TCW-108 AC 36: the folder the entry was resolved to.
+    gone = (tmp_path / "gone").resolve()
     assert message == (f"project 'lib' is not on this machine: {manifest} places it "
-                       f"at ../gone, from https://h/lib.git#main; fetch it with "
+                       f"at {gone}, from https://h/lib.git#main; fetch it with "
                        f"'tcw project provision lib'")
     assert raised.value.code == codes.UNREACHABLE
     # TCW-114's handoff: the deciding entry's repository as an attribute.
@@ -105,7 +107,7 @@ def test_an_entry_without_a_repository_names_no_command(tmp_path):
     with pytest.raises(Unreachable) as raised:
         lookup(app, "lib")
     assert str(raised.value) == (f"project 'lib' is not on this machine: {manifest} "
-                                 f"places it at ../gone")
+                                 f"places it at {(tmp_path / 'gone').resolve()}")
     assert raised.value.repository is None
 
 
@@ -251,7 +253,8 @@ def test_an_entry_folder_holding_only_git_says_so(tmp_path):
     with pytest.raises(Unreachable) as raised:
         lookup(app, "lib")
     message = str(raised.value)
-    assert "../lib holds only .git; finish or remove it with git" in message
+    assert (f"{(tmp_path / 'lib').resolve()} holds only .git; finish or remove it "
+            f"with git") in message
     assert message.index("holds only .git") < message.index("tcw project provision")
 
 
@@ -337,7 +340,7 @@ def test_entries_never_merge(tmp_path, monkeypatch):
     write_manifest(app, {"lib": "../gone2"}, local=True)
     with pytest.raises(Unreachable) as raised:
         lookup(app, "lib")
-    assert "../gone2" in str(raised.value)
+    assert str((tmp_path / "gone2").resolve()) in str(raised.value)
     assert "https://h/l.git" not in str(raised.value)
     assert raised.value.repository is None
 
@@ -361,7 +364,7 @@ def test_a_children_cycle_ends_the_walk_and_is_reported(tmp_path):
     registry = FsProjectRegistry.open(p)
     with pytest.raises(UnknownProject):
         registry.project_folder("z", p)
-    assert "cycle in projects" in texts(registry)
+    assert "loop in parents: p -> q -> p" in texts(registry)      # TCW-108 Design 4.7
 
 
 def test_a_parent_cycle_ends_the_walk(tmp_path):
@@ -387,7 +390,8 @@ def test_an_id_only_upstream_reading_a_parent_claim_is_not_said_to_point_elsewhe
     proj(tmp_path / "lib", "lib", parent=["app"])
     registry = FsProjectRegistry.open(app)
     assert "does not point back" not in texts(registry)
-    assert any("read as an upstream project" in w for w in registry.warnings())
+    # The 3.x upstream is a parent, so the two name each other (TCW-108 4.7).
+    assert "loop in parents: app -> lib -> app" in texts(registry)
 
 
 def test_an_ancestors_manifest_places_a_project(tmp_path):
@@ -407,30 +411,34 @@ def test_an_ancestors_manifest_places_a_project(tmp_path):
     assert registry.found("desktop") is None
 
 
-def test_an_upstreams_manifest_is_not_read(tmp_path):
-    """AC 5a."""
+def test_a_former_upstreams_manifest_is_an_ancestors(tmp_path):
+    """TCW-107's AC 5a, as TCW-108 Design 3.4 changes it: a 3.x upstream is
+    a parent, and its manifest counts as an ancestor's."""
     app = proj(tmp_path / "app", "app", upstream=["lib", "y"])
     lib = proj(tmp_path / "lib", "lib")
-    proj(tmp_path / "x" / "y", "y")
+    y = proj(tmp_path / "x" / "y", "y")
     write_manifest(lib, {"y": "../x/y"})
     registry = FsProjectRegistry.open(app)
     assert registry.get("lib") is not None
-    assert registry.get("y") is None
-    assert [u.id for u in registry.unreachable()] == ["y"]
+    assert Path(registry.get("y").locator) == y
+    assert registry.found("y") == {"by": "manifest",
+                                   "file": str(lib / ".tcw/tcw-manifest.yaml")}
+    assert registry.unreachable() == []
 
 
 def test_a_descendants_manifest_and_the_own_one_first(tmp_path):
-    """AC 6."""
-    docs = proj(tmp_path / "docs", "docs", children=["shared"], upstream=["core"])
+    """AC 6. `core` is a listed child, looked up after `shared`: a parent is
+    found before any child is looked up (TCW-108 Design 3.4, 2.11 a)."""
+    docs = proj(tmp_path / "docs", "docs", children=["shared", "core"])
     shared = proj(tmp_path / "docs" / "shared", "shared", parent=["docs"])
-    core = proj(tmp_path / "x" / "core", "core")
+    core = proj(tmp_path / "x" / "core", "core", parent=["docs"])
     write_manifest(docs, {"shared": "shared"})
     write_manifest(shared, {"core": "../../x/core"})
     registry = FsProjectRegistry.open(docs)
     assert registry.check() == []
     assert Path(registry.get("core").locator) == core
     assert registry.found("core")["file"] == str(shared / ".tcw/tcw-manifest.yaml")
-    copy = proj(tmp_path / "y" / "core", "core")
+    copy = proj(tmp_path / "y" / "core", "core", parent=["docs"])
     write_manifest(docs, {"core": "../y/core"})
     registry = FsProjectRegistry.open(docs)
     assert Path(registry.get("core").locator) == copy
@@ -495,7 +503,9 @@ def test_one_folder_per_id_in_the_walk(tmp_path):
     two = proj(tmp_path / "c2", "core")
     write_manifest(app, {"lib": "lib", "core": "../c1"})
     write_manifest(lib, {"core": "../../c2"})
-    problems = texts(FsProjectRegistry.open(app))
+    # From `lib`, whose parents are `app` and `core`: a descendant's other
+    # parents are not followed from `app` (TCW-108 Design 3.1).
+    problems = texts(FsProjectRegistry.open(lib))
     assert "duplicate project id 'core'" in problems
     assert str(one) in problems and str(two) in problems
 
@@ -595,7 +605,7 @@ def test_the_note_for_a_project_not_here_is_design_6_2s_message(tmp_path):
                                             "repository": "https://h/lib.git"}})
     note = unreachable_project_note(FsProjectRegistry.open(app), "lib")
     assert note == (f"project 'lib' is not on this machine: {manifest} places it at "
-                    f"../gone, from https://h/lib.git; fetch it with "
+                    f"{(tmp_path / 'gone').resolve()}, from https://h/lib.git; fetch it with "
                     f"'tcw project provision lib'")
     assert "tcw provision`" not in note
 
@@ -647,7 +657,7 @@ def test_a_write_drops_the_registry_within_the_command(tmp_path, command):
     assert write_sentinel(root, "fresh")
     second = FsProjectRegistry.open(root)
     assert second is not first and second.current.id == "fresh"
-    assert second.declared_upstream_ids() == ["lib"]
+    assert [link.id for link in second.parents()] == ["lib"]
     _atomic_write_all([(root / ".tcw" / "tcw-manifest.yaml",
                         "tcw-version: 4.0.0\nprojects: {lib: ../lib}\n")])
     third = FsProjectRegistry.open(root)

@@ -1,7 +1,7 @@
 """`tcw projects list` (TCW-73 Design 2; AC 7's last part).
 
-One project ID per line, this project first, then its parent, children and
-upstream projects, present or not; `--json` says which is which.
+One project ID per line, this project first, then its parents and its
+children, present or not; `--json` says which is which.
 """
 
 import json
@@ -56,7 +56,9 @@ def run(monkeypatch, capsys, cwd, *argv):
 def test_one_id_per_line_current_first(graph, monkeypatch, capsys):
     code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
     assert code == 0, err
-    assert out.splitlines() == ["fx", "top", "c1", "c2", "gone", "up"]
+    # TCW-108 Design 8.1: the parents in listing order, then the children;
+    # the 3.x upstream is a parent.
+    assert out.splitlines() == ["fx", "top", "up", "c1", "c2", "gone"]
 
 
 def test_json_says_relation_and_presence(graph, monkeypatch, capsys):
@@ -64,9 +66,9 @@ def test_json_says_relation_and_presence(graph, monkeypatch, capsys):
     data = json.loads(out)
     assert data["schema"] == 2
     rows = {p["id"]: p for p in data["projects"]}
-    assert [p["id"] for p in data["projects"]] == ["fx", "top", "c1", "c2", "gone", "up"]
+    assert [p["id"] for p in data["projects"]] == ["fx", "top", "up", "c1", "c2", "gone"]
     assert rows["fx"]["relation"] == "current" and rows["top"]["relation"] == "parent"
-    assert rows["c1"]["relation"] == "child" and rows["up"]["relation"] == "upstream"
+    assert rows["c1"]["relation"] == "child" and rows["up"]["relation"] == "parent"
     assert rows["gone"]["present"] is False and rows["gone"]["path"] is None
     assert rows["c1"]["present"] is True and rows["c1"]["path"].endswith("c1")
 

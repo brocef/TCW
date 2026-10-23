@@ -249,19 +249,10 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         # `validate` is not reached, so the configuration findings it would
         # have led with are added here.
         return _report([*config_findings(project_root), *graph], project_root)
-    findings: list[Finding] = []
-    # An entry of this project's own manifests is reported once, by
-    # `manifest_findings` below (TCW-107 Design 5.1).
-    owned = registry.manifest_files()
-    for absent in registry.unreachable():
-        if absent.decided_by is not None and absent.decided_by in owned:
-            continue
-        if absent.message:
-            message = absent.message                     # TCW-107 Design 6.2
-        else:
-            message = (f"connected project '{absent.id}' is declared but not "
-                       f"reachable in this checkout ({absent.locator})")
-        findings.append(Finding("unresolved", str(absent.declared_in), message))
+    # A project of the family that is not available here, one finding each
+    # (TCW-108 Design 6.5); one that this project's own manifests place is
+    # reported once, by `manifest_findings` (TCW-107 Design 5.1).
+    findings: list[Finding] = registry.availability_findings()
     findings += registry.manifest_findings()
     findings += registry.warning_findings()
     notes: list[str] = []
