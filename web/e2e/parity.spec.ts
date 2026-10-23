@@ -5,6 +5,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 const PUBLIC_PORT = 8891
+// The served project's ID: every object it owns is named
+// `<PROJECT>.<namespace>/<id-path>`.
+const PROJECT = "playwright-project"
 const baseUrl = `http://127.0.0.1:${PUBLIC_PORT}`
 let server: ChildProcess
 let serverError = ""
@@ -32,15 +35,14 @@ async function stableScreenshot(page: Page, name: string) {
 test.beforeAll(async () => {
     projectRoot = await mkdtemp(join(tmpdir(), "tcw-playwright-"))
     spawnSync("git", ["init", "-q"], { cwd: projectRoot, stdio: "inherit" })
-    const initialized = spawnSync(
-        "tcw",
-        ["init", "--id", "playwright-project"],
-        { cwd: projectRoot, encoding: "utf8" }
-    )
+    const initialized = spawnSync("tcw", ["init", "--id", PROJECT], {
+        cwd: projectRoot,
+        encoding: "utf8",
+    })
     if (initialized.status !== 0) throw new Error(initialized.stderr)
     // The tag registry the tag chips and the board's tag filter offer.
     await appendFile(
-        join(projectRoot, "tcw-config.yaml"),
+        join(projectRoot, ".tcw", "tcw-config.yaml"),
         "work:\n  tags: [ui, api]\n"
     )
     server = spawn(
@@ -286,7 +288,7 @@ test("searches references and surfaces targeted validation warnings", async ({
     // Enter alone commits what was typed; an arrow key picks a suggestion.
     await featureInput.press("ArrowDown")
     await featureInput.press("Enter")
-    await expect(featureInput).toHaveValue("use-feature")
+    await expect(featureInput).toHaveValue(`${PROJECT}.taxonomy/use-feature`)
     // A reference that names nothing is refused in the field: it is not
     // kept, the field says why, and the form will not save until it is
     // fixed.
@@ -308,7 +310,9 @@ test("searches references and surfaces targeted validation warnings", async ({
     const saved = await (
         await request.get(`${baseUrl}/api/capabilities/react%2Fnative-client`)
     ).json()
-    expect(saved.capability.fields.Feature).toBe("use-feature")
+    expect(saved.capability.fields.Feature).toBe(
+        `${PROJECT}.taxonomy/use-feature`
+    )
 })
 
 test("applies axis-specific facets and browser history navigation", async ({
@@ -370,7 +374,11 @@ test("creates a work item, lists it, and filters the board by tag and stage", as
     await page.keyboard.press("Escape")
     await expect(page.getByRole("treeitem")).toHaveCount(1)
     await expect(page.getByText("Tagged item", { exact: true })).toBeVisible()
-    await page.getByRole("checkbox", { name: "ui" }).click({ force: true })
+    // The filter's menu closed with Escape: open it again to clear the tag.
+    await page.getByRole("button", { name: /^Tags/ }).click()
+    await page.getByRole("checkbox", { name: "ui" }).click()
+    await page.keyboard.press("Escape")
+    await expect(page.getByRole("treeitem")).toHaveCount(2)
 
     await page.getByRole("button", { name: /^Stage/ }).click()
     const stages = await page.getByRole("checkbox").allTextContents()
@@ -389,7 +397,7 @@ test("an item's page shows its stage, files by stage, and no lifecycle control",
     const folder = item.path.split("/").pop()
     await page.goto(`${baseUrl}/work/${folder}`)
     await expect(page.locator(".stage-line")).toContainText(
-        `tcw work advance ${item.slug}`
+        `tcw work advance ${item["full-id"]}`
     )
     for (const name of ["Advance", "Complete", "Start", "Drop", "Discard"])
         await expect(page.getByRole("button", { name })).toHaveCount(0)
@@ -415,10 +423,10 @@ test("edits properties and adds a comment in filesystem mode", async ({
     // The properties' Edit, not a stage file's in the open tab.
     await page.locator(".detail-head .edit-btn").click()
     await page.getByLabel("Priority").click()
-    await page.getByRole("option", { name: "high" }).click()
+    await page.getByRole("option", { name: "high", exact: true }).click()
     // Another project's item is kept with a warning: this page cannot check it.
     const blockedBy = page.getByRole("combobox", { name: "Blocked by" })
-    await blockedBy.fill("other-project/2026-01-01-x")
+    await blockedBy.fill("other-project.work/2026-01-01-x")
     await blockedBy.press("Enter")
     await expect(page.locator(".field-warning")).toContainText("other-project")
     await page.getByRole("button", { name: "Save" }).click()
@@ -449,6 +457,11 @@ test("edits the declaration as lists, and as text when it cannot be parsed", asy
     await added.fill("web/new-thing")
     await added.press("Enter")
     await section.getByRole("button", { name: "Save" }).click()
+    // The draft shows the entry before the save lands; the form's note
+    // going (it stays while the button reads "Saving...") says it has.
+    await expect(section).not.toContainText(
+        "Comments in this file are not kept"
+    )
     await expect(section).toContainText("web/new-thing")
 
     const path = join(projectRoot, "docs", "work", folder, "capabilities.yaml")
@@ -492,8 +505,19 @@ test("typing tcw:// in a document offers objects from every axis", async ({
     const links = page.getByRole("listbox", { name: "Links" })
     await expect(links).toContainText("Plain item")
     await editor.press("Enter")
-    await expect(editor).toHaveValue(/See tcw:\/\/W\/\d{4}-\d{2}-\d{2}-/)
+    await expect(editor).toHaveValue(
+        new RegExp(`See tcw://${PROJECT}\\.work/\\d{4}-\\d{2}-\\d{2}-`)
+    )
+    // Choosing a link puts the caret after it in the next animation frame;
+    // typing before then would land where the caret is moved from.
+    await page.evaluate(
+        () => new Promise((done) => requestAnimationFrame(() => done(null)))
+    )
     await editor.pressSequentially(" and tcw://react")
-    await expect(links).toContainText("tcw://T/react-vocabulary")
-    await expect(links).toContainText("tcw://C/react/native-client")
+    await expect(links).toContainText(
+        `tcw://${PROJECT}.taxonomy/react-vocabulary`
+    )
+    await expect(links).toContainText(
+        `tcw://${PROJECT}.capabilities/react/native-client`
+    )
 })
