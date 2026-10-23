@@ -26,9 +26,10 @@ from pathlib import Path
 
 import yaml
 
-from tcw.errors import BackendError, NotFound, Refused, TcwError, UsageError
+from tcw.errors import BackendError, NotFound, Refused, TcwError, Unreachable, UsageError
 from tcw.findings import Finding
-from tcw.ids import FullId, IdError, MalformedId, id_path_problem, parse_stored, sort_input
+from tcw.ids import (SCHEME, FolderAddress, FullId, IdError, MalformedId, id_path_problem,
+                     parse_address, parse_stored, sort_input)
 from tcw.output import shown as _shown
 from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
 from tcw.store.base import (
@@ -86,13 +87,9 @@ class WorkLocation:
         return resolve_store(cls, Path(project_root))
 
     @classmethod
-    def _local_root(cls, project_root: Path, configured: str | None) -> Path:
-        if configured is None:
-            return project_root / "docs" / cls.COMPONENT
-        value = Path(configured).expanduser()
-        if value.is_absolute():
-            return value
-        return anchor_configured_path(project_root, value) / value
+    def _local_root(cls, project_root: Path, configured: str | None, *,
+                    locator=None) -> Path:
+        return store_location(project_root, cls.COMPONENT, configured, locator=locator)
 
     @classmethod
     def _open_at(cls, raw_root: Path, project_root: Path, config_path: Path, *,
@@ -400,9 +397,10 @@ def tree_store_present(project_root: Path, component: str) -> bool:
     Subject or Feature against a moved taxonomy. Deliberately not "open it and
     see", which `tcw validate` uses: `extends` alone is not a location, and a
     project that only inherits a taxonomy should not have its capability checks
-    fail on that inheritance.
+    fail on that inheritance. It resolves no location: presence is read from
+    the configuration's keys (TCW-110 Design 7.5).
     """
-    if (project_root / "docs" / component).is_dir():
+    if store_location(project_root, component, None).is_dir():
         return True
     try:
         config = load_config(project_root / SENTINEL)
@@ -674,9 +672,14 @@ def init(components: list[str], root: Path, project_id: str | None = None,
             problem = store_location_problem(f"{c}.path", configured_path)
             if problem:
                 raise ValueError(f"{root / SENTINEL}: {problem}")
-            paths[c] = Path(configured_path).expanduser()
+            paths[c] = Path(configured_path)
             configured_text[c] = configured_path
             read_from_config.add(c)
+    # Where each store is, as the readers find it (`store_location`): a
+    # relative path leaving a linked worktree re-anchors there, and a folder
+    # address resolves, so a store is built where it will be looked for.
+    located = {c: store_location(root, c, configured_text.get(c, str(given)))
+               for c, given in paths.items() if c in components}
     work_path = paths.get("work")
     # Everything `init` can refuse over, decided before it writes anything at
     # all — the sentinel included. It writes two locations, and each of these
@@ -686,7 +689,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     default_root = root / "docs" / "work"
     replacing_default_store = False
     if work_path is not None and "work" in components:
-        target = work_path if work_path.is_absolute() else root / work_path
+        target = located["work"]
         if default_root.exists() and default_root.resolve() != target.resolve():
             # `is_symlink` first: replacing a default store means deleting it,
             # and a symlink is someone else's directory. Anything in it but
@@ -716,15 +719,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     # that makes them, so there is only one of it.
     plan: list[tuple[str, Path, list[Path]]] = []
     for c in components:
-        configured = paths.get(c)
-        if c != "work" and c in configured_text:
-            # Where the readers will look for it (`resolve_store`), not merely
-            # `root / path`: a relative path leaving a linked worktree re-anchors
-            # there, and a store built anywhere else is one nobody finds.
-            base = STORE_CLASSES[c]._local_root(root, configured_text[c])
-        else:
-            base = ((configured if configured.is_absolute() else root / configured)
-                    if configured is not None else root / "docs" / c)
+        base = located.get(c) or store_location(root, c, None)
         section = existing_config.get(c)
         if (c != "work" and isinstance(section, dict)
                 and section.get("repository") is not None and not base.exists()):
@@ -1475,16 +1470,12 @@ class FsTreeStore:
         return resolve_store(cls, project_root, _walk=_walk)
 
     @classmethod
-    def _local_root(cls, project_root: Path, configured: str | None) -> Path:
+    def _local_root(cls, project_root: Path, configured: str | None, *,
+                    locator=None) -> Path:
         """Where this component's tree sits on this machine, per
-        `<component>.path`, or the default `docs/<component>`. A relative path
-        re-anchors per `anchor_configured_path`."""
-        if configured is None:
-            return project_root / "docs" / cls.COMPONENT
-        value = Path(configured).expanduser()
-        if value.is_absolute():            # names a place, not an offset
-            return value
-        return anchor_configured_path(project_root, value) / value
+        `<component>.path`, or the default `docs/<component>`
+        (`store_location`)."""
+        return store_location(project_root, cls.COMPONENT, configured, locator=locator)
 
     @classmethod
     def _open_at(cls, raw_root: Path, project_root: Path, config_path: Path, *,
@@ -3509,6 +3500,80 @@ def _registry_checkout_root(
     return (found / declaration.path) if declaration.path else found
 
 
+class LocationProjectAbsent(StoreLocationUnusable):
+    """A store location is a folder address naming a project that is not on
+    this machine (TCW-110 Design 7.2): the location is unusable, so a declared
+    `repository` still answers; with none the command stops with exit 5."""
+
+    def __init__(self, unreachable: Unreachable):
+        super().__init__(str(unreachable))
+        self.unreachable = unreachable
+
+
+def store_location(project_root: Path, component: str, configured: str | None, *,
+                   locator=None, chain: tuple = ()) -> Path:
+    """The folder a configured `<component>.path` names, written in the
+    configuration of the project at `project_root` (TCW-110 Design 7.5): the
+    one function every reader calls.
+
+    `None` is the default `docs/<component>`. A plain path is relative to the
+    project, re-anchored in a linked worktree (`anchor_configured_path`). A
+    folder address is resolved by Design 7.2 through `locator`, the command's
+    one `Locator` (the active project's when None): `tcw://<id>.path/<rest>`
+    is that project's root joined with `<rest>`, and
+    `tcw://<id>.<namespace>.path/<rest>` that project's own location for
+    `<namespace>`, resolved from its own configuration by this same function,
+    joined with `<rest>`. `chain` is the (project, namespace) pairs already
+    followed; reaching one again is a loop (Design 7.3).
+
+    Raises `StoreDeclarationError` for an address that is malformed, names an
+    object, or loops; `LocationProjectAbsent` for a project not on this
+    machine; and `ProjectGraphError` (an unknown ID included) as the lookup
+    does."""
+    if configured is None:
+        return project_root / "docs" / component
+    if not configured.startswith(SCHEME):
+        value = Path(configured).expanduser()
+        if value.is_absolute():            # names a place, not an offset
+            return value
+        return anchor_configured_path(project_root, value) / value
+    key = f"{component}.path"
+    try:
+        found = parse_address(configured)
+    except IdError as error:
+        raise StoreDeclarationError(f"{key}: {error}") from None
+    if not isinstance(found, FolderAddress):
+        raise StoreDeclarationError(
+            f"{key}: {configured} names an object, not a folder; a store location "
+            f"is a folder address, tcw://<project>[.<namespace>].path/<folder>")
+    if not chain:
+        own = load_config(project_root / SENTINEL)
+        chain = ((own.get("id") if isinstance(own, dict) else None, component),)
+    if locator is None:
+        from tcw.locate import Locator
+        locator = Locator.of(project_root)
+    try:
+        root = locator.owner_root(found.project, Path(project_root))
+    except Unreachable as error:
+        raise LocationProjectAbsent(error) from None
+    if found.namespace is None:
+        return root.joinpath(*found.parts)
+    pair = (found.project, found.namespace)
+    if pair in chain:
+        followed = " -> ".join(f"{p} {n}" for p, n in (*chain, pair))
+        raise StoreDeclarationError(
+            f"{chain[0][1]}.path: store locations loop: {followed}")
+    named = load_config(root / SENTINEL)
+    section = named.get(found.namespace) if isinstance(named, dict) else None
+    inner = section.get("path") if isinstance(section, dict) else None
+    if inner is not None and not isinstance(inner, str):
+        raise StoreDeclarationError(
+            f"{root / SENTINEL}: {found.namespace}.path must be a non-empty path string")
+    base = store_location(root, found.namespace, inner, locator=locator,
+                          chain=(*chain, pair))
+    return base.joinpath(*found.parts)
+
+
 def resolve_store(store_cls, project_root: Path, _walk=None):
     """This project's store for `store_cls`'s component, in one ordered ladder.
 
@@ -3554,9 +3619,25 @@ def resolve_store(store_cls, project_root: Path, _walk=None):
     if configured is not None and (not isinstance(configured, str) or not configured.strip()):
         raise ValueError(
             f"{config_path}: {component}.path must be a non-empty path string")
-    raw_root = store_cls._local_root(project_root, configured)
     declaration, declaration_problems = parse_repository_declaration(
         section.get("repository"), f"{component}.repository")
+    locator = None
+    if isinstance(configured, str) and configured.startswith(SCHEME):
+        # The command's one `Locator` (TCW-110 Design 6.1): the active
+        # project's, which the walk carries for a store opened on its behalf.
+        from tcw.locate import Locator
+        active = _walk.active_root if _walk is not None and _walk.active_root \
+            else project_root
+        locator = Locator.of(active)
+    try:
+        raw_root = store_cls._local_root(project_root, configured, locator=locator)
+    except LocationProjectAbsent as absent:
+        if declaration is None:
+            raise absent.unreachable from None
+        # Unusable here, so the declaration answers (rules 1.5 to 3).
+        raw_root = None
+    except StoreDeclarationError as wrong:
+        raise StoreDeclarationError(f"{config_path}: {wrong}") from None
 
     # Whether a candidate location has to prove it holds a store. It does once
     # anything points at it — a configured path, or a declaration that gives the
@@ -3591,7 +3672,10 @@ def resolve_store(store_cls, project_root: Path, _walk=None):
                     f"{config_path}: {'; '.join(declaration_problems)}") from None
             raise
 
+    local_failure = None
     try:                                                        # rule 1
+        if raw_root is None:
+            raise StoreLocationUnusable("")
         return store_cls._open_at(
             raw_root, project_root, config_path,
             external=configured is not None, must_exist=must_exist,
@@ -3613,7 +3697,8 @@ def resolve_store(store_cls, project_root: Path, _walk=None):
         # Presence is tested here rather than read out of the message: `_open_at`
         # raises the same "is not a directory" for an absent path and for one
         # that is a file, so the message cannot tell them apart.
-        local_failure = str(unusable) if raw_root.exists() else None
+        local_failure = str(unusable) if raw_root is not None and raw_root.exists() \
+            else None
         prefix = f"{config_path}: "
         if local_failure and local_failure.startswith(prefix):
             local_failure = local_failure[len(prefix):]

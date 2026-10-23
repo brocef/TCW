@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Literal
 
 import yaml
 
+from tcw.errors import ProjectGraphError, Unreachable
 from tcw.findings import Finding
 from tcw.project_files import LEGACY_SENTINEL, SENTINEL
 from tcw.locate import UNRESOLVED
@@ -100,7 +101,8 @@ def _iter(root: Path, pattern: str):
     return sorted(root.rglob(pattern))
 
 
-def _tree_roots(project_root: Path) -> dict[str, "Path | ValueError"]:
+def _tree_roots(project_root: Path, skip: "set[str] | frozenset[str]" = frozenset()
+                ) -> dict[str, "Path | ValueError"]:
     """Each tree store this project has, at its resolved root — or why it could
     not be opened. Resolved once, so scanning and checking cannot disagree about
     where a store is. A store moved by `<c>.path` or kept in another repository
@@ -112,6 +114,8 @@ def _tree_roots(project_root: Path) -> dict[str, "Path | ValueError"]:
     """
     roots: dict[str, Path | ValueError] = {}
     for comp in ("taxonomy", "capabilities"):
+        if comp in skip:
+            continue
         try:
             root = STORE_CLASSES[comp].open(project_root).root
         except ValueError as e:
@@ -126,7 +130,7 @@ def _scan_roots(project_root: Path, trees: dict) -> list[Path]:
     roots = [r for r in trees.values() if isinstance(r, Path)]
     try:
         roots.append(WorkLocation.open(project_root).root)
-    except ValueError:
+    except (ValueError, Unreachable, ProjectGraphError):
         roots.append(project_root / "docs" / "work")
     return roots
 
@@ -157,7 +161,7 @@ def _claims_work(project_root: Path) -> bool:
 def _work_root(project_root: Path) -> Path | None:
     try:
         return WorkLocation.open(project_root).root
-    except ValueError:
+    except (ValueError, Unreachable, ProjectGraphError):
         return None
 
 
@@ -227,17 +231,43 @@ def _configured_path_problem(project_root: Path, comp: str) -> str | None:
     return None
 
 
-def _refused_location(project_root: Path, comp: str) -> bool:
-    """Whether the shared file gives `<comp>.path` a location it refuses
-    (TCW-110 Design 7.1), which the configuration findings already report."""
-    from tcw.config import store_location_problem
+def _location_findings(project_root: Path) -> dict[str, "Finding | None"]:
+    """Each store whose configured location cannot be used, with the finding
+    that says why (TCW-110 Design 7.1, 7.2): None when another finding
+    already does (an absolute or `~` path, reported by `config_findings`).
+    The store is then left out of the checks that would open it, so the run
+    goes on and says it once, at the key.
+
+    A folder address naming a project that is not on this machine is
+    `unresolved`, unless the store declares a repository, which then answers
+    as it does for any unusable location; an unknown project, a graph problem,
+    a malformed address and a loop are errors."""
+    from tcw.config import STORE_COMPONENTS, store_location_problem
+    from tcw.store.base import StoreDeclarationError
+    from tcw.store.fs import LocationProjectAbsent, store_location
     try:
         config = load_yaml(project_root / SENTINEL, unique=True)
     except Exception:
-        return False
-    section = config.get(comp) if isinstance(config, dict) else None
-    value = section.get("path") if isinstance(section, dict) else None
-    return store_location_problem(f"{comp}.path", value) is not None
+        return {}
+    found: dict[str, Finding | None] = {}
+    where = _config_file(project_root)
+    for comp in STORE_COMPONENTS:
+        section = config.get(comp) if isinstance(config, dict) else None
+        value = section.get("path") if isinstance(section, dict) else None
+        if store_location_problem(None, value) is not None:
+            found[comp] = None
+        if not isinstance(value, str) or not value.startswith("tcw://"):
+            continue
+        try:
+            store_location(project_root, comp, value)
+        except LocationProjectAbsent as absent:
+            if section.get("repository") is None:
+                found[comp] = Finding("unresolved", where, f"{comp}.path: {absent}")
+        except (ProjectGraphError, StoreDeclarationError) as error:
+            text = _config_message(error, project_root)
+            found[comp] = Finding("error", where, text if text.startswith(f"{comp}.path")
+                                  else f"{comp}.path: {text}")
+    return found
 
 
 def _config_file(project_root: Path) -> str:
@@ -275,6 +305,12 @@ def _run_check(project_root: Path, comp: str,
         else:
             problems = store.check(identifier)
     except ValueError as e:
+        return [Finding("error", _config_file(project_root), f"{comp}: {e}")]
+    except Unreachable as e:
+        # Another store this check opens is not on this machine (TCW-110
+        # Design 7.2): it could not be checked, and the run goes on.
+        return [Finding("unresolved", _config_file(project_root), f"{comp}: {e}")]
+    except ProjectGraphError as e:
         return [Finding("error", _config_file(project_root), f"{comp}: {e}")]
     return problems
 
@@ -420,7 +456,10 @@ def validate(project_root: Path, *, target: ValidationTarget | None = None,
         return [*configured, *shared]
     if target is not None and target.axis == "work":
         return _work_target_findings(project_root, registry, target)
-    trees = _tree_roots(project_root) if target is None else {}
+    unusable = _location_findings(project_root)
+    if target is None:
+        configured = [*configured, *(f for f in unusable.values() if f is not None)]
+    trees = _tree_roots(project_root, skip=set(unusable)) if target is None else {}
     if target is not None:
         roots = _target_roots(project_root, target)
         if not roots:
@@ -439,8 +478,8 @@ def validate(project_root: Path, *, target: ValidationTarget | None = None,
         # says why. The work store is not among them: its checks are (e).
         components = [target.axis] if target is not None else list(trees)
         for comp in components:
-            if _refused_location(project_root, comp):
-                continue            # reported once, by `config_findings`
+            if comp in unusable:
+                continue            # reported once, at its key
             # Before the component's own check, so a project reads "your path is
             # broken" ahead of whatever the store it fell back to has to say.
             configured = _configured_path_problem(project_root, comp)
@@ -464,7 +503,7 @@ def validate(project_root: Path, *, target: ValidationTarget | None = None,
 
     # (e) The work checks. Not skipped after a YAML problem: they read only the
     # work store, and an unreadable item is one of their own findings.
-    if target is None and _checks_work(project_root):
+    if target is None and "work" not in unusable and _checks_work(project_root):
         findings, note = _work_findings(project_root, registry)
         problems += findings
         if note is not None:
@@ -709,7 +748,7 @@ def _shared_work_paths(registry) -> list[Finding]:
             continue
         try:
             path = work_path(root)
-        except ValueError:
+        except (ValueError, Unreachable, ProjectGraphError):
             continue
         previous = seen.get(path)
         if previous is not None and previous != project.id:
