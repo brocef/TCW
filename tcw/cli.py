@@ -54,6 +54,16 @@ def run_init(components: list[str], project_id: str | None = None,
     if unknown:
         raise UsageError(f"unknown axis {', '.join(repr(c) for c in unknown)}; "
                          f"choose from {', '.join(COMPONENTS)}")
+    # Checked on the text: as a `Path`, `tcw://` collapses to `tcw:/` and
+    # would be scaffolded as a plain folder of that name. Resolving the
+    # address needs the project to exist already, which here it may not.
+    given = {**(paths or {}), **({"work": work_path} if work_path is not None else {})}
+    for c, text in given.items():
+        if text.startswith("tcw:"):
+            raise UsageError(
+                f"--{c}-path {text!r}: init takes a path relative to the "
+                f"project; a store location given as a tcw:// address is written "
+                f"into {SENTINEL} by hand once the project exists")
     sentinel = root / SENTINEL
     if project_id is None:
         configured = load_config(sentinel) if sentinel.exists() else {}
@@ -61,7 +71,6 @@ def run_init(components: list[str], project_id: str | None = None,
             raise UsageError("a new project needs `--id <project-id>`; IDs are not "
                              "inferred")
     from tcw.config import store_location_problem
-    given = {**(paths or {}), **({"work": work_path} if work_path is not None else {})}
     for c, text in given.items():
         problem = store_location_problem(f"{c}.path", text)
         if problem:

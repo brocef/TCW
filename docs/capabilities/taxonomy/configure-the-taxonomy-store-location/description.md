@@ -24,4 +24,6 @@ Nothing changes for a project that sets nothing: the tree resolves to
 `docs/taxonomy` exactly as before, whether or not that folder exists.
 
 I can scaffold the layout at a relative path with
-`tcw init --taxonomy-path <path> taxonomy`.
+`tcw init --taxonomy-path <path> taxonomy`. `tcw init` refuses a `tcw://`
+address there; I write one into `.tcw/tcw-config.yaml` by hand once the project
+exists.

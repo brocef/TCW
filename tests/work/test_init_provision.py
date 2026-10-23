@@ -1,5 +1,6 @@
 """`tcw init` and `tcw provision` on the 3.0 work store (TCW-70 AC 18)."""
 
+import pytest
 import yaml
 
 from tcw.cli import main
@@ -72,3 +73,19 @@ def test_provision_accepts_a_store_of_item_folders(tmp_path, capsys, monkeypatch
     assert (tmp_path / "co" / "docs/work/2026-10-01-a/item.yaml").exists()
     code, out, err = run(capsys, monkeypatch, root, "work", "list")
     assert (code, out) == (0, "p.work/2026-10-01-a\n"), err
+
+
+@pytest.mark.parametrize("option, component", [("--work-path", "work"),
+                                               ("--taxonomy-path", "taxonomy"),
+                                               ("--capabilities-path", "capabilities")])
+def test_init_refuses_a_store_location_given_as_an_address(tmp_path, capsys, monkeypatch,
+                                                           option, component):
+    """Turned into a path, `tcw://qq.path/board` collapses to `tcw:/qq.path/board`
+    and would be written as a plain folder of that name. The project being
+    created cannot yet be found through the registry, so init refuses."""
+    root = repository(tmp_path / "p")
+    code, _, err = run(capsys, monkeypatch, root, "init", "--id", "p",
+                       option, "tcw://qq.path/board", component)
+    assert code == 2, err
+    assert ".tcw/tcw-config.yaml by hand" in err, err
+    assert sorted(p.name for p in root.iterdir()) == [".git"]

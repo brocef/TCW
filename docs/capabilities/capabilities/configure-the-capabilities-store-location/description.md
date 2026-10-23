@@ -24,3 +24,5 @@ capabilities works the same from either location.
 
 Nothing changes for a project that sets nothing. I can scaffold at a configured
 relative path with `tcw init --capabilities-path <path> capabilities`.
+`tcw init` refuses a `tcw://` address there; I write one into
+`.tcw/tcw-config.yaml` by hand once the project exists.

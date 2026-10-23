@@ -192,8 +192,41 @@ tests/serve/test_work_write.py` 52 errors, every one a fixture not found
 
 ## Not done
 
-- The `tcw init` folder-address defect above.
+- Resolving a folder address in `tcw init`; it is refused instead (see
+  "Init and tcw:// path options" below).
 - The full suite is the dispatching session's to run.
+
+## Init and tcw:// path options
+
+The defect is the one found while checking the records above:
+`tcw init --work-path tcw://qq.path/board work`, and the same through
+`--taxonomy-path` and `--capabilities-path`, wrote
+`work.path: tcw:/qq.path/board` and created a plain folder of that name,
+because `run_init` made a `Path` of the text and `Path` collapses `tcw://`
+to `tcw:/`.
+
+Decided by the dispatching session: refuse rather than resolve. Resolving
+the address needs the project to exist, so that the registry can find it,
+and the project being initialized does not exist yet. `run_init`
+(`tcw/cli.py`) now checks each of the three options' text before it becomes
+a `Path`, and refuses any that starts with `tcw:` as a usage error (exit 2,
+nothing written), saying that `init` takes a path relative to the project
+and that a store location given as a `tcw://` address is written into
+`.tcw/tcw-config.yaml` by hand once the project exists. TCW-115's
+`tcw project new` keeps `init`'s arguments, so it inherits the refusal.
+The three store-location capability records (work, taxonomy, capabilities)
+now each say so in one sentence after the `tcw init` example.
+
+Test: `test_init_refuses_a_store_location_given_as_an_address` in
+`tests/work/test_init_provision.py`, parametrized over the three options,
+runs `init --id p <option> tcw://qq.path/board <axis>` in a fresh repository
+and asserts exit 2, the message, and that the folder holds nothing but
+`.git`. Before the change it failed for all three (`3 failed, 4 passed`;
+init exited 0 having written `tcw:/qq.path/board/.gitkeep`); after it,
+`7 passed`. `tests/test_init_configured_tree_path.py`: `8 passed`.
+`tests/test_documented_cli_surface.py`: `454 passed`.
+`pnpm exec prettier --check` over the three records:
+`All matched files use Prettier code style!`
 
 ## The suite
 
