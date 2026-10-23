@@ -139,8 +139,10 @@ def test_a_node_without_tree_stores_reports_nothing_new(tmp_path, config):
 # ── criterion 8: a shared store is reported by each project ──────────────────
 
 def test_a_store_shared_by_two_projects_is_reported_by_each(tmp_path, monkeypatch, capsys):
-    """Each project's own run reports the shared store's problem (TCW-73
-    Design 6: `validate` checks the current project only)."""
+    """Each project's own run reports the shared store (TCW-73 Design 6:
+    `validate` checks the current project only). Since TCW-110 Design 7.4 two
+    projects' stores that are one folder are themselves the error, named
+    with both projects."""
     parent = repo(tmp_path / "parent", "parent")
     child = repo(tmp_path / "child", "child")
     write_connected_config(parent,
@@ -156,8 +158,8 @@ def test_a_store_shared_by_two_projects_is_reported_by_each(tmp_path, monkeypatc
         monkeypatch.chdir(root)
         assert main(["validate"]) == 1
         out = capsys.readouterr().out
-        reported = [line for line in out.splitlines() if "invoice" in line]
-        assert len(reported) == 1, out
+        [reported] = [line for line in out.splitlines() if "same folder" in line]
+        assert "project 'parent'" in reported and "project 'child'" in reported, out
 
 
 # ── review findings: nothing that used to be reported goes quiet ──────────────

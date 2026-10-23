@@ -451,7 +451,8 @@ def validate(project_root: Path, *, target: ValidationTarget | None = None,
     # narrower, never wrong: it can miss a collision a complete checkout would
     # catch, and cannot invent one. The unreachable edges themselves are reported
     # by `tcw validate`'s caller, so they are not silently dropped here.
-    shared = _shared_work_paths(registry)
+    from tcw.locate import Locator
+    shared = _store_overlaps(Locator.of(project_root))
     if shared:
         return [*configured, *shared]
     if target is not None and target.axis == "work":
@@ -730,30 +731,80 @@ def round_findings(work_path: Path, project: str, layout, folders=None) -> list[
     return findings
 
 
-def _shared_work_paths(registry) -> list[Finding]:
-    """Two filesystem-mode projects in the graph whose work paths are the same
-    folder, named with both IDs and the path."""
-    from tcw.store.fs import SENTINEL, load_config
-    from tcw.work.open import work_path
+def _store_overlaps(locator) -> list[Finding]:
+    """Any two stores that are the same folder or one inside the other
+    (TCW-110 Design 7.4), each an error naming both stores, their projects
+    and folders.
 
-    seen: dict[Path, str] = {}
-    for project in [registry.current, *registry.ancestors(), *registry.descendants()]:
-        root = Path(project.locator)
+    The stores compared are the active project's three, and the three of
+    every project its registry connects and of every project one of their
+    store locations names, each project once by ID, so a git worktree and
+    its main checkout are one project. A Jira-mode project's work store
+    counts like any other, and reading its configuration asks Jira nothing.
+    Every lookup goes through `locator`, the command's one `Locator`."""
+    from tcw.config import STORE_COMPONENTS
+    from tcw.ids import FolderAddress, IdError, parse_address
+    from tcw.store.fs import SENTINEL, _in_folder, load_config, store_location
+
+    registry = locator.registry
+    roots: dict[str, Path] = {locator.project_id: locator.root}
+    for project in [*registry.ancestors(), *registry.descendants()]:
+        roots.setdefault(project.id, Path(project.locator))
+    named = list(registry.declared_upstream_ids())
+
+    def locate(project_id: str, named_by: Path) -> None:
+        if project_id in roots:
+            return
         try:
-            raw = load_config(root / SENTINEL)
+            roots[project_id] = locator.owner_root(project_id, named_by)
+        except (Unreachable, ProjectGraphError):
+            pass                 # reported where the name is written
+
+    for project_id in named:
+        locate(project_id, locator.root)
+    stores: list[tuple[str, str, Path]] = []
+    done: set[str] = set()
+    while len(done) < len(roots):
+        project_id = next(p for p in roots if p not in done)
+        done.add(project_id)
+        root = roots[project_id]
+        try:
+            config = load_config(root / SENTINEL)
         except ValueError:
             continue
-        work = raw.get("work") if isinstance(raw, dict) else None
-        if isinstance(work, dict) and work.get("backend", "filesystem") != "filesystem":
-            continue
-        try:
-            path = work_path(root)
-        except (ValueError, Unreachable, ProjectGraphError):
-            continue
-        previous = seen.get(path)
-        if previous is not None and previous != project.id:
-            return [Finding("error", str(root / SENTINEL),
-                            f"projects '{previous}' and '{project.id}' resolve "
-                            f"to the same work path: {path}")]
-        seen[path] = project.id
-    return []
+        for comp in STORE_COMPONENTS:
+            section = config.get(comp) if isinstance(config, dict) else None
+            value = section.get("path") if isinstance(section, dict) else None
+            if isinstance(value, str) and value.startswith("tcw://"):
+                try:
+                    address = parse_address(value)
+                except IdError:
+                    address = None
+                if isinstance(address, FolderAddress):
+                    locate(address.project, root)
+            try:
+                folder = store_location(root, comp, value if isinstance(value, str)
+                                        else None, locator=locator)
+            except (ValueError, Unreachable, ProjectGraphError):
+                continue         # reported at its key
+            if folder.is_dir():
+                stores.append((project_id, comp, folder.resolve()))
+
+    problems = []
+    for i, (p1, c1, f1) in enumerate(stores):
+        for p2, c2, f2 in stores[i + 1:]:
+            if _in_folder(f1, f2, Path(f1.anchor)):
+                inner, outer = (p1, c1, f1), (p2, c2, f2)
+            elif _in_folder(f2, f1, Path(f2.anchor)):
+                inner, outer = (p2, c2, f2), (p1, c1, f1)
+            else:
+                continue
+            how = "is the same folder as" if _in_folder(outer[2], inner[2],
+                                                         Path(outer[2].anchor)) \
+                else "lies inside"
+            problems.append(Finding(
+                "error", _rel(roots[inner[0]] / SENTINEL, locator.root),
+                f"the {inner[1]} store of project '{inner[0]}' ({inner[2]}) {how} "
+                f"the {outer[1]} store of project '{outer[0]}' ({outer[2]}); "
+                f"stores never nest or share a folder"))
+    return problems

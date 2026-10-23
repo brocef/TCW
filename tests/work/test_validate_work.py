@@ -5,7 +5,8 @@ key, never how the line is laid out."""
 import pytest
 
 from tcw.store.fs import FsProjectRegistry
-from tcw.validate import _shared_work_paths, _work_findings
+from tcw.locate import Locator
+from tcw.validate import _store_overlaps, _work_findings
 from tcw.work.config import MIGRATION_GUIDE
 from tests.work.projects import commit_all, connect, make_project, write_item
 
@@ -138,9 +139,10 @@ def test_two_projects_with_one_work_path(tmp_path):
     q = make_project(tmp_path, "q", config={"path": "../p/docs/work"})
     connect(p, q, "children")
     connect(q, p, "parent")
-    [finding] = _shared_work_paths(FsProjectRegistry.open(p))
+    [finding] = _store_overlaps(Locator.of(p))
     line = str(finding)
-    assert "'p'" in line and "'q'" in line
+    assert "the work store of project 'q'" in line and "the work store of project 'p'" \
+        in line and "is the same folder as" in line
     assert str((p / "docs" / "work").resolve()) in line
 
 
@@ -149,7 +151,7 @@ def test_distinct_work_paths_are_fine(tmp_path):
     q = make_project(tmp_path, "q")
     connect(p, q, "children")
     connect(q, p, "parent")
-    assert _shared_work_paths(FsProjectRegistry.open(p)) == []
+    assert _store_overlaps(Locator.of(p)) == []
 
 
 # -- through the command (AC 15) ------------------------------------------------------

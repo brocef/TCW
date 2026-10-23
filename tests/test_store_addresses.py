@@ -255,3 +255,97 @@ def test_init_builds_a_store_at_its_folder_address(tcw, tmp_path):
     assert made.code == 0, made.err
     assert (workspace / "trees" / "app").is_dir()
     assert not (app / "docs" / "taxonomy").exists()
+
+
+# -- stores never nest or coincide (Design 7.4; AC 15, 16) ---------------------------
+
+
+def _overlap(out: str) -> list[str]:
+    return [line for line in out.splitlines()
+            if "same folder as" in line or "lies inside" in line]
+
+
+def _workspace_and_app(tmp_path: Path) -> tuple[Path, Path]:
+    from tests.projectfiles import connect_projects
+    workspace = _project(tmp_path, "workspace")
+    app = _project(tmp_path, "app")
+    connect_projects(app, "upstream", "workspace")
+    return workspace, app
+
+
+def test_ac15_a_store_inside_another_projects_store_fails_validate(tcw, tmp_path):
+    workspace = _project(tmp_path, "workspace")
+    (workspace / "docs" / "work" / "app").mkdir(parents=True)
+    app = _project(tmp_path, "app")
+    set_location(app, "work", "tcw://workspace.work.path/app")
+    checked = tcw(["validate"], app)
+    assert checked.code == 1
+    [line] = _overlap(checked.out)
+    assert "the work store of project 'app'" in line and "lies inside" in line
+    assert "the work store of project 'workspace'" in line
+
+
+def test_ac16_a_plain_path_to_another_projects_store_fails(tcw, tmp_path):
+    workspace, app = _workspace_and_app(tmp_path)
+    set_location(app, "work", "../workspace/docs/work")
+    checked = tcw(["validate"], app)
+    assert checked.code == 1
+    [line] = _overlap(checked.out)
+    assert "is the same folder as" in line
+    assert str((workspace / "docs" / "work").resolve()) in line
+
+
+def test_ac16_a_symlink_does_not_hide_the_same_folder(tcw, tmp_path):
+    workspace, app = _workspace_and_app(tmp_path)
+    (tmp_path / "link").symlink_to(workspace / "docs" / "work")
+    set_location(app, "work", "../link")
+    checked = tcw(["validate"], app)
+    assert checked.code == 1
+    assert len(_overlap(checked.out)) == 1, checked.out
+
+
+def test_ac16_two_stores_of_one_project_may_not_nest(tcw, tmp_path):
+    app = _project(tmp_path, "app")
+    init(["capabilities"], app)
+    (app / "docs" / "capabilities" / "terms").mkdir()
+    set_location(app, "taxonomy", "docs/capabilities/terms")
+    checked = tcw(["validate"], app)
+    assert checked.code == 1
+    [line] = _overlap(checked.out)
+    assert "the taxonomy store of project 'app'" in line
+    assert "the capabilities store of project 'app'" in line
+
+
+def test_ac16_a_sibling_of_another_projects_store_is_allowed(tcw, tmp_path):
+    workspace, app = _workspace_and_app(tmp_path)
+    (workspace / "docs" / "app-work").mkdir()
+    set_location(app, "work", "tcw://workspace.path/docs/app-work")
+    checked = tcw(["validate"], app)
+    assert checked.code == 0, checked.out
+    assert _overlap(checked.out) == []
+
+
+def test_ac16_a_jira_projects_work_store_counts_and_jira_is_not_asked(
+        tcw, tmp_path, monkeypatch):
+    from tests.work.jira.conftest import jira_config
+    workspace, app = _workspace_and_app(tmp_path)
+    path = config_file(workspace)
+    document = yaml.safe_load(path.read_text())
+    document["work"] = jira_config("workspace")
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    monkeypatch.setattr("urllib.request.urlopen",
+                        lambda *a, **k: pytest.fail("a request was made"))
+    set_location(app, "work", "../workspace/docs/work")
+    checked = tcw(["validate"], app)
+    assert checked.code == 1
+    assert len(_overlap(checked.out)) == 1, checked.out
+
+
+def test_a_worktree_of_this_project_is_not_compared_with_itself(tcw, tmp_path):
+    from tests.work.projects import commit_all
+    app = _project(tmp_path, "app")
+    commit_all(app)
+    git(app, "worktree", "add", "-q", str(tmp_path / "app-wt"))
+    checked = tcw(["validate"], tmp_path / "app-wt")
+    assert checked.code == 0, checked.out + checked.err
+    assert _overlap(checked.out) == []
