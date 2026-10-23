@@ -98,7 +98,7 @@ def test_a_malformed_connected_jira_block_is_an_error(offline, tmp_path, monkeyp
 def linking(project, target):
     spec = folder(project, "TCW-2-linker") / "spec"
     spec.mkdir()
-    (spec / "spec.md").write_text(f"Depends on [the other](tcw://W/{target}).\n")
+    (spec / "spec.md").write_text(f"Depends on [the other](tcw://tcw.work/{target}).\n")
 
 
 def test_a_link_to_an_existing_folder(offline, monkeypatch, capsys):
@@ -111,7 +111,7 @@ def test_a_link_to_an_existing_folder(offline, monkeypatch, capsys):
 def test_a_link_to_a_missing_folder(offline, monkeypatch, capsys):
     linking(offline, "TCW-9-gone")
     code, text = validate(offline, monkeypatch, capsys)
-    assert code == 1 and "tcw://W/TCW-9-gone" in text, text
+    assert code == 1 and "tcw://tcw.work/TCW-9-gone" in text, text
 
 
 def test_link_exists(tmp_path):

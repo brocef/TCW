@@ -1,6 +1,10 @@
-import { fullIdText, parseFullId, type Namespace } from "./identifier"
+import {
+    fullIdText,
+    objectAddress,
+    parseFullId,
+    type Namespace,
+} from "./identifier"
 import type { CapabilityItem, TaxonomyItem, WorkItem } from "./types"
-import { folderOf } from "./work"
 
 export type TReferenceField =
     | "work-parent"
@@ -51,10 +55,10 @@ export interface TReferenceContext {
 
 const RESULT_LIMIT = 10
 
-/** The value a declaration picker and a link picker insert for a term or
- * capability, in the 3.x form `capabilities.yaml` entries and `tcw://`
- * links still take until TCW-110 Steps 10 and 11: this project's own entry
- * by its id-path, an inherited one as `<owner>/<id-path>`. */
+/** The value a declaration picker inserts for a term or capability, in the
+ * 3.x form `capabilities.yaml` entries still take until TCW-110 Step 11:
+ * this project's own entry by its id-path, an inherited one as
+ * `<owner>/<id-path>`. */
 function threeXRef(
     item: TaxonomyItem | CapabilityItem,
     projectId: string
@@ -279,20 +283,20 @@ export function pathSegments(
     return [...found.values()]
 }
 
-/** Every object a `tcw://` link can name, in the three axes, inherited
- * entries included. A work item is named by its folder (`tcw://W/<folder>`),
- * never by a key a backend gives it, so a link reads the same in every
- * mode. */
+/** Every object a `tcw://` link can name, in the three namespaces,
+ * inherited entries included: its object address, `tcw://<full id>`
+ * (TCW-110 Design 4.5). A work item's full identifier names its folder,
+ * never a key a backend gives it, so a link reads the same in every mode. */
 export function tcwLinkOptions(context: TReferenceContext): TReferenceOption[] {
     return [
         ...context.work.map((item) =>
-            option(`tcw://W/${folderOf(item["full-id"])}`, item.title)
+            option(objectAddress(item["full-id"]), item.title)
         ),
         ...context.taxonomy.map((item) =>
-            option(`tcw://T/${threeXRef(item, context.projectId)}`, item.name)
+            option(objectAddress(item["full-id"]), item.name)
         ),
         ...context.capabilities.map((item) =>
-            option(`tcw://C/${threeXRef(item, context.projectId)}`, item.name)
+            option(objectAddress(item["full-id"]), item.name)
         ),
     ]
 }

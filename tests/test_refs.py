@@ -1,237 +1,152 @@
-"""tcw:// reference grammar (parse) + resolution (resolve).
+"""Resolving a `tcw://` address (TCW-110 Design 2, 6): `resolve_address` is
+thin glue over `tcw.locate` that never propagates a store exception to a
+caller scanning many links. Two git repositories side by side, `app` naming
+`core` under `projects.upstream` by ID, with no `extends` unless a test adds
+one. The grammar itself is tested in `tests/test_ids.py`."""
 
-`parse_tcw_uri` is a pure total function (never raises); `resolve_tcw_ref` is
-thin adapter glue over the existing FS stores that never propagates a store
-exception to a link-scanning caller.
-"""
+from __future__ import annotations
 
-import subprocess
-import yaml
+import shutil
 from pathlib import Path
 
-from tcw.refs import TcwRef, parse_tcw_uri, resolve_tcw_ref
-from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
-from tests.projectfiles import write_config
-from tests.projectfiles import write_connected_config
+import pytest
 
+from tcw import locate
+from tcw.locate import ERROR, MISSING, UNRESOLVED
+from tcw.refs import resolve_address
+from tcw.store.fs import FsCapabilitiesStore, init
+from tests.inherit import entry
+from tests.projectfiles import connect_projects
+from tests.work.projects import make_project
 
-# ── parse: grammar round-trips ────────────────────────────────────────────────
 
-def test_parse_local_capability():
-    assert parse_tcw_uri("tcw://C/auth/login") == TcwRef("", "C", "auth/login")
+@pytest.fixture
+def app(tmp_path) -> Path:
+    app = make_project(tmp_path, "app", config={})
+    core = make_project(tmp_path, "core", config={})
+    for root in (app, core):
+        init(["taxonomy", "capabilities"], root)
+    entry(app, "taxonomy", "auth")
+    entry(app, "capabilities", "auth/login", id="cap-login", Status="Supported")
+    entry(core, "taxonomy", "term")
+    entry(core, "capabilities", "cli/y", id="cap-y", Status="Supported")
+    connect_projects(app, "upstream", "core")
+    return app
 
 
-def test_parse_namespaced_capability():
-    assert parse_tcw_uri("tcw://shared/C/auth/providers/github") == TcwRef(
-        "shared", "C", "auth/providers/github")
+# -- a 3.x reference is recognised and refused (Design 2.4) -------------------------
 
 
-def test_parse_local_work():
-    assert parse_tcw_uri("tcw://W/2026-01-01-x") == TcwRef("", "W", "2026-01-01-x")
+@pytest.mark.parametrize("uri", ["tcw://C/auth/login", "tcw://T/auth",
+                                 "tcw://W/2026-01-01-x", "tcw://core/T/term"])
+def test_a_3x_reference_is_refused_naming_tcw_migrate(app, uri):
+    found = resolve_address(app, uri)
+    assert (found.ok, found.outcome) == (False, ERROR)
+    assert found.reason.startswith(f"{uri} is a TCW 3.x reference")
+    assert "tcw migrate" in found.reason
 
 
-def test_parse_taxonomy():
-    assert parse_tcw_uri("tcw://T/domain/term") == TcwRef("", "T", "domain/term")
+@pytest.mark.parametrize("uri", ["tcw://app/", "tcw://app.taxonomy/a/../b",
+                                 "tcw://app.taxonomy/auth/", "tcw://App.taxonomy/auth",
+                                 "tcw://app.path", "http://app.taxonomy/auth"])
+def test_a_malformed_address_is_an_error_not_an_exception(app, uri):
+    found = resolve_address(app, uri)
+    assert (found.ok, found.outcome) == (False, ERROR)
+    assert found.reason
 
 
-def test_parse_axis_case_insensitive_normalizes_upper():
-    assert parse_tcw_uri("tcw://c/auth").axis == "C"
+# -- objects ------------------------------------------------------------------------
 
 
-def test_parse_namespaced_work():
-    assert parse_tcw_uri("tcw://sub/proj/W/2026-01-01-x") == TcwRef(
-        "sub/proj", "W", "2026-01-01-x")
+@pytest.mark.parametrize("uri, namespace, key", [
+    ("tcw://app.taxonomy/auth", "taxonomy", "auth"),
+    ("tcw://app.capabilities/auth/login", "capabilities", "auth/login"),
+])
+def test_this_projects_own_object_is_keyed_by_its_id_path(app, uri, namespace, key):
+    found = resolve_address(app, uri)
+    assert (found.ok, found.namespace, found.key, found.project) == \
+        (True, namespace, key, "")
 
 
-# ── parse: rejections (returns None, never raises) ────────────────────────────
+def test_an_inherited_object_is_keyed_by_its_full_identifier(app):
+    FsCapabilitiesStore.open(app).extends_add("core")
+    found = resolve_address(app, "tcw://core.capabilities/cli/y")
+    assert (found.ok, found.key, found.project) == (True, "core.capabilities/cli/y", "")
 
-def test_parse_requires_scheme():
-    assert parse_tcw_uri("C/auth/login") is None
-    assert parse_tcw_uri("http://C/auth") is None
 
+def test_another_projects_object_names_its_owner(app):
+    """TCW-99 principle 1: naming is not inheriting (Design 6.2)."""
+    found = resolve_address(app, "tcw://core.taxonomy/term")
+    assert (found.ok, found.project) == (True, "core")
 
-def test_parse_missing_axis():
-    assert parse_tcw_uri("tcw://foo/bar/baz") is None
 
+def test_an_object_that_is_not_there_is_missing(app):
+    found = resolve_address(app, "tcw://core.taxonomy/missing")
+    assert (found.ok, found.outcome) == (False, MISSING)
+    assert "core.taxonomy/missing" in found.reason
 
-def test_parse_empty_ref():
-    assert parse_tcw_uri("tcw://C") is None
-    assert parse_tcw_uri("tcw://C/") is None
-    assert parse_tcw_uri("tcw://shared/C") is None
 
+def test_an_object_of_a_project_not_on_this_machine_is_unresolved(app):
+    shutil.rmtree(app.parent / "core")
+    found = resolve_address(app, "tcw://core.taxonomy/term")
+    assert (found.ok, found.outcome) == (False, UNRESOLVED)
 
-def test_parse_rejects_ref_traversal():
-    assert parse_tcw_uri("tcw://C/../etc/passwd") is None
 
+def test_an_id_nothing_knows_is_an_error_saying_check_the_spelling(app):
+    found = resolve_address(app, "tcw://cor.taxonomy/term")
+    assert (found.ok, found.outcome) == (False, ERROR)
+    assert "no project with ID 'cor'" in found.reason
+    assert "check the spelling" in found.reason
 
-def test_parse_rejects_namespace_traversal():
-    assert parse_tcw_uri("tcw://../evil/C/x") is None
 
+def test_two_folders_declaring_one_id_are_an_error_naming_both(app, tmp_path):
+    one = make_project(tmp_path, "lib")
+    two = make_project(tmp_path, "lib", name="lib-copy")
+    found = resolve_address(app, "tcw://lib.taxonomy/term")
+    assert (found.ok, found.outcome) == (False, ERROR)
+    assert str(one.resolve()) in found.reason and str(two.resolve()) in found.reason
 
-def test_parse_rejects_control_char():
-    assert parse_tcw_uri("tcw://C/a\x00b") is None
-    assert parse_tcw_uri("tcw://C/a\x01b") is None
 
+# -- folders (Design 6.4) -----------------------------------------------------------
 
-# ── parse: documented collision + slash handling ──────────────────────────────
 
-def test_parse_first_bare_axis_wins():
-    # tcw://T/C/ref — the first bare T/C/W segment is the axis (documented limit).
-    assert parse_tcw_uri("tcw://T/C/ref") == TcwRef("", "T", "C/ref")
+@pytest.mark.parametrize("uri", ["tcw://core.path/docs", "tcw://core.path/nothing/here",
+                                 "tcw://app.work.path/", "tcw://app.path/"])
+def test_a_folder_address_is_checked_for_its_project_not_its_folder(app, uri):
+    found = resolve_address(app, uri)
+    assert (found.ok, found.folder) == (True, True)
 
 
-def test_parse_collapses_multiple_slashes():
-    assert parse_tcw_uri("tcw://C//auth/login") == TcwRef("", "C", "auth/login")
+def test_a_folder_address_of_an_unknown_project_is_an_error(app):
+    found = resolve_address(app, "tcw://cor.path/docs")
+    assert (found.ok, found.outcome) == (False, ERROR)
+    assert "check the spelling" in found.reason
 
 
-def test_parse_splits_before_percent_decode():
-    # %2F inside a segment stays inside it — it can't inject a separator/axis.
-    assert parse_tcw_uri("tcw://C/auth%2Flogin") == TcwRef("", "C", "auth/login")
+def test_a_folder_address_of_a_project_not_on_this_machine_is_unresolved(app):
+    shutil.rmtree(app.parent / "core")
+    assert resolve_address(app, "tcw://core.path/docs").outcome == UNRESOLVED
 
 
-# ── resolve fixtures ──────────────────────────────────────────────────────────
+# -- never raises -------------------------------------------------------------------
 
-def node(tmp_path: Path, name: str = "repo", components=("taxonomy", "capabilities", "work")) -> Path:
-    root = tmp_path / name
-    root.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "init", "-q", str(root)], check=True)
-    subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
-    subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    init(list(components), root, name)
-    return root
 
+def test_no_project_is_an_error(app):
+    found = resolve_address(None, "tcw://app.taxonomy/auth")
+    assert (found.ok, found.reason) == (False, "no TCW project")
 
-def subnode(parent: Path, rel: str) -> Path:
-    d = parent / rel
-    d.mkdir(parents=True)
-    project_id = d.name
-    init(["work"], d, project_id)
-    connect(parent, d)
-    return d
 
+@pytest.mark.parametrize("raised", [OSError("disk gone"), ValueError("bad file")])
+def test_a_store_failure_becomes_an_answer(app, monkeypatch, raised):
+    def broken(*_args, **_kwargs):
+        raise raised
+    monkeypatch.setattr(locate.Locator, "read", broken)
+    found = resolve_address(app, "tcw://app.taxonomy/auth")
+    assert (found.ok, found.outcome, found.reason) == (False, ERROR, str(raised))
 
-def connect(anchor: Path, *others: Path) -> None:
-    anchor_cfg = yaml.safe_load((anchor / ".tcw/tcw-config.yaml").read_text()) or {}
-    for other in others:
-        other_id = (yaml.safe_load((other / ".tcw/tcw-config.yaml").read_text()) or {})["id"]
-        anchor_cfg.setdefault("projects", {}).setdefault("children", {})[
-            other_id
-        ] = str(other.resolve())
-        other_cfg = yaml.safe_load((other / ".tcw/tcw-config.yaml").read_text()) or {}
-        other_cfg["projects"] = {
-            "parent": {anchor_cfg["id"]: str(anchor.resolve())}
-        }
-        write_connected_config(other,
-            yaml.safe_dump(other_cfg, sort_keys=False)
-        )
-    write_connected_config(anchor,
-        yaml.safe_dump(anchor_cfg, sort_keys=False)
-    )
 
-
-# ── resolve: local ────────────────────────────────────────────────────────────
-
-def test_resolve_local_taxonomy(tmp_path):
-    root = node(tmp_path)
-    FsTaxonomyStore.open(root).add("Login", slug="auth")
-    r = resolve_tcw_ref(root, "tcw://T/auth")
-    assert r.ok and r.axis == "T" and r.key == "auth"
-
-
-def test_resolve_local_capability(tmp_path):
-    root = node(tmp_path)
-    FsCapabilitiesStore.open(root).add("auth/login", name="Sign in")
-    r = resolve_tcw_ref(root, "tcw://C/auth/login")
-    assert r.ok and r.axis == "C" and r.key == "auth/login"
-
-
-# ── resolve: federation (extends alias) ───────────────────────────────────────
-
-def test_resolve_federated_capability(tmp_path):
-    base = node(tmp_path, "base")
-    FsCapabilitiesStore.open(base).add("auth/login", name="Sign in")
-    child = node(tmp_path, "child")
-    connect(child, base)
-    FsCapabilitiesStore.open(child).extends_add("base")
-    r = resolve_tcw_ref(child, "tcw://base/C/auth/login")
-    assert r.ok and r.key == "base.capabilities/auth/login"
-
-
-# ── resolve: foreign work (resolves in the graph; hosting is the viewer's call) ─
-
-
-def test_resolve_dangling_work_slug(tmp_path):
-    """A work ref must answer the same question T and C answer: does the thing
-    exist? Locating the store that *would* hold the item is not the same as the
-    item being there, and only the status-path spelling ever checked. Left
-    unchecked, `tcw validate` passes a dangling local reference and the viewer
-    rewrites it into a link that 404s."""
-    root = node(tmp_path)
-    r = resolve_tcw_ref(root, "tcw://W/2026-01-01-never-created")
-    assert r.ok is False
-    assert r.reason == "no such work item: 2026-01-01-never-created"
-
-
-def test_resolve_dangling_work_slug_in_a_registered_project(tmp_path):
-    """Same question one node over: the project resolves, the item does not."""
-    root = node(tmp_path)
-    subnode(root, "proj")
-    r = resolve_tcw_ref(root, "tcw://W/proj/2026-01-01-never-created")
-    assert r.ok is False
-    assert r.reason == "no such work item: proj/2026-01-01-never-created"
-
-
-def test_resolve_unregistered_project_names_the_cause(tmp_path):
-    root = node(tmp_path)
-    r = resolve_tcw_ref(root, "tcw://W/ghost/2026-01-01-x")
-    assert r.ok is False and r.reason == "no such project in this graph: ghost"
-
-
-# ── resolve: failure modes (never raises) ─────────────────────────────────────
-
-def test_resolve_dangling_capability(tmp_path):
-    root = node(tmp_path)
-    r = resolve_tcw_ref(root, "tcw://C/nope")
-    assert r.ok is False and r.reason
-
-
-def test_resolve_malformed_uri(tmp_path):
-    root = node(tmp_path)
-    r = resolve_tcw_ref(root, "tcw://foo/bar")
-    assert r.ok is False and r.reason
-
-
-def test_resolve_foreign_namespace_capability(tmp_path):
-    root = node(tmp_path)
-    r = resolve_tcw_ref(root, "tcw://missing/C/auth")
-    assert r.ok is False and r.reason
-
-
-def test_resolve_ambiguous_does_not_raise(tmp_path):
-    # Two extends aliases with the same bare ref -> AmbiguousRef, swallowed.
-    base_a = node(tmp_path, "a")
-    FsCapabilitiesStore.open(base_a).add("dup", name="A dup")
-    base_b = node(tmp_path, "b")
-    FsCapabilitiesStore.open(base_b).add("dup", name="B dup")
-    child = node(tmp_path, "child")
-    connect(child, base_a, base_b)
-    st = FsCapabilitiesStore.open(child)
-    st.extends_add("a")
-    st.extends_add("b")
-    r = resolve_tcw_ref(child, "tcw://C/dup")   # bare, matches both aliases
-    assert r.ok is False and r.reason
-
-
-# ── resolved work: a reference to finished work is not a typo ─────────────────
-
-
-def test_resolve_a_slug_that_never_existed_still_fails_unchanged(tmp_path):
-    """The distinction the graveyard exists to draw. Recording resolved work
-    must not turn a typo into a passing reference."""
-    root = node(tmp_path)
-    r = resolve_tcw_ref(root, "tcw://W/2026-01-01-never-created")
-    assert r.ok is False
-    assert r.archived is False
-    assert r.reason == "no such work item: 2026-01-01-never-created"
-
-
+def test_an_unreadable_store_becomes_an_answer(app):
+    (app / "docs" / "taxonomy" / "auth" / "meta.yaml").write_text("name: [unclosed\n")
+    found = resolve_address(app, "tcw://app.taxonomy/auth")
+    assert (found.ok, found.outcome) == (False, ERROR)
+    assert "meta.yaml" in found.reason

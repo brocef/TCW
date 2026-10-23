@@ -239,35 +239,43 @@ def resolve(served, uris):
 
 
 def test_resolve_local_and_broken_links(records):
-    found = resolve(records, ["tcw://C/web", "tcw://C/nope", "tcw://garbage",
-                              "tcw://W/2026-01-01-never-created"])
-    assert found["tcw://C/web"] == {"ok": True, "axis": "capabilities", "key": "web"}
-    assert found["tcw://C/nope"] == {"ok": False, "reason": "unresolved",
-                                     "detail": "no capability: nope"}
+    found = resolve(records, ["tcw://r.capabilities/web", "tcw://r.capabilities/nope",
+                              "tcw://garbage", "tcw://r.work/2026-01-01-never-created",
+                              "tcw://C/web", "tcw://r.path/docs"])
+    assert found["tcw://r.capabilities/web"] == {"ok": True, "axis": "capabilities",
+                                                "key": "web"}
+    assert found["tcw://r.capabilities/nope"] == {
+        "ok": False, "reason": "unresolved", "detail": "no capability r.capabilities/nope"}
     assert found["tcw://garbage"]["reason"] == "unresolved"
-    assert found["tcw://W/2026-01-01-never-created"]["reason"] == "unresolved"
+    assert found["tcw://r.work/2026-01-01-never-created"]["reason"] == "unresolved"
+    assert "TCW 3.x reference" in found["tcw://C/web"]["detail"]
+    assert found["tcw://r.path/docs"] == {
+        "ok": False, "reason": "unresolved",
+        "detail": "tcw://r.path/docs names a folder, not an object"}
 
 
 def test_resolve_caps_the_batch(records):
-    found = resolve(records, [f"tcw://C/x{i}" for i in range(RESOLVE_MAX_URIS + 50)])
+    found = resolve(records, [f"tcw://r.capabilities/x{i}"
+                              for i in range(RESOLVE_MAX_URIS + 50)])
     assert len(found) == RESOLVE_MAX_URIS
 
 
 def test_resolve_needs_a_list(records):
-    assert_error(records.post("/api/resolve", {"uris": "tcw://C/web"}), 400, "usage")
+    assert_error(records.post("/api/resolve", {"uris": "tcw://r.capabilities/web"}),
+                 400, "usage")
 
 
 def test_the_configuration_is_read_again_while_serving(records_root, monkeypatch):
     """`tcw serve` outlives its start-up, so the per-command read of the
     configuration (TCW-72 Design 2.3) ends before serving."""
-    from tcw.refs import resolve_tcw_ref
+    from tcw.refs import resolve_address
     seen = []
 
     def fake_serve(root, **_):
-        seen.append(resolve_tcw_ref(root, "tcw://W/2026-01-01-x").reason)
+        seen.append(resolve_address(root, "tcw://r.work/2026-01-01-x").reason)
         config = config_file(root)
         write_connected_config_file(config, config.read_text() + "work:\n  hooks:\n    timeout: -1\n")
-        seen.append(resolve_tcw_ref(root, "tcw://W/2026-01-01-x").reason)
+        seen.append(resolve_address(root, "tcw://r.work/2026-01-01-x").reason)
         return 0
 
     monkeypatch.setattr(tcw.cli, "serve", fake_serve)
@@ -425,9 +433,9 @@ def test_a_link_to_another_projects_item_is_other_project(tmp_path, personal_on,
     connect(other, root, "parent")
     folder = new(tcw, other, "Theirs")
     commit_all(other)
-    found = resolve(serve_project(root), [f"tcw://q/W/{folder}"])
-    assert found[f"tcw://q/W/{folder}"] == {"ok": False, "reason": "other-project",
-                                            "project": "q"}
+    found = resolve(serve_project(root), [f"tcw://q.work/{folder}"])
+    assert found[f"tcw://q.work/{folder}"] == {"ok": False, "reason": "other-project",
+                                               "project": "q"}
 
 
 # -- references through an encoded slash (2.x's coverage, kept) ---------------------------------
@@ -445,9 +453,9 @@ def test_an_inherited_capability_reads_by_an_encoded_slash(inheriting):
 
 
 def test_a_link_into_an_inherited_store_resolves(inheriting):
-    found = resolve(inheriting, ["tcw://base/C/shared-cap"])
-    assert found["tcw://base/C/shared-cap"] == {"ok": True, "axis": "capabilities",
-                                               "key": "base.capabilities/shared-cap"}
+    found = resolve(inheriting, ["tcw://base.capabilities/shared-cap"])
+    assert found["tcw://base.capabilities/shared-cap"] == {
+        "ok": True, "axis": "capabilities", "key": "base.capabilities/shared-cap"}
 
 
 def test_a_nested_capability_is_edited_by_an_encoded_slash(records):

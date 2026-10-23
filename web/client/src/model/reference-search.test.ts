@@ -202,7 +202,7 @@ test("a capability path is offered one segment at a time", () => {
     ).toEqual(["web/reading/fast"])
 })
 
-test("tcw:// completion names a work item by its folder, and every axis", () => {
+test("tcw:// completion offers each object's address, in every namespace", () => {
     const found = tcwLinkOptions({
         projectId: "p",
         work: [workItem("2026-10-01-x", { title: "X" })],
@@ -210,16 +210,18 @@ test("tcw:// completion names a work item by its folder, and every axis", () => 
         capabilities: [capability("web", { name: "Web" })],
     })
     expect(found.map((item) => item.identifier)).toEqual([
-        "tcw://W/2026-10-01-x",
-        "tcw://T/base/t",
-        "tcw://C/web",
+        "tcw://p.work/2026-10-01-x",
+        "tcw://base.taxonomy/t",
+        "tcw://p.capabilities/web",
     ])
 })
 
 test("the link being typed is found before the caret", () => {
-    expect(typedLink("See tcw://W/20")).toBe("tcw://W/20")
-    expect(typedLink("See [x](tcw://C/we")).toBe("tcw://C/we")
-    expect(typedLink("See tcw://W/x done")).toBeNull()
+    expect(typedLink("See tcw://p.work/20")).toBe("tcw://p.work/20")
+    expect(typedLink("See [x](tcw://p.capabilities/we")).toBe(
+        "tcw://p.capabilities/we"
+    )
+    expect(typedLink("See tcw://p.work/x done")).toBeNull()
 })
 
 test("another project's full identifier is kept with a warning; this project's is not", () => {

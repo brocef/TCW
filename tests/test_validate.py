@@ -70,7 +70,7 @@ def test_clean_node_ok(tmp_path):
 def test_valid_tcw_link_ok(tmp_path):
     root = node(tmp_path)
     FsTaxonomyStore.open(root).add("Login", slug="auth")
-    _body(root, "signin", "See [the term](tcw://T/auth).")
+    _body(root, "signin", "See [the term](tcw://test-project.taxonomy/auth).")
     assert validate(root) == []
 
 
@@ -91,9 +91,10 @@ def test_bad_yaml_syntax_does_not_crash_and_skips_checks(tmp_path):
 
 def test_dangling_link_is_a_problem(tmp_path):
     root = node(tmp_path)
-    _body(root, "signin", "Broken [x](tcw://C/does-not-exist).")
+    _body(root, "signin", "Broken [x](tcw://test-project.capabilities/does-not-exist).")
     problems = [str(f) for f in validate(root)]
-    assert any("tcw://C/does-not-exist" in p for p in problems)
+    assert any("tcw://test-project.capabilities/does-not-exist → no capability "
+               "test-project.capabilities/does-not-exist" in p for p in problems), problems
 
 
 def test_upward_epic_link_validates(tmp_path):
@@ -107,15 +108,15 @@ def test_upward_epic_link_validates(tmp_path):
     slice_ = FsWorkStore.open(child).create("Slice", created="2026-01-02")
     FsWorkStore.open(child).write_artifact(
         slice_.slug, "initial-request",
-        f"Epic: [Parent epic](tcw://W/root/{epic.slug})\n")
+        f"Epic: [Parent epic](tcw://root.work/{epic.slug})\n")
     assert validate(child) == []
 
 
 def test_link_to_unregistered_project_names_the_cause(tmp_path):
     root = node(tmp_path)
-    _body(root, "signin", "Bad [x](tcw://W/ghost/2026-01-01-x).")
+    _body(root, "signin", "Bad [x](tcw://ghost.work/2026-01-01-x).")
     problems = [str(f) for f in validate(root)]
-    assert any("no such project in this graph: ghost" in p for p in problems)
+    assert any("no project with ID 'ghost'" in p for p in problems), problems
 
 
 def test_malformed_link_is_a_problem(tmp_path):
@@ -127,13 +128,13 @@ def test_malformed_link_is_a_problem(tmp_path):
 
 def test_link_in_fenced_code_block_is_ignored(tmp_path):
     root = node(tmp_path)
-    _body(root, "signin", "Example:\n\n```\n[x](tcw://C/nope)\n```\n")
+    _body(root, "signin", "Example:\n\n```\n[x](tcw://test-project.capabilities/nope)\n```\n")
     assert validate(root) == []
 
 
 def test_link_in_inline_code_is_ignored(tmp_path):
     root = node(tmp_path)
-    _body(root, "signin", "Write `[x](tcw://C/nope)` in prose.")
+    _body(root, "signin", "Write `[x](tcw://test-project.capabilities/nope)` in prose.")
     assert validate(root) == []
 
 
@@ -169,7 +170,7 @@ def test_cli_clean_exits_0(tmp_path, monkeypatch, capsys):
 
 def test_cli_problem_exits_1(tmp_path, monkeypatch, capsys):
     root = node(tmp_path)
-    _body(root, "signin", "Broken [x](tcw://C/nope).")
+    _body(root, "signin", "Broken [x](tcw://test-project.capabilities/nope).")
     monkeypatch.chdir(root)
     assert main(["validate"]) == 1
 
@@ -182,14 +183,14 @@ def test_cli_checks_only_the_current_project(tmp_path, monkeypatch, capsys):
     grandchild = node(tmp_path, "grandchild", "grandchild")
     connect(root, child)
     connect(child, grandchild)
-    _body(grandchild, "signin", "Broken [x](tcw://C/nope).")
+    _body(grandchild, "signin", "Broken [x](tcw://grandchild.capabilities/nope).")
 
     monkeypatch.chdir(root)
     assert main(["validate"]) == 0
     assert capsys.readouterr().out == ""
     monkeypatch.chdir(grandchild)
     assert main(["validate"]) == 1
-    assert "tcw://C/nope" in capsys.readouterr().out
+    assert "tcw://grandchild.capabilities/nope" in capsys.readouterr().out
 
 
 # ── the same verdict in every checkout ────────────────────────────────────────
@@ -210,7 +211,7 @@ def _resolved_item_referenced_by_a_tracked_file(root: Path) -> str:
     st.start(slug, owner="t")
     st.complete(slug, "done", [])
     (root / "docs" / "work" / "inbox" / "ref.md").write_text(
-        f"see [the finished thing](tcw://W/{slug})\n")
+        f"see [the finished thing](tcw://test-project.work/{slug})\n")
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(root), "commit", "-qm", "a reference"], check=True)
     return slug
@@ -242,7 +243,7 @@ def test_a_typo_reference_still_fails_in_both(tmp_path):
     """The graveyard must not turn every unresolvable reference into a pass."""
     root = node(tmp_path)
     (root / "docs" / "work" / "inbox" / "ref.md").write_text(
-        "see [a typo](tcw://W/2026-01-01-never-created)\n")
+        "see [a typo](tcw://test-project.work/2026-01-01-never-created)\n")
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(root), "commit", "-qm", "seed"], check=True)
 
@@ -250,7 +251,7 @@ def test_a_typo_reference_still_fails_in_both(tmp_path):
     subprocess.run(["git", "clone", "-q", str(root), str(clone)], check=True)
     for where in (root, clone):
         problems = [str(f) for f in validate(where)]
-        assert any("no such work item: 2026-01-01-never-created" in p
+        assert any("no work item test-project.work/2026-01-01-never-created" in p
                    for p in problems), (where, problems)
 
 

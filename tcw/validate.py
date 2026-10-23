@@ -34,7 +34,8 @@ import yaml
 
 from tcw.findings import Finding
 from tcw.project_files import LEGACY_SENTINEL, SENTINEL
-from tcw.refs import resolve_tcw_ref
+from tcw.locate import UNRESOLVED
+from tcw.refs import resolve_address
 from tcw.store.yaml_source import load as _load_named_yaml
 from tcw.store.base import StoreLocationUnusable
 from tcw.store.fs import (
@@ -334,18 +335,15 @@ def _file_findings(project_root: Path, roots: list[Path]) -> tuple[list[Finding]
             text = _strip_code(raw)
             for m in _LINK_RE.finditer(text):
                 uri = m.group(1)
-                r = resolve_tcw_ref(project_root, uri)
+                r = resolve_address(project_root, uri)
                 if r.ok:
                     continue
                 # A project declared but not on this machine is reported and
-                # not counted (TCW-70 Design 12.1).
-                level, _, why = r.reason.partition("unresolved: ")
-                if not level and why:
-                    problems.append(Finding("unresolved", _rel(f, project_root),
-                                            f"tcw:// {uri} → {why}"))
-                else:
-                    problems.append(Finding("error", _rel(f, project_root),
-                                            f"tcw:// {uri} → {r.reason}"))
+                # not counted (TCW-70 Design 12.1, TCW-110 Design 6.3).
+                level = "unresolved" if r.outcome == UNRESOLVED else "error"
+                # A message about the address's form already starts with it.
+                message = r.reason if r.reason.startswith(uri) else f"{uri} → {r.reason}"
+                problems.append(Finding(level, _rel(f, project_root), message))
     return problems, yaml_syntax_error
 
 

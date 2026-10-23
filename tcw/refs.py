@@ -1,17 +1,18 @@
-"""The `tcw://` reference protocol — a portable way to point at a TCW object.
+"""Resolving a `tcw://` address (TCW-110 Design 2, 6).
 
-Grammar: ``tcw://[<namespace>/]<axis>/<ref>``
-  - ``<axis>``      is ``T`` (Taxonomy), ``C`` (Capabilities), or ``W`` (Work).
-  - ``<namespace>`` (optional) locates the object in another project: an
-    ``extends`` alias for T/C, a project ID for W. Absent = local.
-  - ``<ref>``       is the identifier within that axis.
+Grammar, held by `tcw.ids`:
+  - an object address, ``tcw://<project>.<namespace>/<id-path>``, names one
+    taxonomy entry, capability or work item by its full identifier;
+  - a folder address, ``tcw://<project>[.<namespace>].path/<folder-path>``,
+    names a folder in a project's root or in one of its stores.
 
-`parse_tcw_uri` is a pure, total function (never raises) — the abstract grammar.
-`resolve_tcw_ref` is thin CLI/serve adapter glue: it imports the FS stores for
-T and C and reads a work item through its project's backend for W, and never
-propagates a store exception to a caller scanning many links. A work item is
-found at any stage, because TCW never deletes an item folder (TCW-70 Design
-12.1).
+A TCW 3.x reference (``tcw://[<project>/]<axis>/<ref>``) is recognised and
+refused, naming ``tcw migrate``; it is never resolved.
+
+`resolve_address` is thin CLI and web glue over `tcw.locate`: it finds the
+owner through the command's one `Locator` and never propagates a store
+exception to a caller scanning many links. A work item is found at any
+stage, because TCW never deletes an item folder (TCW-70 Design 12.1).
 """
 
 from __future__ import annotations
@@ -19,67 +20,31 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote
 
-from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
-
-_SCHEME = "tcw://"
-_AXES = {"T", "C", "W"}
-
-
-@dataclass(frozen=True)
-class TcwRef:
-    namespace: str  # "" = local
-    axis: str       # normalized upper: "T" | "C" | "W"
-    ref: str
+from tcw.errors import ProjectGraphError, Unreachable
+from tcw.ids import (FolderAddress, IdError, is_3x_address, parse_address,
+                     three_x_address_message)
+from tcw.locate import ERROR, FOUND, Locator, Outcome, outcome_of
 
 
 @dataclass(frozen=True)
 class ResolveResult:
     ok: bool
-    axis: str | None
+    namespace: str | None
     key: str | None
     reason: str
-    project: str = ""      # owning project id for a foreign work ref; "" = local
+    # The owner when it is neither the served project nor one it inherits
+    # from: a sound reference that a viewer of this project cannot open.
+    project: str = ""
     # A work ref that resolved to a *record* of a resolved item rather than to a
     # live one. Still `ok` — the reference is sound and names real, finished work
     # — but there is nothing to navigate to, so a viewer shows it inert rather
     # than as a link, and `tcw validate` says nothing at all.
     archived: bool = False
     resolution: str = ""   # the archived item's resolution; "" when unrecorded
-
-
-def _segment_ok(seg: str) -> bool:
-    """A decoded path segment is safe iff it is not a traversal token and holds
-    no control/NUL/backslash chars (mirrors the guard style of `_safe_store_id`)."""
-    if seg in (".", ".."):
-        return False
-    return not any(ord(c) < 0x20 or c == "\x7f" or c == "\\" for c in seg)
-
-
-def parse_tcw_uri(uri: str) -> TcwRef | None:
-    """Parse a ``tcw://`` uri into its (namespace, axis, ref). Total: returns
-    None on any malformed input, never raises.
-
-    Split the remainder on ``/`` FIRST, then percent-decode each segment (so a
-    ``%2F`` inside a segment can't inject a spurious separator/axis — matches
-    the React client's ``parsePath``). The axis is the first segment whose ``.upper()``
-    is one of T/C/W; the first-bare-axis-wins collision (``tcw://T/C/ref``) is a
-    documented limitation. Empty segments (multiple slashes) are dropped.
-    """
-    if not isinstance(uri, str) or not uri.startswith(_SCHEME):
-        return None
-    raw_segs = [s for s in uri[len(_SCHEME):].split("/") if s]  # drop empties
-    segs = [unquote(s) for s in raw_segs]
-    if not all(_segment_ok(s) for s in segs):
-        return None
-    axis_idx = next((i for i, s in enumerate(segs) if s.upper() in _AXES), -1)
-    if axis_idx == -1:
-        return None
-    ref = "/".join(segs[axis_idx + 1:])
-    if not ref:
-        return None
-    return TcwRef("/".join(segs[:axis_idx]), segs[axis_idx].upper(), ref)
+    # Design 6.3's answer: `found`, `missing`, `unresolved` or `error`.
+    outcome: str = FOUND
+    folder: bool = False   # a folder address, checked for form and owner only
 
 
 def route_key(obj: Any, project_id: str) -> str:
@@ -90,92 +55,49 @@ def route_key(obj: Any, project_id: str) -> str:
     return full_id.id_path if full_id.project == project_id else str(full_id)
 
 
-def resolve_tcw_ref(project_root: Path | None, uri: str) -> ResolveResult:
-    """Resolve a ``tcw://`` uri against the project at ``project_root``, returning the
-    SPA object key (namespace-qualified where present). Never propagates a store
-    exception — a store failure becomes ``ok=False`` with a reason.
+def _failed(outcome: Outcome, namespace: str | None = None) -> ResolveResult:
+    return ResolveResult(False, namespace, None, outcome.message, outcome=outcome.kind)
 
-    ``ok`` answers one question only: **does this reference resolve in the
-    registered graph?** That is what `tcw validate` asks. Whether a *viewer* can
-    open it is a different question with a different answer per server, so it is
-    not decided here — a foreign work ref reports its owning project in
-    ``project`` and the viewer gates on that (see `tcw serve`'s ``/api/resolve``).
-    Conflating the two is what made a valid cross-project link report ``ok`` and then
-    dead-end in the SPA: the two spellings of a namespaced work ref took different
-    paths, and the one people actually write never reached the gate at all.
 
-    Both spellings produce the same qualified key. ``parse_tcw_uri`` treats the
-    first T/C/W segment as the axis, so ``tcw://<id>/W/<folder>`` arrives with a
-    parsed namespace while ``tcw://W/<id>/<folder>`` arrives as a bare ref with
-    the project in front; `_resolve_work` reads both the same way.
-    """
-    parsed = parse_tcw_uri(uri)
-    if parsed is None:
-        return ResolveResult(False, None, None, "malformed tcw:// uri")
+def resolve_address(project_root: Path | None, uri: str) -> ResolveResult:
+    """Resolve `uri`, written in the project at `project_root` (Design 2.5).
+
+    ``ok`` answers one question only: **does this address name something that
+    is there?** That is what `tcw validate` asks. Whether a *viewer* can open
+    it is a different question, so an object owned by a project the served
+    one neither is nor inherits from reports its owner in ``project``, and
+    the viewer gates on that (see `tcw serve`'s ``/api/resolve``)."""
+    if is_3x_address(uri):
+        return _failed(Outcome(ERROR, message=three_x_address_message(uri)))
+    try:
+        found = parse_address(uri)
+    except IdError as error:
+        return _failed(Outcome(ERROR, message=str(error)))
     if project_root is None:
-        return ResolveResult(False, parsed.axis, None, "no TCW project")
-    ns_ref = f"{parsed.namespace}/{parsed.ref}" if parsed.namespace else parsed.ref
+        return _failed(Outcome(ERROR, message="no TCW project"))
     try:
-        if parsed.axis == "T":
-            taxonomy = FsTaxonomyStore.open(project_root)
-            term = taxonomy.get(ns_ref)
-            if term is None:
-                return ResolveResult(False, "T", None, f"no taxonomy term: {ns_ref}")
-            return ResolveResult(True, "T", route_key(term, taxonomy.project_id), "")
-        if parsed.axis == "C":
-            capabilities = FsCapabilitiesStore.open(project_root)
-            cap = capabilities.get(ns_ref)
-            if cap is None:
-                return ResolveResult(False, "C", None, f"no capability: {ns_ref}")
-            return ResolveResult(True, "C", route_key(cap, capabilities.project_id), "")
-        # axis == "W"
-        return _resolve_work(project_root, parsed.namespace, parsed.ref)
-    except Exception as e:  # store errors (AmbiguousRef, MultipleMatch, IO) -> ok=False
-        return ResolveResult(False, parsed.axis, None, str(e))
-
-
-def _resolve_work(project_root: Path, namespace: str | None, ref: str) -> ResolveResult:
-    """A 3.0 work reference: the item read through its project's backend. Found
-    at any stage is OK; `NotFound` is missing; a project declared but not on
-    this machine is unresolved (TCW-70 Design 12.1)."""
-    from tcw.errors import BackendError, NotFound, ProjectGraphError, Unreachable
-    from tcw.work.jira.backend import JiraBackend, link_exists
-    from tcw.work.open import open_backend, open_project
-
-    namespace = namespace or None              # the parser gives "" for no namespace
-    if namespace is None and "/" in ref:
-        namespace, ref = ref.split("/", 1)
-    try:
-        if namespace is None:
-            backend = open_backend(project_root)
-        else:
-            backend = open_project(namespace, project_root)
-            if backend.project == _current_project(project_root):
-                namespace = None
-        if isinstance(backend, JiraBackend):
-            # The folder scan `lookup` uses, never a read of the ticket, so
-            # plain `validate` needs no Jira (TCW-71 R20).
-            if not link_exists(backend.work_path, ref):
-                raise NotFound(f"no work item {backend.project}/{ref}")
-            item = None
-            folder = ref
-        else:
-            item = backend.read(ref)
-            folder = item.slug.folder
-    except Unreachable as error:
-        return ResolveResult(False, "W", None, f"unresolved: {error}")
-    except NotFound as error:
-        return ResolveResult(False, "W", None, str(error))
-    except (BackendError, ProjectGraphError) as error:
-        return ResolveResult(False, "W", None, str(error))
-    if namespace is None:
-        return ResolveResult(True, "W", folder, "")
-    return ResolveResult(True, "W", f"{backend.project}/{folder}", "", namespace)
-
-
-def _current_project(project_root: Path) -> str | None:
-    from tcw.store.fs import FsProjectRegistry
-    try:
-        return FsProjectRegistry.open(project_root).current.id
-    except ValueError:
-        return None
+        locator = Locator.of(Path(project_root))
+        if isinstance(found, FolderAddress):
+            # Design 6.4: its form and that its project can be located, not
+            # whether the folder is there.
+            try:
+                locator.owner_root(found.project, Path(project_root))
+            except (Unreachable, ProjectGraphError) as error:
+                return _failed(outcome_of(error), found.namespace)
+            return ResolveResult(True, found.namespace, None, "", folder=True)
+        answer = locator.read(found, named_by=Path(project_root))
+        active = locator.project_id
+    except Exception as error:   # a store's own failure (TcwError, IO, YAML)
+        return _failed(Outcome(ERROR, message=str(error)))
+    if answer.kind != FOUND:
+        return _failed(answer, found.namespace)
+    if found.namespace == "work":
+        if found.project == active:
+            return ResolveResult(True, "work", found.id_path, "")
+        return ResolveResult(True, "work", str(found), "", project=found.project)
+    obj = answer.value
+    # Read through this project's view (origin is the owner) or from the
+    # owner's own store (origin "local" there, the owner another project).
+    foreign = obj.origin == "local" and obj.owner != active
+    return ResolveResult(True, found.namespace, route_key(obj, active), "",
+                         project=obj.owner if foreign else "")

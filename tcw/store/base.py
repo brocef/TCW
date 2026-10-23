@@ -511,7 +511,8 @@ class Capability:
 
     `path` is the identity (path from the capabilities root, e.g.
     `auth/providers/github`). `id` is an opaque, immutable stable id — the
-    durable key an override or a `tcw://` reference points at. `owner` is the
+    durable key an override points at (a `tcw://` link names the full
+    identifier instead). `owner` is the
     ID of the project whose store holds it, and `full_id` its full identifier
     (TCW-110 Design 1.4). `origin` is `"local"` or the `extends` ID the
     capability was resolved through; it is the stores' own field, never

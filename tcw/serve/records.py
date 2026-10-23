@@ -15,14 +15,12 @@ from tcw.errors import TcwError
 from tcw.findings import Finding
 from tcw.ids import identity
 from tcw.locate import find_tree
-from tcw.refs import resolve_tcw_ref
+from tcw.refs import resolve_address
 from tcw.serve.server import Request, not_found, read_only, route, usage
 from tcw.store.base import Capability, Term
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
 from tcw.validate import ValidationTarget, validate
 
-# tcw:// axis letter -> the client's axis word (the client parses no TCW references).
-AXIS_WORD = {"T": "taxonomy", "C": "capabilities", "W": "work"}
 # At most this many links per /api/resolve request (a rendered page's links).
 RESOLVE_MAX_URIS = 256
 
@@ -238,8 +236,9 @@ def resolve(request: Request):
     """Each `tcw://` link's target, or why it has none. `reason` is one of
     `unresolved` (with `detail`), `archived` (with `detail` and
     `resolution`) and `other-project` (with `project`): a sound reference to
-    another project's item, drawn as a labelled link that does not
-    navigate, since this server shows one project."""
+    an object of a project this one neither is nor inherits from, drawn as
+    a labelled link that does not navigate, since this server shows one
+    project (TCW-110 Design 4.5)."""
     uris = request.body.get("uris")
     if not isinstance(uris, list):
         raise usage("uris must be a list")
@@ -247,9 +246,13 @@ def resolve(request: Request):
     for uri in uris[:RESOLVE_MAX_URIS]:
         if not isinstance(uri, str):
             continue
-        found = resolve_tcw_ref(request.root, uri)
+        found = resolve_address(request.root, uri)
         if not found.ok:
             result[uri] = {"ok": False, "reason": "unresolved", "detail": found.reason}
+        elif found.folder:
+            # A sound folder address, drawn inert: the app shows objects.
+            result[uri] = {"ok": False, "reason": "unresolved",
+                           "detail": f"{uri} names a folder, not an object"}
         elif found.archived:
             detail = f"{found.key} is resolved work; its documents are no longer " \
                      f"in the tree"
@@ -262,8 +265,7 @@ def resolve(request: Request):
             result[uri] = {"ok": False, "reason": "other-project",
                            "project": found.project}
         else:
-            result[uri] = {"ok": True, "axis": AXIS_WORD.get(found.axis),
-                           "key": found.key}
+            result[uri] = {"ok": True, "axis": found.namespace, "key": found.key}
     return HTTPStatus.OK, result
 
 

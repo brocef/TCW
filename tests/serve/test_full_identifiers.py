@@ -66,3 +66,36 @@ def test_ac8_a_web_edit_stores_the_full_identifier_of_a_reference(served):
     assert answer.status == 200, answer.body
     meta = served.root / "docs" / "taxonomy" / "term" / "meta.yaml"
     assert "core.taxonomy/shared" in meta.read_text()
+
+
+# -- /api/resolve (TCW-110 Design 4.5, AC 20) --------------------------------------------
+
+
+def _resolve(served, uri):
+    answer = served.post("/api/resolve", {"uris": [uri]})
+    assert answer.status == 200, answer.body
+    return answer.json[uri]
+
+
+@pytest.mark.parametrize("uri, axis, key", [
+    ("tcw://demo.capabilities/cli/x", "capabilities", "cli/x"),
+    ("tcw://demo.taxonomy/term", "taxonomy", "term"),
+    ("tcw://core.capabilities/cli/y", "capabilities", "core.capabilities/cli/y"),
+])
+def test_ac20_a_link_resolves_to_its_route_key(served, uri, axis, key):
+    assert _resolve(served, uri) == {"ok": True, "axis": axis, "key": key}
+
+
+def test_ac20_a_link_into_a_project_not_inherited_from_is_other_project(tmp_path,
+                                                                       serve_project):
+    from tcw.store.fs import init
+    from tests.inherit import entry
+    from tests.projectfiles import connect_projects
+    from tests.work.projects import make_project
+    app = make_project(tmp_path, "app", config={})
+    core = make_project(tmp_path, "core", config={})
+    init(["taxonomy", "capabilities"], core)
+    entry(core, "taxonomy", "term")
+    connect_projects(app, "upstream", "core")
+    found = _resolve(serve_project(app), "tcw://core.taxonomy/term")
+    assert found == {"ok": False, "reason": "other-project", "project": "core"}

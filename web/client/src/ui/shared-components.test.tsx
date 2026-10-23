@@ -259,7 +259,7 @@ test("a superseded response never touches the document that replaced it", async 
     // arrives FIRST. Without the cleanup guard, A re-queries B's anchors, finds no
     // entry for B's uri, marks it unresolved and strips its href — and B's own
     // answer, arriving after, finds nothing left to repair.
-    const URI_A = "tcw://W/other/2026-01-01-a"
+    const URI_A = "tcw://other.work/2026-01-01-a"
     const gate: Record<string, () => void> = {}
     const waits: Record<string, Promise<void>> = {}
     for (const key of ["a", "b"])
@@ -314,10 +314,13 @@ test("typing tcw:// in the editor offers objects and inserts a work item's folde
             <LinkContext.Provider
                 value={[
                     {
-                        identifier: "tcw://W/2026-10-01-x",
+                        identifier: "tcw://p.work/2026-10-01-x",
                         displayName: "The X item",
                     },
-                    { identifier: "tcw://C/web", displayName: "Web" },
+                    {
+                        identifier: "tcw://p.capabilities/web",
+                        displayName: "Web",
+                    },
                 ]}
             >
                 <MarkdownEditor
@@ -345,7 +348,7 @@ test("typing tcw:// in the editor offers objects and inserts a work item's folde
     const listbox = screen.getByRole("listbox", { name: "Links" })
     expect(listbox).toHaveTextContent("The X item")
     fireEvent.keyDown(area, { key: "Enter" })
-    expect(text).toBe("See tcw://W/2026-10-01-x")
+    expect(text).toBe("See tcw://p.work/2026-10-01-x")
     expect(screen.queryByRole("listbox", { name: "Links" })).toBeNull()
 })
 
@@ -355,10 +358,10 @@ function LinkEditor({ onText }: { onText: (text: string) => void }) {
         <LinkContext.Provider
             value={[
                 {
-                    identifier: "tcw://W/2026-10-01-x",
+                    identifier: "tcw://p.work/2026-10-01-x",
                     displayName: "The X item",
                 },
-                { identifier: "tcw://C/web", displayName: "Web" },
+                { identifier: "tcw://p.capabilities/web", displayName: "Web" },
             ]}
         >
             <MarkdownEditor
@@ -418,11 +421,11 @@ test("a link typed in full ends the line on the first Enter", () => {
     )
     const area = screen.getByRole("textbox", { name: "Markdown" })
     fireEvent.change(area, {
-        target: { value: "See tcw://C/web", selectionStart: 15 },
+        target: { value: "See tcw://p.capabilities/web", selectionStart: 28 },
     })
     expect(screen.getByRole("listbox", { name: "Links" })).toBeInTheDocument()
     // Not prevented: the browser inserts the line break.
     expect(fireEvent.keyDown(area, { key: "Enter" })).toBe(true)
-    expect(text).toBe("See tcw://C/web")
+    expect(text).toBe("See tcw://p.capabilities/web")
     expect(screen.queryByRole("listbox", { name: "Links" })).toBeNull()
 })
