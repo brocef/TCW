@@ -51,6 +51,22 @@
   inherited entry's route key is its URL-encoded full identifier, and
   `/api/resolve` answers a folder address inert. (TCW-110)
 
+## Fixed
+
+- `tcw init` refuses a store location given as a `tcw:` address in any letter
+  case (`run_init` in `tcw/cli.py`); `TCW://…` used to create a folder named
+  `TCW:`. (TCW-110)
+- The web client no longer asks about unsaved changes right after a new item
+  is saved: `navigateTo` takes a `saved` argument, passed only by the
+  new-item form (`web/client/src/ui/app.tsx`). (TCW-110)
+- The web client returns from the stage-file editor on the tab of the file
+  just edited: `fileStage` in `app.tsx`, read once by the item page's
+  `openStage` (`web/client/src/ui/work-views.tsx`). (TCW-110)
+- The end-to-end tests name objects by full identifier, put their tags in
+  `.tcw/tcw-config.yaml`, open the Request tab before checking it, wait on
+  the page where they raced it, and have current screenshot baselines.
+  (TCW-110)
+
 ## Removed
 
 - `parse_tcw_uri`, the 3.x `.qualified` name, and the `AXIS_WORD` table.

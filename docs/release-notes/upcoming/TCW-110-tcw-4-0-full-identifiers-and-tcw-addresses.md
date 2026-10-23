@@ -60,3 +60,9 @@ path) are no longer read. They are reported as needing `tcw migrate`, which
 converts a project. In a project that keeps its items in Jira, a ticket whose
 TCW Item field still holds a 3.x value is left out of `tcw work list`, and one
 warning says how many were and names `tcw migrate`.
+
+## Web app fixes
+
+Saving a new work item in the web app no longer asks whether to leave
+without saving. And after you edit one of an item's stage files, the item's
+page opens on that file's tab rather than on the item's current stage.
