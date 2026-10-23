@@ -158,3 +158,20 @@ def test_ac26_a_worktree_inside_the_main_checkout(tmp_path):
     assert ran.code == 0, ran
     assert "duplicate project id" not in ran.out
     assert listed(worktree)["ws"]["path"] == str(ws)
+
+
+def test_a_borrowed_personal_manifest_reports_a_missing_project_once(tmp_path):
+    """A worktree with no personal manifest of its own reads the main
+    checkout's (Design 4.2). When that file places a project in a folder that
+    is not here, `tcw validate` in the worktree reports it once, as it does in
+    the main checkout, not once for the lookup and again for the entry."""
+    app = proj(tmp_path / "app", "app", upstream=["lib"])
+    (app / ".gitignore").write_text("/.tcw/tcw-manifest.local.yaml\n")
+    write_manifest(app, {"lib": "../gone"}, local=True)
+    worktree = repository_with_worktree(app, tmp_path / "wt")
+    env = personal_env(tmp_path)
+    for cwd in (app, worktree):
+        ran = tcw(cwd, "validate", env=env)
+        assert ran.code == 0, (cwd, ran)
+        assert ran.out.count("unresolved: ") == 1, (cwd, ran)
+        assert "0 errors, 0 warnings, 1 unresolved" in ran.err, (cwd, ran)

@@ -1589,9 +1589,14 @@ class FsProjectRegistry(ProjectRegistry):
                        if record else f"{named} {wrong}")
 
     def manifest_files(self) -> set:
-        """The active project's two manifests, as TCW names them."""
+        """The active project's two manifests, as TCW names them: the personal
+        one where `_manifests_of` reads it, which in a linked worktree with no
+        personal manifest of its own is the main checkout's (Design 4.2)."""
         root = self._root_key(self.project_root)
-        return {root / LOCAL_MANIFEST, root / MANIFEST}
+        files = {root / MANIFEST}
+        if not personal_files_skipped():
+            files.add(personal_file(root, LOCAL_MANIFEST_NAME, self._anchors))
+        return files
 
     def manifest_findings(self) -> list[Finding]:
         """`tcw validate`'s check of every entry in the active project's two
