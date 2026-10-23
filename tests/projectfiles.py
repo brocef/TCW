@@ -205,3 +205,23 @@ def write_connected_config(root, data="", encoding: str | None = "utf-8", **kw) 
     """`write_config`, moving 3.x locations into a manifest as
     `write_connected_config_file` does."""
     return write_connected_config_file(config_file(root), data, encoding, **kw)
+
+
+def connect_projects(root, relation: str, *project_ids: str) -> Path:
+    """Name each project under `projects.<relation>` in `root`'s
+    `.tcw/tcw-config.yaml`, by ID only, as TCW-107 leaves that key: where the
+    project is comes from a manifest or from the folders next to `root`.
+
+    The one place TCW-110's tests write a `projects:` entry, so TCW-108, which
+    replaces the key with parent links, converts them by changing this
+    function's body."""
+    path = config_file(root)
+    document = {}
+    if path.is_file():
+        document = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    body = {k: v for k, v in document.items() if k != VERSION_KEY}
+    section = body.setdefault("projects", {}).setdefault(relation, {}) or {}
+    for project_id in project_ids:
+        section[project_id] = None
+    body["projects"][relation] = section
+    return write_config_file(path, yaml.safe_dump(body, sort_keys=False))
