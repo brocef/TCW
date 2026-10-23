@@ -14,7 +14,8 @@ It asks, in order, and the first answer decides:
 3. With no entry anywhere, a search: the folders next to the naming project,
    then the folders enclosing it, each tested for a project with that ID. It
    never looks inside a folder it tests, so it reads a handful of folders,
-   and it never reads inside `Desktop`, `Documents` or `Downloads` in my home
+   and on macOS, which asks my permission before a program reads them, it
+   never reads inside `Desktop`, `Documents` or `Downloads` in my home
    folder unless the project is in one. Two folders declaring the ID are an
    error naming both, with the manifest entry to add.
 

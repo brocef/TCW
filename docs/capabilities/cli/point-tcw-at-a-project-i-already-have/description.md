@@ -28,9 +28,11 @@ instead of doing nothing.
 Every command that resolves connected projects honours the same variable,
 because it is read when the connections are loaded rather than by any one
 command. `tcw validate` notes on standard error each variable in effect and
-where it points, and reports a committed manifest entry the variable overrides
-as a warning, so a connection that resolves only because of a variable is never
-a mystery to the next person reading it.
+where it points, so a connection that resolves only because of a variable is
+never a mystery to the next person reading it. A committed manifest entry the
+variable overrides is reported only when that entry is itself wrong, and then as
+a warning rather than an error, since it does not decide on this machine; an
+overridden entry that is correct is not reported at all.
 
 **My statement reaches a component store too, not only a project.** When a
 store's declared home repository is the repository of a project located here,
