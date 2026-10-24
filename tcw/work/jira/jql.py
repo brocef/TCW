@@ -7,6 +7,10 @@ is matched after the search instead.
 
 The test fake parses exactly the shapes built here (`tests/work/jira/fake_jql.py`),
 and a test builds every shape, so a new clause cannot slip past the fake.
+
+Within one command the same item search, with the same account and fields, is
+sent once and its answer kept, until a write (TCW-113 Design 3.5,
+`tcw.work.jira.backend._kept_search`).
 """
 
 from __future__ import annotations

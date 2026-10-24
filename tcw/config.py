@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import copy
 import os
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator
@@ -1364,14 +1366,22 @@ def _command_overrides() -> tuple[dict, list]:
     return _OVERRIDES
 
 
+#: What one command, or one `tcw serve` request, keeps for itself alone
+#: (TCW-113 plan choice 10): `state`, a dictionary, or absent outside one.
+#: Thread-local, because the server answers requests on several threads.
+_COMMAND = threading.local()
+
+
 def begin_command() -> None:
     """Start one command: the configuration, and the project registry
     (TCW-107 Design 2.13), are each read once until `end_command`. The
     registry is dropped after the command writes a configuration or a
-    manifest; this configuration cache is still not, as in 3.x."""
+    manifest; this configuration cache is still not, as in 3.x. The
+    command's own state (`command_state`) starts empty."""
     global _EFFECTIVE, _OVERRIDES
     _EFFECTIVE = {}
     _OVERRIDES = None
+    _COMMAND.state = {}
     from tcw.store import project
     project.begin_command()
 
@@ -1380,8 +1390,28 @@ def end_command() -> None:
     global _EFFECTIVE, _OVERRIDES
     _EFFECTIVE = None
     _OVERRIDES = None
+    _COMMAND.state = None
     from tcw.store import project
     project.end_command()
+
+
+def command_state() -> dict | None:
+    """The state this thread's command or request keeps for itself, such as
+    the Jira searches it has made (TCW-113 Design 3.5); None outside one."""
+    return getattr(_COMMAND, "state", None)
+
+
+@contextmanager
+def command_span() -> Iterator[dict]:
+    """One `tcw serve` request's own `command_state`, on this thread only.
+    On leaving, the state found on entering is put back, so a span opened
+    inside a command, or inside another span, never drops its caller's."""
+    found = getattr(_COMMAND, "state", None)
+    _COMMAND.state = {}
+    try:
+        yield _COMMAND.state
+    finally:
+        _COMMAND.state = found
 
 
 def effective(project_root: Path, registry=None) -> Config:

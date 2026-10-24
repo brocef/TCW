@@ -326,12 +326,27 @@ OPERATIONS = {
 }
 
 
+#: Public methods that send no request, so take no timeout (TCW-113 Design
+#: 3.5's search key); each is proved here to send none.
+NO_REQUEST = {"account_key": ()}
+
+
 def test_every_operation_is_accounted_for_here():
     """If an operation is added and not listed above, the timeout test below would
     silently stop covering it. This is what makes that impossible."""
     public = {name for name in vars(jira.JiraClient)
               if not name.startswith("_") and callable(getattr(jira.JiraClient, name))}
-    assert public == set(OPERATIONS), public ^ set(OPERATIONS)
+    assert public == set(OPERATIONS) | set(NO_REQUEST), \
+        public ^ (set(OPERATIONS) | set(NO_REQUEST))
+
+
+@pytest.mark.parametrize("name", sorted(NO_REQUEST))
+def test_a_method_that_is_no_operation_sends_nothing(monkeypatch, name):
+    rec = Recorder({})
+    client = jira.JiraClient(CONFIG)
+    monkeypatch.setattr(client, "_request", rec)
+    getattr(client, name)(*NO_REQUEST[name])
+    assert rec.calls == []
 
 
 @pytest.mark.parametrize("name", sorted(OPERATIONS))

@@ -1,7 +1,9 @@
 """A Jira Cloud REST client, standard library only.
 
 This module is the single home of all Jira HTTP work in TCW, so that a second
-Jira client never gets written. It imports nothing from the rest of TCW.
+Jira client never gets written. It imports nothing from the rest of TCW but
+`tcw.config.command_state`, which a write reads, when it is made, to drop the
+searches kept for the command (`forget_kept_searches`).
 
 TCW ships with PyYAML and nothing else, and that does not change for this. So the
 transport is `urllib.request`, with a basic-authentication header built by hand.
@@ -26,6 +28,7 @@ that changes.
 from __future__ import annotations
 
 import base64
+import hashlib
 import http.client
 import json
 import os
@@ -123,6 +126,22 @@ class JiraComment:
     id: str | None = None
 
 
+# ── searches kept for one command ────────────────────────────────────────────
+
+#: Where `tcw.work.jira.backend` keeps a command's searches, in its
+#: `command_state()` (TCW-113 Design 3.5).
+KEPT_SEARCHES = "jira-searches"
+
+
+def forget_kept_searches() -> None:
+    """Drop every search kept in this command or request, so a search made
+    after a write asks Jira again and sees it (TCW-113 plan choice 16)."""
+    from tcw.config import command_state
+    state = command_state()
+    if state is not None:
+        state.pop(KEPT_SEARCHES, None)
+
+
 # ── the client ───────────────────────────────────────────────────────────────
 
 
@@ -131,12 +150,22 @@ class JiraClient:
 
     Holds a `JiraConfig` (`tcw.work.jira.config`), read by attribute: `site`,
     `timeout`, and the *names* of the two credential variables, `email_env` and
-    `token_env`. The values are read in `_request` and nowhere else, so an
-    instance that never makes a call never touches a secret.
+    `token_env`. The values are read in `_request` and `account_key` and
+    nowhere else, so an instance that never makes a call, or keeps a search,
+    never touches a secret; `account_key` keeps only a digest of the token.
     """
 
     def __init__(self, config):
         self.config = config
+
+    def account_key(self) -> tuple[str, str, str]:
+        """The site, the email and a SHA-256 digest of the token a request
+        would sign in with, each read and stripped as `_request` reads them:
+        the account part of a kept search's key (TCW-113 Design 3.5). The
+        token itself is never kept."""
+        email = os.environ.get(self.config.email_env, "").strip()
+        token = os.environ.get(self.config.token_env, "").strip()
+        return (self.config.site, email, hashlib.sha256(token.encode()).hexdigest())
 
     # -- the only place urllib is touched, and the only place secrets are read --
 
@@ -390,6 +419,10 @@ class JiraClient:
         return payload
 
     # -- operations: writes --
+    #
+    # Each first drops the searches kept for the command (TCW-113 plan
+    # choice 16), before sending, so a write that fails partway leaves
+    # nothing stale either.
 
     def create_issue(self, fields: dict):
         """Create an issue from a whole `fields` mapping and return the answer,
@@ -399,12 +432,14 @@ class JiraClient:
         whatever the answer looks like. The issue lands in whatever status the
         project's workflow starts in, which is why callers move it afterwards.
         """
+        forget_kept_searches()
         return self._payload("POST", "/rest/api/3/issue", {"fields": fields})
 
     def edit_issue(self, key: str, fields: dict | None = None,
                    update: dict | None = None) -> None:
         """One edit: `fields` set values, `update` holds operations such as
         adding or removing one label."""
+        forget_kept_searches()
         body: dict = {}
         if fields:
             body["fields"] = fields
@@ -418,6 +453,7 @@ class JiraClient:
         when given. Success says only that Jira accepted the request; a refused
         transition raises `TrackerRequestInvalid` whatever the reason, so the
         caller reads the issue back to learn what happened."""
+        forget_kept_searches()
         body: dict = {"transition": {"id": transition_id}}
         if comment is not None:
             body["update"] = {"comment": [{"add": {"body": comment}}]}
@@ -426,18 +462,21 @@ class JiraClient:
     def add_comment(self, key: str, document: dict) -> None:
         """Add a comment, given as a Jira document (ADF), in which text needs no
         escaping."""
+        forget_kept_searches()
         self._payload("POST", f"/rest/api/3/issue/{_quote(key)}/comment",
                       {"body": document})
 
     def add_link(self, type_name: str, inward_key: str, outward_key: str) -> None:
         """Link two issues. Which side is which for `Blocks` is decided in one
         place, `tcw.work.jira.mapping.block_link`."""
+        forget_kept_searches()
         self._payload("POST", "/rest/api/3/issueLink", {
             "type": {"name": type_name},
             "inwardIssue": {"key": inward_key},
             "outwardIssue": {"key": outward_key}})
 
     def delete_link(self, link_id: str) -> None:
+        forget_kept_searches()
         self._payload("DELETE", f"/rest/api/3/issueLink/{_quote(link_id)}")
 
 

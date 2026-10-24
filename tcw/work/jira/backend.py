@@ -12,6 +12,7 @@ state.
 
 from __future__ import annotations
 
+import copy
 import os
 import re
 import sys
@@ -41,6 +42,7 @@ from tcw.rewrite import rewrite_own_id
 from tcw.work.fs_backend import STATE_FILE, WORDS
 from tcw.work.jira import jql
 from tcw.work.jira.client import (
+    KEPT_SEARCHES,
     JiraClient, Transition, TrackerAuthError, TrackerError, TrackerNotFound,
     TrackerPermissionError, TrackerRateLimited, TrackerRequestInvalid, TrackerSiteMissing,
     TrackerUnavailable,
@@ -332,6 +334,25 @@ def recorded_problems(backend: "JiraBackend", resolve) -> list[Finding]:
                 f"{name} {ref} is a ticket on {backend.jira.site}; run tcw work edit "
                 f"{holder.slug} {flag} {ref} to make it a Jira link"))
     return findings
+
+
+def _kept_search(backend: "JiraBackend", text: str, fields) -> list:
+    """`list`'s search, made once per command for each search key (TCW-113
+    Design 3.5): the site, the account and a digest of the token the
+    credentials sign in with, the search text and the fields asked for. A
+    later search with the same key in the same command is answered from what
+    was kept, as a deep copy, so no caller changes what another is given.
+    Outside a command nothing is kept, and a write drops what was
+    (`forget_kept_searches`)."""
+    from tcw.config import command_state
+    state = command_state()
+    if state is None:
+        return backend.client.search(text, fields)
+    key = (*backend.client.account_key(), text, tuple(fields))
+    kept = state.setdefault(KEPT_SEARCHES, {})
+    if key not in kept:
+        kept[key] = backend.client.search(text, fields)
+    return copy.deepcopy(kept[key])
 
 
 def _field(issue: Mapping, field_id: str) -> Any:
@@ -704,7 +725,7 @@ class JiraBackend:
                               statuses=statuses, not_statuses=not_statuses,
                               parent=parent, assignee=assignee, labels=labels)
         with _jira():
-            issues = self.client.search(text, read_fields(meta.field_ids))
+            issues = _kept_search(self, text, read_fields(meta.field_ids))
         found = []
         three_x = []
         for issue in issues:
