@@ -245,3 +245,31 @@ def test_ac28_a_variable_naming_a_project_read_for_itself(tmp_path, on, run):
     errors = [line for line in ran.out.splitlines() if line.startswith("error:")]
     assert len(errors) == 1 and errors[0].startswith("error: environment: "
                                                      "TCW_WORK_TAGS__LIB"), ran
+
+
+@pytest.mark.parametrize("name, value, words", [
+    ("TCW_WORK_STAGES_SPEC_PROMPT__APP", "[5]", "a binding must be a mapping"),
+    ("TCW_WORK_STAGES_SPEC_PROMPT__APP", "[{blob: a, file: b}]", "choose one"),
+    ("TCW_WORK_STAGES_SPEC_PROMPT__APP", "[{bogus: a}]", "unknown binding key"),
+    ("TCW_WORK_STAGES_SPEC_PROMPT__APP", "[{blob: 5}]", "must be a non-blank string"),
+    ("TCW_WORK_STAGES_SPEC_PROMPT__APP", "[{file: ../../x}]", "resolves outside"),
+    ("TCW_WORK_STAGES_SPEC_PROMPT__APP", "[{inherit: 5}]", "takes only the value true"),
+    ("TCW_WORK_STAGES_SPEC_POST__APP", "[{blob: x}]", "is not allowed in a post list"),
+    ("TCW_WORK_STAGES_SPEC__APP", "{prompt: 5}", "expected a list of bindings"),
+    ("TCW_WORK_STAGES__APP", "{bogus: {prompt: []}}", "unknown stage"),
+    ("TCW_WORK_PROCEDURES_SEARCH__APP", "[5]", "a binding must be a mapping"),
+    ("TCW_WORK_PROCEDURES__APP", "{bogus: []}", "unknown procedure"),
+    ("TCW_USER_NAME__APP", "", "must be a name"),
+    ("TCW_USER__APP", "{name: 5}", "must be a name"),
+])
+def test_ac28_every_problem_in_a_value_starts_with_the_variable(app, on, name, value,
+                                                                words):
+    """Design 7.2: a problem found in a variable's value, by the checks made
+    while reading it or by the parser after the fold, starts with its name."""
+    ran = tcw(app, "validate", env={**on, name: value})
+    assert ran.code == 1, ran
+    errors = [line for line in ran.out.splitlines() if line.startswith("error:")]
+    assert len(errors) == 1 and words in errors[0], ran
+    assert errors[0].startswith(f"error: environment: {name}: "), ran
+    listed = tcw(app, "work", "list", env={**on, name: value})
+    assert listed.code == 1 and listed.err.split(": ", 1)[1].startswith(name), listed
