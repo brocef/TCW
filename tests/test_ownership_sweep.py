@@ -103,6 +103,7 @@ WRITER_CALLERS = {
 #: runs at call time, after `tcw -C` has changed the folder.
 CURRENT_FOLDER_READS = {
     "cli.py:run_init", "cli.py:main", "projects_cli.py:_list", "config_cli.py:_show",
+    "project_cli.py:_path",
     "project_files.py:find_marker", "output.py:shown", "work/cli.py:project_root",
     "work/cli.py:_procedure", "store/project.py:FsProjectRegistry._resolve_override",
     "store/fs.py:git_root",

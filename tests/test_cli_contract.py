@@ -53,6 +53,7 @@ ROWS: dict[str, tuple[list[str], int]] = {
     "project list": (["project", "list"], 1),
     "project config": (["project", "config"], 1),
     "project provision": (["project", "provision", "--dry-run"], 1),
+    "project path": (["project", "path"], 1),
     "taxonomy list": (["taxonomy", "list"], 1),
     "taxonomy add": (["taxonomy", "add", "Widget"], 1),
     "taxonomy show": (["taxonomy", "show", "widget"], 1),

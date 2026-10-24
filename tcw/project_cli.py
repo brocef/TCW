@@ -1,7 +1,8 @@
 """`tcw project` — everything about a project itself, rather than its records
 (TCW-115 Design 1): making it (`new`), the projects it is connected to
-(`list`), the configuration it runs with (`config`), and fetching what it
-names but does not have here (`provision`).
+(`list`), the configuration it runs with (`config`), fetching what it
+names but does not have here (`provision`), where a project is on this
+machine (`path`), and how this one is assembled (`info`).
 
 The verbs' code stays where it was written: `run_init` and `run_provision` in
 `tcw/cli.py`, `connected` and `_list` in `tcw/projects_cli.py`, `render` and
@@ -11,8 +12,32 @@ The verbs' code stays where it was written: `run_init` and `run_provision` in
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 NAME = "project"
+
+
+def _path(args: argparse.Namespace) -> int:
+    """`tcw project path [<id>]` (TCW-115 Design 5): the folder of project
+    `<id>` on this machine, as every other command here would find it."""
+    from tcw import exit as codes
+    from tcw.errors import NO_PROJECT, BackendError, UsageError
+    from tcw.project_files import validate_project_id
+    from tcw.store.fs import find_project_root
+    from tcw.store.project import FsProjectRegistry
+    if args.id is not None:
+        try:
+            validate_project_id(args.id)
+        except ValueError as error:
+            raise UsageError(str(error)) from None
+    root = find_project_root(Path.cwd())
+    if root is None:
+        raise BackendError(NO_PROJECT)
+    registry = FsProjectRegistry.open(root).require_valid()
+    # `project_folder` raises `Unreachable` (exit 5), `UnknownProject` and
+    # `ProjectGraphError` (exit 1), each with its own message.
+    print(root if args.id is None else registry.project_folder(args.id, root))
+    return codes.OK
 
 
 def add_subparser(sub: argparse._SubParsersAction) -> None:
@@ -77,3 +102,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p_provision.add_argument("--dry-run", action="store_true",
                              help="print the plan; contact nothing")
     p_provision.set_defaults(own_config=True, func=_cmd_provision)
+
+    p_path = command(
+        verbs, "path", help="the folder a project is in on this machine",
+        prints="one absolute folder: the project's root, the folder holding its .tcw/",
+        writes="nothing", examples=["project path", "project path core"])
+    p_path.add_argument("id", nargs="?", help="the project's ID (default: this project)")
+    p_path.set_defaults(func=_path)

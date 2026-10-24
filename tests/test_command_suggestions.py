@@ -160,6 +160,9 @@ def test_the_inbox_stage_is_named_without_a_slug(tmp_path):
     ("list", "did you mean one of `tcw taxonomy list`, `tcw capabilities list`, "
              "`tcw work list`?"),
     ("new", "did you mean `tcw work new` or `tcw project new`?"),
+    # Unchanged: `tcw project path` is a fourth match, past the three named.
+    ("path", "did you mean one of `tcw taxonomy path`, `tcw capabilities path`, "
+             "`tcw work path`?"),
 ])
 def test_a_top_level_word_names_the_project_verb_in_registration_order(capsys, word, line):
     err = usage_error(capsys, word)
