@@ -47,6 +47,10 @@ EXEMPT = {
     ("provision.py", "_bound_problem"),     # 7.8: "git could not say which repository"
     ("provision.py", "_folder_problem"),    # 7.6: "holds only .git … with git"
     ("store/fs.py", "fetch_project"),       # git's failure text, through `_git_reason`
+    # TCW-116 Design 6.5 (Decided 23): a related project `tcw migrate` must
+    # read and that is not on this machine is fetched with the clone itself,
+    # since every command but `tcw migrate` is refused in a 3.x project.
+    ("migrate/family.py", "absent_project_message"),
 }
 
 WORKTREE_SENTENCE = ("while this worktree has its own at",
