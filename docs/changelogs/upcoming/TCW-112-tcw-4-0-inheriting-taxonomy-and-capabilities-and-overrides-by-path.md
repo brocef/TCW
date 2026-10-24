@@ -39,12 +39,17 @@ content could not be read`. (TCW-112)
 - `tcw capabilities set` on an inherited capability writes the project's own
   object at the same id-path holding only the fields given (no name, no id,
   no `description.md`); a cleared field is written as `null` on every own
-  object (`--parent ''` writes `parent: null`). `reset` takes the id-path,
+  object: `--field K=` writes `K: null` where it wrote an empty string, and
+  `--parent ''` writes `parent: null`. `reset` takes the id-path,
   the project's own full identifier or the overridden object's.
   `rm` removes an override and prints `<id-path> now shows <full id>`.
   `tcw capabilities add` at an inherited path is refused; `tcw taxonomy add`
   there writes an override of what differs and says what it overrides;
   `--kind` has no default there. (TCW-112)
+- `tcw validate` reports a capability's field findings (an unknown or retired
+  field, a value a field cannot take, `Partial` without `Gaps`) at its state
+  file, `docs/capabilities/<path>/tcw-capability.yaml`, where it named the
+  folder. (TCW-112)
 - `update_capability` writes a given body, an empty one included, as the
   declared description; the web editor's body field starts from
   `declaredDescription`, and notes when the page's body holds more. A term

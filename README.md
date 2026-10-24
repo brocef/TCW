@@ -380,8 +380,8 @@ More in [Taxonomy and Capabilities](docs/guide/taxonomy-and-capabilities.md).
 ### Overview
 
 A capability is one thing a user can do, such as "Download an invoice as PDF".
-Each is addressed by a path (`billing/invoices`), and carries a **status**: `Supported`, `Partial`, `Missing`, `Blocked` or
-`Omitted`. The status is what makes the list useful: it says what the product
+Each is addressed by a path (`billing/invoices`), and carries a
+**status**: `Supported`, `Partial`, `Missing`, `Blocked` or `Omitted`. The status is what makes the list useful: it says what the product
 actually does today. The `implement` stage changes the record in the same change
 as the code, and `Missing` means a gap the team has acknowledged, never a plan.
 
