@@ -19,6 +19,7 @@ from tcw.errors import (NO_PROJECT, BackendError, ConfigError, NotFound, Refused
                         UsageError)
 from tcw.ids import sort_input
 from tcw.output import print_json, wrote
+from tcw.scope import scope_options
 from tcw.ownership import check_owned
 from tcw.store.base import normalize_tag
 from tcw.store.fs import FsProjectRegistry, find_project_root
@@ -293,8 +294,10 @@ def _list(args) -> int:
     if args.mine:
         _alone(args, "--mine")
     root = project_root()
+    covered = _covered(args, root)
     backend = open_backend(root)
-    assignee = _me(backend) if args.mine else args.assignee
+    listed_here = covered is None or covered.active in {m.id for m in covered.wanted()}
+    assignee = (_me(backend) if listed_here else None) if args.mine else args.assignee
     tags = frozenset(args.tag) if args.tag else None
     for tag in sorted(tags or ()):
         if tag not in backend.config.tags:
@@ -303,6 +306,8 @@ def _list(args) -> int:
     query = Query(stages=frozenset(args.stage) if args.stage else None,
                   parent=parent, assignee=assignee, tags=tags,
                   all=args.all)
+    if covered is not None:
+        return _list_scope(args, covered, backend, query, assignee)
     items = backend.list(query)
     if args.json:
         every = _readable(backend)
@@ -311,6 +316,48 @@ def _list(args) -> int:
     for item in items:
         print(item.slug)
     return codes.OK
+
+
+def _list_scope(args, covered, backend: WorkBackend, query: Query,
+                assignee: str | None) -> int:
+    """`list` over the projects a scope covers (TCW-113 Design 3.1, 3.2):
+    each project's own items in scope order, `children` and `blocks`
+    computed across the scope (Design 3.3)."""
+    from tcw.config import effective
+    from tcw.work.scoped import list_scope
+    scoped = list_scope(covered, query, active=backend, active_assignee=assignee,
+                        mine=args.mine,
+                        me=lambda: effective(covered.root).user_name,
+                        need_every=args.json)
+    covered.warn("its work items are not listed", _say)
+    if scoped.bad:
+        _say("warning: these items could not be read, so blocks and children "
+             "may be incomplete: " + ", ".join(scoped.bad))
+    if args.json:
+        print_json(None, {"items": [item_record(i, scoped.every, _layout(b))
+                                    for i, b in scoped.items()],
+                          **_projects(covered)})
+        return codes.OK
+    for item, _ in scoped.items():
+        print(item.slug)
+    return codes.OK
+
+
+def _covered(args, root: Path):
+    """The projects a list or show command covers, or None for today's
+    reading of the active project alone: `--scope own` with no
+    `--project`. A `--project` the scope does not cover is refused here,
+    before anything is read (Design 2.2)."""
+    if args.scope == "own" and args.project is None:
+        return None
+    from tcw.scope import cover
+    return cover(root, args.scope, args.project)
+
+
+def _projects(covered) -> dict:
+    """`projects` for a `--json` document, under a scope other than `own`."""
+    projects = covered.projects_json()
+    return {} if projects is None else {"projects": projects}
 
 
 def _stamp(at) -> str:
@@ -332,15 +379,40 @@ def _indented(text: str) -> list[str]:
 def _show(args) -> int:
     """The item's properties, its request and its comments, newest first: the
     whole item an agent needs to read (Design 1.9)."""
-    slug, backend, _ = resolve_item(args.slug)
+    root = project_root()
+    found = sort_input(args.slug, "work", KEY)
+    named = found.full_id.project if found.form in ("a", "c") else None
+    if args.project is not None and named is not None and named != args.project:
+        # Design 2.3: a full identifier names its own project's item.
+        raise UsageError(f"'{args.slug}' names an item of project '{named}', and "
+                         f"--project keeps only project '{args.project}''s; give one "
+                         f"of them")
+    covered = _covered(args, root)
+    active = None if covered is None else open_backend(root)
+    if covered is None or named is not None:
+        # A full identifier names that item wherever it is, outside any
+        # catch (Design 1.7, 3.4); the scope decides only `children` and
+        # `blocks`.
+        slug, backend, _ = resolve_item(args.slug)
+    else:
+        slug, backend = _show_in_scope(args.slug, found, covered, active)
     item = backend.read(slug.folder)
-    record = item_record(item, _readable(backend), _layout(backend))
+    if covered is None:
+        every = _readable(backend)
+    else:
+        from tcw.work.scoped import every_item
+        every, bad = every_item(covered, active)
+        covered.warn("its items are not counted in children and blocks", _say)
+        if bad:
+            _say("warning: these items could not be read, so blocks and children "
+                 "may be incomplete: " + ", ".join(bad))
+    record = item_record(item, every, _layout(backend))
     request = backend.read_request(slug.folder)
     comments = backend.read_comments(slug.folder)
     if args.json:
         print_json(None, {"item": record, "request": request, "comments": [
             {"at": _stamp(c.at), "author": c.author, "text": c.text}
-            for c in comments]})
+            for c in comments], **({} if covered is None else _projects(covered))})
         return codes.OK
     lines = []
     for key, value in record.items():
@@ -364,6 +436,25 @@ def _show(args) -> int:
             lines += _indented(c.text)
     print("\n".join(lines))
     return codes.OK
+
+
+def _show_in_scope(text: str, found, covered, active: WorkBackend
+                   ) -> tuple[Slug, WorkBackend]:
+    """The item a folder name or a ticket key names among the projects the
+    scope keeps (Design 3.4): exactly one, or not found, or a usage error
+    naming each."""
+    from tcw.work.scoped import find_in_scope
+    key = found.key if found.form == "b" else None
+    matches = find_in_scope(covered, text, active=active, key=key,
+                            id_path=None if key is not None else found.id_path)
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        raise NotFound(f"no work item {text} in --scope {covered.scope}, which covers "
+                       f"{', '.join(m.id for m in covered.wanted())}")
+    raise UsageError(f"'{text}' names {len(matches)} items in --scope {covered.scope}: "
+                     f"{', '.join(str(slug) for slug, _ in matches)}; name one by its "
+                     f"full identifier")
 
 
 def _path(args) -> int:
@@ -847,7 +938,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = command(cmds, "list", help="list items",
                 prints="one full identifier per line, or --json", writes="nothing",
                 examples=["list", f"list --stage {start_stage()} --tag auth",
-                          "list --all --json"])
+                          "list --all --json", "list --scope down --json"])
     p.add_argument("--stage", action="append",
                    help=f"only items at this stage; repeat for more ({stages})")
     p.add_argument("--tag", type=_tag, action="append",
@@ -859,8 +950,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                    help="only items assigned to you: user.name, or your Jira account")
     p.add_argument("--all", action="store_true",
                    help="include items that have ended")
+    scope_options(p)
     p.add_argument("--json", action="store_true",
-                   help='print {"schema": 2, "items": [...]}')
+                   help='print {"schema": 2, "items": [...]}, and "projects" when '
+                        'the scope is not own')
     p.set_defaults(func=_list)
 
     p = command(cmds, "show", help="an item's record, what it asks for, and its "
@@ -868,11 +961,13 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                 prints="the item's properties, what it asks for and its comments, "
                        "newest first, or --json", writes="nothing",
                 examples=["show 2026-10-01-refund-a-payment",
-                          "show 2026-10-01-refund-a-payment --json"])
+                          "show 2026-10-01-refund-a-payment --json",
+                          "show 2026-10-01-refund-a-payment --scope down"])
     p.add_argument("slug", help=SLUG_HELP)
+    scope_options(p)
     p.add_argument("--json", action="store_true",
                    help="print one JSON object: the item, what it asks for, and "
-                        "its comments")
+                        "its comments, and \"projects\" when the scope is not own")
     p.set_defaults(func=_show)
 
     p = command(cmds, "path", help="a path in the work store",
