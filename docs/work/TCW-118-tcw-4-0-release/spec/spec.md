@@ -639,7 +639,29 @@ release's own rules for the wait are that rule 4.0 still holds in this
 repository (2.2), so their testing runs outside it and off the `TCW` board,
 and that the release installs nothing as this machine's shared `tcw` before
 gate 2 (the user installing the tarball elsewhere is their choice, and is
-not 5.5). Their answer is recorded in `gates.md` (Design 10) and committed on
+not 5.5). The message also says how to test without touching anything
+outside this machine:
+
+- **The skills.** To try the plugin's skills with the 4.0 CLI, start Claude
+  Code as `claude --plugin-dir <the merge clone>` with the acceptance
+  environment's `bin` folder first on `PATH`, as 6.2 (h) does; otherwise a
+  session pairs the 3.x plugin with the 4.0 CLI, or the 4.0 plugin with the
+  3.x CLI. This machine has more than one `tcw` on `PATH` (`which -a tcw`
+  lists them), so the environment's `tcw` is run by its full path, or with
+  its `bin` folder first.
+- **The user's own projects.** 4.0 refuses a 3.x project except to migrate
+  it. Test on a copy of a project, never the project itself; for a copy of
+  a Jira-backed project, migrate with `tcw migrate --no-jira`, which
+  converts the files only and never contacts Jira (TCW-116 spec, Design
+  1.1, `docs/work/TCW-116-tcw-4-0-tcw-migrate-from-3-x/spec/spec.md:239-246`),
+  or point the copy at the test Jira project. Migrating with Jira converts
+  that project's live board, which is gate 2's step, not gate 1's, and once
+  a board is converted the 3.0.2 `tcw` this machine shares can no longer
+  read it (Risks, "The board is converted before GitHub's `main` is").
+- **Not here.** Never activate the acceptance environment inside this
+  repository (rule 4.0).
+
+Their answer is recorded in `gates.md` (Design 10) and committed on
 the merge clone's `main`, and it has one of three outcomes:
 
 - **Accepted.** The go names A. The release goes on to gate 2 (5.0).
@@ -647,8 +669,10 @@ the merge clone's `main`, and it has one of three outcomes:
   pushes are the only things on GitHub, and the board was only read (4.2).
   The release stops; the merge clone and `~/.tcw-4.0-release/` are kept
   until the user says otherwise; rule 4.0 is lifted, and the agents and the
-  user are told so; and the items the user names go back to `implement` as
-  the user directs. TCW-118 stays at `implement`.
+  user are told so; the decline is then committed to `gates.md` in the
+  primary checkout too, since the merge clone's `main` is never pushed
+  (Design 10); and the items the user names go back to `implement` as the
+  user directs. TCW-118 stays at `implement`.
 - **A defect found.** It is fixed on `v4` in the child's area, by an agent
   briefed as 3.4 briefs, which runs no `tcw` command (rule 4.0 still holds);
   then 3.10 (CI on the new commit), and phase B again from 4.1 in a new
@@ -691,7 +715,9 @@ as 4.6 says, which means gate 1 is asked again before gate 2 is.
 
 5.1. **The live Jira scenario** (TCW-114's comment of 2026-10-24: the
 scenario now expects `rename` to print `<old> -> <new>` and has run only
-against the fake). In the merge clone at A, the code that is released, with
+against the fake). On the merge clone's `main`, which by then is past A only
+by commits touching `docs/` (the `gates.md` commits), so its code is A's, the
+code that is released, with
 the clone's own environment: `TCW_JIRA_LIVE=1` with `TCW_JIRA_EMAIL` and
 `TCW_JIRA_API_KEY` set,
 `.venv/bin/pytest -s tests/work/jira/test_jira_scenario.py::test_the_scenario_live`.
@@ -1059,8 +1085,12 @@ handoff of 2026-10-22.
   step it covers: gates 1 and 2 on the merge clone's `main`, gate 3 on the
   primary checkout's `main`. Each entry gives the gate, the commit it names
   (A for gate 1 and 2, T for gate 3), the date and time (UTC), and the
-  user's words quoted exactly. The qa findings, on TCW-118's Jira ticket,
-  point to that file rather than repeating it.
+  user's words quoted exactly. A merge clone built again (4.6, a defect
+  found) copies in the whole of `~/.tcw-4.0-release/gates.md`, so its
+  `gates.md` keeps every earlier answer. A decline at gate 1 or gate 2 is
+  also committed on the primary checkout's `main`, once rule 4.0 is lifted,
+  because the merge clone that holds it is never pushed. The qa findings,
+  on TCW-118's Jira ticket, point to that file rather than repeating it.
 - **For PyPI: no login.** CI publishes with Trusted Publishing, which needs no
   password, token or login (`release.yml:16-21`, `docs/releasing.md:15-19`);
   the user's part is gate 3.
@@ -1226,14 +1256,16 @@ Phase A
 47. (4.6, gate 1) `docs/work/TCW-118-tcw-4-0-release/gates.md` on `main`
     holds gate 1's go: the user's words quoted, a date and time (UTC), and
     the commit A it names, equal to the merge clone's `main` after 4.4 (the
-    one recorded in `refs.txt`). That time is earlier than the `date -u`
+    last value of A recorded in `refs.txt`, since a defect found at gate 1
+    records A again). That time is earlier than the `date -u`
     line at the top of each of `~/.tcw-4.0-release/live-scenario.txt`, the
     rehearsal's two files (5.2), `install.txt`, `tcw116-step6.txt` and
     `pushes.txt`. A gate 1 answer that was a decline or a defect is in the
     file too, with what followed (4.6).
 48. (5.1) `~/.tcw-4.0-release/live-scenario.txt` shows
     `test_the_scenario_live` passed (`1 passed`, not `skipped`), and its
-    printed `validate --remote exited 0`, run in the merge clone at A.
+    printed `validate --remote exited 0`, run on the merge clone's `main`
+    (A, or past it only by commits touching `docs/`).
 49. (3.5, Known gaps) The implement round has one line for each row of
     TCW-117 Design 6.4's table, giving the gap's state in
     `docs/use-cases.md` at V (gone, or the item it names), and every line
@@ -1265,8 +1297,9 @@ Phase B
     `git ls-remote origin main` prints M0.
 54. (4.5) `~/.tcw-4.0-release/acceptance/` holds `tcw_cli-4.0.0.tar.gz`
     and its SHA-256 digest; the commands of 6.2 (f) and the comparison of
-    6.2 (g), run with it, passed, as recorded in the implement round, before
-    gate 1 was asked.
+    6.2 (g), run with it, passed; the results are read from
+    `~/.tcw-4.0-release/acceptance/`, where they were written before gate 1
+    was asked, and are also recorded in the implement round.
 
 Phase C
 
@@ -1767,3 +1800,27 @@ of 2026-10-24 (Notes, "Decisions", 1, 8, 9 and 17 replaced, 20 to 25 added).
 - **Holding back** in each of Claude Code, Codex and Pi is an open item for
   the plan, blocking the release notes' fifth point (3.3, criterion 7, Risks);
   no 3.x pinned patch release is made here (Non-goals).
+
+### Third revision, 2026-10-24
+
+Revised after spec review round 3.
+
+- **Gate 1's message says how to test 4.0 safely** (4.6): run the skills
+  with `claude --plugin-dir <the merge clone>` and the acceptance
+  environment's `bin` first on `PATH`; run its `tcw` by full path, since
+  `which -a tcw` lists more than one; test on a copy of a project, migrated
+  with `tcw migrate --no-jira` or pointed at the test Jira project, because
+  migrating with Jira converts a live board, which is gate 2's step and
+  which the shared 3.0.2 `tcw` cannot then read; never activate the
+  environment inside this repository.
+- **5.1 runs on the merge clone's `main`**, past A only by commits touching
+  `docs/`, rather than "at A"; criterion 48 says the same.
+- **Criterion 47** names the last value of A in `refs.txt`.
+- **A decline at gate 1 or 2** is committed on the primary checkout's
+  `main` once rule 4.0 is lifted (4.6, Design 10), and a merge clone built
+  again copies in the whole of `~/.tcw-4.0-release/gates.md` (Design 10).
+- **Criterion 54** reads 4.5's results from `~/.tcw-4.0-release/acceptance/`,
+  written there before gate 1 was asked.
+- The citations of `test.yml:42` for `workflow_dispatch` (3.10, 6.2 (b))
+  were checked and are right: the line is 42 on `v4`, `main` and both
+  remote branches, so they are unchanged.
