@@ -44,15 +44,11 @@ TODAY = date.today().isoformat()
 SOURCE = str(Path(tcw.__file__).resolve().parent.parent)
 
 # Every leaf command, with arguments that parse, and the exit code outside a
-# project. `init` is left out of the outside run: making a project is what it
+# project. `project new` is left out of the outside run: making a project is what it
 # does there. `procedure` reads TCW's own text and works anywhere (plan choice 3).
 ROWS: dict[str, tuple[list[str], int]] = {
-    "init": (["init", "--id", "fx"], 0),
-    "provision": (["provision", "--dry-run"], 1),
     "validate": (["validate"], 1),
     "serve": (["serve", "--no-open", "--port", "1"], 1),
-    "projects list": (["projects", "list"], 1),
-    "config show": (["config", "show"], 1),
     "project new": (["project", "new", "--id", "fx"], 0),
     "project list": (["project", "list"], 1),
     "project config": (["project", "config"], 1),
@@ -232,7 +228,7 @@ def test_a_command_without_a_row_is_caught():
 # -- AC 10: outside a project ------------------------------------------------------
 
 
-@pytest.mark.parametrize("command", sorted(set(ROWS) - {"init", "project new"}))
+@pytest.mark.parametrize("command", sorted(set(ROWS) - {"project new"}))
 def test_every_command_outside_a_project(tmp_path, command):
     argv, expected = ROWS[command]
     result = run(tmp_path, *argv)

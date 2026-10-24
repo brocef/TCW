@@ -30,45 +30,36 @@ def test_tcw_help_lists_project_after_work(tmp_path):
     assert names.index("work") < names.index("project")
 
 
-# -- Step 2's side by side: each new verb does what the command it replaces
-#    does. Removed with the old commands.
+# -- AC 2: the removed commands name their replacement -----------------------
 
-def _fixture(root):
-    write_config(root, "id: app\n")
-    return root
-
-
-@pytest.mark.parametrize("old, new", [
-    (["projects", "list"], ["project", "list"]),
-    (["config", "show"], ["project", "config"]),
-    (["provision", "--dry-run"], ["project", "provision", "--dry-run"]),
+@pytest.mark.parametrize("argv, line", [
+    (["init", "--id", "x"], "`tcw init` is now `tcw project new`"),
+    (["projects", "list"], "`tcw projects list` is now `tcw project list`"),
+    (["config", "show", "--origin"], "`tcw config show` is now `tcw project config`"),
+    (["provision", "--dry-run"], "`tcw provision` is now `tcw project provision`"),
 ])
-def test_side_by_side_in_a_project(tmp_path, old, new):
-    a = _fixture(tmp_path / "a")
-    b = _fixture(tmp_path / "b")
-    before, after = run(a, *old), run(b, *new)
-    assert (before.code, before.out) == (after.code, after.out)
-    assert before.err.replace(str(a), "<root>") == after.err.replace(str(b), "<root>")
-    assert snapshot(a) == snapshot(b)
+def test_a_removed_command_names_its_replacement(tmp_path, argv, line):
+    root = tmp_path / "app"
+    write_config(root, "id: app\n")
+    before = snapshot(root)
+    done = run(root, *argv)
+    assert (done.code, done.out) == (2, ""), done
+    assert line in done.err.splitlines(), done.err
+    assert f"invalid choice: '{argv[0]}'" in done.err, done.err
+    assert snapshot(root) == before
 
 
-def test_side_by_side_new(tmp_path):
-    a, b = tmp_path / "a", tmp_path / "b"
-    a.mkdir()
-    b.mkdir()
-    before, after = run(a, "init", "--id", "demo"), run(b, "project", "new", "--id", "demo")
-    assert (before.code, before.out) == (after.code, after.out) == (0, "")
-    assert before.err.replace(str(a), "<root>") == after.err.replace(str(b), "<root>")
-    assert snapshot(a) == snapshot(b)
+def test_tcw_help_lists_none_of_the_removed_commands(tmp_path):
+    names = [line.split()[0] for line in run(tmp_path, "--help").out.splitlines()
+             if line.startswith("    ") and not line.startswith("     ")]
+    assert not {"init", "projects", "config", "provision"} & set(names), names
 
 
 def test_an_error_line_names_the_command_typed(tmp_path):
     # A configuration that cannot be read stops provisioning; one with a
     # problem is still printed by `--origin`, the problem after it.
     for argv, prefix, text in (
-            (["provision"], "tcw provision: ", "id: app\nwork: [\n"),
             (["project", "provision"], "tcw project provision: ", "id: app\nwork: [\n"),
-            (["config", "show", "--origin"], "tcw config show: ", "id: app\nwork: [1]\n"),
             (["project", "config", "--origin"], "tcw project config: ",
              "id: app\nwork: [1]\n")):
         root = tmp_path / "-".join(argv)

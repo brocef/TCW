@@ -1,4 +1,5 @@
-"""Top-level `tcw` CLI: dispatches `init | taxonomy | capabilities | work`.
+"""Top-level `tcw` CLI: dispatches `validate | serve | taxonomy | capabilities |
+work | project`.
 
 Built component groups register their own subparsers; the rest stub to "not yet
 implemented" until their phase lands (capabilities = Phase 3, work = Phase 5).
@@ -13,7 +14,7 @@ from pathlib import Path
 from tcw.cli_suggest import SuggestingParser, attach_index
 from tcw.errors import ConfigError, TcwError
 from tcw import __version__
-from tcw import config_cli, project_cli, projects_cli
+from tcw import project_cli
 from tcw.capabilities import cli as capabilities_cli
 from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
@@ -391,32 +392,6 @@ def build_parser() -> argparse.ArgumentParser:
              "further, each one read from the folder the one before chose")
     sub = parser.add_subparsers(dest="group", required=True)
 
-    p_init = command(
-        sub, "init", help="make this folder a TCW project, with the named stores",
-        prints="nothing", writes=".tcw/tcw-config.yaml, .tcw/.gitignore and each store's "
-        "folder, each named on stderr",
-        examples=["init --id my-app", "init work --id my-app --work-path ../board"])
-    p_init.add_argument("components", nargs="*", metavar="axis",
-                        help=f"any of: {', '.join(COMPONENTS)} (default: all)")
-    p_init.add_argument("--id", help="the project's ID; required for a new project")
-    p_init.add_argument("--work-path", help="where the work store lives")
-    p_init.add_argument("--taxonomy-path", help="where the taxonomy store lives")
-    p_init.add_argument("--capabilities-path", help="where the capabilities store lives")
-    p_init.set_defaults(own_config=True, func=_cmd_init)
-
-    p_provision = command(
-        sub, "provision", help="obtain the stores this project declares but does "
-        "not have here",
-        prints="nothing; its plan and every remote, before it is contacted, on stderr",
-        writes="a clone of each declared store repository that is missing",
-        examples=["provision", "provision --component work --dry-run"])
-    p_provision.add_argument(
-        "--component", action="append", choices=list(PROVISION_COMPONENTS),
-        help="only this axis's store; repeat for more (default: every declared one)")
-    p_provision.add_argument("--dry-run", action="store_true",
-                             help="print the plan; contact nothing")
-    p_provision.set_defaults(own_config=True, func=_cmd_provision)
-
     p_validate = command(
         sub, "validate", help="check this project's files, stores and work items",
         prints="one finding per line, `<severity>: <where>: <message>`; nothing "
@@ -438,8 +413,6 @@ def build_parser() -> argparse.ArgumentParser:
                          help="do not open a browser")
     p_serve.set_defaults(func=_cmd_serve)
 
-    projects_cli.add_subparser(sub)
-    config_cli.add_subparser(sub)
     for mod in _BUILT:
         mod.add_subparser(sub)
     # After `work`: the suggester names commands in the order the groups are

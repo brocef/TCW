@@ -22,7 +22,7 @@ from tcw.cli import build_parser
 # and less the four `extends` commands, which TCW 4.0 removes (TCW-112 Design 1),
 # with the five move commands TCW 4.0 adds (TCW-114 Design 5.1).
 SURFACE = {
-    "init", "provision", "validate", "serve", "projects list", "config show",
+    "validate", "serve",
     "taxonomy list", "taxonomy add", "taxonomy show", "taxonomy path", "taxonomy rm",
     "taxonomy search", "taxonomy rename", "taxonomy move",
     "capabilities list", "capabilities show", "capabilities path", "capabilities add",
@@ -42,6 +42,9 @@ REMOVED = {
     "work procedure prompt", "work inbox", "work tracker", "work start", "work submit",
     "work rework", "work complete", "work drop", "work delete", "work tombstone",
     "work scaffold", "work reconcile", "work delegate", "work escalate",
+    # TCW 4.0: the commands about a project itself are `tcw project`'s
+    # (TCW-115 Design 1.2).
+    "init", "provision", "projects", "projects list", "config", "config show",
     # TCW 4.0: a project inherits from its parents (TCW-112 Design 1).
     "taxonomy extends", "taxonomy extends add", "taxonomy extends rm",
     "capabilities extends", "capabilities extends add", "capabilities extends rm",
@@ -74,7 +77,7 @@ def leaves(commands):
 
 
 def test_the_surface_is_exactly_the_3_0_column(leaves):
-    assert len(SURFACE) == 48
+    assert len(SURFACE) == 44
     assert set(leaves) == SURFACE
 
 
@@ -143,7 +146,7 @@ def test_choices_are_shown_in_the_help(commands):
     assert not hidden, hidden
     with_choices = {name for name, parser, _, _ in commands for action in parser._actions
                     if action.choices and not isinstance(action, argparse._SubParsersAction)}
-    assert {"taxonomy add", "provision"} <= with_choices, with_choices
+    assert {"taxonomy add", "project provision"} <= with_choices, with_choices
     # The check sees a choice its help hides: a metavar replaces the `{a,b}`
     # list argparse would print, and the help text names neither.
     probe = argparse.ArgumentParser()

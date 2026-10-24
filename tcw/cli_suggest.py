@@ -5,11 +5,15 @@ which says nothing when the word exists one level down (`tcw tags` for
 `tcw work tags`) or is a synonym (`status` for `show`). `SuggestingParser`
 keeps argparse's message word for word and adds one line after it.
 
-Three rules, first match wins:
+Before any rule, a command TCW 4.0 removed from the top level is answered
+with the one line naming its replacement (`REMOVED_COMMANDS`, TCW-115 Design
+1.2). Then three rules, first match wins:
 
 1. The word is a subcommand somewhere else in the tree: name each full command,
    and complete it with the word that followed when that is wrong there too —
-   `tcw tags ls` → `tcw work tags list`.
+   `tcw tags ls` → `tcw work tags list`. A synonym whose target is valid where
+   the word was typed is named before them (TCW-115 Design 1.3), so
+   `tcw work info` → `tcw work show` or `tcw project info`.
 2. A small table of synonyms, offered only where their target is valid.
 3. Close spellings among the choices valid at that level.
 
@@ -43,6 +47,16 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
 # no hint — and so is guessing what a mistyped removal was meant to remove
 # (`tcw work tags rm` removes a tag, and nothing else named `rm` is related).
 REMOVAL = frozenset({"rm", "drop", "delete"})
+
+# The top-level commands TCW 4.0 moved into `tcw project` (TCW-115 Design
+# 1.2): typed, each is argparse's invalid-choice error, and this line follows
+# it. Nothing is run under the new name.
+REMOVED_COMMANDS: dict[str, str] = {
+    "init": "`tcw init` is now `tcw project new`",
+    "projects": "`tcw projects list` is now `tcw project list`",
+    "config": "`tcw config show` is now `tcw project config`",
+    "provision": "`tcw provision` is now `tcw project provision`",
+}
 
 _MAX = 3
 
@@ -128,6 +142,8 @@ class SuggestingParser(argparse.ArgumentParser):
         here = getattr(self, "_tcw_path", None)
         if root is None or here is None or word in REMOVAL:
             return ""
+        if here == (root.prog,) and word in REMOVED_COMMANDS:
+            return REMOVED_COMMANDS[word]
         # Same component first — `tcw work tags show` means a `tcw work …` show,
         # not `tcw taxonomy show` — then shallowest: `tcw list` means
         # `tcw work list` before `tcw work tags list`. `sorted` is stable, so
@@ -137,7 +153,9 @@ class SuggestingParser(argparse.ArgumentParser):
             key=lambda p: (-_shared(p, here), len(p)))
         if elsewhere:
             following = _following(root, here, word)
-            commands = []
+            safe = [c for c in choices if c not in REMOVAL]
+            commands = [_command(here + (s,)) for s in SYNONYMS.get(word, ())
+                        if s in safe]
             for path in elsewhere[:_MAX]:
                 commands += [_command(path + tail) for tail in _completion(root, path, following)]
             return _phrase(commands[:_MAX])

@@ -1,5 +1,6 @@
-"""`tcw config show [--origin]` — the configuration a command in this project
-actually runs with, every layer merged (TCW-72 Design 8).
+"""`tcw project config [--origin]` — the configuration a command in this
+project actually runs with, every layer merged (TCW-72 Design 8; TCW-115
+Design 4), registered by `tcw/project_cli.py`.
 
 The output is YAML that reads back as the merged values, except that a
 value under a key ending in `-env` that is not shaped like an environment
@@ -24,8 +25,6 @@ from typing import Any
 
 from tcw import exit as codes
 from tcw.errors import NO_PROJECT, BackendError, ConfigError
-
-NAME = "config"
 
 #: A string YAML reads back as itself when written bare: no quoting needed.
 _PLAIN = re.compile(r"[A-Za-z0-9_./][A-Za-z0-9_./ -]*")
@@ -289,21 +288,3 @@ def _show(args: argparse.Namespace) -> int:
         return codes.ERROR
     return codes.OK
 
-
-def add_subparser(sub: argparse._SubParsersAction) -> None:
-    from tcw.cli_help import command, group
-    p = group(sub, NAME, help="the configuration this project runs with")
-    verbs = p.add_subparsers(dest="config_verb", required=True)
-    p = command(verbs, "show",
-                help="the effective configuration: TCW's defaults, what the "
-                     "project's parents pass down, .tcw/tcw-config.yaml, your "
-                     "personal files and override variables, merged",
-                prints="the effective configuration as YAML; with --origin, where "
-                       "each value came from",
-                writes="nothing",
-                examples=["config show", "config show --origin"])
-    p.add_argument("--origin", action="store_true",
-                   help="name the layer of every value, and list what your "
-                        "personal files set that was not used; prints even when "
-                        "something is wrong")
-    p.set_defaults(own_config=True, func=_show)

@@ -1,6 +1,7 @@
-"""`tcw projects` — the projects this one is connected to (TCW-73 Design 2).
+"""`tcw project list` — the projects this one is connected to (TCW-73 Design
+2; TCW-115 Design 3), registered by `tcw/project_cli.py`.
 
-`tcw projects list` prints one project ID per line: this project first, then
+It prints one project ID per line: this project first, then
 its parents in listing order, then its children (TCW-108 Design 8.1), each
 once, whether or not it is on this machine. `--json` adds what each link
 passes and the load order (Design 8.2).
@@ -14,9 +15,6 @@ from pathlib import Path
 from tcw import exit as codes
 from tcw.errors import NO_PROJECT, BackendError
 from tcw.output import print_json
-
-NAME = "projects"
-
 
 def connected(root: Path, registry=None) -> list[dict]:
     """This project and the ones it is connected to, in the order `list`
@@ -74,19 +72,3 @@ def _list(args: argparse.Namespace) -> int:
         print(row["id"])
     return codes.OK
 
-
-def add_subparser(sub: argparse._SubParsersAction) -> None:
-    from tcw.cli_help import command, group
-    p = group(sub, NAME, help="the projects this one is connected to")
-    verbs = p.add_subparsers(dest="projects_verb", required=True)
-    p = command(verbs, "list", help="this project and its connected projects",
-                prints="one project ID per line, this project first, or --json",
-                writes="nothing", examples=["projects list", "projects list --json"])
-    p.add_argument("--json", action="store_true",
-                   help="print each project's relation, presence, path, how it "
-                        "was found, what a parent passes down ('inherit'), whether "
-                        "a child is listed only in the personal file ('personal'); "
-                        "then "
-                        "'load-order', 'load-order-complete' and "
-                        "'load-order-warning'")
-    p.set_defaults(func=_list)

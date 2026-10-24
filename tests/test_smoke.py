@@ -90,5 +90,5 @@ def test_help_lists_four_groups(capsys):
     with pytest.raises(SystemExit):
         build_parser().parse_args(["--help"])
     out = capsys.readouterr().out
-    for group in ("init", *COMPONENTS):
+    for group in ("project", *COMPONENTS):
         assert group in out

@@ -1078,6 +1078,24 @@ REMOVED_AFTER_3_0: dict[str, str] = {
     "tcw capabilities list --local":
         "the --local option of list is removed in TCW 4.0: --scope own, the default, "
         "lists only the project's own capabilities (TCW-113 Design 5.1)",
+    "tcw provision":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+    "tcw init":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+    "tcw init [<axis>…] --id <id>":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+    "tcw provision [--component <axis>] [--dry-run]":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+    "tcw projects list [--json]":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+    "tcw init <axis>":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+    "tcw init work":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+    "tcw config show [--origin]":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+    "tcw config show":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
 }
 
 

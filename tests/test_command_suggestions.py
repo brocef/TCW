@@ -152,3 +152,33 @@ def test_the_inbox_stage_is_named_without_a_slug(tmp_path):
     """`inbox` runs before an item exists; both verbs refuse a reference for it."""
     out = stage(tmp_path, "gate", "inbox.md", "x")
     assert "`tcw work stage gate inbox`" in out.stderr, out.stderr
+
+
+# ── TCW-115 Design 1.3: the suggestions the `tcw project` group changes ──────
+
+@pytest.mark.parametrize("word, line", [
+    ("list", "did you mean one of `tcw taxonomy list`, `tcw capabilities list`, "
+             "`tcw work list`?"),
+    ("new", "did you mean `tcw work new` or `tcw project new`?"),
+])
+def test_a_top_level_word_names_the_project_verb_in_registration_order(capsys, word, line):
+    err = usage_error(capsys, word)
+    assert err.splitlines()[-1] == line, err
+
+
+def _every_subcommand(parser, found=None) -> set:
+    found = set() if found is None else found
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for name, child in action.choices.items():
+                found.add(name)
+                _every_subcommand(child, found)
+    return found
+
+
+def test_no_synonym_but_info_is_a_subcommand_anywhere():
+    """Design 1.3: a synonym valid where it was typed is named before the
+    same word elsewhere, which changes a suggestion only for a word that is
+    both. `info` is the one (TCW-115 Step 9)."""
+    from tcw.cli_suggest import SYNONYMS
+    assert set(SYNONYMS) & _every_subcommand(build_parser()) <= {"info"}
