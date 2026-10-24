@@ -22,16 +22,6 @@ export interface TStageRow {
     discard: boolean
 }
 
-export interface TConnectedProject {
-    id: string
-    relation: string
-    /** Declared, and found on this machine. */
-    present: boolean
-    /** Creating into it is refused, as the CLI decides; null when it is not
-     * on this machine. */
-    readOnly: boolean | null
-}
-
 export interface TProject {
     id: string
     /** Who owns an item's request, comments, stage and properties: the files
@@ -54,7 +44,6 @@ export interface TProject {
     createFields: string[] | TUnavailable
     user: string | null
     people: Record<string, string>
-    projects: TConnectedProject[]
     axes: Record<Axis, boolean>
 }
 

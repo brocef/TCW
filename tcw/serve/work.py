@@ -154,14 +154,6 @@ def _axes(root: Path) -> dict[str, bool]:
     return kept
 
 
-def _projects(root: Path) -> list[dict[str, Any]]:
-    """The projects this one is connected to, as `tcw projects list` names
-    them."""
-    from tcw.projects_cli import connected
-    return [{"id": row["id"], "relation": row["relation"], "present": row["present"]}
-            for row in connected(root) if row["relation"] != "current"]
-
-
 def project(request: Request):
     ctx = context(request)
     try:
@@ -191,7 +183,6 @@ def project(request: Request):
         "createFields": fields,
         "user": user,
         "people": people(request, ctx, [user]),
-        "projects": _projects(ctx.root),
         "axes": _axes(ctx.root),
     }
 

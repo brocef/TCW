@@ -21,7 +21,6 @@ import {
 } from "../model/api"
 import {
     folderOf,
-    isLocal,
     propertiesDraft,
     propertyChanges,
     verdictLine,
@@ -320,99 +319,6 @@ export function PropertiesForm({
     )
 }
 
-/** Add `blocks` links: one request per link, stopping at the first refusal,
- * so a refusal never leaves a link half made. An existing link is removed
- * from the other item's page, as the command line has no removal either. */
-export function BlocksForm({
-    project,
-    item,
-    folder,
-    references,
-    onSaved,
-    onDirty,
-}: {
-    project: TProject
-    item: WorkItem
-    folder: string
-    references: TReferenceContext
-    onSaved: TSaved
-    /** Whether links are chosen and not yet added. */
-    onDirty: (dirty: boolean) => void
-}) {
-    const [targets, setTargetsState] = useState<string[]>([])
-    const [busy, setBusy] = useState(false)
-    const [report, setReport] = useState("")
-    const refusals = useRefusals()
-    const setTargets = (next: string[]) => {
-        setTargetsState(next)
-        onDirty(next.length > 0)
-    }
-    const add = async () => {
-        if (refusals.pending.length) {
-            setReport(refusals.pending.join(" "))
-            return
-        }
-        setBusy(true)
-        setReport("")
-        const added: string[] = []
-        try {
-            for (const target of targets) {
-                const result = await requestJson<JsonRecord>(
-                    `/api/work/${encodeRef(folder)}/blocks`,
-                    "POST",
-                    { target, expected: false }
-                )
-                if (!result.ok) {
-                    setReport(
-                        `${added.length ? `Added ${added.join(", ")}. ` : ""}${target} was not added: ${result.error}`
-                    )
-                    setTargets(targets.slice(added.length))
-                    if (added.length) onSaved(`Added ${added.join(", ")}`, null)
-                    return
-                }
-                added.push(target)
-            }
-            setTargets([])
-            onSaved(`Added ${added.join(", ")}`, null)
-        } finally {
-            setBusy(false)
-        }
-    }
-    return (
-        <section className="item-section" aria-label="Add blocks">
-            <RefusalContext.Provider value={refusals.report}>
-                <ReferenceInput
-                    label="Blocks (add)"
-                    multiple
-                    mode="warn"
-                    warning={(text) => otherProjectWarning(text, project.id)}
-                    source={suggestOtherItems}
-                    value={targets}
-                    options={referenceOptions("work-blockers", {
-                        ...references,
-                        currentIdentifier: item["full-id"],
-                        selected: [...item.blocks, ...targets],
-                    })}
-                    onChange={(value) => setTargets(value as string[])}
-                />
-            </RefusalContext.Provider>
-            {report && (
-                <Callout.Root color="red" role="alert">
-                    <Callout.Text>{report}</Callout.Text>
-                </Callout.Root>
-            )}
-            <Button
-                size="1"
-                type="button"
-                disabled={busy || !targets.length}
-                onClick={() => void add()}
-            >
-                Add
-            </Button>
-        </section>
-    )
-}
-
 /** Add a comment. Comments are never edited or removed: they carry the
  * reasons for forced moves and discards. */
 export function CommentBox({
@@ -520,8 +426,8 @@ function creatable(project: TProject, field: string): boolean {
     )
 }
 
-/** A new work item: in this project with every property, or in a connected
- * project with only a title, request text and priority. */
+/** A new work item, always in this project: an item is created only in
+ * its own project, and another project's is made there with `tcw -C`. */
 export function NewItemForm({
     project,
     references,
@@ -531,13 +437,12 @@ export function NewItemForm({
 }: {
     project: TProject
     references: TReferenceContext
-    /** The new item's folder in this project, or null when it was made
-     * elsewhere; and the line to show. */
+    /** The new item's folder (null when the answer named none), and the
+     * line to show. */
     onCreated: (folder: string | null, message: string) => void
     onCancel: () => void
     onDirty: (dirty: boolean) => void
 }) {
-    const [target, setTarget] = useState(project.id)
     const [title, setTitle] = useState("")
     const [requestText, setRequestText] = useState("")
     const [props, setProps] = useState<JsonRecord>({})
@@ -546,7 +451,6 @@ export function NewItemForm({
     const [saving, setSaving] = useState(false)
     const [errors, setErrors] = useState<string[]>([])
     const refusals = useRefusals()
-    const here = target === project.id
     const backend = project.recordOwner === "backend"
     const set = (name: string, value: unknown) => {
         setProps((old) => ({ ...old, [name]: value }))
@@ -557,9 +461,7 @@ export function NewItemForm({
             setErrors(["A title is required."])
             return
         }
-        // Fields hidden for another project send nothing, so only what is
-        // shown can hold back a save.
-        if (here && refusals.pending.length) {
+        if (refusals.pending.length) {
             setErrors(refusals.pending)
             return
         }
@@ -574,21 +476,17 @@ export function NewItemForm({
                         typeof value === "string" ? value.trim() : value,
                     ])
                     .filter(
-                        ([name, value]) =>
-                            (here || name === "priority") &&
+                        ([, value]) =>
                             value !== "" &&
                             !(Array.isArray(value) && !value.length)
                     )
             )
             const body: JsonRecord = { title: title.trim(), properties }
             if (requestText.trim()) body.requestText = requestText
-            if (!here) body.project = target
-            if (here && project.inboxItems && !atStart)
-                body.stage = project.inboxStage
-            if (here && nest && properties.parent) body.nest = true
+            if (project.inboxItems && !atStart) body.stage = project.inboxStage
+            if (nest && properties.parent) body.nest = true
             const result = await requestJson<{
                 "full-id"?: string
-                ticket?: string
                 warnings?: unknown
             }>("/api/work", "POST", body)
             if (!result.ok) {
@@ -602,46 +500,26 @@ export function NewItemForm({
                 return
             }
             onDirty(false)
-            const made = result.data?.["full-id"]
-            if (made && isLocal(made, project))
-                onCreated(folderOf(made), `Created ${made}`)
-            else
-                onCreated(
-                    null,
-                    made
-                        ? `Created ${made}`
-                        : `Created ticket ${result.data?.ticket}`
-                )
+            const made = result.data?.["full-id"] ?? ""
+            onCreated(made ? folderOf(made) : null, `Created ${made}`)
         } finally {
             setSaving(false)
         }
     }
-    const targets = [project.id, ...project.projects.map((other) => other.id)]
-    const describe = (id: string) => {
-        if (id === project.id) return `${id} (this project)`
-        const other = project.projects.find((entry) => entry.id === id)
-        if (other?.readOnly) return `${id} (read-only from here)`
-        if (other && !other.present) return `${id} (not on this machine)`
-        return id
-    }
     const context = { ...references, currentIdentifier: undefined }
-    // In filesystem mode another project's item may be named, with a
-    // warning; in Jira mode a blocker must be one of this project's items,
-    // while a parent in another project is kept with the warning too, since
-    // the backend decides whether that ticket can be a parent. Connected
-    // projects are suggested only in filesystem mode.
+    // Another project's item may be named as a parent or a blocker, with a
+    // warning: in Jira mode the backend links a ticket on its own site and
+    // records any other in the item's state file. Connected projects' items
+    // are suggested only in filesystem mode.
     const otherProjectNote = (text: string) =>
         otherProjectWarning(text, project.id)
     const crossProject = backend
-        ? { mode: "refuse" as const }
+        ? { mode: "warn" as const, warning: otherProjectNote }
         : {
               mode: "warn" as const,
               warning: otherProjectNote,
               source: suggestOtherItems,
           }
-    const crossParent = backend
-        ? { mode: "warn" as const, warning: otherProjectNote }
-        : crossProject
     return (
         <div className={`editor-container${saving ? " saving" : ""}`}>
             <EditorHeader
@@ -653,16 +531,6 @@ export function NewItemForm({
             <Errors errors={errors} />
             <RefusalContext.Provider value={refusals.report}>
                 <div className="editor-fields">
-                    <SelectInput
-                        label="Project"
-                        value={target}
-                        options={targets}
-                        display={describe}
-                        onChange={(value) => {
-                            setTarget(value || project.id)
-                            onDirty(true)
-                        }}
-                    />
                     <TextInput
                         label="Title"
                         value={title}
@@ -671,7 +539,7 @@ export function NewItemForm({
                             onDirty(true)
                         }}
                     />
-                    {(!here || !backend || creatable(project, "priority")) && (
+                    {(!backend || creatable(project, "priority")) && (
                         <SelectInput
                             label="Priority"
                             value={String(props.priority ?? "")}
@@ -679,111 +547,94 @@ export function NewItemForm({
                             onChange={(value) => set("priority", value)}
                         />
                     )}
-                    {here && (
-                        <>
-                            {(!backend || creatable(project, "effort")) && (
-                                <SelectInput
-                                    label="Effort"
-                                    value={String(props.effort ?? "")}
-                                    options={["", ...project.scales.size]}
-                                    onChange={(value) => set("effort", value)}
-                                />
-                            )}
-                            {(!backend || creatable(project, "complexity")) && (
-                                <SelectInput
-                                    label="Complexity"
-                                    value={String(props.complexity ?? "")}
-                                    options={["", ...project.scales.size]}
-                                    onChange={(value) =>
-                                        set("complexity", value)
+                    {(!backend || creatable(project, "effort")) && (
+                        <SelectInput
+                            label="Effort"
+                            value={String(props.effort ?? "")}
+                            options={["", ...project.scales.size]}
+                            onChange={(value) => set("effort", value)}
+                        />
+                    )}
+                    {(!backend || creatable(project, "complexity")) && (
+                        <SelectInput
+                            label="Complexity"
+                            value={String(props.complexity ?? "")}
+                            options={["", ...project.scales.size]}
+                            onChange={(value) => set("complexity", value)}
+                        />
+                    )}
+                    {backend && isUnavailable(project.createFields) && (
+                        <Text color="gray" size="2">
+                            Priority, effort and complexity cannot be offered:{" "}
+                            {project.createFields.unavailable}
+                        </Text>
+                    )}
+                    <TagsInput
+                        project={project}
+                        value={(props.tags as string[]) ?? []}
+                        onChange={(value) => set("tags", value)}
+                    />
+                    <ReferenceInput
+                        label="Assignee"
+                        value={String(props.assignee ?? "")}
+                        {...(backend
+                            ? {
+                                  mode: "refuse" as const,
+                                  source: suggestAssignees,
+                                  showName: true,
+                              }
+                            : { mode: "allow" as const })}
+                        options={
+                            backend
+                                ? []
+                                : referenceOptions("work-assignee", context)
+                        }
+                        onChange={(value) => set("assignee", value)}
+                    />
+                    <ReferenceInput
+                        label="Parent"
+                        {...crossProject}
+                        value={String(props.parent ?? "")}
+                        options={referenceOptions("work-parent", context)}
+                        onChange={(value) => set("parent", value)}
+                    />
+                    <Text as="label" size="2">
+                        <Flex align="center" gap="2">
+                            <Checkbox
+                                checked={nest}
+                                disabled={!String(props.parent ?? "").trim()}
+                                onCheckedChange={(checked) => {
+                                    setNest(checked === true)
+                                    onDirty(true)
+                                }}
+                            />
+                            Put its folder inside the parent&apos;s folder
+                        </Flex>
+                    </Text>
+                    <ReferenceInput
+                        label="Blocked by"
+                        multiple
+                        {...crossProject}
+                        value={(props["blocked-by"] as string[]) ?? []}
+                        options={referenceOptions("work-blockers", {
+                            ...context,
+                            selected: (props["blocked-by"] as string[]) ?? [],
+                        })}
+                        onChange={(value) => set("blocked-by", value)}
+                    />
+                    {project.inboxItems && (
+                        <Text as="label" size="2">
+                            <Flex align="center" gap="2">
+                                <Checkbox
+                                    checked={atStart}
+                                    onCheckedChange={(checked) =>
+                                        setAtStart(checked === true)
                                     }
                                 />
-                            )}
-                            {backend && isUnavailable(project.createFields) && (
-                                <Text color="gray" size="2">
-                                    Priority, effort and complexity cannot be
-                                    offered: {project.createFields.unavailable}
-                                </Text>
-                            )}
-                            <TagsInput
-                                project={project}
-                                value={(props.tags as string[]) ?? []}
-                                onChange={(value) => set("tags", value)}
-                            />
-                            <ReferenceInput
-                                label="Assignee"
-                                value={String(props.assignee ?? "")}
-                                {...(backend
-                                    ? {
-                                          mode: "refuse" as const,
-                                          source: suggestAssignees,
-                                          showName: true,
-                                      }
-                                    : { mode: "allow" as const })}
-                                options={
-                                    backend
-                                        ? []
-                                        : referenceOptions(
-                                              "work-assignee",
-                                              context
-                                          )
-                                }
-                                onChange={(value) => set("assignee", value)}
-                            />
-                            <ReferenceInput
-                                label="Parent"
-                                {...crossParent}
-                                value={String(props.parent ?? "")}
-                                options={referenceOptions(
-                                    "work-parent",
-                                    context
-                                )}
-                                onChange={(value) => set("parent", value)}
-                            />
-                            <Text as="label" size="2">
-                                <Flex align="center" gap="2">
-                                    <Checkbox
-                                        checked={nest}
-                                        disabled={
-                                            !String(props.parent ?? "").trim()
-                                        }
-                                        onCheckedChange={(checked) => {
-                                            setNest(checked === true)
-                                            onDirty(true)
-                                        }}
-                                    />
-                                    Put its folder inside the parent&apos;s
-                                    folder
-                                </Flex>
-                            </Text>
-                            <ReferenceInput
-                                label="Blocked by"
-                                multiple
-                                {...crossProject}
-                                value={(props["blocked-by"] as string[]) ?? []}
-                                options={referenceOptions("work-blockers", {
-                                    ...context,
-                                    selected:
-                                        (props["blocked-by"] as string[]) ?? [],
-                                })}
-                                onChange={(value) => set("blocked-by", value)}
-                            />
-                            {project.inboxItems && (
-                                <Text as="label" size="2">
-                                    <Flex align="center" gap="2">
-                                        <Checkbox
-                                            checked={atStart}
-                                            onCheckedChange={(checked) =>
-                                                setAtStart(checked === true)
-                                            }
-                                        />
-                                        Start at the first stage (
-                                        {project.startStage}); unticked, it
-                                        waits in {project.inboxStage}
-                                    </Flex>
-                                </Text>
-                            )}
-                        </>
+                                Start at the first stage ({project.startStage});
+                                unticked, it waits in {project.inboxStage}
+                            </Flex>
+                        </Text>
                     )}
                 </div>
             </RefusalContext.Provider>

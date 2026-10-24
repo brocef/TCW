@@ -60,9 +60,6 @@ export function project(overrides: Partial<TProject> = {}): TProject {
         createFields: ["priority", "effort", "complexity"],
         user: "ann",
         people: {},
-        projects: [
-            { id: "q", relation: "child", present: true, readOnly: false },
-        ],
         axes: { work: true, taxonomy: true, capabilities: true },
         ...overrides,
     }

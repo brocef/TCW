@@ -4,7 +4,6 @@ import { ThemeProvider } from "../theme"
 import { fakeFetch, project, workItem } from "../test-fixtures"
 import type { TProject } from "../model/types"
 import {
-    BlocksForm,
     CommentBox,
     FileEditor,
     NewItemForm,
@@ -105,6 +104,38 @@ describe("the file editor", () => {
 })
 
 describe("the properties form", () => {
+    test("in Jira mode another project's blocker is kept with a warning, as a parent is", async () => {
+        const fetch = fakeFetch([[/^PATCH /, 200, { item: {} }]])
+        globalThis.fetch = fetch as unknown as typeof globalThis.fetch
+        const onSaved = vi.fn()
+        wrap(
+            <PropertiesForm
+                project={project({ recordOwner: "backend" })}
+                item={workItem("x")}
+                folder="x"
+                references={references}
+                onSaved={onSaved}
+                onCancel={() => undefined}
+                onDirty={() => undefined}
+                onReload={() => undefined}
+            />
+        )
+        const blockers = screen.getByRole("combobox", { name: "Blocked by" })
+        fireEvent.change(blockers, { target: { value: "other.work/TCW-2-y" } })
+        fireEvent.keyDown(blockers, { key: "Escape" })
+        fireEvent.keyDown(blockers, { key: "Enter" })
+        expect(
+            await screen.findByText(/other\.work\/TCW-2-y is in project other/)
+        ).toBeInTheDocument()
+        fireEvent.click(screen.getByRole("button", { name: "Save" }))
+        await waitFor(() => expect(onSaved).toHaveBeenCalled())
+        expect(fetch.calls[0].body).toMatchObject({
+            changes: {
+                "blocked-by": { add: ["other.work/TCW-2-y"], remove: [] },
+            },
+        })
+    })
+
     test("sends only what changed, with the values it loaded", async () => {
         const fetch = fakeFetch([[/^PATCH /, 200, { item: {} }]])
         globalThis.fetch = fetch as unknown as typeof globalThis.fetch
@@ -188,50 +219,6 @@ describe("the properties form", () => {
         expect(screen.getByText("Nothing has changed.")).toBeInTheDocument()
         expect(fetch.calls).toHaveLength(0)
     })
-})
-
-test("blocks are added one request per link, stopping at the first refusal", async () => {
-    const sent: string[] = []
-    const fetch = vi.fn(async (_input: unknown, init?: RequestInit) => {
-        const { target } = JSON.parse(String(init?.body))
-        sent.push(target)
-        const refused = target.startsWith("q.work/")
-        return {
-            ok: !refused,
-            status: refused ? 409 : 200,
-            statusText: "",
-            json: async () =>
-                refused
-                    ? { error: "q is read-only from here", code: "refused" }
-                    : { target },
-        }
-    })
-    globalThis.fetch = fetch as unknown as typeof globalThis.fetch
-    const onSaved = vi.fn()
-    wrap(
-        <BlocksForm
-            project={project()}
-            item={workItem("x")}
-            folder="x"
-            references={references}
-            onSaved={onSaved}
-            onDirty={() => undefined}
-        />
-    )
-    const input = screen.getByRole("combobox", { name: "Blocks (add)" })
-    for (const target of ["p.work/a", "q.work/2026-01-01-z", "p.work/b"]) {
-        fireEvent.change(input, { target: { value: target } })
-        fireEvent.keyDown(input, { key: "Escape" })
-        fireEvent.keyDown(input, { key: "Enter" })
-    }
-    fireEvent.click(screen.getByRole("button", { name: "Add" }))
-    expect(
-        await screen.findByText(
-            "Added p.work/a. q.work/2026-01-01-z was not added: q is read-only from here"
-        )
-    ).toBeInTheDocument()
-    expect(sent).toEqual(["p.work/a", "q.work/2026-01-01-z"])
-    expect(onSaved).toHaveBeenCalledWith("Added p.work/a", null)
 })
 
 test("a comment is added through the comments route", async () => {
@@ -331,32 +318,11 @@ describe("the new item form", () => {
         })
     })
 
-    test("another project leaves only title, request text and priority", async () => {
-        const fetch = fakeFetch([
-            [/^POST /, 201, { "full-id": "q.work/2026-10-15-new" }],
-        ])
-        globalThis.fetch = fetch as unknown as typeof globalThis.fetch
-        const onCreated = renderForm()
-        await choose("Project", "q")
-        expect(screen.queryByRole("combobox", { name: "Effort" })).toBeNull()
-        expect(screen.queryByRole("combobox", { name: "Tags" })).toBeNull()
-        expect(screen.queryByRole("checkbox")).toBeNull()
-        fireEvent.change(screen.getByRole("textbox", { name: "Title" }), {
-            target: { value: "Theirs" },
-        })
-        await choose("Priority", "high")
-        fireEvent.click(screen.getByRole("button", { name: "Save" }))
-        await waitFor(() =>
-            expect(onCreated).toHaveBeenCalledWith(
-                null,
-                "Created q.work/2026-10-15-new"
-            )
-        )
-        expect(fetch.calls[0].body).toEqual({
-            title: "Theirs",
-            properties: { priority: "high" },
-            project: "q",
-        })
+    test("offers no project to create in: the item is made in this one", () => {
+        renderForm()
+        expect(screen.queryByRole("combobox", { name: "Project" })).toBeNull()
+        for (const name of ["Priority", "Effort", "Complexity", "Parent"])
+            expect(screen.getByRole("combobox", { name })).toBeInTheDocument()
     })
 
     test("in Jira mode only the fields the create screen has are offered", () => {
@@ -377,7 +343,7 @@ describe("the new item form", () => {
         ).toBeNull()
     })
 
-    test("in Jira mode another project's parent is kept with a warning, a blocker is not", async () => {
+    test("in Jira mode another project's parent and blocker are kept with a warning", async () => {
         const fetch = fakeFetch([
             [/^POST /, 201, { "full-id": "p.work/TCW-9-new" }],
         ])
@@ -397,20 +363,20 @@ describe("the new item form", () => {
             await screen.findByText(/other\.work\/TCW-1-x is in project other/)
         ).toBeInTheDocument()
         const blockers = screen.getByRole("combobox", { name: "Blocked by" })
-        fireEvent.change(blockers, { target: { value: "other.work/TCW-1-x" } })
-        fireEvent.click(screen.getByRole("button", { name: "Save" }))
+        fireEvent.change(blockers, { target: { value: "other.work/TCW-2-y" } })
+        fireEvent.keyDown(blockers, { key: "Escape" })
+        fireEvent.keyDown(blockers, { key: "Enter" })
         expect(
-            await screen.findByText(
-                /^Blocked by: other\.work\/TCW-1-x is not one/
-            )
+            await screen.findByText(/other\.work\/TCW-2-y is in project other/)
         ).toBeInTheDocument()
-        expect(fetch.calls).toHaveLength(0)
-        fireEvent.change(blockers, { target: { value: "" } })
         fireEvent.click(screen.getByRole("button", { name: "Save" }))
         await waitFor(() => expect(onCreated).toHaveBeenCalled())
         expect(fetch.calls[0].body).toMatchObject({
             title: "New",
-            properties: { parent: "other.work/TCW-1-x" },
+            properties: {
+                parent: "other.work/TCW-1-x",
+                "blocked-by": ["other.work/TCW-2-y"],
+            },
         })
     })
 
@@ -572,30 +538,6 @@ describe("text a field will not keep holds back a save", () => {
         expect(fetch.calls).toHaveLength(0)
         expect(onCreated).not.toHaveBeenCalled()
     })
-
-    test("the blocks form keeps refused text and adds nothing", async () => {
-        const fetch = fakeFetch([[/^POST /, 200, {}]])
-        globalThis.fetch = fetch as unknown as typeof globalThis.fetch
-        wrap(
-            <BlocksForm
-                project={project()}
-                item={workItem("x")}
-                folder="x"
-                references={references}
-                onSaved={() => undefined}
-                onDirty={() => undefined}
-            />
-        )
-        const input = screen.getByRole("combobox", { name: "Blocks (add)" })
-        fireEvent.change(input, { target: { value: "p.work/a" } })
-        fireEvent.keyDown(input, { key: "Enter" })
-        fireEvent.change(input, { target: { value: "not a slug" } })
-        fireEvent.click(screen.getByRole("button", { name: "Add" }))
-        expect(
-            await screen.findByText(/Blocks \(add\): not a slug is not one/)
-        ).toBeInTheDocument()
-        expect(fetch.calls).toHaveLength(0)
-    })
 })
 
 test("a save that gets no answer says the server could not be reached", async () => {
@@ -678,47 +620,6 @@ test("loading the file again after a conflict keeps the draft when the read fail
     } finally {
         confirm.mockRestore()
     }
-})
-
-test("the new item form marks a project that is read-only from here", async () => {
-    wrap(
-        <NewItemForm
-            project={project({
-                projects: [
-                    {
-                        id: "lib",
-                        relation: "parent",
-                        present: true,
-                        readOnly: true,
-                    },
-                    {
-                        id: "ws",
-                        relation: "parent",
-                        present: true,
-                        readOnly: false,
-                    },
-                    {
-                        id: "gone",
-                        relation: "child",
-                        present: false,
-                        readOnly: null,
-                    },
-                ],
-            })}
-            references={references}
-            onCreated={() => undefined}
-            onCancel={() => undefined}
-            onDirty={() => undefined}
-        />
-    )
-    fireEvent.click(screen.getByRole("combobox", { name: "Project" }))
-    expect(
-        await screen.findByRole("option", { name: "lib (read-only from here)" })
-    ).toBeInTheDocument()
-    expect(screen.getByRole("option", { name: "ws" })).toBeInTheDocument()
-    expect(
-        screen.getByRole("option", { name: "gone (not on this machine)" })
-    ).toBeInTheDocument()
 })
 
 test("the new item form sends single values trimmed", async () => {

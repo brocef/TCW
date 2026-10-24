@@ -83,7 +83,6 @@ import { WorkPage } from "./work-views"
 import { LinkContext } from "./link-context"
 import { tcwLinkOptions } from "../model/reference-search"
 import {
-    BlocksForm,
     CommentBox,
     FileEditor,
     NewItemForm,
@@ -183,10 +182,6 @@ export function App() {
     )
     const declarationDirty = useCallback(
         (value: boolean) => markDirty("declaration", value),
-        [markDirty]
-    )
-    const blocksDirty = useCallback(
-        (value: boolean) => markDirty("blocks", value),
         [markDirty]
     )
     const commentDirty = useCallback(
@@ -1338,18 +1333,6 @@ export function App() {
                                               })
                                           }
                                         : undefined,
-                                    blocksForm:
-                                        ownsRecord &&
-                                        !isUnavailable(workDetail.item) ? (
-                                            <BlocksForm
-                                                project={project}
-                                                item={workDetail.item}
-                                                folder={workDetail.folder}
-                                                references={references}
-                                                onSaved={workSaved}
-                                                onDirty={blocksDirty}
-                                            />
-                                        ) : undefined,
                                     commentBox: ownsRecord ? (
                                         <CommentBox
                                             folder={workDetail.folder}

@@ -218,8 +218,6 @@ export type TWorkPageEditing = {
     onEditProperties?: () => void
     onEditFile?: (stage: string, path: string) => void
     onNewFile?: (stage: string, kind: TNewFileKind) => void
-    /** Below the properties: adding `blocks` links. */
-    blocksForm?: ReactNode
     /** Below the comments: the box that adds one. */
     commentBox?: ReactNode
     /** The declaration file's section. */
@@ -304,7 +302,6 @@ export function WorkPage({
                     />
                 </>
             )}
-            {editing.blocksForm}
             {detail.warnings.length > 0 && (
                 <Callout.Root color="amber" role="status">
                     <Callout.Text>

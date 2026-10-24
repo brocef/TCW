@@ -243,8 +243,14 @@ test("an item is read by its folder and shown read-only", async () => {
     expect(screen.getByTestId("where")).toHaveTextContent("/work/2026-10-01-a")
 })
 
-test("in filesystem mode the item's properties, blocks and comments are editable", async () => {
-    serve({}, [["/api/work/2026-10-01-a$", 200, workDetail("2026-10-01-a")]])
+// What an item blocks is computed from the other items, so it is listed
+// and never added from this page.
+const blocking = workDetail("2026-10-01-a", {
+    item: workItem("2026-10-01-a", { blocks: ["p.work/after"] }),
+})
+
+test("in filesystem mode the item's properties and comments are editable", async () => {
+    serve({}, [["/api/work/2026-10-01-a$", 200, blocking]])
     renderApp("/work/2026-10-01-a")
     expect(
         await screen.findByRole("button", { name: "Edit" })
@@ -252,9 +258,8 @@ test("in filesystem mode the item's properties, blocks and comments are editable
     expect(
         screen.getByRole("textbox", { name: "New comment" })
     ).toBeInTheDocument()
-    expect(
-        screen.getByRole("combobox", { name: "Blocks (add)" })
-    ).toBeInTheDocument()
+    expect(screen.queryByRole("combobox", { name: "Blocks (add)" })).toBeNull()
+    expect(screen.getByRole("link", { name: "after" })).toBeInTheDocument()
     expect(
         screen.getByRole("button", { name: "+ New item" })
     ).toBeInTheDocument()
@@ -263,13 +268,14 @@ test("in filesystem mode the item's properties, blocks and comments are editable
 
 test("when the backend owns the record only the files are editable", async () => {
     serve({ recordOwner: "backend" }, [
-        ["/api/work/2026-10-01-a$", 200, workDetail("2026-10-01-a")],
+        ["/api/work/2026-10-01-a$", 200, blocking],
     ])
     renderApp("/work/2026-10-01-a")
     expect(await screen.findByText(/^Stage:/)).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull()
     expect(screen.queryByRole("textbox", { name: "New comment" })).toBeNull()
     expect(screen.queryByRole("combobox", { name: "Blocks (add)" })).toBeNull()
+    expect(screen.getByRole("link", { name: "after" })).toBeInTheDocument()
     expect(
         within(screen.getByRole("tabpanel")).getByRole("button", {
             name: "Create",

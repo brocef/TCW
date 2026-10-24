@@ -153,7 +153,10 @@ def test_the_blocks_route_is_gone(family, serve_project):
     assert_error(answer, 404, "not-found")
 
 
-def test_the_project_answer_has_no_read_only_rows(family, serve_project):
+def test_the_project_answer_lists_no_connected_projects(family, serve_project):
+    """The create form no longer offers another project to create in, so the
+    answer carries no list of connected projects (TCW-114 spec 2.3)."""
     app, _ = family
-    rows = serve_project(app).get("/api/project").json["projects"]
-    assert rows and all("readOnly" not in row for row in rows)
+    answer = serve_project(app).get("/api/project")
+    assert answer.status == 200
+    assert "projects" not in answer.json

@@ -70,7 +70,7 @@ def test_the_project_describes_itself(fs):
     assert project["createFields"] == ["priority", "effort", "complexity"]
     assert project["inboxItems"] is True
     assert project["axes"] == {"taxonomy": False, "capabilities": False, "work": True}
-    assert project["projects"] == []
+    assert "projects" not in project
 
 
 def test_with_no_user_name_the_user_is_null(tmp_path, personal_on, serve_project):
@@ -82,15 +82,6 @@ def test_a_disabled_stage_is_not_in_the_table(tmp_path, personal_on, serve_proje
     root = fs_project(tmp_path, config={"stages": {"plan": {"enabled": False}}})
     names = [s["name"] for s in ok(serve_project(root).get("/api/project"))["stages"]]
     assert "plan" not in names and "spec" in names
-
-
-def test_connected_projects_are_listed(tmp_path, personal_on, serve_project):
-    root = fs_project(tmp_path)
-    child = make_project(tmp_path, "kid")
-    connect(root, child, "children")
-    connect(child, root, "parent")
-    projects = ok(serve_project(root).get("/api/project"))["projects"]
-    assert projects == [{"id": "kid", "relation": "child", "present": True}]
 
 
 # -- the board -----------------------------------------------------------------------------
@@ -364,7 +355,7 @@ def test_ac32_undecided_tags_do_not_stop_the_project_summary(tmp_path, serve_pro
     assert set(project["tags"]) == {"unavailable"}
     assert "(work.tags)" in project["tags"]["unavailable"]
     for key in decided:
-        if key not in ("tags", "user", "projects"):
+        if key not in ("tags", "user"):
             assert project[key] == decided[key], key
     assert served.get("/api/work").status == 200
 
