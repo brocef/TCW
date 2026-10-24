@@ -19,7 +19,9 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
 
-from tcw.errors import NotFound, UsageError
+import yaml
+
+from tcw.errors import NotFound, TcwError, UsageError
 from tcw.findings import Finding
 from tcw.ids import FullId
 from tcw.ownership import writes
@@ -154,6 +156,46 @@ class SourceEntry:
     id: str
     project: Project | None
     state: str
+
+
+#: What a list or show command covers (TCW-113 Design 1.2): the project
+#: alone, with its ancestors, with its descendants, or with both.
+SCOPES = ("own", "up", "down", "all")
+#: How a covered project is related to the project a command acts on.
+RELATIONS = ("ancestor", "current", "descendant")
+
+
+@dataclass(frozen=True)
+class ScopeMember:
+    """One project a scope covers, and how it is related to the project the
+    command acts on (one of `RELATIONS`)."""
+
+    id: str
+    relation: str
+
+
+#: The errors that make a covered project other than the active one
+#: unavailable to a command (TCW-113 Design 1.6), rather than ending it: the
+#: cases it expects are (a) the project is not on this machine, (b) its
+#: parent links cannot be read, (c) its own store is not provisioned here,
+#: declared wrongly or not usable, (d) a configuration key it reads is
+#: undecided or broken, (e) its view cannot be built, (f) its backend cannot
+#: answer or cannot name the person for `--mine`, (g) one of its records
+#: cannot be read, (h) one of its files is not valid YAML or cannot be read.
+#: A tuple cannot leave out `UsageError`, a `TcwError`, so a caller catches
+#: these and raises again whatever `is_unavailability` refuses.
+UNAVAILABILITY_ERRORS = (TcwError, StoreLocationUnusable, StoreDeclarationError,
+                         StoreNotProvisioned, yaml.YAMLError, OSError)
+
+
+def is_unavailability(error: BaseException) -> bool:
+    """Whether `error` makes a covered project unavailable (Design 1.6). A
+    usage error never does: the command's options are the same for every
+    project, so one raised while reading another project is an error in the
+    command. Anything not classified, a plain `ValueError` among them, may be
+    a fault in TCW rather than a fact about the project, so it ends the
+    command as it would anyway."""
+    return isinstance(error, UNAVAILABILITY_ERRORS) and not isinstance(error, UsageError)
 
 
 def _parents_of(project_id: str, links, absent: "set[str]") -> list[str]:
@@ -731,6 +773,52 @@ class ProjectRegistry(ABC):
     def descendants(self, project_id: str | None = None) -> list[Project]:
         """The projects below this one through listed children, breadth
         first, those on this machine."""
+
+    def scope_members(self, scope: str, project_id: str | None = None
+                      ) -> list[ScopeMember]:
+        """The projects `scope` covers for the project (TCW-113 Design 1.3),
+        in scope order (Design 1.4): its ancestors in its load order,
+        farthest first, missing ones included; the project; its descendants
+        breadth first over each one's declared children, a listed child not
+        on this machine included and its own children, which nothing here
+        can know, not. `own` asks the registry nothing.
+
+        `inherit` never narrows what a scope covers: every ancestor is
+        covered whatever its link passes (TCW-108 Design 5.3), and only what
+        is read from it depends on that. A sibling, an ancestor's other
+        descendants and a descendant's other parents are never covered."""
+        start = project_id or self.current.id
+        if scope not in SCOPES:
+            raise UsageError(f"--scope must be one of {', '.join(SCOPES)}, not '{scope}'")
+        if scope == "own":
+            return [ScopeMember(start, "current")]
+        found: list[ScopeMember] = []
+        if scope in ("up", "all"):
+            found += [ScopeMember(pid, "ancestor")
+                      for pid in self.load_order(project_id).ids[:-1]]
+        found.append(ScopeMember(start, "current"))
+        if scope in ("down", "all"):
+            seen = {start}
+            queue = [start]
+            while queue:
+                pid = queue.pop(0)
+                for child in self.declared_child_ids(pid):
+                    if child in seen:
+                        continue
+                    seen.add(child)
+                    found.append(ScopeMember(child, "descendant"))
+                    if self.get(child) is not None:
+                        queue.append(child)
+        return found
+
+    def covering_scope(self, project_id: str, active_id: str | None = None) -> str | None:
+        """The first of `up`, `down` and `all` that covers `project_id` for
+        the project `active_id` (the current one when not given), or None
+        when none does, as for a sibling (Design 2.2)."""
+        for scope in ("up", "down", "all"):
+            if any(m.id == project_id for m in self.scope_members(scope, active_id)):
+                return scope
+        return None
 
     @abstractmethod
     def projects(self) -> list["Project"]:
