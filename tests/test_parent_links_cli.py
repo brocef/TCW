@@ -632,7 +632,7 @@ def test_ac9_a_siblings_extends_is_read_from_its_own_load_order(tmp_path):
     added = tcw(b, "taxonomy", "add", "t")
     assert added.code == 0, added
     shown = tcw(a, "taxonomy", "show", "b.taxonomy/t")
-    assert shown.code == 0 and "t" in shown.out, shown
+    assert shown.code == 0 and "full-id: b.taxonomy/t" in shown.out, shown
     assert FsProjectRegistry.open(a).get("bp") is None
 
 
