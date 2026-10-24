@@ -1,0 +1,69 @@
+# Tests rewritten in place in TCW-114 Step 17 (they keep their IDs and pass); each reason is on the comment line above its test.
+# Design 7.1: the backend operation is move(old, new_id_path, before_folder), returning (old, new) pairs and refusing a last part that changes the date or key; rename(words) is gone
+tests.work.test_backend_contract::test_rename_keeps_the_prefix[memory]
+# Design 7.1: the backend operation is move(old, new_id_path, before_folder), returning (old, new) pairs and refusing a last part that changes the date or key; rename(words) is gone
+tests.work.test_backend_contract::test_rename_keeps_the_prefix[filesystem]
+# Design 7.1: the backend operation is move(old, new_id_path, before_folder), returning (old, new) pairs and refusing a last part that changes the date or key; rename(words) is gone
+tests.work.test_backend_contract::test_rename_keeps_the_prefix[jira]
+# Design 7.1: backend move rewrites reference fields as text and moves the folder after before_folder; mentions are no longer the backend's (Design 5.8 lists them in the command)
+tests.work.test_fs_backend::test_rename_rewrites_references_and_reports_mentions
+# Design 5.8: mentions are listed by tcw work rename, once each, after the move (new test)
+tests.work.test_fs_backend::test_a_rename_prints_each_mention_once
+# Design 5.8: building the name from words, date kept, lives in tcw work rename; tested through the command
+tests.work.test_fs_backend::test_rename_takes_a_full_name_with_the_same_date
+# Design 5.8: the word rules live in tcw work rename; tested through the command (exit 2, nothing on stdout)
+tests.work.test_fs_backend::test_rename_refuses_a_name_that_is_not_folder_shaped[New Words]
+# Design 5.8: the word rules live in tcw work rename; tested through the command (exit 2, nothing on stdout)
+tests.work.test_fs_backend::test_rename_refuses_a_name_that_is_not_folder_shaped[2026-01-01-other]
+# Design 5.8: the word rules live in tcw work rename; tested through the command (exit 2, nothing on stdout)
+tests.work.test_fs_backend::test_rename_refuses_a_name_that_is_not_folder_shaped[a_b]
+# Design 7.1: backend move refuses a new last part with another date (new test, the backend half of the old word test)
+tests.work.test_fs_backend::test_move_refuses_a_new_last_part_with_another_date
+# Design 5.8: "already exists" is the command's check, before any write; tested through the command
+tests.work.test_fs_backend::test_rename_to_an_existing_name_is_refused
+# Design 7.1: backend move still refuses with an unreadable item, before before_folder and the folder move
+tests.work.test_fs_backend::test_rename_refuses_with_an_unreadable_item_and_moves_nothing
+# Design 7.1: Jira move takes the whole new id-path, returns pairs, refuses a changed key
+tests.work.jira.test_jira_write::test_rename
+# Design 5.8: the key and word rules live in tcw work rename; tested through the command
+tests.work.jira.test_jira_write::test_rename_keeps_the_key_and_takes_words[TCW-9-new]
+# Design 5.8: the key and word rules live in tcw work rename; tested through the command
+tests.work.jira.test_jira_write::test_rename_keeps_the_key_and_takes_words[Not Words]
+# Design 5.8: the key and word rules live in tcw work rename; tested through the command
+tests.work.jira.test_jira_write::test_rename_keeps_the_key_and_takes_words[x/y]
+# Design 5.8: a key given with the words is the command's rule; output is `<old> -> <new>`
+tests.work.jira.test_jira_write::test_rename_with_the_key_given
+# Design 7.1: rename(words) is gone; the failed TCW Item edit now stops move before before_folder and the folder
+tests.work.jira.test_jira_write::test_a_failed_tcw_item_edit_keeps_the_folder
+# Design 5.8: mentions are listed by tcw work rename, once each
+tests.work.jira.test_jira_write::test_rename_reports_other_mentions
+# Design 7.1: rename(words) is gone; the backend call is move
+tests.work.jira.test_jira_guards::test_create_rename_and_adopt_leave_git_alone
+# Design 5.8: tcw work rename prints one `<old> -> <new>` line per changed identifier
+tests.work.test_cli_items::test_rename
+# Design 5.8: tcw work rename prints one `<old> -> <new>` line per changed identifier
+tests.test_cli_contract::test_naming_an_item
+# Design 5.8: tcw work rename prints one `<old> -> <new>` line per changed identifier
+tests.test_cli_contract::test_the_writing_work_commands_in_a_project
+# Design 5.8: tcw work rename prints one `<old> -> <new>` line per changed identifier
+tests.test_cli_contract::test_jira_edit_comment_and_rename
+# Design 5.8: the folder moves last and a stop prints nothing on stdout; replaced by test_a_rename_that_stops_prints_nothing_and_says_how_to_finish
+tests.test_cli_contract::test_a_rename_that_fails_after_moving_prints_the_new_slug
+# Design 5.8: a stop prints nothing on stdout and says to run the same command again (new test)
+tests.test_cli_contract::test_a_rename_that_stops_prints_nothing_and_says_how_to_finish
+# Design 5.8: the folder moves last and a stop prints nothing on stdout; replaced by test_a_rename_that_stops_prints_nothing_on_stdout
+tests.test_cli_handler::test_a_rename_that_fails_after_the_move_prints_the_new_slug
+# Design 5.8: a stop prints nothing on stdout and says to run the same command again (new test)
+tests.test_cli_handler::test_a_rename_that_stops_prints_nothing_on_stdout
+# Design 7.1: move no longer refuses an item with nested items (TCW-111's refusal removed); covered in tests/work/test_move.py
+tests.work.test_nested_items::test_an_item_with_items_nested_in_it_is_not_renamed
+# Design 5.8: tcw work rename prints one `<old> -> <new>` line per changed identifier
+tests.work.test_nested_items::test_a_nested_part_is_renamed_inside_its_parents_folder
+# Design 7.1: move no longer refuses an epic with nested items in Jira mode; covered in tests/work/jira/test_jira_move.py
+tests.work.jira.test_jira_nested::test_an_epic_with_a_nested_item_is_not_renamed_in_jira_mode
+# Design 5.8: nothing written is ever set back; running the same command again finishes the move
+tests.work.jira.test_jira_nested::test_a_failed_nested_move_sets_the_item_field_back
+# Design 5.8: tcw work rename prints one `<old> -> <new>` line per changed identifier
+tests.work.jira.test_jira_nested::test_a_nested_rename_sets_the_item_field_to_the_new_id_path
+# Design 7.1: report_mentions is deleted from tcw/work/fs_backend.py, so its listing allowance goes
+tests.test_object_folder_sweep::test_every_allowed_listing_still_exists
