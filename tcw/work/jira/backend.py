@@ -27,7 +27,7 @@ from tcw.errors import (
     BackendError, MovedWithoutNote, NotFound, Refused, TcwError, Unreachable, UsageError,
 )
 from tcw.findings import Finding
-from tcw.ids import IdError, id_part_problem, is_project_id, looks_full
+from tcw.ids import IdError, id_part_problem, is_project_id, length_problem, looks_full
 from tcw.output import shown
 from tcw.store.base import normalize_tag
 from tcw.store.fs import exact_child
@@ -36,7 +36,7 @@ from tcw.work.config import WorkConfig
 from tcw.object_folders import (UNMADE, id_problem, is_object, length_problems, object_paths,
                                 shape_problems, walk)
 from tcw.project_files import VERSION_KEY, version_line, version_problem
-from tcw.work.fs_backend import STATE_FILE, WORDS, report_mentions
+from tcw.work.fs_backend import STATE_FILE, WORDS, refuse_nested_rename, report_mentions
 from tcw.work.jira import jql
 from tcw.work.jira.client import (
     JiraClient, Transition, TrackerAuthError, TrackerError, TrackerNotFound,
@@ -994,6 +994,8 @@ class JiraBackend:
     def rename(self, folder: str, title_words: str) -> Item:
         key = self._key(folder)
         self._forget_walk()
+        refuse_nested_rename(self, folder, _key_named)
+        under = folder.rpartition("/")[0]
         words = title_words
         keyed = KEY_FOLDER.fullmatch(title_words) if isinstance(title_words, str) else None
         if keyed:
@@ -1004,9 +1006,13 @@ class JiraBackend:
         if not isinstance(words, str) or not WORDS.fullmatch(words):
             raise UsageError(f"{title_words!r} is not a folder name; did you mean "
                              f"{make_title_words(str(title_words))}?")
-        new = f"{key}-{words}"
-        if len(new) > FOLDER_LIMIT:
-            raise UsageError(f"{new} is longer than {FOLDER_LIMIT} characters")
+        new_name = f"{key}-{words}"
+        if len(new_name) > FOLDER_LIMIT:
+            raise UsageError(f"{new_name} is longer than {FOLDER_LIMIT} characters")
+        # Within the folder that holds the item (Design 6.3, 7.2).
+        new = f"{under}/{new_name}" if under else new_name
+        if (problem := length_problem(Slug(self.project, new))) is not None:
+            raise UsageError(problem)
         if new == folder:
             raise Refused(f"{folder} already has that name")
         old_path, new_path = self.work_path / folder, self.work_path / new

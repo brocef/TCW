@@ -212,3 +212,54 @@ def test_nest_with_a_parent_of_another_project_is_made_at_the_top(tcw, tmp_path)
     assert made(result) == f"p.work/{date.today().isoformat()}-part"
     assert f"not nested: q.work/{OLD_EPIC} belongs to project 'q'" in result.err
     assert not (other / "docs" / "work" / OLD_EPIC / f"{date.today().isoformat()}-part").exists()
+
+
+# -- AC 16: renaming --------------------------------------------------------------
+
+def state_bytes(root):
+    return sorted((str(p), p.read_bytes()) for p in store(root, "work").rglob("tcw-work-item.yaml"))
+
+
+def test_an_item_with_items_nested_in_it_is_not_renamed(tcw, demo):
+    item(demo, EPIC, title="Epic")
+    item(demo, f"{EPIC}/{PART}", title="Part")
+    item(demo, "2026-10-03-other", title="Other", **{"blocked-by": [f"demo.work/{EPIC}/{PART}"]})
+    before = state_bytes(demo)
+    refused = tcw(["work", "rename", EPIC, "new-words"], demo)
+    assert refused.code == 3
+    assert f"demo.work/{EPIC}/{PART}" in refused.err and "TCW-114" in refused.err
+    assert (store(demo, "work") / EPIC).is_dir()
+    assert state_bytes(demo) == before
+
+
+def test_a_nested_part_is_renamed_inside_its_parents_folder(tcw, demo):
+    item(demo, EPIC, title="Epic")
+    item(demo, "2026-10-09-other-epic", title="Other epic")
+    item(demo, f"{EPIC}/{PART}", title="Part")
+    third = item(demo, "2026-10-03-third", title="Third",
+                 **{"blocked-by": [f"demo.work/{EPIC}/{PART}"]})
+    (third / "resources").mkdir()
+    (third / "resources" / "names-it.md").write_text(f"see {EPIC}/{PART}\n")
+    (third / "resources" / "names-another.md").write_text(
+        f"see 2026-10-09-other-epic/{PART}\n")
+    renamed = tcw(["work", "rename", f"{EPIC}/{PART}", "new-words"], demo)
+    assert renamed.code == 0, renamed.err
+    new = f"demo.work/{EPIC}/2026-10-02-new-words"
+    assert renamed.out.strip() == new
+    assert (store(demo, "work") / EPIC / "2026-10-02-new-words").is_dir()
+    assert f"- {new}" in (third / "tcw-work-item.yaml").read_text()
+    assert "names-it.md:1" in renamed.err
+    assert "names-another.md" not in renamed.err
+
+
+def test_a_rename_beyond_255_characters_moves_nothing(tcw, demo):
+    from tests.test_identifier_length import nested_parent
+    path = nested_parent(250)
+    item(demo, path.split("/")[0])
+    item(demo, path)
+    before = state_bytes(demo)
+    old_words = path.rpartition("/")[2][11:]
+    # Six characters longer: 256 in all.
+    refused = tcw(["work", "rename", path, "c" * (len(old_words) + 6)], demo)
+    assert refused.code == 2 and "at most 255" in refused.err
+    assert state_bytes(demo) == before

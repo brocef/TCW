@@ -29,8 +29,10 @@ import yaml
 
 from tcw.errors import BackendError, MovedWithoutNote, NotFound, Refused, UsageError
 from tcw.findings import Finding
+from tcw.ids import length_problem
 from tcw.object_folders import (STATE_FILES, existing_version_line, id_problem, is_object,
-                                length_problems, shape_problems, state_text, walk)
+                                length_problems, objects_below, shape_problems, state_text,
+                                walk)
 from tcw.project_files import VERSION_KEY, version_problem
 from tcw.output import shown
 from tcw.store.base import normalize_tag
@@ -247,6 +249,19 @@ def read_all(work_path: Path, project: str,
         except Unreadable as error:
             bad.append(error)
     return items, bad
+
+
+def refuse_nested_rename(backend, id_path: str, named: Callable[[str], bool]) -> None:
+    """Refuse to rename an item that has items nested in its folder: their
+    id-paths would change with it, which is TCW-114's to do (Design 5, row 7).
+    `named` is the backend's rule for an item folder's name."""
+    nested = [p for p in objects_below(backend.work_path, "work", id_path)
+              if named(p.rpartition("/")[2])]
+    if nested:
+        shown_ = ", ".join(str(Slug(backend.project, p)) for p in nested[:3])
+        more = ", …" if len(nested) > 3 else ""
+        raise Refused(f"{Slug(backend.project, id_path)} has items nested in it "
+                      f"({shown_}{more}); renaming it waits for TCW-114")
 
 
 def report_mentions(work_path: Path, old: str, report: Callable[[str], None]) -> None:
@@ -483,7 +498,10 @@ class FsWorkBackend:
 
     def rename(self, folder: str, title_words: str) -> Item:
         old_path = self._folder(folder)
-        prefix = folder[:10]
+        refuse_nested_rename(self, folder, item_named)
+        # The item's own folder: `folder` is its whole id-path (Design 7.1).
+        under, _, own = folder.rpartition("/")
+        prefix = own[:10]
         dated = DATED.match(title_words)
         words = title_words
         if dated:
@@ -494,10 +512,14 @@ class FsWorkBackend:
         if not WORDS.match(words):
             raise UsageError(f"{title_words!r} is not a folder name; did you "
                              f"mean {make_title_words(words)}?")
-        new = f"{prefix}-{words}"
+        new_name = f"{prefix}-{words}"
+        if len(new_name) > FOLDER_LIMIT:
+            raise UsageError(f"{new_name} is longer than {FOLDER_LIMIT} characters")
+        # Within the folder that holds the item (Design 7.2).
+        new = f"{under}/{new_name}" if under else new_name
         new_path = self.work_path / new
-        if len(new) > FOLDER_LIMIT:
-            raise UsageError(f"{new} is longer than {FOLDER_LIMIT} characters")
+        if (problem := length_problem(Slug(self.project, new))) is not None:
+            raise UsageError(problem)
         if new_path.exists():
             raise Refused(f"{new_path} already exists")
 
@@ -517,7 +539,7 @@ class FsWorkBackend:
             name = new if name == folder else name
             try:
                 item, raw_stage = _load(self.work_path / name, self.project,
-                                        self.enabled)
+                                        self.enabled, name)
                 item = replace(
                     item,
                     parent=new_slug if item.parent == old_slug else item.parent,

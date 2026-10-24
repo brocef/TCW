@@ -192,8 +192,8 @@ def blocks_target(slug: Slug, target: Slug, backend: WorkBackend, root: Path):
 # -- commands ----------------------------------------------------------------------------
 
 
-SLUG_HELP = ("the item: its full identifier (<project>.work/<folder>), its "
-             "folder name, or its tracker key")
+SLUG_HELP = ("the item: its full identifier (<project>.work/<id-path>), its "
+             "id-path (its folder's path in the work store), or its tracker key")
 PROPERTY_FLAGS = ("effort", "complexity", "tag", "assignee", "parent", "blocked_by")
 
 

@@ -302,3 +302,39 @@ def test_a_delegation_into_a_project_with_little_room_fits_its_item(tmp_path, fa
     item = fake.tickets["TCW-1"].custom[ITEM]
     # Whole words, as title_words cuts them: `add-ex` would fit, `add` is kept.
     assert item == f"{long}.work/TCW-1-add" and len(item) <= 255
+
+
+# -- AC 16: renaming in Jira mode ----------------------------------------------------
+
+def test_a_nested_rename_sets_the_item_field_to_the_new_id_path(jira_project, tcw):
+    ticket(jira_project, "Epic", "TCW-1-epic")
+    key = ticket(jira_project, "Part", "TCW-1-epic/TCW-2-part")
+    renamed = tcw(["rename", "TCW-1-epic/TCW-2-part", "new-words"], jira_project.root)
+    assert renamed.code == 0, renamed.err
+    assert renamed.out.strip() == "tcw.work/TCW-1-epic/TCW-2-new-words"
+    assert jira_project.fake.tickets[key].custom[ITEM] == "tcw.work/TCW-1-epic/TCW-2-new-words"
+    assert (jira_project.work / "TCW-1-epic" / "TCW-2-new-words" / ITEM_STATE).is_file()
+
+
+def test_a_failed_nested_move_sets_the_item_field_back(jira_project, monkeypatch, tcw):
+    import os
+    ticket(jira_project, "Epic", "TCW-1-epic")
+    key = ticket(jira_project, "Part", "TCW-1-epic/TCW-2-part")
+
+    def refused(*args, **kwargs):
+        raise OSError("refused by the test")
+    monkeypatch.setattr(os, "rename", refused)
+    renamed = tcw(["rename", "TCW-1-epic/TCW-2-part", "new-words"], jira_project.root)
+    monkeypatch.undo()
+    assert renamed.code == 1 and "set back" in renamed.err, renamed
+    assert jira_project.fake.tickets[key].custom[ITEM] == "tcw.work/TCW-1-epic/TCW-2-part"
+
+
+def test_an_epic_with_a_nested_item_is_not_renamed_in_jira_mode(jira_project, tcw):
+    key = ticket(jira_project, "Epic", "TCW-1-epic")
+    ticket(jira_project, "Part", "TCW-1-epic/TCW-2-part")
+    jira_project.fake.log.clear()
+    refused = tcw(["rename", "TCW-1-epic", "new-words"], jira_project.root)
+    assert refused.code == 3 and "TCW-114" in refused.err
+    assert jira_project.fake.writes() == []
+    assert jira_project.fake.tickets[key].custom[ITEM] == "tcw.work/TCW-1-epic"
