@@ -410,6 +410,8 @@ export function App() {
     useEffect(() => {
         if (axis !== "work" || !selected) {
             setWorkDetail(null)
+            // The board with no item chosen: no other page's error stays.
+            if (axis === "work") setDetailError("")
             return
         }
         let stale = false
@@ -587,6 +589,9 @@ export function App() {
         saved = false
     ): boolean => {
         if (!saved && !confirmLeave()) return false
+        // The page already shown is kept: nothing would read it again,
+        // since the axis and the selection the reads depend on stay put.
+        const same = nextAxis === axis && key === selected
         setFileStage(null)
         setProblem("")
         setEditor(null)
@@ -594,8 +599,10 @@ export function App() {
         setDirty(false)
         setErrors([])
         setConflict(null)
-        setDetail(null)
-        setWorkDetail(null)
+        if (!same) {
+            setDetail(null)
+            setWorkDetail(null)
+        }
         setAxis(nextAxis)
         setSelected(key)
         navigate(pathFor(nextAxis, key) + scopeKey)

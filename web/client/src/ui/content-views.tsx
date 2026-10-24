@@ -26,7 +26,7 @@ import type {
     TScopeProject,
     TScopeStatus,
 } from "../model/types"
-import { parseFullId, routeKey } from "../model/identifier"
+import { fullIdText, parseFullId, routeKey } from "../model/identifier"
 import { ReferenceInput } from "./reference-input"
 import { ProjectIdContext } from "./project-context"
 import { LABELS, idPathOf, inherited, pathFor } from "./route-utils"
@@ -324,13 +324,24 @@ function StatusByProject({
 }) {
     const projectId = useContext(ProjectIdContext)
     if (!capability.statuses) return null
+    // A project whose own object sets the status has an object at this
+    // path; the full identifiers the record gives are used where it gives
+    // them: its own, the one it overrides, and those that override it.
+    const shown = parseFullId(capability["full-id"])
     const own = new Map<string, string>()
+    for (const entry of capability.statuses)
+        if (shown && !entry.inherited)
+            own.set(
+                entry.project,
+                fullIdText(entry.project, "capabilities", shown.idPath)
+            )
     for (const fullId of [
         capability["full-id"],
+        capability.overrides,
         ...(capability["overridden-by"] ?? []),
     ]) {
-        const owner = parseFullId(fullId)?.project
-        if (owner) own.set(owner, fullId)
+        const owner = fullId ? parseFullId(fullId)?.project : undefined
+        if (owner && fullId) own.set(owner, fullId)
     }
     const byStatus = new Map<string, TScopeStatus[]>()
     for (const entry of capability.statuses) {

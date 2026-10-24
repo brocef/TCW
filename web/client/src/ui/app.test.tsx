@@ -1138,3 +1138,177 @@ test("the served project's entry the list does not hold is not read", async () =
         fetch.calls.some((call) => call.path.startsWith("/api/capabilities/"))
     ).toBe(false)
 })
+
+// -- leaving a page, and links to the page shown (TCW-113 review round 4) ---
+
+test("a capability's error does not follow to the board", async () => {
+    serve({ scopes: FAMILY })
+    renderApp("/capabilities/desktop.capabilities/nosuch?scope=down")
+    expect(await screen.findByText(/not found/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Work" }))
+    expect(await screen.findByText("Alpha")).toBeInTheDocument()
+    expect(screen.queryByText(/not found/)).toBeNull()
+})
+
+test("a capability's error does not follow back to the board", async () => {
+    serve({ scopes: FAMILY })
+    render(
+        <ThemeProvider>
+            <MemoryRouter
+                initialEntries={[
+                    "/work?scope=down",
+                    "/capabilities/desktop.capabilities/nosuch?scope=down",
+                ]}
+                initialIndex={1}
+            >
+                <App />
+                <Where />
+            </MemoryRouter>
+        </ThemeProvider>
+    )
+    expect(await screen.findByText(/not found/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Browser back" }))
+    await waitFor(() =>
+        expect(screen.getByTestId("where")).toHaveTextContent(/^\/work$/)
+    )
+    expect(await screen.findByText("Alpha")).toBeInTheDocument()
+    expect(screen.queryByText(/not found/)).toBeNull()
+})
+
+test("an override's page links each project with its own object at the path", async () => {
+    serve({ scopes: FAMILY }, [
+        [
+            /^GET \/api\/capabilities\/desktop\.capabilities%2Fabc\?scope=down$/,
+            200,
+            {
+                capability: capability(
+                    "abc",
+                    {
+                        name: "Desktop Abc",
+                        status: "Supported",
+                        overrides: "p.capabilities/abc",
+                        statuses: [
+                            {
+                                status: "Missing",
+                                project: "p",
+                                inherited: false,
+                            },
+                            {
+                                status: "Supported",
+                                project: "desktop",
+                                inherited: false,
+                            },
+                            {
+                                status: "Omitted",
+                                project: "server",
+                                inherited: false,
+                            },
+                            {
+                                status: "Missing",
+                                project: "tablet",
+                                inherited: true,
+                            },
+                        ],
+                        "overridden-by": [],
+                    },
+                    "desktop"
+                ),
+                coreRevision: "r1",
+            },
+        ],
+    ])
+    renderApp("/capabilities/desktop.capabilities/abc?scope=down")
+    const lines = await screen.findByRole("region", {
+        name: "Status by project",
+    })
+    const href = (name: string) =>
+        within(lines).getByRole("link", { name }).getAttribute("href")
+    expect(href("p")).toBe("/capabilities/abc")
+    expect(href("desktop")).toBe("/capabilities/desktop.capabilities/abc")
+    expect(href("server")).toBe("/capabilities/server.capabilities/abc")
+    expect(within(lines).queryByRole("link", { name: "tablet" })).toBeNull()
+    expect(lines).toHaveTextContent("tablet (inherited)")
+})
+
+const ABC_SHOWN: Array<[RegExp | string, number, unknown]> = [
+    [
+        /^GET \/api\/capabilities\/abc\?scope=down$/,
+        200,
+        { capability: ABC_DOWN.capabilities[0], coreRevision: "r1" },
+    ],
+    ["/api/capabilities?scope=down$", 200, ABC_DOWN],
+]
+
+test("a link to the page already shown keeps it shown", async () => {
+    serve({ scopes: FAMILY }, ABC_SHOWN)
+    renderApp("/capabilities/abc?scope=down")
+    const lines = await screen.findByRole("region", {
+        name: "Status by project",
+    })
+    fireEvent.click(within(lines).getByRole("link", { name: "p" }))
+    await waitFor(() =>
+        expect(screen.queryByText("Select an entry.")).toBeNull()
+    )
+    expect(
+        screen.getByRole("region", { name: "Status by project" })
+    ).toBeInTheDocument()
+    expect(screen.getByTestId("where")).toHaveTextContent("/capabilities/abc")
+})
+
+test("a row clicked twice keeps its page shown", async () => {
+    serve({ scopes: FAMILY }, ABC_SHOWN)
+    renderApp("/capabilities?scope=down")
+    const row = await screen.findByRole("treeitem", { name: /Abc/ })
+    fireEvent.click(row)
+    expect(
+        await screen.findByRole("region", { name: "Status by project" })
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("treeitem", { name: /Abc/ }))
+    await waitFor(() =>
+        expect(screen.queryByText("Select an entry.")).toBeNull()
+    )
+    expect(
+        screen.getByRole("region", { name: "Status by project" })
+    ).toBeInTheDocument()
+})
+
+test("the object an override names is linked though its status is inherited", async () => {
+    serve({ scopes: FAMILY }, [
+        [
+            /^GET \/api\/capabilities\/desktop\.capabilities%2Fabc\?scope=down$/,
+            200,
+            {
+                capability: capability(
+                    "abc",
+                    {
+                        name: "Desktop Abc",
+                        status: "Supported",
+                        overrides: "p.capabilities/abc",
+                        statuses: [
+                            {
+                                status: "Missing",
+                                project: "p",
+                                inherited: true,
+                            },
+                            {
+                                status: "Supported",
+                                project: "desktop",
+                                inherited: false,
+                            },
+                        ],
+                        "overridden-by": [],
+                    },
+                    "desktop"
+                ),
+                coreRevision: "r1",
+            },
+        ],
+    ])
+    renderApp("/capabilities/desktop.capabilities/abc?scope=down")
+    const lines = await screen.findByRole("region", {
+        name: "Status by project",
+    })
+    expect(
+        within(lines).getByRole("link", { name: "p" }).getAttribute("href")
+    ).toBe("/capabilities/abc")
+})
