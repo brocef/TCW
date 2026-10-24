@@ -57,6 +57,12 @@ list|show|search` and `tcw capabilities list|show|search`; `projects`,
   project's view (`scope=up`) whatever the scope control shows. (TCW-113)
 - `moveHint` takes the served project's id; another project's item page
   names `tcw -C tcw://<owner>.path/ work advance <full id>`. (TCW-113)
+- The detail routes read their key as `show --project` reads its input: a
+  full identifier of another project than `project` is refused (400
+  `usage`, with the CLI's message, now built once by `tcw.scope.not_its_project`
+  for the CLI and the server), and a work folder name or ticket key names
+  `project`'s item. The web client sends `project` on a detail request only
+  when it is the object's own project (`detailScope`). (TCW-113)
 
 ## Removed
 

@@ -333,3 +333,60 @@ def test_an_owner_the_scope_does_not_cover_counts_its_own_items_once(family, sha
     assert sorted(record["blocks"]) == blocked
     cli = _cli_record(family, OTHER_ITEM, "down")
     assert (record["children"], record["blocks"]) == (cli["children"], cli["blocks"])
+
+
+# -- a full identifier and `project` (Design 2.3, 6.2) ----------------------------------
+
+DETAILS = [("work", DESKTOP_ITEM), ("capabilities", "desktop.capabilities/abc")]
+
+
+@pytest.mark.parametrize("axis, full_id", DETAILS)
+def test_a_full_identifier_of_another_project_than_project_is_refused(family, shared,
+                                                                      axis, full_id):
+    answer = shared.get(f"/api/{axis}/{quote(full_id, safe='')}?scope=down&project=server")
+    assert answer.status == 400, answer.body
+    assert answer.json["code"] == "usage"
+    cli = family.run("shared", axis, "show", full_id, "--scope", "down",
+                     "--project", "server")
+    assert cli.code == 2, cli.err
+    assert answer.json["error"] in cli.err
+    assert "'desktop'" in answer.json["error"] and "'server'" in answer.json["error"]
+
+
+@pytest.mark.parametrize("axis, full_id", DETAILS)
+@pytest.mark.parametrize("project", ["&project=desktop", ""])
+def test_a_full_identifier_with_its_own_project_or_none_is_shown(family, shared, axis,
+                                                                 full_id, project):
+    answer = shared.get(f"/api/{axis}/{quote(full_id, safe='')}?scope=down{project}")
+    assert answer.status == 200, answer.body
+    record = answer.json["item" if axis == "work" else "capability"]
+    assert record["full-id"] == full_id
+
+
+def test_a_folder_name_with_project_names_that_projects_item(family, shared):
+    # Design 2.3: a work folder name names `--project`'s item, as `show` does.
+    folder = item_folder("desktop")
+    answer = shared.get(f"/api/work/{folder}?scope=down&project=desktop")
+    assert answer.status == 200, answer.body
+    cli = family.run("shared", "work", "show", folder, "--scope", "down",
+                     "--project", "desktop", "--json")
+    assert cli.code == 0, cli.err
+    assert answer.json["item"] == cli.json["item"]
+    assert answer.json["item"]["full-id"] == DESKTOP_ITEM
+    mine = shared.get(f"/api/work/{item_folder('shared')}?scope=down&project=desktop")
+    assert mine.status == 404, mine.body
+    assert family.run("shared", "work", "show", item_folder("shared"), "--scope", "down",
+                      "--project", "desktop").code != 0
+
+
+def test_a_term_of_another_project_than_project_is_refused(family, shared):
+    key = quote("docs.taxonomy/plan", safe="")
+    answer = shared.get(f"/api/taxonomy/{key}?scope=up&project=shared")
+    assert answer.status == 400, answer.body
+    cli = family.run("shared", "taxonomy", "show", "docs.taxonomy/plan", "--scope", "up",
+                     "--project", "shared")
+    assert cli.code == 2 and answer.json["error"] in cli.err
+    for project in ("&project=docs", ""):
+        shown = shared.get(f"/api/taxonomy/{key}?scope=up{project}")
+        assert shown.status == 200, shown.body
+        assert shown.json["term"]["full-id"] == "docs.taxonomy/plan"

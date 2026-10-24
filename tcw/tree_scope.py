@@ -20,7 +20,7 @@ from typing import Any, Callable
 
 from tcw.errors import BackendError, InheritedUnavailable, NotFound, UsageError
 from tcw.ids import FullId, identity, inherited_keys, parent_text, sort_input
-from tcw.scope import UNAVAILABLE, Covered
+from tcw.scope import UNAVAILABLE, Covered, not_its_project
 from tcw.store.base import (UNAVAILABILITY_ERRORS, ProjectView, ScopeObject, ScopeRow,
                             row_order, scope_rows, text_matches)
 
@@ -286,9 +286,7 @@ def show_row(covered: Covered, axis: str, text: str) -> TreeRow:
     named = None if found.form == "d" else found.full_id
     if covered.only is not None:
         if named is not None and named.project != covered.only:
-            raise UsageError(f"'{text}' names an object of project '{named.project}', and "
-                             f"--project keeps only project '{covered.only}''s; give one "
-                             f"of them")
+            raise not_its_project(text, "an object", named.project, covered.only)
         if named is None:
             text = f"{covered.only}.{axis}/{found.id_path}"
         # Read as that full identifier is read (Design 2.3), outside any

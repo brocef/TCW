@@ -384,9 +384,8 @@ def _show(args) -> int:
     named = found.full_id.project if found.form in ("a", "c") else None
     if args.project is not None and named is not None and named != args.project:
         # Design 2.3: a full identifier names its own project's item.
-        raise UsageError(f"'{args.slug}' names an item of project '{named}', and "
-                         f"--project keeps only project '{args.project}''s; give one "
-                         f"of them")
+        from tcw.scope import not_its_project
+        raise not_its_project(args.slug, "an item", named, args.project)
     covered = _covered(args, root)
     active = None if covered is None else open_backend(root)
     if covered is None or named is not None:

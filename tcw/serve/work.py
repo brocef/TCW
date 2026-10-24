@@ -377,11 +377,28 @@ def _comments(found) -> list[dict[str, Any]]:
             for c in sorted(found, key=lambda c: c.at)]
 
 
+def _shown_key(request: Request) -> tuple[WorkKey, Any]:
+    """The item `tcw work show <key> [--scope …] [--project …]` names, and
+    the projects its read covers (Design 2.3, 6.2). A full identifier names
+    its own project's item, and one of another project than `project` is
+    refused, before anything is read, as the CLI refuses it; any other key
+    names `project`'s item when `project` is given."""
+    from tcw.scope import not_its_project
+    text = request.param(1)
+    key = work_key(request, text)
+    project = (request.query.get("project") or [""])[-1]
+    if project and key.full is not None and key.project != project:
+        raise not_its_project(text, "an item", key.project, project)
+    covered = _scoped(request)
+    if project and key.full is None:
+        key = WorkKey(project, key.name)
+    return key, covered
+
+
 def detail(request: Request):
     # Read from the item's owner, whichever project it is (Design 6.4).
-    key = work_key(request, request.param(1))
+    key, covered = _shown_key(request)
     ctx = context_for(request, key.project)
-    covered = _scoped(request)
     folder = item_folder(ctx, request.param(1))
     slug = ctx.slug(folder)
     item: Item | None = None

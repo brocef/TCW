@@ -952,3 +952,43 @@ test("with one project chosen no capability row shows a summary", async () => {
     expect(await screen.findByText("Abc")).toBeInTheDocument()
     expect(screen.queryByText(/\(1\)/)).toBeNull()
 })
+
+// -- a detail request and the project filter (TCW-113 Design 2.3, 6.2) ------
+
+test.each([
+    [
+        "another project's item, the filter naming a third",
+        "/work/desktop.work/2026-10-01-d?scope=all&project=core",
+        "/api/work/desktop.work%2F2026-10-01-d?scope=all",
+    ],
+    [
+        "the served project's item, the filter naming another",
+        "/work/2026-10-01-d?scope=down&project=desktop",
+        "/api/work/2026-10-01-d?scope=down",
+    ],
+    [
+        "the filter naming the item's own project",
+        "/work/desktop.work/2026-10-01-d?scope=down&project=desktop",
+        "/api/work/desktop.work%2F2026-10-01-d?scope=down&project=desktop",
+    ],
+])(
+    "a followed link to %s asks for its item with no other project",
+    async (_, page, asked) => {
+        const fetch = serve({ scopes: FAMILY }, [
+            [
+                /^GET \/api\/work\/(desktop\.work%2F)?2026-10-01-d\?/,
+                200,
+                workDetail("2026-10-01-d"),
+            ],
+        ])
+        renderApp(page)
+        await waitFor(() => {
+            const paths = fetch.calls.map((call) => call.path)
+            expect(paths).toContain(asked)
+        })
+        const details = fetch.calls
+            .map((call) => call.path)
+            .filter((path) => /^\/api\/work\/[^?]*2026-10-01-d\?/.test(path))
+        expect(details.every((path) => path === asked)).toBe(true)
+    }
+)

@@ -173,6 +173,15 @@ def _not_covered(covered: Covered, project: str) -> str:
     return f"{text}; it is neither an ancestor nor a descendant of '{covered.active}'"
 
 
+def not_its_project(text: str, noun: str, named: str, project: str) -> UsageError:
+    """Design 2.3's refusal of a full identifier, `text`, naming an object
+    (`noun`: "an item", "an object") of project `named` on `show` with a
+    `--project` keeping another, `project`. `tcw serve` answers it as the
+    CLI prints it."""
+    return UsageError(f"'{text}' names {noun} of project '{named}', and --project "
+                      f"keeps only project '{project}''s; give one of them")
+
+
 #: The help strings of the two options (TCW-113 plan choice 13).
 SCOPE_HELP = ("which projects to cover: own (this project, the default), up (adds "
               "its ancestors), down (adds its descendants), all (both); never a "

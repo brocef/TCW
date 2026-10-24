@@ -55,7 +55,12 @@ import {
 } from "./content-views"
 import { SettingsControl, Tree } from "./shared-components"
 import { ScopeControl } from "./scope-control"
-import { scopeParams, scopeSearch, withScope } from "../model/scope"
+import {
+    detailScope,
+    scopeParams,
+    scopeSearch,
+    withScope,
+} from "../model/scope"
 import { RefusalContext, useRefusals } from "./refusals"
 import { beginResize, loadExpanded } from "./ui-state"
 import { ProjectIdContext } from "./project-context"
@@ -412,7 +417,13 @@ export function App() {
         setDetailError("")
         // The scope decides its `children` and `blocks` (Design 3.3).
         void fetchJson<WorkDetail>(
-            withScope(`/api/work/${encodeRef(selected)}`, scopeChoice)
+            withScope(
+                `/api/work/${encodeRef(selected)}`,
+                detailScope(
+                    scopeChoice,
+                    parseFullId(selected)?.project ?? projectId
+                )
+            )
         )
             .then((found) => {
                 if (stale) return
@@ -459,7 +470,13 @@ export function App() {
         }
         setLoadingDetail(true)
         void fetchJson<Detail>(
-            withScope(`/api/${axis}/${encodeRef(selected)}`, scopeChoice)
+            withScope(
+                `/api/${axis}/${encodeRef(selected)}`,
+                detailScope(
+                    scopeChoice,
+                    parseFullId(selected)?.project ?? projectId
+                )
+            )
         )
             .then(setDetail)
             .catch((error) => setLoadError(String(error)))

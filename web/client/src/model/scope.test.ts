@@ -1,5 +1,11 @@
 import { expect, test } from "vitest"
-import { scopeParams, scopeSearch, statusSummary, withScope } from "./scope"
+import {
+    detailScope,
+    scopeParams,
+    scopeSearch,
+    statusSummary,
+    withScope,
+} from "./scope"
 
 test("the query string names the scope and the project", () => {
     expect(scopeParams("?scope=down&project=desktop")).toEqual({
@@ -42,4 +48,11 @@ test("a status summary counts each status in first-appearance order", () => {
             { project: "d", status: null, inherited: false },
         ])
     ).toBe("Supported(2), Missing(1), (no status)(1)")
+})
+
+test("a detail request keeps the project only when it owns the object", () => {
+    const choice = { scope: "down" as const, project: "desktop" }
+    expect(detailScope(choice, "desktop")).toEqual(choice)
+    expect(detailScope(choice, "server")).toEqual({ scope: "down" })
+    expect(detailScope({ scope: "up" }, "p")).toEqual({ scope: "up" })
 })

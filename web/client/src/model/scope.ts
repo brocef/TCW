@@ -51,6 +51,16 @@ export function withScope(path: string, choice: TScopeChoice): string {
     return `${path}${path.includes("?") ? "&" : "?"}${extra}`
 }
 
+/** The choice a detail request sends for an object of project `owner`:
+ * the page's scope, and its project only when it is `owner`. A route key
+ * already names its object, and the server reads a key as `show --project`
+ * does (Design 2.3): a folder name names the project's object, and another
+ * project's full identifier is refused. So a link followed while the
+ * project filter names another project still opens its object. */
+export function detailScope(choice: TScopeChoice, owner: string): TScopeChoice {
+    return choice.project === owner ? choice : { scope: choice.scope }
+}
+
 /** Each status a row's projects hold, with how many hold it, in the order
  * the statuses first appear (Design 6.9): `Missing(1), Supported(1)`. */
 export function statusSummary(statuses: TScopeStatus[]): string {
