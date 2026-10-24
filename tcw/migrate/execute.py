@@ -176,9 +176,58 @@ def _perform(step: Step, root: Path) -> None:
         _delete(resolve(root, step.path))
 
 
+def _foreseen(steps: list[Step], root: Path) -> tuple[int, str] | None:
+    """The first step that will be found changed when its turn comes, and
+    the path found so, or None: each step judged against the disk as the
+    steps before it will leave it, so a hand edit anywhere stops the run
+    before it writes anything more (Design 2.2, 2.7)."""
+    after: dict[str, str] = {}
+    moving: list[Move] = []
+
+    def now(rel: str) -> str:
+        if rel in after:
+            return after[rel]
+        for move in moving:
+            if rel == move.new or rel.startswith(move.new + "/"):
+                inner = rel[len(move.new) + 1:]
+                return dict(move.files).get(inner, ABSENT)
+        return file_digest(resolve(root, rel))
+    for i, step in enumerate(steps):
+        if isinstance(step, Move):
+            found, where = _where(step, root)
+            if found == CHANGED:
+                return i, where
+            if found == TODO:
+                moving.append(step)
+            continue
+        if isinstance(step, Write):
+            here = now(step.path)
+            if here != digest(step.text):
+                if here != step.expect:
+                    return i, step.path
+                for path, recorded in step.reads:
+                    if now(path) != recorded:
+                        return i, path
+            after[step.path] = digest(step.text)
+            continue
+        here = now(step.path)
+        if here != ABSENT:
+            if step.digest is not None and here != step.digest:
+                return i, step.path
+            if step.waits_for is not None and now(step.waits_for) != step.waits_digest:
+                return i, step.waits_for
+        after[step.path] = ABSENT
+    return None
+
+
 def run_local(steps: list[Step], root: Path, say: Say) -> None:
     """Walk `steps` in order: skip each done one, refuse at the first changed
-    one (B17), and otherwise do it, saying each change as it is made."""
+    one (B17), and otherwise do it, saying each change as it is made. A step
+    that will be found changed refuses the run before any step is done."""
+    foreseen = _foreseen(steps, root)
+    if foreseen is not None:
+        i, where = foreseen
+        raise MigrateRefused(_changed_blocker(steps[i], where), steps[i:])
     for i, step in enumerate(steps):
         found, where = _where(step, root)
         if found == DONE:
@@ -226,6 +275,14 @@ def _finish(steps: list[Step], root: Path, say: Say) -> None:
             _delete(path)
     except OSError as error:
         raise MigrateStopped(str(error), [Delete(progress.PROGRESS, "E", None)]) from None
+
+
+def refusal(steps: list[Step], root: Path) -> Blocker | None:
+    """B17 for a run following a progress record, found before anything is
+    written; None when none would be found. For a dry run."""
+    rest = [s for s in steps if s.phase != "A"]
+    foreseen = _foreseen(rest, root)
+    return None if foreseen is None else _changed_blocker(rest[foreseen[0]], foreseen[1])
 
 
 def pending(steps: list[Step], root: Path) -> list[Step]:

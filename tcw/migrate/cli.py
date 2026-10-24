@@ -214,6 +214,10 @@ def follow_progress(root: Path, record, *, dry_run: bool, no_jira: bool = False)
         _would(execute.pending(record.steps, root), tickets)
         report.blockers(half.blockers)
         return codes.REFUSED
+    if dry_run and (refused := execute.refusal(record.steps, root)) is not None:
+        _would(execute.pending(record.steps, root), tickets)
+        report.blockers([refused])
+        return codes.REFUSED
     if dry_run:
         pending = execute.pending(record.steps, root)
         _would(pending, tickets)

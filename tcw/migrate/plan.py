@@ -65,6 +65,15 @@ def read_project(root: Path) -> Read:
 # The part-1 refusal of part-2 forms (Decided 17)
 
 
+def _project_holding(path: Path) -> Path | None:
+    """The nearest folder at or above `path` that holds a TCW project's
+    configuration in either form, or None (B6)."""
+    for folder in (path, *path.parents):
+        if (folder / ROOT_CONFIG).is_file() or (folder / SENTINEL).is_file():
+            return folder
+    return None
+
+
 def part_two_forms(read: Read) -> list[Blocker]:
     """B5 for every 3.x form only part 2 of the build converts. Each step of
     part 2 removes the forms it converts."""
@@ -80,16 +89,24 @@ def part_two_forms(read: Read) -> list[Blocker]:
         section = mapping.get(component)
         store = store_folder_3x(read.root, component, section)
         configured = section.get("path") if isinstance(section, dict) else None
-        if store.form == "outside":
+        if isinstance(configured, str) and (os.path.isabs(configured)
+                                            or configured.startswith("~")):
+            if _project_holding(Path(configured).expanduser()) is None:
+                out.append(Blocker(
+                    "B6", rel, f"{component}.path: {configured} lies inside no TCW "
+                               f"project; TCW 4 takes a store's path relative to the "
+                               f"project, or as a .path address of another project",
+                    "move the store into a project and set the path to it, then run "
+                    "'tcw migrate' again"))
+            else:
+                out.append(not_yet(rel, f"{component}.path",
+                                    f"an absolute {component} store path"))
+        elif store.form == "outside":
             out.append(not_yet(rel, f"{component}.path",
                                 f"a {component} store outside the project"))
         elif store.form == "repository":
             out.append(not_yet(rel, f"{component}.repository",
                                 f"a {component} store with only a repository"))
-        elif isinstance(configured, str) and (os.path.isabs(configured)
-                                              or configured.startswith("~")):
-            out.append(not_yet(rel, f"{component}.path",
-                                f"an absolute {component} store path"))
     for store in stores.stores_of(read.root, mapping):
         if store.namespace != "capabilities":
             continue
@@ -219,6 +236,7 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
     if plan.steps or plan.blockers or plan.tickets:
         plan.reports = (reports + config.user_reports(read.layers.user)
                         + config.ignore_reports(read.root)
+                        + config.worktree_reports(read.root)
                         + (plan.half.reports if plan.half is not None else []))
     if no_jira and jira_backed and plan.steps:
         plan.summary.append(no_jira_line(read.root, shared.project))

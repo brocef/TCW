@@ -289,6 +289,23 @@ def user_reports(user: Layer3 | None) -> list[Report]:
                     if path and path[-1] in _RENAMED_KEYS])
 
 
+def worktree_reports(root: Path) -> list[Report]:
+    """A7: in a linked git worktree, a 3.x personal file only in the main
+    checkout, which this run does not convert (Design 6.6)."""
+    from tcw.store.project import _below, worktree_anchors
+    root = Path(root)
+    anchors = worktree_anchors(root)
+    if not anchors or (root / ROOT_LOCAL).is_file():
+        return []
+    top, main = anchors
+    inside = _below(root.resolve(), top)
+    theirs = main / inside / ROOT_LOCAL if inside is not None else None
+    if theirs is None or not theirs.is_file():
+        return []
+    return [Report("A7", str(theirs), "a 3.x personal file in the main checkout, which "
+                                      "this run does not convert; run 'tcw migrate' there")]
+
+
 def ignore_reports(root: Path) -> list[Report]:
     """A4: a root `.gitignore` line for the 3.x personal file."""
     path = Path(root) / ".gitignore"
