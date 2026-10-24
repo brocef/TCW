@@ -170,6 +170,15 @@ def _not_covered(covered: Covered, project: str) -> str:
     wider = covered.registry.covering_scope(project)
     if wider is not None:
         return f"{text}; --scope {wider} covers it"
+    from tcw.errors import ProjectGraphError, UnknownProject
+    try:
+        covered.locator.owner_root(project, covered.root)
+    except UnknownProject as error:
+        # An ID no project has: saying it is no relative of this one would
+        # read as if there were such a project somewhere else.
+        return f"{text}; {error}"
+    except (Unreachable, ProjectGraphError, ConfigError):
+        pass
     return f"{text}; it is neither an ancestor nor a descendant of '{covered.active}'"
 
 

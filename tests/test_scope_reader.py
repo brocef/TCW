@@ -72,6 +72,18 @@ def test_a_sibling_is_neither_ancestor_nor_descendant(family, opened):
     assert opened == []
 
 
+def test_a_project_id_no_project_has_says_so(family, opened):
+    # An ID no project has is not "neither an ancestor nor a descendant":
+    # the refusal says that no such project exists (exit 2 still).
+    with pytest.raises(UsageError) as raised:
+        cover(family["shared"], "all", "nosuch")
+    assert str(raised.value) == (
+        "--project nosuch: 'nosuch' is not covered by --scope all in 'shared', "
+        "which covers docs, shared, desktop, server, mobile; no project with ID "
+        "'nosuch' is known or found near this one; check the spelling")
+    assert opened == []
+
+
 def test_a_project_that_is_no_project_id_is_refused(family, opened):
     with pytest.raises(UsageError) as raised:
         cover(family["shared"], "down", "Bad_Id")
