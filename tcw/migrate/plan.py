@@ -79,8 +79,6 @@ def part_two_forms(read: Read) -> list[Blocker]:
     part 2 removes the forms it converts."""
     rel, mapping = read.shared
     out = []
-    if "projects" in mapping:
-        out.append(not_yet(rel, "projects", "projects:"))
     for component in ("taxonomy", "capabilities"):
         section = mapping.get(component)
         if isinstance(section, dict) and "extends" in section:
@@ -202,20 +200,33 @@ def no_jira_line(root: Path, project_id: str | None) -> str:
 def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
     """Everything one run will do and say, worked out before any write."""
     read = read_project(root)
-    shared = config.plan_file(read.root, read.layers.shared, read.shared4, shared=True)
+    rel, mapping = read.shared
+    relations = config.plan_relations(rel, mapping) if read.three_x else config.Relations()
+    shared = config.plan_file(read.root, read.layers.shared, read.shared4, shared=True,
+                              edits=tuple(relations.edits()),
+                              conversions=("C3",) if relations.present else ())
     personal = config.plan_file(read.root, read.layers.personal, read.personal4,
                                 shared=False)
     plan = Plan(shared.project, read.work_backend)
-    plan.blockers = part_two_forms(read) + shared.blockers + personal.blockers
+    plan.blockers = (part_two_forms(read) + relations.blockers + shared.blockers
+                     + personal.blockers)
     steps = shared.steps + personal.steps
-    reports = shared.reports + personal.reports
+    reports = relations.reports + shared.reports + personal.reports
+    plan.summary += [f"a comment is dropped from {line}" for line in shared.dropped]
+    if relations.present and shared.project:
+        manifests = config.plan_manifests(
+            read.root, [config.Located(r, read.root) for r in relations.entries],
+            shared.project)
+        plan.blockers += manifests.blockers
+        reports += manifests.reports
+        steps += manifests.steps
     if shared.project:
         found = stores.plan_stores(read.root, read.shared[1], shared.project,
                                    three_x=read.three_x, work_backend=read.work_backend)
         plan.owners = found.owners
         plan.blockers += found.blockers
         reports += found.reports
-        written = record.plan_record(read.root, found.ids)
+        written = record.plan_record(read.root, found.ids, removed=relations.removed)
         steps = ([written] if written else []) + steps + found.steps
     if steps and read.git is not None:
         steps += config.plan_ignore(read.root)

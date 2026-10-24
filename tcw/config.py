@@ -380,7 +380,7 @@ def parse_project_file_text(text: str, file: Path, *, layer: str) -> list[Proble
     file = Path(file)
     root = file.parent.parent
     if layer == "shared":
-        return load_config(root, personal=False, text=text).problems
+        return _shared_text_problems(text, file, root)
     mapping, problems = _parse_text(text, file, root)
     if not mapping:
         return problems
@@ -391,6 +391,30 @@ def parse_project_file_text(text: str, file: Path, *, layer: str) -> list[Proble
     origin = Origin("local", file)
     mapping, found = _allowed(mapping, origin, root, [])
     return [*problems, *found, *_list_problems(mapping, origin, root)]
+
+
+def _shared_text_problems(text: str, file: Path, root: Path) -> list[Problem]:
+    """The shared file's problems, read for itself: its `parents:` and
+    `children:` by their own readers, and the rest as `load_config` reads it
+    with neither, since a planned file's sources may not be readable by 4.0
+    yet (a parent still to migrate)."""
+    import yaml
+    from tcw.store.links import parse_children, parse_parents
+    mapping, _ = _parse_text(text, file, root)
+    if not isinstance(mapping, dict) or not ({"parents", "children"} & set(mapping)):
+        return load_config(root, personal=False, text=text).problems
+    own_id = mapping.get("id") if isinstance(mapping.get("id"), str) else ""
+    found: list[Problem] = []
+    if "parents" in mapping:
+        _, problems = parse_parents(mapping["parents"], str(file))
+        found += [Problem(file, tuple(key.replace("[", ".").rstrip("]").split(".")),
+                          message, root) for key, message in problems]
+    _, problems = parse_children(mapping.get("children"), str(file), own_id=own_id)
+    found += [Problem(file, tuple(key.replace("[", ".").rstrip("]").split(".")),
+                      message, root) for key, message in problems]
+    rest = {k: v for k, v in mapping.items() if k not in ("parents", "children")}
+    return found + load_config(root, personal=False,
+                               text=yaml.safe_dump(rest, sort_keys=False)).problems
 
 
 def read_project_file(project_root: Path) -> tuple[dict | None, list[Problem]]:

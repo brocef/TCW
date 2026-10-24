@@ -57,6 +57,8 @@ class ConfigPlan:
     reports: list[Report] = field(default_factory=list)
     blockers: list[Blocker] = field(default_factory=list)
     project: str | None = None
+    #: Each comment a replaced block took with it (Design 2.8), as a line.
+    dropped: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -153,9 +155,11 @@ def _b14(rel: str, layer: Layer3) -> Blocker:
                    "correct the file by hand, then run 'tcw migrate' again")
 
 
-def plan_file(root: Path, old: Layer3, new: Layer3, *, shared: bool) -> ConfigPlan:
+def plan_file(root: Path, old: Layer3, new: Layer3, *, shared: bool,
+              edits: tuple = (), conversions: tuple[str, ...] = ()) -> ConfigPlan:
     """One of the two project files: the 3.x file at the root (`old`) and
-    its `.tcw/` place (`new`)."""
+    its `.tcw/` place (`new`). `edits` are the structural edits part 2's
+    conversions make to the shared file (C3, C5, C8), after the renames."""
     out = ConfigPlan()
     old_rel, new_rel = (ROOT_CONFIG, SENTINEL) if shared else (ROOT_LOCAL, LOCAL_SENTINEL)
     for rel, layer in ((old_rel, old), (new_rel, new)):
@@ -199,7 +203,8 @@ def plan_file(root: Path, old: Layer3, new: Layer3, *, shared: bool) -> ConfigPl
         out.reports += null_reports(source_rel, mapping)
     if out.blockers:
         return out
-    target = {VERSION_KEY: __version__, **_renamed(mapping)}
+    from tcw.store.config_edit import intended
+    target = {VERSION_KEY: __version__, **intended(_renamed(mapping), list(edits))}
     if new_versioned:
         if without_version(new.data) != without_version(target):
             where = first_difference(without_version(target), without_version(new.data))
@@ -212,15 +217,18 @@ def plan_file(root: Path, old: Layer3, new: Layer3, *, shared: bool) -> ConfigPl
                                 ("C1",)))
         return out
     try:
-        text = convert_text(new_rel, source.text, renames(mapping), expect=target).text
+        converted = convert_text(new_rel, source.text, renames(mapping) + list(edits),
+                                 expect=target)
+        text = converted.text
+        out.dropped = [f"{source_rel}: {comment}" for comment in converted.dropped]
     except ConfigEditRefused as refused:
         out.blockers.append(Blocker("B12" if "anchor" in str(refused) else "B3", source_rel,
                                     str(refused), "edit the file by hand"))
         return out
     expect = file_digest(root / new_rel)
-    out.steps.append(Write(new_rel, "D", expect, text, ("C1", "C2") if renames(mapping)
-                           else ("C1",), ((source_rel, digest(source.text)),)
-                           if source is old else ()))
+    made = ("C1",) + (("C2",) if renames(mapping) else ()) + tuple(conversions)
+    out.steps.append(Write(new_rel, "D", expect, text, made,
+                           ((source_rel, digest(source.text)),) if source is old else ()))
     if source is old:
         out.steps.append(Delete(old_rel, "E", digest(old.text), new_rel, digest(text),
                                 ("C1",)))
@@ -491,3 +499,202 @@ def _jira_block_credentials(rel: str, key: str, block: Any) -> list[Report]:
                               f"configuration value; name another variable")
             for name, value in credentials.items()
             if isinstance(value, str) and value.startswith("TCW_") and "__" in value]
+
+
+# ---------------------------------------------------------------------------
+# Manifest entries (C4: M1-M6; plan Step 18)
+
+
+@dataclass(frozen=True)
+class Located:
+    """A project a manifest entry may be written for: the 3.x entry that
+    names it (`relation`), and the folder of the project whose entry it is
+    (`base`), against which a relative locator is read."""
+
+    relation: Any
+    base: Path
+
+
+@dataclass
+class ManifestPlan:
+    steps: list[Step] = field(default_factory=list)
+    reports: list[Report] = field(default_factory=list)
+    blockers: list[Blocker] = field(default_factory=list)
+    shared: dict = field(default_factory=dict)
+    personal: dict = field(default_factory=dict)
+
+
+def _posix(path: Path | str) -> str:
+    return Path(path).as_posix()
+
+
+def _absolute_text(text: str) -> bool:
+    return text.startswith(("/", "~", "\\")) or (len(text) > 1 and text[1] == ":")
+
+
+def _repository_name(url: str) -> str:
+    """M5's `<name>`: the URL's last part without `.git`."""
+    tail = re.split(r"[/:]", url.strip().rstrip("/"))[-1]
+    return tail[:-4] if tail.endswith(".git") else tail
+
+
+def _relative(root: Path, folder: Path) -> str:
+    import os
+    return _posix(os.path.relpath(folder, root))
+
+
+def plan_manifests(root: Path, located: list[Located], project_id: str) -> ManifestPlan:
+    """C4: for each project `located` names, the 3.x entry's location as an
+    entry of `.tcw/tcw-manifest.yaml` (shared) or
+    `.tcw/tcw-manifest.local.yaml` (personal), by TCW-107's mapping (M1 to
+    M6), each planned manifest checked by 4.0's parser (B3). An entry is
+    decided from the declared locations, never from `TCW_PROJECT_<ID>`
+    (A11), and M6 compares only with what 4.0's search from this project
+    would find, never a parent's manifests."""
+    from tcw.migrate import family as family_module, legacy
+    root = Path(root).resolve()
+    out = ManifestPlan()
+    for item in located:
+        _plan_entry(root, item, out, legacy, family_module)
+    out.steps, more = _manifest_writes(root, out.shared, out.personal)
+    out.blockers += more
+    return out
+
+
+def _plan_entry(root: Path, item: Located, out: ManifestPlan, legacy, family_module) -> None:
+    import os
+    relation = item.relation
+    pid = relation.id
+    base = Path(item.base).resolve()
+    if os.environ.get(_variable(pid), "").strip():
+        out.reports.append(Report(
+            "A11", _variable(pid), f"is set while migrating; the manifest entry for "
+                                   f"'{pid}' is decided from where its projects: entry "
+                                   f"says it is, not from the variable"))
+    declared = _declared_folder(base, relation, legacy)
+    repo = relation.repository
+    if repo is None:
+        found = family_module.search_4(root, pid)
+        if declared is not None and len(found) == 1 and found[0] == declared:
+            return                                      # M6
+    shared: dict = {}
+    personal: dict = {}
+    locator = relation.locator
+    subfolder = repo.path if repo is not None and repo.path else None
+    m5 = None
+    if repo is not None:
+        if "#" in repo.url:
+            out.blockers.append(Blocker(
+                "B3", f"projects.{relation.kind}.{pid}.repository.url",
+                f"TCW 4 would refuse the manifest entry as planned: {repo.url!r} holds "
+                f"'#', which a manifest reads as the end of the address",
+                "write the address without '#' in the TCW 3 file, then run "
+                "'tcw migrate' again"))
+            return
+        shared["repository"] = repo.url + (f"#{repo.ref}" if repo.ref else "")
+        m5 = "../" + _repository_name(repo.url) + (f"/{subfolder}" if subfolder else "")
+        if subfolder:
+            shared["subfolder"] = subfolder
+    if locator is not None:
+        if _absolute_text(locator):
+            personal["path"] = locator                                      # M1
+            if m5 is not None:
+                shared["path"] = m5
+        else:
+            shared["path"] = locator if base == root else \
+                _relative(root, base / locator)
+    elif repo is not None and repo.checkout:
+        written = _posix(Path(repo.checkout) / subfolder) if subfolder else repo.checkout
+        if _absolute_text(repo.checkout):                                   # M4
+            personal["path"] = written
+            shared["path"] = m5
+        else:
+            shared["path"] = written if base == root else _relative(root, base / written)
+    elif repo is not None:                                                  # M5
+        shared["path"] = m5
+        target = Path(os.path.normpath(root / m5))
+        if target.exists() and family_module.declared_id(target) != pid \
+                and any(target.iterdir() if target.is_dir() else [target]):
+            out.blockers.append(Blocker(
+                "B13", ".tcw/tcw-manifest.yaml",
+                f"projects.{pid}.path: the shared manifest's path {m5} already holds "
+                f"something other than the project '{pid}'",
+                f"move what is at {target} elsewhere, then run 'tcw migrate' again"))
+            return
+        clone = legacy.cache_folder_3x(base, repo)
+        if legacy.holds_project(clone):
+            personal["path"] = str(clone)
+            out.reports.append(Report(
+                "A6", ".tcw/tcw-manifest.local.yaml",
+                f"projects.{pid}.path: names TCW 3's clone of '{pid}' at {clone}, a "
+                f"cache folder that cleaning tools may empty; moving the clone to "
+                f"{target} and deleting this entry keeps it safe"))
+        else:
+            out.reports.append(Report(
+                "A6", ".tcw/tcw-manifest.yaml",
+                f"projects.{pid}: TCW 3's clone of '{pid}' is not on this machine; "
+                f"'tcw project provision' will fetch it into {target}"))
+    if "path" not in shared and "path" not in personal:
+        return
+    if shared:
+        out.shared.setdefault(pid, shared)
+    if personal:
+        out.personal.setdefault(pid, personal)
+
+
+def _variable(project_id: str) -> str:
+    from tcw.store.project import override_variable
+    return override_variable(project_id)
+
+
+def _declared_folder(base: Path, relation, legacy) -> Path | None:
+    """The folder the declared locations give, ignoring `TCW_PROJECT_<ID>`."""
+    import os
+    saved = os.environ.pop(_variable(relation.id), None)
+    try:
+        folder, how = legacy.locate_3x(base, relation)
+    finally:
+        if saved is not None:
+            os.environ[_variable(relation.id)] = saved
+    return Path(os.path.realpath(folder)) if how != "absent" else None
+
+
+def _manifest_writes(root: Path, shared: dict, personal: dict
+                     ) -> tuple[list[Step], list[Blocker]]:
+    """The two manifests' writes in phase D, merged with what each already
+    holds (an entry already there is kept as it is), each checked by
+    `parse_manifest` (B3)."""
+    from tcw.project_files import LOCAL_MANIFEST, MANIFEST
+    from tcw.store.config_edit import read_text
+    from tcw.store.manifest import parse_manifest
+    steps: list[Step] = []
+    blockers: list[Blocker] = []
+    for rel, entries, personal_file in ((MANIFEST, shared, False),
+                                        (LOCAL_MANIFEST, personal, True)):
+        if not entries:
+            continue
+        path = root / rel
+        try:
+            old_text = read_text(path)
+            old = yaml.safe_load(old_text) if old_text else None
+        except (OSError, UnicodeDecodeError, yaml.YAMLError):
+            old_text, old = None, None
+        projects = dict((old or {}).get("projects") or {}) if isinstance(old, dict) else {}
+        merged = dict(projects)
+        for pid, entry in entries.items():
+            merged.setdefault(pid, entry)
+        if merged == projects and old_text is not None:
+            continue
+        text = version_line() + yaml.safe_dump({"projects": merged}, sort_keys=False,
+                                               allow_unicode=True)
+        _, problems = parse_manifest(yaml.safe_load(text), path, personal=personal_file)
+        if problems:
+            blockers += [Blocker("B3", rel, f"TCW 4 would refuse the file as planned: "
+                                            f"{problem}", B3_FIX) for problem in problems]
+            continue
+        steps.append(Write(rel, "D", ABSENT if old_text is None else digest(old_text),
+                           text, ("C4",)))
+    return steps, blockers
+
+
+B3_FIX = "correct it in the TCW 3 file it is converted from, then run 'tcw migrate' again"

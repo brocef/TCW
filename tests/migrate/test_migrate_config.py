@@ -292,7 +292,6 @@ def test_a13_names_each_binding_and_leaves_its_bytes(tcw, tmp_path):
 # ── part 2's forms, refused for now (Decided 17) ─────────────────────────────
 
 @pytest.mark.parametrize("text, form", [
-    ("id: app\nprojects:\n  parent:\n    core: ../core\n", "projects:"),
     ("id: app\ntaxonomy:\n  extends: [core]\n", "taxonomy.extends"),
     ("id: app\ncapabilities:\n  extends: [core]\n", "capabilities.extends"),
     ("id: app\nwork:\n  path: ../elsewhere/work\n", "a work store outside the project"),
@@ -311,7 +310,7 @@ def test_each_part_two_form_is_b5_and_nothing_is_written(tcw, tmp_path, text, fo
 
 def test_every_blocker_is_listed_with_the_changes_it_stopped(tcw, tmp_path):
     app = make(tmp_path / "app", {"tcw-config.yaml": "id: app\nwork:\n  work_tags: [x]\n"
-                                  "projects:\n  parent:\n    core: ../core\n",
+                                  "  path: ../elsewhere/work\n",
                                   "tcw-config.local.yaml": LOCAL})
     done = tcw(["migrate"], app)
     assert done.code == 3
