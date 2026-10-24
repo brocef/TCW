@@ -43,6 +43,8 @@ it could not read as not audited.
 The web app has a scope control and a project filter in its header, matching
 `--scope` and `--project`, kept in the page's address so a link reproduces the
 view. It is shown only for a project that has parents or children. Another
-project's objects are shown read-only, marked with whose they are; links to
+project's objects are shown read-only, marked with whose they are, and
+another project's work item names the command that moves it in its own
+project (`tcw -C tcw://<owner>.path/ work advance …`); links to
 them are followed; a project that could not be read is named above the list;
 and each capability row shows how many projects give each status.

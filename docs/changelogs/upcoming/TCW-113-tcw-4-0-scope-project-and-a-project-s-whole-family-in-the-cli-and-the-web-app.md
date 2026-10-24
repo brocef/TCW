@@ -37,8 +37,11 @@ list|show|search` and `tcw capabilities list|show|search`; `projects`,
 - The default scope of the six taxonomy and capability commands is `own`;
   `show` of an id-path names the project's own object, with a hint naming
   `--scope up` when the project inherits one there. (TCW-113)
-- `children` and `blocks` in a work record are computed across the scope.
-  (TCW-113)
+- `children` and `blocks` in a work record are computed across the scope,
+  each covered project's items once; for an item named by its full
+  identifier whose project the scope does not cover, that project's own
+  items are counted too, in `tcw work show` and the web app's item page
+  alike. (TCW-113)
 - The Jira backend's list keeps a search for the length of one command, keyed
   by the site, the account, a digest of the token, the search text and the
   fields, and forgets every kept search on any write. (TCW-113)
@@ -52,6 +55,8 @@ list|show|search` and `tcw capabilities list|show|search`; `projects`,
 - The web client's `itemKey` gives another project's work item its full
   identifier as its route key; the reference pickers read the served
   project's view (`scope=up`) whatever the scope control shows. (TCW-113)
+- `moveHint` takes the served project's id; another project's item page
+  names `tcw -C tcw://<owner>.path/ work advance <full id>`. (TCW-113)
 
 ## Removed
 
