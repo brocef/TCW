@@ -419,3 +419,32 @@ def test_a_missing_jira_project_key_is_exit_1_naming_it(tcw, fake, app):
     assert ("error: .tcw/tcw-config.yaml: work.jira.project: required; 'tcw migrate "
             "--no-jira' converts the files without Jira") in done.err
     assert snapshot(app, times=False) == before and fake.log == []
+
+
+# ── the way back (Design 9.3, 5.4; plan Step 26) ────────────────────────────
+
+def test_the_way_back_puts_every_3_x_value_back(tcw, fake, app):
+    from tcw.migrate.jira import edited_tickets, restore_tickets, settings
+    from tcw.work.jira.client import JiraClient
+    before = {key: ticket.custom.get(ITEM) for key, ticket in fake.tickets.items()}
+    done = tcw(["migrate"], app)
+    assert done.code == 0, done.err
+    pairs = edited_tickets(done.err)
+    assert [(k, o, n) for k, o, n in pairs] == [
+        ("APP-1", "app/APP-1-a", "app.work/APP-1-a"),
+        ("APP-2", "app/APP-2-b", "app.work/APP-2-b"),
+        ("APP-3", "app/APP-3-gone", "app.work/APP-3-gone")]
+    fake.log.clear()
+    restored = restore_tickets(pairs, JiraClient(settings(app)), app, "app")
+    assert restored == ["APP-1", "APP-2", "APP-3"]
+    assert {key: ticket.custom.get(ITEM) for key, ticket in fake.tickets.items()} == before
+    fake.log.clear()
+    assert restore_tickets(pairs, JiraClient(settings(app)), app, "app") == []
+    assert puts(fake) == []
+
+
+def test_a_dry_run_s_lines_are_not_edits():
+    from tcw.migrate.jira import edited_tickets
+    assert edited_tickets("would edit APP-1: C17 TCW Item: app/APP-1-a -> app.work/APP-1-a\n"
+                          "edit APP-2: C17 TCW Item: app/APP-2-b -> app.work/APP-2-b\n") == \
+        [("APP-2", "app/APP-2-b", "app.work/APP-2-b")]

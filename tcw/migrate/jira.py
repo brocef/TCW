@@ -11,10 +11,15 @@ whichever form they are on disk (`legacy.own_jira_layers`), with the default
 work configuration: the two backend methods migration uses read nothing
 else. Planning hands it `_ReadOnlyClient`, which passes on only the reading
 calls planning makes; phase F builds a second backend over the plain client.
+
+`restore_tickets` is the way back for the tickets (Design 9.3): no command
+calls it; it is run by hand, from a run's saved output, with a client the
+person builds.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -144,3 +149,33 @@ def half(root: Path, project_id: str) -> JiraHalf:
     def apply(edited: Callable[[TicketEdit], None]) -> None:
         apply_tickets(tickets, backend_for(root, project_id, jira, JiraClient(jira)), edited)
     return JiraHalf(jira.project, tickets, reports, blockers, apply)
+
+
+# ---------------------------------------------------------------------------
+# The way back (Design 9.3, 5.4)
+
+_EDIT_LINE = re.compile(r"^edit (?P<key>[A-Z][A-Z0-9_]*-\d+): C17 TCW Item: "
+                        r"(?P<old>\S+) -> (?P<new>\S+)$")
+
+
+def edited_tickets(text: str) -> list[tuple[str, str, str]]:
+    """Each ticket a run's output says it edited, as `(key, old, new)`, from
+    its `edit <key>: C17 TCW Item: <old> -> <new>` lines; a dry run's
+    `would edit` lines are not edits and are left out."""
+    return [(m["key"], m["old"], m["new"]) for m in map(_EDIT_LINE.match, text.splitlines())
+            if m]
+
+
+def restore_tickets(pairs: list[tuple[str, str, str]], client, root: Path,
+                    project_id: str) -> list[str]:
+    """Put each ticket's 3.x `TCW Item` back: `pairs` are `(key, old, new)`
+    as a run edited them, applied swapped through `set_item_values`, which
+    edits a ticket only while it still holds the 4.0 value. `client` is the
+    Jira client to send the edits through, passed in so that a test hands
+    it the fake; the field ids come from the project's own `work.jira`.
+    Returns the keys edited."""
+    backend = backend_for(root, project_id, settings(root), client)
+    restored: list[str] = []
+    backend.set_item_values([(key, new, old) for key, old, new in pairs],
+                            edited=restored.append)
+    return restored
