@@ -382,6 +382,11 @@ def build_parser() -> argparse.ArgumentParser:
                               epilog=EXIT_CODES,
                               formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--version", action="version", version=f"tcw {__version__}")
+    parser.add_argument(
+        "-C", dest="chdir", action="append", default=[],
+        metavar="<folder or tcw://<id>.path/>",
+        help="run as if tcw had been started in this folder; repeat it to go "
+             "further, each one read from the folder the one before chose")
     sub = parser.add_subparsers(dest="group", required=True)
 
     p_init = command(
@@ -447,6 +452,9 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(argv)
     command = getattr(args, "_command", "tcw")
+    # `tcw -C` changes the current folder; a caller in the same process
+    # (the suite, the eval harness) gets its own back (TCW-114 Design 4.5).
+    start = os.getcwd()
     try:
         code = _dispatch(args, command)
         # Flushed here, inside the `try`, so a reader that closed the pipe
@@ -466,6 +474,75 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, ValueError):
             pass                       # stdout is not a file descriptor here
         return 1
+    finally:
+        os.chdir(start)
+
+
+def _check_here(args: argparse.Namespace) -> None:
+    """The checks every command makes of the project in the current folder
+    before it runs."""
+    from tcw import config as layered
+    # Before anything else, for every command: a TCW 3.x project is refused,
+    # naming `tcw migrate` (TCW-106 Design 4.1).
+    refuse_legacy_project()
+    # One place for every command: a config still holding the 2.x key is
+    # refused before anything reads it (Design 9.3). `validate` reports it
+    # as one of its findings instead.
+    if args.group != "validate":
+        refuse_retired_config()
+    # And the project's configuration, every layer of it, is read and
+    # checked once before the command runs (TCW-72 Design 2.3). The few
+    # commands that must run with problems present read it themselves.
+    if not getattr(args, "own_config", False):
+        root = find_project_root()
+        if root is not None and layered.effective(root).problems:
+            raise ConfigError(layered.effective(root).problems)
+
+
+def _enter(target: str, args: argparse.Namespace) -> None:
+    """Change the current folder to the one `tcw -C <target>` names (TCW-114
+    Design 4.2-4.4): a path, from the current folder; or a folder address,
+    found from the project active in the current folder, after which the
+    project active there must be the one the address names. Reads only
+    folders on this machine."""
+    from tcw.errors import UsageError
+    from tcw.ids import SCHEME, FolderAddress, parse_address
+    if not target.startswith(SCHEME):
+        folder = Path(target)
+    else:
+        found = parse_address(target)
+        if not isinstance(found, FolderAddress):
+            raise UsageError(
+                f"{target} names an object, not a folder; tcw -C takes a folder "
+                f"address, tcw://<project>[.<namespace>].path/<folder>")
+        _check_here(args)
+        here = find_project_root()
+        if here is None:
+            raise TcwError(f"tcw -C {target} needs a TCW project here to find "
+                           f"'{found.project}' from; give the folder's path instead")
+        from tcw.locate import Locator, resolve_folder_address
+        folder = resolve_folder_address(found, Locator.of(here), here)
+    if not folder.is_dir():
+        raise UsageError(f"cannot run in {target}: no such folder")
+    os.chdir(folder)
+    if target.startswith(SCHEME):
+        _runs_as(found, target, folder)
+
+
+def _runs_as(address, target: str, folder: Path) -> None:
+    """Refuse an address whose folder is not in the project it names: the
+    command would run as another project (TCW-114 Design 4.4)."""
+    from tcw.errors import UsageError
+    from tcw.locate import Locator
+    root = find_project_root()
+    to_run = f"give tcw://{address.project}.path/ to run as '{address.project}'"
+    if root is None:
+        raise UsageError(f"{target} is {folder.resolve()}, which is in no TCW project; "
+                         f"{to_run}")
+    active = Locator.of(root).project_id
+    if active != address.project:
+        raise UsageError(f"{target} is a folder of project '{active}', so the command "
+                         f"would run as '{active}', not '{address.project}'; {to_run}")
 
 
 def _dispatch(args: argparse.Namespace, command: str) -> int:
@@ -474,21 +551,11 @@ def _dispatch(args: argparse.Namespace, command: str) -> int:
     from tcw import config as layered
     layered.begin_command()
     try:
-        # Before anything else, for every command: a TCW 3.x project is refused,
-        # naming `tcw migrate` (TCW-106 Design 4.1).
-        refuse_legacy_project()
-        # One place for every command: a config still holding the 2.x key is
-        # refused before anything reads it (Design 9.3). `validate` reports it
-        # as one of its findings instead.
-        if args.group != "validate":
-            refuse_retired_config()
-        # And the project's configuration, every layer of it, is read and
-        # checked once before the command runs (TCW-72 Design 2.3). The few
-        # commands that must run with problems present read it themselves.
-        if not getattr(args, "own_config", False):
-            root = find_project_root()
-            if root is not None and layered.effective(root).problems:
-                raise ConfigError(layered.effective(root).problems)
+        # `tcw -C`: the folder the command runs in, chosen before anything of
+        # the command reads the current one (TCW-114 Design 4.5).
+        for target in getattr(args, "chdir", None) or ():
+            _enter(target, args)
+        _check_here(args)
         return args.func(args)
     except TcwError as error:
         # A failure after something was created still names it, on stdout

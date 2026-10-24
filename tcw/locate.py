@@ -243,3 +243,38 @@ def _answer(found: Any, full_id: FullId) -> Outcome:
 
 
 _NOUN = {"taxonomy": "taxonomy entry", "capabilities": "capability", "work": "work item"}
+
+
+def resolve_folder_address(address, locator: "Locator", named_by: Path, *,
+                           chain: tuple = ()) -> Path:
+    """The folder a folder address names, by TCW-110 Design 7.2, asked by
+    the project at `named_by`: `tcw://<id>.path/<rest>` is that project's
+    root joined with `<rest>`, and `tcw://<id>.<namespace>.path/<rest>` that
+    project's own location for `<namespace>`, joined with `<rest>`. The one
+    function behind a store location and `tcw -C` (TCW-114 Design 4.3).
+    `chain` is the (project, namespace) pairs a store location has already
+    followed; reaching one again is a loop.
+
+    Raises `Unreachable`, `UnknownProject` and `ProjectGraphError` as
+    `owner_root` does, and `StoreDeclarationError` for a loop or a
+    malformed location in the named project's configuration. The folder
+    need not exist."""
+    from tcw.store.fs import SENTINEL, StoreDeclarationError, load_config, store_location
+    root = locator.owner_root(address.project, Path(named_by))
+    if address.namespace is None:
+        return Path(root).joinpath(*address.parts)
+    pair = (address.project, address.namespace)
+    if pair in chain:
+        followed = " -> ".join(f"{p} {n}" for p, n in (*chain, pair))
+        raise StoreDeclarationError(
+            f"{chain[0][1]}.path: store locations loop: {followed}")
+    named = load_config(Path(root) / SENTINEL)
+    section = named.get(address.namespace) if isinstance(named, dict) else None
+    inner = section.get("path") if isinstance(section, dict) else None
+    if inner is not None and not isinstance(inner, str):
+        raise StoreDeclarationError(
+            f"{Path(root) / SENTINEL}: {address.namespace}.path must be a non-empty "
+            f"path string")
+    base = store_location(Path(root), address.namespace, inner, locator=locator,
+                          chain=(*chain, pair))
+    return base.joinpath(*address.parts)

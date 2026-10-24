@@ -140,3 +140,21 @@ def scan(text: str, patterns=PATTERNS) -> list[Hit]:
                 found.append((number, order, start,
                               Hit(number, start, end, m.group(0), why)))
     return [hit for *_, hit in sorted(found, key=lambda f: f[:3])]
+
+
+def without_chdir(tokens: list[str]) -> list[str]:
+    """`tokens` after each leading `-C <target>` (TCW-114 Design 4.1). The
+    target is one token, so a placeholder written as a phrase is read as
+    the command and fails (`chdir_problem`)."""
+    while len(tokens) >= 2 and tokens[0] == "-C":
+        tokens = tokens[2:]
+    return tokens
+
+
+def chdir_problem(tokens: list[str]) -> str | None:
+    """Why the `-C` targets at the start of `tokens` are not one token each:
+    what follows the last of them must be the command group."""
+    rest = without_chdir(tokens)
+    if rest is not tokens and rest and not re.match(r"[a-z][a-z0-9-]*$", rest[0]):
+        return f"tcw -C takes one token as its target, not a phrase: {rest[0]}"
+    return None

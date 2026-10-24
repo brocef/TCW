@@ -19,7 +19,7 @@ from tcw.cli import build_parser
 from tcw.store.base import PROCEDURE_IDS
 from tcw.work.layout import front_matter
 from tcw.work.model import STAGES
-from tests.doc_vocabulary import PATTERNS, scan
+from tests.doc_vocabulary import PATTERNS, scan, chdir_problem, without_chdir
 from tests.test_documented_cli_surface import INVOCATION, _invocations
 
 REPO = Path(__file__).resolve().parent.parent
@@ -283,6 +283,9 @@ def _placeholder(token: str) -> bool:
 def command_problem(span: str) -> str | None:
     """What is wrong with one documented `tcw …` invocation, or None."""
     tokens = span[INVOCATION.search(span).end():].split()
+    if (problem := chdir_problem(tokens)) is not None:
+        return problem
+    tokens = without_chdir(tokens)
     parser, path = build_parser(), ["tcw"]
     rest = tokens
     for i, token in enumerate(tokens):
@@ -327,6 +330,8 @@ def test_every_command_named_in_shipped_text_exists(doc):
     ("tcw work procedure prompt pause-work", "no such procedure: prompt"),
     ("tcw work stage prompt verify <slug>", "no stage with a prompt: verify"),
     ("tcw work list --status active", "no such flag: --status on tcw work list"),
+    ("tcw -C <its folder> work list",
+     "tcw -C takes one token as its target, not a phrase: folder>"),
 ])
 def test_the_command_check_sees_each_mistake(span, problem):
     assert command_problem(span) == problem
@@ -337,6 +342,8 @@ def test_the_command_check_sees_each_mistake(span, problem):
     "tcw work stage prompt review <slug>", "tcw work stage prompt <stage> <slug>",
     'tcw work new "<title>" --project <id>', "tcw work path <slug> qa --next",
     "tcw capabilities add <path> \"<Name>\" --status Supported",
+    'tcw -C tcw://<id>.path/ work new "<title>" --parent <slug> --nest',
+    "tcw -C <folder> -C <folder> work list",
 ])
 def test_the_command_check_accepts_real_commands(span):
     assert command_problem(span) is None

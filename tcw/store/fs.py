@@ -3668,29 +3668,13 @@ def store_location(project_root: Path, component: str, configured: str | None, *
     if not chain:
         own = load_config(project_root / SENTINEL)
         chain = ((own.get("id") if isinstance(own, dict) else None, component),)
+    from tcw.locate import Locator, resolve_folder_address
     if locator is None:
-        from tcw.locate import Locator
         locator = Locator.of(project_root)
     try:
-        root = locator.owner_root(found.project, Path(project_root))
+        return resolve_folder_address(found, locator, Path(project_root), chain=chain)
     except Unreachable as error:
         raise LocationProjectAbsent(error) from None
-    if found.namespace is None:
-        return root.joinpath(*found.parts)
-    pair = (found.project, found.namespace)
-    if pair in chain:
-        followed = " -> ".join(f"{p} {n}" for p, n in (*chain, pair))
-        raise StoreDeclarationError(
-            f"{chain[0][1]}.path: store locations loop: {followed}")
-    named = load_config(root / SENTINEL)
-    section = named.get(found.namespace) if isinstance(named, dict) else None
-    inner = section.get("path") if isinstance(section, dict) else None
-    if inner is not None and not isinstance(inner, str):
-        raise StoreDeclarationError(
-            f"{root / SENTINEL}: {found.namespace}.path must be a non-empty path string")
-    base = store_location(root, found.namespace, inner, locator=locator,
-                          chain=(*chain, pair))
-    return base.joinpath(*found.parts)
 
 
 def resolve_store(store_cls, project_root: Path, active_root: Path | None = None):

@@ -302,6 +302,12 @@ def test_the_command_check_sees_a_command_that_does_not_exist(text):
     assert command_problems(text)
 
 
+def test_the_command_check_skips_minus_c():
+    assert not command_problems('Run `tcw -C tcw://<id>.path/ work new "<title>" '
+                                '--parent <slug> --nest`.')
+    assert command_problems("Run `tcw -C <target> work new --no-such-flag`.")
+
+
 def test_the_agents_section_runs_to_the_next_level_two_heading():
     text = ("# A\n\n## B\n\n" + AGENTS_HEADING + "\n\nbody\n\n### deeper\n\nmore\n"
             "\n## C\n\nafter\n")
