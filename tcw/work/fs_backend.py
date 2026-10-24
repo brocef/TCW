@@ -616,7 +616,11 @@ def work_store_problems(work_path: Path, project: str,
     findings: list[Finding] = []
     if not work_path.is_dir():
         return findings
-    registered = set(config.tags)
+    from tcw.config import Withheld
+    # Tags a missing parent may set, or that a parent passes with a problem,
+    # are not known, so no tag is checked against them (TCW-109 Design 3.6,
+    # 1.6). `config.tags or ()` is not a safe test: using the value raises.
+    registered = None if isinstance(config.tags, Withheld) else set(config.tags)
     found = walk(work_path, "work", item_named=item_named)
     findings += shape_problems(found, work_path, "work", project,
                                unmade_message=UNMADE_MESSAGE)
@@ -645,7 +649,7 @@ def work_store_problems(work_path: Path, project: str,
                                     f"stage {raw_stage!r} is not an enabled stage, "
                                     f"so the item has no stage; move it with "
                                     f"`tcw work advance --to <stage> --force`"))
-        for tag in item.tags:
+        for tag in item.tags if registered is not None else ():
             if tag not in registered:
                 findings.append(Finding("warning", str(entry / STATE_FILE),
                                         f"tag {tag!r} is not in the tag registry"))

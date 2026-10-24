@@ -563,7 +563,10 @@ def test_ac19_an_extended_parent_not_here_stops_with_exit_7(tmp_path):
     [finding] = unresolved(lines)
     assert "'core'" in finding
     assert "could not check what it passes down to 'app'" in finding
-    assert finding.endswith("; could not check the taxonomy inherited from it"), finding
+    # TCW-109 Design 3.5, 3.6: the parent passes `config` too, and `app` sets
+    # no `work.tags`, so the configuration's suffix follows the taxonomy's.
+    assert finding.endswith("; could not check the taxonomy inherited from it; could "
+                            "not check the configuration inherited from it"), finding
 
 
 @pytest.mark.parametrize("axis", ["taxonomy", "capabilities"])
@@ -614,7 +617,10 @@ def test_ac19_when_what_lies_above_is_unknown(tmp_path, state):
     first = ("could not check what it passes down to 'app'" if state == "missing"
              else "could not check what 'lib' passes down to 'app'")
     assert first in finding
-    assert finding.endswith("; could not check the taxonomy inherited from it"), finding
+    # TCW-109 Design 3.5, 3.6: the parent passes `config` too, and `app` sets
+    # no `work.tags`, so the configuration's suffix follows the taxonomy's.
+    assert finding.endswith("; could not check the taxonomy inherited from it; could "
+                            "not check the configuration inherited from it"), finding
     extends(app, "taxonomy")
     before = config_file(app).read_bytes()
     added = tcw(app, "taxonomy", "extends", "add", "core")

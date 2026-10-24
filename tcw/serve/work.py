@@ -578,7 +578,8 @@ def _other_items(request: Request, ctx: WorkContext, text: str) -> list[dict]:
             continue
         try:
             locator = Path(registry.get(row["id"]).locator)
-            if read_work_config(locator, personal=False).backend != "filesystem":
+            if read_work_config(locator, personal=False,
+                                registry=registry).backend != "filesystem":
                 continue
             items = request.services.open_project(row["id"], ctx.root).list(Query(all=True))
         except (TcwError, ValueError, OSError):

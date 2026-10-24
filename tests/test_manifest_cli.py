@@ -267,6 +267,13 @@ def test_ac8_an_entry_that_is_wrong(tmp_path, names):
         make(tmp_path / name)
         write_manifest(app, {"lib": f"../{name}"})
         ran, lines = validated(app)
+        if names and name == "newer":
+            # TCW-109 Design 1.6: a parent whose shared file this TCW cannot
+            # read is a gap, reported once as unresolved, not an error.
+            [finding] = [line for line in lines if line.startswith("unresolved:")]
+            assert ran.code == 0 and "'lib'" in finding and expected[name] in finding, \
+                (name, lines)
+            continue
         assert ran.code == 1, (name, ran)
         errors = [line for line in lines
                   if line.startswith("error: .tcw/tcw-manifest.yaml:")]

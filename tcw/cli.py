@@ -260,6 +260,11 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     # Where a store check stopped at a project it inherits from (Design 6.5
     # row c), said in that project's one finding.
     inherited = [(e.project, e.axis) for e in unavailable]
+    # A gap that left a key of the configuration undecided, after any store
+    # check's (TCW-109 Design 3.6).
+    from tcw.config import effective
+    inherited += [(gap, "configuration")
+                  for gap in effective(project_root).gaps_withholding]
     findings: list[Finding] = registry.availability_findings(inherited)
     findings += registry.manifest_findings(inherited)
     findings += registry.warning_findings()

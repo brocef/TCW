@@ -470,26 +470,26 @@ class _Document:
         return made, allowed
 
     @staticmethod
-    def is_inherit(node) -> bool:
+    def is_inherit(entry) -> bool:
         """A list entry that is exactly `inherit: true`."""
-        return (isinstance(node, yaml.MappingNode) and len(node.value) == 1
-                and isinstance(node.value[0][0], yaml.ScalarNode)
-                and node.value[0][0].value == "inherit"
-                and isinstance(node.value[0][1], yaml.ScalarNode)
-                and node.value[0][1].tag == "tag:yaml.org,2002:bool"
-                and node.value[0][1].value.lower() == "true")
+        return (isinstance(entry, yaml.MappingNode) and len(entry.value) == 1
+                and isinstance(entry.value[0][0], yaml.ScalarNode)
+                and entry.value[0][0].value == "inherit"
+                and isinstance(entry.value[0][1], yaml.ScalarNode)
+                and entry.value[0][1].tag == "tag:yaml.org,2002:bool"
+                and entry.value[0][1].value.lower() == "true")
 
     @classmethod
-    def token(cls, node) -> str:
-        return INHERIT if cls.is_inherit(node) else node.value
+    def token(cls, entry) -> str:
+        return INHERIT if cls.is_inherit(entry) else entry.value
 
     @classmethod
-    def last_line(cls, node) -> int:
+    def last_line(cls, entry) -> int:
         """The line an entry ends on: a block mapping's own end mark is on the
         next line, so an `inherit: true` entry ends where its value does."""
-        if isinstance(node, yaml.MappingNode):
-            return node.value[-1][1].end_mark.line
-        return node.end_mark.line
+        if isinstance(entry, yaml.MappingNode):
+            return entry.value[-1][1].end_mark.line
+        return entry.end_mark.line
 
     def plan_list(self, k, v, new: list[str]) -> tuple[list[_Replacement], set[int]]:
         items = v.value

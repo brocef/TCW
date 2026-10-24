@@ -1711,9 +1711,11 @@ class FsProjectRegistry(ProjectRegistry):
             else:
                 wrong = (f"places it at {folder}, which is not a TCW project: it "
                          f"holds files and no {SENTINEL}")
-        if record and probe.kind in ("version", "unreadable"):
+        if probe.kind in ("version", "unreadable"):
             # A gap in an ancestor (TCW-109 Design 1.6), so recorded when
             # settled, where it is a graph problem.
+            if not record:
+                return _Answer(entry=entry, problem=f"{named} {wrong}", unreadable=folder)
             return _Answer(entry=entry, problem=f"{entry.file}: {named} {wrong}",
                            unreadable=folder, deferred=(entry.file, f"{named} {wrong}"))
         return _Answer(entry=entry, problem=self._recorded(entry.file, f"{named} {wrong}")
@@ -1753,7 +1755,7 @@ class FsProjectRegistry(ProjectRegistry):
         for file, base, entries in manifests:
             for entry in entries.values():
                 answer = self._entry_answer(entry, base, record=False)
-                if answer.folder is not None:
+                if answer.folder is not None or self._placed_unreadable(entry.id, answer):
                     continue
                 by = None
                 if file.name != LOCAL_MANIFEST_NAME:
@@ -1771,6 +1773,16 @@ class FsProjectRegistry(ProjectRegistry):
                     findings.append(Finding("error" if by is None else "warning",
                                             str(file), answer.problem + overridden))
         return findings
+
+    def _placed_unreadable(self, project_id: str, answer: _Answer) -> bool:
+        """Whether the graph holds `project_id` at the folder an entry places
+        it in, as a project whose shared file cannot be read (TCW-109 Design
+        1.6): that is a gap, reported once by `_availability`, not an error
+        of the entry."""
+        cfg = self._any_config(project_id)
+        return (answer.unreadable is not None and cfg is not None
+                and cfg.link_problem is not None and cfg.links is None
+                and self._identity(root_of(cfg.path)) == self._identity(answer.unreadable))
 
     def _availability(self, inherited=()) -> list[dict]:
         """Design 6.5's rows (a), (b) and (d), one record per project of the

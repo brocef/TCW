@@ -480,6 +480,10 @@ def config_findings(project_root: Path) -> list[Finding]:
                     if p.key_path != () or p.file != config.root / SENTINEL]
     findings = [Finding("error", p.where or "environment", p.detail)
                 for p in problems]
+    # A problem in a value a parent passes, and a value a parent's local
+    # file may not set: warnings here, errors in that project (TCW-109 1.6).
+    findings += [Finding("warning", str(p.file), p.detail)
+                 for p in [*config.inherited_problems, *config.inherited_refusals]]
     if personal_file_tracked(project_root):
         findings.append(Finding("warning", LOCAL_FILE, TRACKED_PERSONAL_FILE))
     if personal_file_tracked(project_root, LOCAL_MANIFEST):         # TCW-107 1.9
@@ -616,9 +620,13 @@ def _work_target_findings(project_root: Path, registry,
     from tcw.work.model import TERMINAL, Slug, stage as table_stage
     from tcw.work.open import open_backend
 
+    from tcw.errors import InheritedUnavailable
     config_file = _config_file(project_root)
     try:
         backend = open_backend(project_root)
+    except InheritedUnavailable:
+        # Never stopped by an undecided key (TCW-109 Design 3.6).
+        return []
     except TcwError as error:
         return [Finding("error", config_file, _config_message(error, project_root))]
     folder = Path(backend.work_path) / target.ref
@@ -694,7 +702,7 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
 
     Unreadable items do not stop the checks: they come from `read_all`, each
     is one error, and every other check runs over the readable items."""
-    from tcw.errors import BackendError, ConfigError
+    from tcw.errors import BackendError, ConfigError, InheritedUnavailable
     from tcw.findings import Finding
     from tcw.work.fs_backend import FsWorkBackend, read_all, work_store_problems
     from tcw.work.jira.backend import JiraBackend, jira_store_problems
@@ -706,8 +714,13 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
     config_file = _config_file(project_root)
     try:
         backend = open_backend(project_root)
+    except InheritedUnavailable:
+        # A key the store needs is undecided: its checks are skipped, and the
+        # gap's own finding says so (TCW-109 Design 3.6).
+        return [], None
     except ConfigError:
-        # Already reported, file by file, by `config_findings`.
+        # Already reported, file by file, by `config_findings`; a key a
+        # parent passes with a problem, as a warning there (TCW-109 1.6).
         return [], None
     except BackendError as error:
         return [Finding("error", config_file, _config_message(error, project_root))], None

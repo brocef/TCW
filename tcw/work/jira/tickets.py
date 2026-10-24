@@ -338,7 +338,7 @@ def create_fields(backend: JiraBackend) -> tuple[str, ...]:
 
 def delegate_to_jira(project_id: str, title: str, request: str | None,
                      priority: str | None, *, root: Path,
-                     report: Callable[[str], None] = _say) -> str:
+                     report: Callable[[str], None] = _say, registry=None) -> str:
     """Create a ticket in the inbox of the Jira-mode project at `root`, on
     this machine, and make it an item there when its checkout allows.
     Returns the slug, or the key when the ticket stays in the inbox. Runs no
@@ -349,8 +349,10 @@ def delegate_to_jira(project_id: str, title: str, request: str | None,
     if request is not None:
         check_encodable(request, "the request")
     from tcw.work.open import open_backend
-    # Another project: read from its tcw-config.yaml alone (TCW-72 AC 9).
-    backend = jira_backend(open_backend(root, report=report, personal=False))
+    # Another project: read from its shared files alone (TCW-72 AC 9), its
+    # parents found through the command's registry (TCW-109 Design 5.2).
+    backend = jira_backend(open_backend(root, report=report, personal=False,
+                                        registry=registry))
     site, jira_project = backend.jira.site, backend.jira.project
     client, priorities = backend.client, backend.jira.priorities
     meta = backend.metadata()

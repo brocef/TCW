@@ -321,14 +321,18 @@ def delegate(project_id: str, title: str, request: str | None,
     _check_declared(registry, project_id)
     say = report or (lambda line: print(line, file=sys.stderr))
     project = registry.get(project_id)
-    if project is not None and read_work_config(Path(project.locator),
-                                                personal=False).backend == "jira":
+    # The target is read for itself, its parents found through this
+    # command's registry (TCW-109 Design 5.2).
+    if project is not None and read_work_config(Path(project.locator), personal=False,
+                                                registry=registry).backend == "jira":
         from tcw.work.jira.tickets import delegate_to_jira
         return delegate_to_jira(project_id, title, request, priority,
-                                root=Path(project.locator), report=say)
+                                root=Path(project.locator), report=say,
+                                registry=registry)
     path = _check_target(registry, project_id)
     backend = open_backend(Path(registry.get(project_id).locator),
-                           report=_uncommitted_in(path, say), personal=False)
+                           report=_uncommitted_in(path, say), personal=False,
+                           registry=registry)
     props = Changes() if priority is None else Changes(priority=priority)
     item = backend.create(title, props, stage=inbox_stage(), request=request)
     return str(item.slug)
@@ -343,7 +347,8 @@ def open_for_update(project_id: str, here: Path, *,
     path = _check_target(registry, project_id)
     say = report or (lambda line: print(line, file=sys.stderr))
     return open_backend(Path(registry.get(project_id).locator),
-                        report=_uncommitted_in(path, say), personal=False)
+                        report=_uncommitted_in(path, say), personal=False,
+                        registry=registry)
 
 
 def _uncommitted_in(path: Path, say: Callable[[str], None]) -> Callable[[str], None]:

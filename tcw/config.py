@@ -207,6 +207,22 @@ class Config:
     #: Each inherited key that cannot be used, by its dotted name (TCW-109
     #: Design 3.4): a `Withheld` carrying the error a reader of it gets.
     withheld: dict = field(default_factory=dict)
+    #: The IDs of the configuration sources folded, in order, gaps included
+    #: and this project last.
+    sources: tuple = ()
+    #: The problems in values other projects pass that still reach this
+    #: project (Design 1.6), each naming its file by its whole path: `tcw
+    #: validate` warns about them; a reader of the key stops on them.
+    inherited_problems: list = field(default_factory=list)
+    #: Values an ancestor's `tcw-config.local.yaml` may not set, never merged:
+    #: `tcw validate` warns about them at that file (Design 1.6).
+    inherited_refusals: list = field(default_factory=list)
+    #: The sources not here, or whose parents could not be read, that left a
+    #: key undecided (Design 3.6), in load order.
+    gaps_withholding: tuple = ()
+    #: Why the configuration sources could not be had, when they could not
+    #: (plan choice 11): the message `tcw work list` stops with.
+    order_error: str | None = None
 
     def require(self, key: str) -> None:
         """Raise the error of `key` (`work.tags`, `work.jira`) when it is
@@ -760,21 +776,31 @@ def _origin_for(key_path: KeyPath, origins: dict, project: Origin) -> Origin:
 
 def load_config(project_root: Path, *, personal: bool = True,
                 registry=None) -> Config:
-    """The effective configuration of the project at `project_root`: its four
-    layers read, checked, merged and parsed. Never raises for a problem in
-    the configuration; every problem found is in `problems`.
+    """The effective configuration of the project at `project_root`, folded
+    over its configuration sources (TCW-109 Design 2.1): the built-in values,
+    then for each source, farthest first and this project last, its shared
+    file and, when personal files apply, the user-wide file and its
+    `tcw-config.local.yaml`. From a source other than this project only the
+    inherited keys are taken (`INHERITED_KEYS`). Never raises for a problem in
+    the configuration; every problem of this project's own is in `problems`.
+    A key it inherits that cannot be used, because a source is not here or
+    passes a value with a problem, is in `withheld` (Design 3.4, 1.6).
 
-    `personal=False` reads `built-in` and `tcw-config.yaml` only: how another
-    project (a parent, a delegation target, the project of an item named by
-    its full slug) is read, since personal files apply only to the project a
-    command acts on.
+    `personal=False` is how a project is read for itself rather than as the
+    project a command acts on (a descendant, the project of an item named by
+    its full identifier, a delegation target): its own sources' shared files,
+    with no personal file, since personal files apply only to the project a
+    command acts on. `registry` is the command's, through which the sources
+    are found (Design 5.2); it is required when such a project declares
+    `parents:`, and `TypeError` is raised without it. For the project a
+    command acts on, one is opened at `project_root` when none is passed, and
+    only when the project declares `parents:`.
     """
     from tcw.work.config import parse_work_config
     root = Path(project_root).absolute()
     # The acting project's files are named relative to it; another project's
     # by their whole path, so a message says which project to fix.
     shown = root if personal else None
-    project = Origin("project", root / SENTINEL)
     values = built_in_values()
     origins: dict = {}
     _stamp(origins, (), values, BUILT_IN)
@@ -784,41 +810,73 @@ def load_config(project_root: Path, *, personal: bool = True,
             written[path] = [BUILT_IN]
     config = Config(root, values, origins, None, written=written)
 
-    raw, problems = _read(project.file, True, shown)
+    shared = root / SENTINEL
+    raw, problems = _read(shared, True, shown)
     config.problems += problems
     if raw is not None:
-        raw, problems = _file_problems(project.file, raw, shown, versioned=True)
+        raw, problems = _file_problems(shared, raw, shown, versioned=True)
         config.problems += problems
     if raw is None:
         config.unreadable = True
         config.work, _ = parse_work_config(values.get("work"), origins)
         return config
-    config.problems += _list_problems(raw, project, shown)
-    config.problems += _store_location_problems(raw, project, shown)
+    own_id = raw.get("id") if isinstance(raw.get("id"), str) else None
+    work = raw.get("work")
+    # The project's mode is its own (Design 1.2): it decides whether a
+    # parent's `work.jira` is taken (1.5) and whether credential names are
+    # set aside.
+    jira_mode = isinstance(work, dict) and work.get("backend") == "jira"
+    if "parents" in raw:
+        if registry is None and not personal:
+            raise TypeError("load_config(personal=False) needs the command's registry "
+                            "for a project that declares parents:")
+        entries, opened, own_id, config.order_error = _sources(
+            raw, root, personal, registry, own_id)
+    else:
+        entries, opened = None, None
+    if entries is None:
+        entries = [_SELF]
+    config.sources = tuple(own_id if e is _SELF else e.id for e in entries)
+    here = len(entries) - 1
+
+    config.problems += _list_problems(raw, Origin("project", shared), shown)
+    config.problems += _store_location_problems(raw, Origin("project", shared), shown)
     if "user" in raw:
         config.problems.append(Problem(
-            project.file, ("user",),
+            shared, ("user",),
             f"'user' is personal; set it in {user_config_label()} or "
             f"{LOCAL_FILE}", shown))
         raw = {k: v for k, v in raw.items() if k != "user"}
-    _merge(values, origins, written, raw, project)
 
-    for origin in _personal_layers(root, config.problems) if personal else ():
-        mapping, problems = _read(origin.file, False, root)
-        config.problems += problems
-        if mapping is not None and origin.file.exists():
-            mapping, problems = _file_problems(origin.file, mapping, root,
-                                               versioned=origin.layer == "local")
-            config.problems += problems
-        if not mapping:
-            continue
-        mapping, problems = _allowed(mapping, origin, root, config.refused)
-        config.problems += problems
-        config.problems += _list_problems(mapping, origin, root)
-        work = values.get("work")
-        if not (isinstance(work, dict) and work.get("backend") == "jira"):
-            mapping = _without_credentials(mapping, origin, config.skipped)
-        _merge(values, origins, written, mapping, origin)
+    # The user-wide file is read and checked once, as this project's own
+    # layer, and applied again at each source, cut to the inherited keys,
+    # with no second check (Design 1.6, 2.1).
+    layers = _personal_layers(root, config.problems) if personal else []
+    user = next((o for o in layers if o.layer == "user"), None)
+    user_kept, user_problems = ({}, [])
+    if user is not None:
+        user_kept, user_problems = _user_layer(user, root, config, jira_mode)
+
+    fold = _Fold(values, origins, written, jira_mode)
+    for position, entry in enumerate(entries):
+        if position == here:
+            project = Origin("project", shared, project=own_id, position=position)
+            fold.merge(raw, project)
+            for origin in layers:
+                origin = Origin(origin.layer, origin.file, root=origin.root,
+                                project=own_id, position=position)
+                if origin.layer == "user":
+                    config.problems += user_problems
+                    mapping = user_kept
+                else:
+                    mapping = _personal_layer(origin, root, config, jira_mode)
+                if mapping:
+                    fold.merge(mapping, origin)
+        elif entry.state == "here":
+            fold.ancestor(entry, position, user if user_kept else None, user_kept,
+                          layers, config)
+        else:
+            fold.gaps.append((position, entry))
 
     config.problems += _confinement(values, origins, shown)
     work, parsed = parse_work_config(values.get("work"), origins)
@@ -827,11 +885,327 @@ def load_config(project_root: Path, *, personal: bool = True,
         from tcw.work.jira.config import parse_jira_config
         config.jira, jira_problems = parse_jira_config(work.jira)
         parsed = [*parsed, *jira_problems]
+    project = Origin("project", shared, project=own_id, position=here)
+    undecided = fold.undecided(here, config.order_error is not None)
     for problem in parsed:
-        origin = _origin_for(problem.key_path, origins, project)
-        config.problems.append(Problem(origin.file, tuple(problem.key_path),
-                                       problem.message, shown))
+        key_path = tuple(problem.key_path)
+        if any(key_path[:len(u)] == u for u in undecided):
+            # No check of a value that is not known runs (Design 3.2).
+            continue
+        origin = _origin_for(key_path, origins, project)
+        if origin.project not in (None, own_id) and origin.layer != "user":
+            fold.broke(key_path, origin, Problem(origin.file, key_path, problem.message))
+            continue
+        config.problems.append(Problem(origin.file, key_path, problem.message, shown))
+    _withhold(config, fold, undecided, opened, own_id)
     return config
+
+
+#: The project being folded, in a fold with no other source.
+_SELF = object()
+
+
+def _sources(raw: dict, root: Path, personal: bool, registry, own_id):
+    """This project's configuration sources (Design 1.3), as
+    `(entries, registry, id, order_error)`. `entries` is None when the order
+    cannot be had (plan choice 11): this project's own `parents:` is refused,
+    its ancestors form a loop, the registry raises, or it lists this project
+    as unreadable. `order_error` is then the text `tcw work list` stops with
+    in the same project: the registry's graph problems as `require_valid`
+    joins them, else the error raised, else the loop."""
+    from tcw.errors import InheritedUnavailable, TcwError
+    from tcw.store.base import find_loop, loop_message
+    from tcw.store.links import parse_parents
+    from tcw.store.project import FsProjectRegistry
+    links, _ = parse_parents(raw.get("parents"), str(root / SENTINEL))
+    opened = registry
+    caught = None
+    try:
+        if opened is None:
+            opened = FsProjectRegistry.open(root)
+        if personal:
+            own_id = opened.current.id
+        if links is not None:
+            # A loop through the ancestors, looked for whether or not the
+            # order computation would raise for it.
+            seen: dict = {}
+            pending = [own_id]
+            entries = (opened.source_entries("config") if personal else
+                       opened.source_entries("config", own_id, root=root))
+            while pending:
+                pid = pending.pop()
+                if pid in seen:
+                    continue
+                seen[pid] = opened.parents(pid)
+                pending += [link.id for link in seen[pid]]
+            loop = find_loop(seen, [own_id])
+            if loop is not None:
+                caught = loop_message(loop)
+            elif entries and entries[-1].state != "here":
+                caught = opened.link_problem(entries[-1].id) or "its parents could not be read"
+            else:
+                return entries, opened, own_id, None
+    except InheritedUnavailable:
+        raise
+    except (ValueError, TcwError) as error:
+        caught = str(error)
+    text = None
+    if personal and opened is not None:
+        try:
+            opened.require_valid()
+        except ValueError as error:
+            text = str(error)
+    if text is None and caught is None and links is None:
+        # A refused `parents:` the registry did not record (a project read
+        # for itself): its own reading of the key.
+        _, found = parse_parents(raw.get("parents"), str(root / SENTINEL))
+        caught = "; ".join(f"{root / SENTINEL}: {key}: {message}" for key, message in found)
+    return None, opened, own_id, text or caught or "its parents could not be read"
+
+
+def _user_layer(user: Origin, root: Path, config: Config, jira_mode: bool):
+    """The user-wide file, read and checked once: what it may set, and its
+    problems, which are this project's own."""
+    problems: list = []
+    mapping, found = _read(user.file, False, root)
+    problems += found
+    if mapping is not None and user.file.exists():
+        mapping, found = _file_problems(user.file, mapping, root, versioned=False)
+        problems += found
+    if not mapping:
+        return {}, problems
+    mapping, found = _allowed(mapping, user, root, config.refused)
+    problems += found
+    problems += _list_problems(mapping, user, root)
+    if not jira_mode:
+        mapping = _without_credentials(mapping, user, config.skipped)
+    return mapping, problems
+
+
+def _personal_layer(origin: Origin, root: Path, config: Config, jira_mode: bool) -> dict:
+    """This project's own `tcw-config.local.yaml`, checked as today."""
+    mapping, problems = _read(origin.file, False, root)
+    config.problems += problems
+    if mapping is not None and origin.file.exists():
+        mapping, problems = _file_problems(origin.file, mapping, root, versioned=True)
+        config.problems += problems
+    if not mapping:
+        return {}
+    mapping, problems = _allowed(mapping, origin, root, config.refused)
+    config.problems += problems
+    config.problems += _list_problems(mapping, origin, root)
+    if not jira_mode:
+        mapping = _without_credentials(mapping, origin, config.skipped)
+    return mapping
+
+
+def _inherited_part(mapping: Any, jira_mode: bool) -> dict:
+    """What a layer of another project passes (Design 1.1, 1.5): its
+    `work.tags`, and its `work.jira` when the project folded is in Jira mode."""
+    work = mapping.get("work") if isinstance(mapping, dict) else None
+    if not isinstance(work, dict):
+        return {}
+    keys = ("tags", "jira") if jira_mode else ("tags",)
+    part = {key: copy.deepcopy(work[key]) for key in keys if key in work}
+    return {"work": part} if part else {}
+
+
+def _replacements(mapping: dict) -> list[KeyPath]:
+    """The keys of Design 1.1 a layer replaces whole (Design 3.1): a value
+    that is not a mapping, other than a list holding an `inherit: true`
+    entry; or `null`."""
+    work = mapping.get("work") if isinstance(mapping, dict) else None
+    if not isinstance(work, dict):
+        return []
+    found: list[KeyPath] = []
+    if "tags" in work:
+        tags = work["tags"]
+        if not (isinstance(tags, list) and any(
+                isinstance(e, dict) and e.get("inherit") is True for e in tags)):
+            found.append(("work", "tags"))
+
+    def walk(value: Any, path: KeyPath) -> None:
+        if isinstance(value, dict):
+            for key, inner in value.items():
+                walk(inner, (*path, key))
+        else:
+            found.append(path)
+    if "jira" in work:
+        walk(work["jira"], ("work", "jira"))
+    return found
+
+
+def _broken_key(key_path: KeyPath) -> KeyPath:
+    """Where a problem marks an inherited value broken: the longest start of
+    its key path that is a key TCW knows under `work.tags` or `work.jira`."""
+    from tcw.config_keys import known_keys
+    table = known_keys()
+    path = tuple(key_path)
+    for end in range(len(path), 1, -1):
+        if path[:end] in table and _inherited_key(path[:end]):
+            return path[:end]
+    return ("work", "jira") if path[:2] == ("work", "jira") else ("work", "tags")
+
+
+class _Fold:
+    """The merge of the sources, with what Design 3.1 and 1.6 need from it:
+    each key a layer replaces whole, with its rank; each gap, with its
+    position; and each problem in another project's inherited value."""
+
+    def __init__(self, values: dict, origins: dict, written: dict, jira_mode: bool):
+        self.values, self.origins, self.written = values, origins, written
+        self.jira_mode = jira_mode
+        self.replaced: list[tuple[tuple, KeyPath]] = []
+        self.gaps: list[tuple[int, Any]] = []
+        self.broken: list[tuple[KeyPath, tuple, Problem]] = []
+
+    def merge(self, mapping: dict, origin: Origin) -> None:
+        for path in _replacements(mapping):
+            self.replaced.append((origin.rank, path))
+        _merge(self.values, self.origins, self.written, mapping, origin)
+
+    def broke(self, key_path: KeyPath, origin: Origin, problem: Problem) -> None:
+        self.broken.append((_broken_key(key_path), origin.rank, problem))
+
+    def ancestor(self, entry, position: int, user: Origin | None, user_kept: dict,
+                 layers: list, config: Config) -> None:
+        """One source other than the project folded: its shared file, then
+        the user-wide file and its local file, each cut to what it passes and
+        checked as the project's own are (Design 1.6)."""
+        from tcw.project_files import key_problems
+        from tcw.store.project import personal_file
+        q_root = Path(entry.project.locator)
+        shared = Origin("project", q_root / SENTINEL, project=entry.id,
+                        position=position)
+        mapping, problems = _read(shared.file, True, None)
+        if mapping is not None:
+            version = version_problem(mapping)
+            if version:
+                mapping, problems = None, [Problem(shared.file, (), version)]
+            else:
+                mapping = without_version(mapping)
+        if mapping is None:
+            for problem in problems:
+                for key in (("work", "tags"), ("work", "jira")):
+                    self.broken.append((key, shared.rank, problem))
+            return
+        self._layer(_inherited_part(mapping, self.jira_mode), shared, key_problems)
+        if not layers:
+            return
+        if user is not None and user_kept:
+            part = _inherited_part(user_kept, self.jira_mode)
+            if part:
+                self.merge(part, Origin("user", user.file, project=entry.id,
+                                        position=position))
+        local_file = personal_file(q_root, LOCAL_CONFIG_NAME)
+        local = Origin("local", local_file, project=entry.id, position=position,
+                       root=q_root if local_file != q_root / LOCAL_FILE else None)
+        mapping, problems = _read(local.file, False, None)
+        if mapping is not None and local.file.exists():
+            mapping, problems = _file_problems(local.file, mapping, None, versioned=True)
+            mapping = mapping if mapping is None else _inherited_part(mapping,
+                                                                      self.jira_mode)
+            problems = [p for p in problems if _inherited_key(p.key_path)] \
+                if mapping is not None else problems
+        for problem in problems:
+            if mapping is None or not problem.key_path:
+                if self.jira_mode:
+                    self.broken.append((("work", "jira"), local.rank, problem))
+            else:
+                self.broken.append((_broken_key(problem.key_path), local.rank, problem))
+        if not mapping:
+            return
+        refused: list = []
+        mapping, problems = _allowed(mapping, local, None, refused)
+        # A refused value is never merged, so it breaks nothing; `tcw
+        # validate` warns about it at that file (Design 1.6).
+        config.inherited_refusals += problems
+        self._layer(mapping, local, None)
+
+    def _layer(self, mapping: dict, origin: Origin, key_problems) -> None:
+        if not mapping:
+            return
+        problems = []
+        if key_problems is not None:
+            problems += [Problem(origin.file, tuple(path), message)
+                         for path, message in key_problems(mapping)]
+        problems += [Problem(p.file, p.key_path, p.message)
+                     for p in _list_problems(mapping, origin, None)]
+        for problem in problems:
+            self.broken.append((_broken_key(problem.key_path), origin.rank, problem))
+        self.merge(mapping, origin)
+
+    def _decided_after(self, path: KeyPath, rank: tuple) -> bool:
+        return any(r > rank and path[:len(p)] == p for r, p in self.replaced)
+
+    def undecided(self, here: int, no_order: bool) -> set:
+        """Every key of Design 1.1 that no layer after the last gap replaces
+        whole, or, when the order could not be had, that this project's own
+        layers do not (plan choices 4, 11)."""
+        from tcw.config_keys import jira_keys
+        if not self.gaps and not no_order:
+            return set()
+        last = (here - 1, len(LAYERS)) if no_order else (max(p for p, _ in self.gaps),
+                                                          len(LAYERS))
+        candidates = [("work", "tags")]
+        if self.jira_mode:
+            candidates += list(jira_keys())
+        return {path for path in candidates if not self._decided_after(path, last)}
+
+    def gap_for(self, path: KeyPath):
+        """The gap Design 3.3 names for `path`: the first after the last layer
+        that replaced it whole, or the first."""
+        ranks = [r for r, p in self.replaced if path[:len(p)] == p]
+        after = max(ranks) if ranks else (-2, 0)
+        return next(((pos, e) for pos, e in self.gaps if (pos, len(LAYERS)) > after),
+                    self.gaps[0])
+
+    def standing(self) -> dict:
+        """The broken marks no later layer replaced, by inherited key."""
+        out: dict = {}
+        for path, rank, problem in self.broken:
+            if self._decided_after(path, rank):
+                continue
+            key = "work.tags" if path[:2] == ("work", "tags") else "work.jira"
+            if key == "work.jira" and not self.jira_mode:
+                continue
+            out.setdefault(key, []).append(problem)
+        return out
+
+
+def _withhold(config: Config, fold: _Fold, undecided: set, registry, own_id) -> None:
+    """Set `Config.withheld` (Design 3.4): an undecided key with Design 3.3's
+    error, or, when the order could not be had, the graph problem's; a broken
+    key, not also undecided, with its problems (Design 1.6)."""
+    import dataclasses
+
+    from tcw.errors import BackendError, ConfigError
+    for key in INHERITED_KEYS:
+        path = tuple(key.split("."))
+        under = sorted((u for u in undecided if u[:len(path)] == path), key=len)
+        if under:
+            if config.order_error is not None:
+                text = config.order_error
+                config.withheld[key] = Withheld(lambda text=text: BackendError(text))
+                continue
+            found = [fold.gap_for(u) for u in under]
+            position, gap = min(found, key=lambda pair: pair[0])
+            for gap_position, gap_entry in fold.gaps:
+                if gap_position >= position and gap_entry.id not in config.gaps_withholding:
+                    config.gaps_withholding += (gap_entry.id,)
+            config.withheld[key] = Withheld(
+                lambda gap=gap, key=key: registry.unavailable(
+                    own_id, gap.id, "config", subject=f"configuration ({key})",
+                    missing=gap.state == "missing"))
+    broken = fold.standing()
+    for key, problems in broken.items():
+        config.inherited_problems += problems
+        if key not in config.withheld:
+            config.withheld[key] = Withheld(lambda problems=problems: ConfigError(problems))
+    if "work.tags" in config.withheld:
+        config.work = dataclasses.replace(config.work, tags=config.withheld["work.tags"])
+    if "work.jira" in config.withheld and config.work.backend == "jira":
+        config.jira = config.withheld["work.jira"]
 
 
 # ---------------------------------------------------------------------------
