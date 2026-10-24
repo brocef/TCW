@@ -50,11 +50,23 @@ class ConfigEditRefused(ValueError):
     one-line `tcw <cmd>: …` error."""
 
 
+#: Stands for a list's leading `inherit: true` entry among its plain values
+#: (TCW-109 Design 6.2): a string no YAML scalar can be.
+INHERIT = "\x00inherit"
+
+
 @dataclass(frozen=True)
 class SetList:
+    """Set `<section>.<key>` to the list of `values`; with `inherit`, after
+    one leading `inherit: true` entry."""
     section: str
     key: str
     values: tuple[str, ...]
+    inherit: bool = False
+
+    @property
+    def entries(self) -> tuple[str, ...]:
+        return (INHERIT, *self.values) if self.inherit else tuple(self.values)
 
 
 @dataclass(frozen=True)
@@ -117,7 +129,8 @@ def intended(mapping: dict, edits: list[Edit]) -> dict:
             else:
                 out.pop(edit.section, None)
             continue
-        section[edit.key] = (list(edit.values) if isinstance(edit, SetList)
+        section[edit.key] = (([{"inherit": True}] if edit.inherit else [])
+                             + list(edit.values) if isinstance(edit, SetList)
                              else edit.value)
         out[edit.section] = section
     return out
@@ -298,6 +311,8 @@ class _Document:
 
     @staticmethod
     def scalar(value: str, flow: bool = False) -> str:
+        if value == INHERIT:
+            return "{inherit: true}" if flow else "inherit: true"
         plain = value and not (flow and any(c in value for c in ",[]{}"))
         if plain:
             try:
@@ -315,10 +330,10 @@ class _Document:
         pad = " " * key_column
         if isinstance(edit, SetScalar):
             return [f"{pad}{edit.key}: {self.scalar(edit.value)}"]
-        if not edit.values:
+        if not edit.entries:
             return [f"{pad}{edit.key}: []"]
         dash = " " * (key_column + unit)
-        return [f"{pad}{edit.key}:"] + [f"{dash}- {self.scalar(v)}" for v in edit.values]
+        return [f"{pad}{edit.key}:"] + [f"{dash}- {self.scalar(v)}" for v in edit.entries]
 
     # -- planning one edit --
 
@@ -385,7 +400,7 @@ class _Document:
                                  self.scalar(edit.value))], set()
         if not isinstance(v, yaml.SequenceNode):
             raise _Refuse(f"`{edit.section}.{edit.key}` is not a list")
-        return self.plan_list(k, v, list(edit.values))
+        return self.plan_list(k, v, list(edit.entries))
 
     @staticmethod
     def is_null(node) -> bool:
@@ -454,11 +469,35 @@ class _Document:
             made.insert(0, _Replacement(s_start, s_end, ""))
         return made, allowed
 
+    @staticmethod
+    def is_inherit(node) -> bool:
+        """A list entry that is exactly `inherit: true`."""
+        return (isinstance(node, yaml.MappingNode) and len(node.value) == 1
+                and isinstance(node.value[0][0], yaml.ScalarNode)
+                and node.value[0][0].value == "inherit"
+                and isinstance(node.value[0][1], yaml.ScalarNode)
+                and node.value[0][1].tag == "tag:yaml.org,2002:bool"
+                and node.value[0][1].value.lower() == "true")
+
+    @classmethod
+    def token(cls, node) -> str:
+        return INHERIT if cls.is_inherit(node) else node.value
+
+    @classmethod
+    def last_line(cls, node) -> int:
+        """The line an entry ends on: a block mapping's own end mark is on the
+        next line, so an `inherit: true` entry ends where its value does."""
+        if isinstance(node, yaml.MappingNode):
+            return node.value[-1][1].end_mark.line
+        return node.end_mark.line
+
     def plan_list(self, k, v, new: list[str]) -> tuple[list[_Replacement], set[int]]:
         items = v.value
-        if any(not isinstance(i, yaml.ScalarNode) for i in items):
+        if any(not isinstance(i, yaml.ScalarNode) for i in items[1:]) or (
+                items and not isinstance(items[0], yaml.ScalarNode)
+                and not self.is_inherit(items[0])):
             raise _Refuse("the list holds something other than plain values")
-        old = [i.value for i in items]
+        old = [self.token(i) for i in items]
         shared_old = [x for x in old if x in new]
         shared_new = [x for x in new if x in old]
         incremental = (len(set(old)) == len(old) and len(set(new)) == len(new)
@@ -470,7 +509,7 @@ class _Document:
                     raise _Refuse("the list spans several lines and holds comments")
                 return [_Replacement(start, end, self.flow_list(new))], set()
             return [self.replace_flow(v, new)], set()
-        if any(i.start_mark.line != i.end_mark.line for i in items):
+        if any(i.start_mark.line != self.last_line(i) for i in items):
             raise _Refuse("an item of the list spans more than one line")
         prefixes = [self.text[self.line_start(i.start_mark.index):i.start_mark.index]
                     for i in items]
@@ -494,7 +533,7 @@ class _Document:
         made, allowed = [], set()
         by_value = dict(zip(old, items))
         for item in items:
-            if item.value not in new:
+            if self.token(item) not in new:
                 s = self.line_start(item.start_mark.index)
                 e = self.next_line(item.start_mark.index)
                 made.append(_Replacement(s, e, ""))
@@ -525,7 +564,8 @@ class _Document:
         items = v.value
         if not new:
             return _Replacement(start, end, "[]")
-        spelled = {i.value: self.text[i.start_mark.index:i.end_mark.index] for i in items}
+        spelled = {self.token(i): self.text[i.start_mark.index:i.end_mark.index]
+                   for i in items}
         if items:
             head = self.text[start:items[0].start_mark.index]
             tail = self.text[items[-1].end_mark.index:end]
@@ -587,7 +627,7 @@ def _verify(path: Path, original: str, new: str, replacements: list[_Replacement
 
 def _flow(edit) -> str:
     if isinstance(edit, SetList):
-        return _Document.flow_list(edit.values)
+        return _Document.flow_list(edit.entries)
     return _Document.scalar(edit.value, flow=True)
 
 

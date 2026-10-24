@@ -469,3 +469,52 @@ def test_a_document_end_marker_followed_by_a_comment_still_takes_a_section():
 def test_two_appends_to_a_file_without_a_final_break_leave_no_blank_line():
     after = edit("id: a", SetScalar("work", "path", "w"), SetScalar("taxonomy", "path", "t"))
     assert after == "id: a\nwork:\n  path: w\ntaxonomy:\n  path: t\n"
+
+
+# -- a leading `inherit: true` entry (TCW-109 Design 6.2) ----------------------------
+
+
+def test_a_new_list_with_inherit_writes_the_entry_first_in_a_block():
+    before = "id: app\nwork:\n  backend: filesystem\n"
+    after = edit(before, SetList("work", "tags", ("z",), inherit=True))
+    assert_only_added(before, after, "  tags:\n", "    - inherit: true\n", "    - z\n")
+    assert yaml.safe_load(after)["work"]["tags"] == [{"inherit": True}, "z"]
+
+
+def test_a_flow_list_with_inherit_keeps_the_entry_first():
+    before = "work:\n  tags: [a]\n"
+    after = edit(before, SetList("work", "tags", ("a", "z"), inherit=True))
+    assert after == "work:\n  tags: [{inherit: true}, a, z]\n"
+
+
+def test_adding_to_a_block_list_that_starts_with_inherit_adds_one_line():
+    before = "work:\n  tags:\n  - inherit: true\n  - a\n"
+    after = edit(before, SetList("work", "tags", ("a", "y"), inherit=True))
+    assert_only_added(before, after, "  - y\n")
+
+
+def test_removing_from_a_list_that_starts_with_inherit_keeps_the_entry():
+    before = "work:\n  tags:\n  - inherit: true\n  - z\n"
+    after = edit(before, SetList("work", "tags", (), inherit=True))
+    assert_only_removed(before, after, "  - z\n")
+
+
+def test_a_flow_list_starting_with_inherit_keeps_its_spelling():
+    before = "work:\n  tags: [{inherit: true}, a]\n"
+    after = edit(before, SetList("work", "tags", ("a", "b"), inherit=True))
+    assert after == "work:\n  tags: [{inherit: true}, a, b]\n"
+
+
+@pytest.mark.parametrize("text", [
+    "work:\n  tags:\n  - a\n  - inherit: true\n",
+    "work:\n  tags:\n  - {when: x}\n  - a\n",
+    "work:\n  tags:\n  - inherit: false\n  - a\n",
+])
+def test_any_other_entry_that_is_not_plain_is_still_refused(text):
+    with pytest.raises(ConfigEditRefused, match="something other than plain values"):
+        edit(text, SetList("work", "tags", ("a", "b"), inherit=True))
+
+
+def test_intended_puts_the_entry_first():
+    assert config_edit.intended({}, [SetList("work", "tags", ("z",), inherit=True)]) == {
+        "work": {"tags": [{"inherit": True}, "z"]}}
