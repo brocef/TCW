@@ -52,8 +52,27 @@ def run(root: Path, *, dry_run: bool, no_jira: bool) -> int:
         return codes.REFUSED
     if record is not None:
         return follow_progress(root, record, dry_run=dry_run)
-    report.say("nothing to migrate")
-    return codes.OK
+    from tcw.migrate.plan import make_plan
+    plan = make_plan(root, no_jira=no_jira)
+    if plan.blockers:
+        for step in plan.steps:
+            report.say(report.step_line(step, dry=True))
+        report.reports(plan.reports)
+        report.blockers(plan.blockers)
+        return codes.REFUSED
+    if plan.empty:
+        report.reports(plan.reports)
+        report.say("nothing to migrate")
+        return codes.OK
+    if dry_run:
+        for step in plan.steps:
+            report.say(report.step_line(step, dry=True))
+        report.reports(plan.reports)
+        return codes.OK
+    code = apply_plan(plan, root)
+    if code == codes.OK:
+        report.reports(plan.reports)
+    return code
 
 
 def _unreadable(error) -> "Blocker":

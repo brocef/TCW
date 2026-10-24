@@ -58,9 +58,14 @@ def blocker_line(blocker: Blocker) -> str:
     return f"{blocker.code} {blocker.where}: {blocker.why}{fix}"
 
 
+def _number(report: Report) -> int:
+    return int(report.code[1:])
+
+
 def reports(found: list[Report]) -> None:
-    attention = [r for r in found if r.code.startswith("A")]
-    different = [r for r in found if r.code.startswith("D")]
+    """Each group in the order of its numbers; within a number, as found."""
+    attention = sorted((r for r in found if r.code.startswith("A")), key=_number)
+    different = sorted((r for r in found if r.code.startswith("D")), key=_number)
     if attention:
         say("needs attention:")
         for report in attention:

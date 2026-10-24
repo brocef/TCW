@@ -212,8 +212,10 @@ def apply(plan: Plan, root: Path, say: Say) -> None:
 
 
 def follow(steps: list[Step], root: Path, say: Say) -> None:
-    """Finish a run that stopped, from its progress record's steps."""
-    _finish(steps, root, say)
+    """Finish a run that stopped, from its progress record's steps. Phase A
+    was finished before the record was written, and a later phase may write
+    the same file again (`.tcw/.gitignore`), so phase A is not walked."""
+    _finish([s for s in steps if s.phase != "A"], root, say)
 
 
 def _finish(steps: list[Step], root: Path, say: Say) -> None:
@@ -228,4 +230,4 @@ def _finish(steps: list[Step], root: Path, say: Say) -> None:
 
 def pending(steps: list[Step], root: Path) -> list[Step]:
     """The steps of a progress record not yet done, for a dry run."""
-    return [step for step in steps if state(step, root) != DONE]
+    return [step for step in steps if step.phase != "A" and state(step, root) != DONE]

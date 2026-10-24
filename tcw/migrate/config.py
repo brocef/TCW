@@ -1,0 +1,346 @@
+"""The configuration's half of the plan (TCW-116 Design 3: C1, C2, C7; plan
+Step 5).
+
+The root `tcw-config.yaml` and `tcw-config.local.yaml` become `.tcw/`'s two
+files, each with the version line first and every `not_tags` key renamed,
+their text edited in place. Inside a git repository `.tcw/.gitignore` gets
+the progress record's line in phase A and the two personal files' lines in
+phase D, planned here as writes, never by `ignore_personal_files`, which
+would write the file itself. The root files are deleted in phase E, each
+once its `.tcw/` copy holds what the plan wrote.
+
+The user-wide file is read, never written (C7): a `not_tags` in it is A5.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Iterator
+
+import yaml
+
+from tcw import __version__
+from tcw.config import dotted
+from tcw.migrate import progress
+from tcw.migrate.editors import convert_text
+from tcw.migrate.legacy import ROOT_CONFIG, ROOT_LOCAL, Layer3
+from tcw.migrate.model import (ABSENT, Blocker, Delete, Report, Step, Write, digest,
+                               file_digest)
+from tcw.project_files import (_RENAMED_KEYS, LOCAL_SENTINEL, SENTINEL, TCW_FOLDER,
+                               VERSION_KEY, key_problems, version_line,
+                               without_version)
+from tcw.store.base import MIGRATION_GUIDE, RETIRED_PROJECTS_KEY
+from tcw.store.config_edit import ConfigEditRefused, RenameKey
+from tcw.store.fs import LOCAL_CONFIG_RULE, LOCAL_MANIFEST_RULE
+
+IGNORE = f"{TCW_FOLDER}/.gitignore"
+
+#: The commands and flags TCW 4 removes, for A13 (S115 Design 1.2; TCW-114).
+_REMOVED = ("tcw provision", "tcw projects", "tcw init", "--project", "--blocks")
+_REMOVED_RE = re.compile(r"(?<![\w-])(" + "|".join(re.escape(w) for w in _REMOVED)
+                         + r")(?![\w-])")
+#: The keys whose value is a command TCW runs.
+_COMMAND_KEYS = ("command", "generate")
+
+
+@dataclass
+class ConfigPlan:
+    """What the configuration contributes to the plan."""
+
+    steps: list[Step] = field(default_factory=list)
+    reports: list[Report] = field(default_factory=list)
+    blockers: list[Blocker] = field(default_factory=list)
+    project: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Reading positions
+
+
+def key_lines(text: str) -> dict[tuple, int]:
+    """The line (from 1) each key path of `text` is written on. A key an
+    alias reaches is given the line it is written on."""
+    found: dict[tuple, int] = {}
+    try:
+        top = yaml.compose(text)
+    except yaml.YAMLError:
+        return found
+
+    def walk(held, path, seen):
+        if id(held) in seen:
+            return
+        if isinstance(held, yaml.MappingNode):
+            seen = seen | {id(held)}
+            for key, value in held.value:
+                if isinstance(key, yaml.ScalarNode):
+                    here = (*path, key.value)
+                    found.setdefault(here, key.start_mark.line + 1)
+                    walk(value, here, seen)
+        elif isinstance(held, yaml.SequenceNode):
+            seen = seen | {id(held)}
+            for i, entry in enumerate(held.value):
+                found.setdefault((*path, i), entry.start_mark.line + 1)
+                walk(entry, (*path, i), seen)
+
+    walk(top, (), frozenset())
+    return found
+
+
+def _leaves(value: Any, path: tuple = ()) -> Iterator[tuple[tuple, Any]]:
+    if isinstance(value, dict):
+        for key, inner in value.items():
+            yield (*path, key), inner
+            yield from _leaves(inner, (*path, key))
+    elif isinstance(value, list):
+        for i, inner in enumerate(value):
+            yield (*path, i), inner
+            yield from _leaves(inner, (*path, i))
+
+
+def first_difference(a: Any, b: Any, path: tuple = ()) -> tuple | None:
+    """The first key path at which `a` and `b` differ, or None."""
+    if isinstance(a, dict) and isinstance(b, dict):
+        for key in [*a, *(k for k in b if k not in a)]:
+            if key not in a or key not in b:
+                return (*path, key)
+            found = first_difference(a[key], b[key], (*path, key))
+            if found is not None:
+                return found
+        return None
+    if isinstance(a, list) and isinstance(b, list):
+        for i, (x, y) in enumerate(zip(a, b)):
+            found = first_difference(x, y, (*path, i))
+            if found is not None:
+                return found
+        return None if len(a) == len(b) else (*path, min(len(a), len(b)))
+    return None if a == b else path
+
+
+# ---------------------------------------------------------------------------
+# One file
+
+
+def renames(mapping: dict) -> list[RenameKey]:
+    """C2: every key 4.0 renames, wherever it is a key."""
+    return [RenameKey(path, _RENAMED_KEYS[path[-1]]) for path, _ in key_problems(mapping)
+            if isinstance(path[-1], str) and path[-1] in _RENAMED_KEYS]
+
+
+def _renamed(mapping: dict) -> dict:
+    from tcw.store.config_edit import intended
+    return intended(mapping, renames(mapping))
+
+
+def _empty(layer: Layer3) -> bool:
+    """0 bytes, or YAML that reads as nothing (Design 3, C1's empty files)."""
+    return layer.present and not layer.problem and not layer.data
+
+
+def _b1(rel: str, mapping: dict) -> list[Blocker]:
+    return [Blocker("B1", rel, f"{dotted(path)}: {message}",
+                    "rename it by hand to a key TCW 4 reads, then run 'tcw migrate' again")
+            for path, message in key_problems(_renamed(mapping))]
+
+
+def _b14(rel: str, layer: Layer3) -> Blocker:
+    return Blocker("B14", rel, layer.problem or "cannot be read",
+                   "correct the file by hand, then run 'tcw migrate' again")
+
+
+def plan_file(root: Path, old: Layer3, new: Layer3, *, shared: bool) -> ConfigPlan:
+    """One of the two project files: the 3.x file at the root (`old`) and
+    its `.tcw/` place (`new`)."""
+    out = ConfigPlan()
+    old_rel, new_rel = (ROOT_CONFIG, SENTINEL) if shared else (ROOT_LOCAL, LOCAL_SENTINEL)
+    for rel, layer in ((old_rel, old), (new_rel, new)):
+        if layer.problem:
+            out.blockers.append(_b14(rel, layer))
+    if out.blockers:
+        return out
+    new_versioned = new.present and not _empty(new) and VERSION_KEY in (new.data or {})
+    if old.present:
+        source, source_rel, mapping = old, old_rel, old.data or {}
+    elif new.present and not _empty(new) and not new_versioned:
+        source, source_rel, mapping = new, new_rel, new.data or {}    # 3.x text in .tcw/
+    elif shared and _empty(new):
+        out.blockers.append(Blocker(
+            "B15", new_rel, "is empty and there is no root tcw-config.yaml to give it an id",
+            f"write the project's id in it as 'id: <id>', after '{VERSION_KEY}: "
+            f"{__version__}' as its first line"))
+        return out
+    elif not shared and _empty(new):
+        out.steps.append(Write(new_rel, "D", digest(new.text), version_line(), ("C1",)))
+        return out
+    else:
+        if new_versioned and shared:
+            out.project = (new.data or {}).get("id")
+        return out
+    if shared:
+        out.project = mapping.get("id")
+        if not out.project:
+            out.blockers.append(Blocker("B15", source_rel, "has no id",
+                                        "add 'id: <id>' to it, then run 'tcw migrate' again"))
+        if RETIRED_PROJECTS_KEY in mapping:
+            out.blockers.append(Blocker(
+                "B2", source_rel,
+                f"{RETIRED_PROJECTS_KEY}: is the TCW 2.x name of 'projects', which TCW 3 "
+                f"refuses too", f"convert it with TCW 3.0 as {MIGRATION_GUIDE} says, then "
+                                f"run 'tcw migrate'"))
+    out.blockers += _b1(source_rel, mapping)
+    out.reports += command_reports(source_rel, source.text or "", mapping)
+    out.reports += credential_reports(source_rel, mapping)
+    if shared:
+        out.reports += null_reports(source_rel, mapping)
+    if out.blockers:
+        return out
+    target = {VERSION_KEY: __version__, **_renamed(mapping)}
+    if new_versioned:
+        if without_version(new.data) != without_version(target):
+            where = first_difference(without_version(target), without_version(new.data))
+            out.blockers.append(Blocker(
+                "B11", old_rel, f"differs from {new_rel} at {dotted(where or ())}",
+                f"make the two files agree, or delete the one that is wrong, then run "
+                f"'tcw migrate' again"))
+            return out
+        out.steps.append(Delete(old_rel, "E", digest(old.text), new_rel, digest(new.text),
+                                ("C1",)))
+        return out
+    try:
+        text = convert_text(new_rel, source.text, renames(mapping), expect=target).text
+    except ConfigEditRefused as refused:
+        out.blockers.append(Blocker("B12" if "anchor" in str(refused) else "B3", source_rel,
+                                    str(refused), "edit the file by hand"))
+        return out
+    expect = file_digest(root / new_rel)
+    out.steps.append(Write(new_rel, "D", expect, text, ("C1", "C2") if renames(mapping)
+                           else ("C1",), ((source_rel, digest(source.text)),)
+                           if source is old else ()))
+    if source is old:
+        out.steps.append(Delete(old_rel, "E", digest(old.text), new_rel, digest(text),
+                                ("C1",)))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Reports
+
+
+def command_reports(rel: str, text: str, mapping: dict) -> list[Report]:
+    """A13: a bound command naming a command or flag 4.0 removes."""
+    lines = key_lines(text)
+    out = []
+    for path, value in _leaves(mapping):
+        if not path or path[-1] not in _COMMAND_KEYS or not isinstance(value, str):
+            continue
+        found = _REMOVED_RE.search(value)
+        if found is None:
+            continue
+        out.append(Report("A13", f"{rel}:{lines.get(path, 0)}",
+                          f"{dotted(path)}: '{value}' uses {found.group(1)}, which TCW 4 "
+                          f"removes; it is left as written"))
+    return _unique(out)
+
+
+def credential_reports(rel: str, mapping: dict) -> list[Report]:
+    """A9: a credential variable 4.0 would read as an override."""
+    jira = ((mapping.get("work") or {}) if isinstance(mapping.get("work"), dict) else {})
+    jira = jira.get("jira") if isinstance(jira.get("jira"), dict) else {}
+    credentials = jira.get("credentials") if isinstance(jira.get("credentials"), dict) else {}
+    return [Report("A9", rel, f"work.jira.credentials.{key}: {name} starts with TCW_ and "
+                              f"holds __, which TCW 4 reads as an override of a "
+                              f"configuration value; name another variable")
+            for key, name in credentials.items()
+            if isinstance(name, str) and name.startswith("TCW_") and "__" in name]
+
+
+def null_reports(rel: str, mapping: dict) -> list[Report]:
+    """D5: a null at `work.tags`, `work.jira` or below, which in TCW 4
+    removes a value a parent passes down."""
+    work = mapping.get("work") if isinstance(mapping.get("work"), dict) else {}
+    out = []
+    for key in ("tags", "jira"):
+        if key not in work:
+            continue
+        here = ("work", key)
+        pairs = [(here, work[key]), *((here + p, v) for p, v in _leaves(work[key]))]
+        for path, value in pairs:
+            if value is None:
+                out.append(Report("D5", rel, f"{dotted(path)}: null now removes the value "
+                                             f"a parent project passes down"))
+    return out
+
+
+def user_reports(user: Layer3 | None) -> list[Report]:
+    """A5: `not_tags` in the user-wide file, left as written (C7)."""
+    if user is None or not user.present or not user.data:
+        return []
+    lines = key_lines(user.text or "")
+    return _unique([Report("A5", f"{user.path}:{lines.get(path, 0)}",
+                           f"{dotted(path)}: TCW 4 refuses not_tags; write not-tags (this "
+                           f"file is shared with any TCW 3.x on this machine, which needs "
+                           f"not_tags, so tcw migrate leaves it)",
+                           predicts=(str(user.path), "not_tags"))
+                    for path, _ in key_problems(user.data)
+                    if path and path[-1] in _RENAMED_KEYS])
+
+
+def ignore_reports(root: Path) -> list[Report]:
+    """A4: a root `.gitignore` line for the 3.x personal file."""
+    path = Path(root) / ".gitignore"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return []
+    return [Report("A4", f".gitignore:{number}",
+                   f"{LOCAL_CONFIG_RULE} now ignores nothing: the personal file is "
+                   f"{LOCAL_SENTINEL}, which {IGNORE} ignores")
+            for number, line in enumerate(text.splitlines(), start=1)
+            if line.strip() == LOCAL_CONFIG_RULE]
+
+
+def _unique(reports: list[Report]) -> list[Report]:
+    """Each report once (a key two aliases reach is one line of the file)."""
+    return list({(r.code, r.where, r.text): r for r in reports}.values())
+
+
+# ---------------------------------------------------------------------------
+# .tcw/.gitignore
+
+
+def _missing(text: str, rules: tuple[str, ...]) -> list[str]:
+    """The rules a `.gitignore` text lacks, by the test `ignore_personal_files`
+    uses: a line reading the rule, or its name without the `/`."""
+    lines = {line.strip() for line in text.splitlines()}
+    return [rule for rule in rules if not {rule, rule[1:]} & lines]
+
+
+def _appended(text: str, rules: list[str]) -> str:
+    if text and not text.endswith("\n"):
+        text += "\n"
+    return text + "".join(rule + "\n" for rule in rules)
+
+
+def plan_ignore(root: Path) -> list[Write]:
+    """C1's `.tcw/.gitignore` (inside a git repository only): the progress
+    record's line in phase A, the personal files' lines in phase D."""
+    from tcw.store.config_edit import read_text
+    path = Path(root) / IGNORE
+    try:
+        text = read_text(path)
+    except (OSError, UnicodeDecodeError):
+        text = None
+    now = text or ""
+    out = []
+    first = _missing(now, (progress.IGNORE_RULE,))
+    if first:
+        after = _appended(now, first)
+        out.append(Write(IGNORE, "A", ABSENT if text is None else digest(now), after, ("C1",)))
+        expect, now = digest(after), after
+    else:
+        expect = ABSENT if text is None else digest(now)
+    rest = _missing(now, (LOCAL_CONFIG_RULE, LOCAL_MANIFEST_RULE))
+    if rest:
+        out.append(Write(IGNORE, "D", expect, _appended(now, rest), ("C1",)))
+    return out
