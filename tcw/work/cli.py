@@ -37,6 +37,7 @@ from tcw.work.open import (existing_item, external_stages_of, name_item, open_ba
                            project_facts, read_layered, read_work_config,
                            resolve_work_input)
 from tcw.work.record import item_record, readable
+from tcw.work.scoped import COUNTED_ACROSS
 
 NAME = "work"
 
@@ -329,7 +330,7 @@ def _list_scope(args, covered, backend: WorkBackend, query: Query,
                         mine=args.mine,
                         me=lambda: effective(covered.root).user_name,
                         need_every=args.json)
-    covered.warn("its work items are not listed", _say)
+    covered.warn("its work items are not listed", _say, besides=COUNTED_ACROSS)
     if scoped.bad:
         _say("warning: these items could not be read, so blocks and children "
              "may be incomplete: " + ", ".join(scoped.bad))
@@ -401,7 +402,7 @@ def _show(args) -> int:
     else:
         from tcw.work.scoped import every_item
         every, bad = every_item(covered, active, backend if named is not None else None)
-        covered.warn("its items are not counted in children and blocks", _say)
+        covered.warn(COUNTED_ACROSS, _say)
         if bad:
             _say("warning: these items could not be read, so blocks and children "
                  "may be incomplete: " + ", ".join(bad))

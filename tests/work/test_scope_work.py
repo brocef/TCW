@@ -390,3 +390,32 @@ def test_a_descendants_work_store_not_provisioned_here_is_fetched_in_its_folder(
     [warning] = warnings_about(ran, "server")
     assert "has not been provisioned here" in warning, warning
     assert f"tcw -C {family['server']} project provision --component work" in warning, warning
+
+
+# -- Design 1.8 with --project: a project read only for children and blocks -----
+
+
+def test_a_project_the_filter_leaves_out_is_named_for_children_and_blocks(family):
+    # `--json` computes `children` and `blocks` across every covered project
+    # (Design 3.3), so `mobile`, which the filter does not keep, is still
+    # read and still left out: of those two keys, not of the listing.
+    ran = family.run("shared", "work", "list", "--scope", "down", "--project",
+                     "desktop", "--json")
+    assert ran.code == 0, ran.err
+    assert [i["full-id"] for i in ran.json["items"]] == [wid("desktop")]
+    assert [p["id"] for p in ran.json["projects"] if "unavailable" in p] == ["mobile"]
+    assert len(warnings_about(ran, "mobile")) == 1
+    assert warnings_about(ran, "mobile")[0].startswith(
+        "warning: 'mobile' is unavailable, so its items are not counted in "
+        "children and blocks: ")
+    # The text form reads nothing of `mobile`'s, so it leaves nothing out.
+    text = family.run("shared", "work", "list", "--scope", "down", "--project",
+                      "desktop")
+    assert text.code == 0 and text.lines == [wid("desktop")]
+    assert warnings_about(text, "mobile") == []
+    # The project the filter keeps is the one whose items are not listed.
+    kept = family.run("shared", "work", "list", "--scope", "down", "--project",
+                      "mobile", "--json")
+    assert kept.code == 0 and kept.json["items"] == []
+    assert warnings_about(kept, "mobile")[0].startswith(
+        "warning: 'mobile' is unavailable, so its work items are not listed: ")

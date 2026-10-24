@@ -22,6 +22,13 @@ from tcw.work.model import Item, Slug
 from tcw.work.record import readable
 
 
+#: What an unavailable project leaves out of a work record read across the
+#: scope (Design 1.8): its items are not among `children` and `blocks`.
+#: `show` says it of every unavailable project; `list` of one the
+#: `--project` filter does not keep, read only for those two keys.
+COUNTED_ACROSS = "its items are not counted in children and blocks"
+
+
 @dataclass
 class ScopedItems:
     """Each covered project's items, in scope order, with the backend that

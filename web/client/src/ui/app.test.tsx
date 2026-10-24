@@ -932,6 +932,38 @@ test("an unavailable project's notice gives its reason", async () => {
     ).toHaveLength(1)
 })
 
+test("with one project chosen the board says what another leaves out", async () => {
+    // Design 1.8, 3.3: the kept items' children and blocks count every
+    // covered project, so an unavailable one the filter leaves out is named
+    // for those, not as if its items were missing from the list.
+    serve({ scopes: FAMILY }, [
+        [
+            /^GET \/api\/work\?scope=down&project=desktop/,
+            200,
+            {
+                items: [],
+                people: {},
+                fallback: false,
+                projects: [
+                    { id: "p", relation: "current" },
+                    { id: "desktop", relation: "descendant" },
+                    {
+                        id: "mobile",
+                        relation: "descendant",
+                        unavailable: "not on this machine",
+                    },
+                ],
+            },
+        ],
+    ])
+    renderApp("/work?scope=down&project=desktop")
+    expect(
+        await screen.findByText(/Project mobile could not be read/)
+    ).toHaveTextContent(
+        "Project mobile could not be read, so its items are not counted in children and blocks: not on this machine"
+    )
+})
+
 test("with one project chosen no capability row shows a summary", async () => {
     serve({ scopes: FAMILY }, [
         [

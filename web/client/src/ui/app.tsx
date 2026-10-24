@@ -457,6 +457,14 @@ export function App() {
         }
     }, [axis, selected, detailVersion, scopeChoice]) // eslint-disable-line react-hooks/exhaustive-deps
 
+    // What an unavailable project leaves out of the list shown (Design
+    // 1.8). On the board, one the project filter does not keep is read only
+    // for the kept items' children and blocks (Design 3.3).
+    const leftOut = (id: string) =>
+        axis === "work" && scopeChoice.project && scopeChoice.project !== id
+            ? "its items are not counted in children and blocks"
+            : "its objects are not listed"
+
     // A term or capability of the served project is read when the list
     // shown holds it, and its page is cleared when the list no longer does.
     // Another project's is read by its full identifier whether or not the
@@ -1219,9 +1227,8 @@ export function App() {
                                     key={entry.id}
                                 >
                                     <Callout.Text>
-                                        Project {entry.id} could not be read, so
-                                        its objects are not listed:{" "}
-                                        {entry.unavailable}
+                                        Project {entry.id} could not be read, so{" "}
+                                        {leftOut(entry.id)}: {entry.unavailable}
                                     </Callout.Text>
                                 </Callout.Root>
                             ))}

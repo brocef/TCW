@@ -99,13 +99,19 @@ class Covered:
             self.reasons[project_id] = _reason(error)
             return UNAVAILABLE
 
-    def warn(self, left_out: str, say: Callable[[str], None]) -> None:
+    def warn(self, left_out: str, say: Callable[[str], None], *,
+             besides: str | None = None) -> None:
         """One line per unavailable project, in scope order (Design 1.8):
-        `warning: '<id>' is unavailable, so <left_out>: <reason>`."""
+        `warning: '<id>' is unavailable, so <left_out>: <reason>`. `besides`
+        is what is left out of a project `--project` does not keep, read only
+        for what the kept objects count across the scope, such as a work
+        item's `children` and `blocks` (Design 3.3)."""
+        kept = {m.id for m in self.wanted()}
         for member in self.members:
             reason = self.reasons.get(member.id)
             if reason is not None:
-                say(f"warning: '{member.id}' is unavailable, so {left_out}: {reason}")
+                what = left_out if besides is None or member.id in kept else besides
+                say(f"warning: '{member.id}' is unavailable, so {what}: {reason}")
 
     def unavailable(self) -> list[str]:
         """The covered projects a read failed for, in scope order."""

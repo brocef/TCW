@@ -102,6 +102,20 @@ def test_ac33_the_board_holds_the_cli_items(family, shared):
     assert answer.json["fallback"] is False
 
 
+def test_the_board_with_a_project_names_what_its_records_leave_out(family, shared):
+    # Design 1.8, 3.3: under a project filter the board's records still
+    # count `children` and `blocks` across the scope, so `mobile` is still
+    # unavailable in `projects`, exactly as the CLI's `--json` says.
+    answer = shared.get("/api/work?scope=down&project=desktop")
+    assert answer.status == 200, answer.body
+    cli = family.run("shared", "work", "list", "--scope", "down", "--project",
+                     "desktop", "--json")
+    assert cli.code == 0, cli.err
+    assert answer.json["items"] == cli.json["items"]
+    assert answer.json["projects"] == cli.json["projects"]
+    assert unavailable(answer.json) == ["mobile"]
+
+
 def test_ac33_the_board_under_all_and_with_a_tag(family, shared):
     family.item("desktop", "2026-10-02-tagged", tags=["ui"])
     for query, argv in (("scope=all&all=1", ["--scope", "all", "--all"]),
