@@ -556,8 +556,9 @@ states the rules in full; in short:
    the worktree.
 7. **The way out**: run the command as the owning project,
    `tcw -C <folder> project provision <id>`, or add an entry for the project,
-   with its `repository`, to the owning project's
-   `.tcw/tcw-manifest.local.yaml`.
+   with its `repository` as well as its `path`, to the active project's own
+   manifests or the owning project's `.tcw/tcw-manifest.local.yaml`, then run
+   the command as that project.
 8. A folder holding only `.git`, which a clone that stopped early leaves, is
    refused; finish it or remove it with git, then run again.
 9. A `.tcw-staging-<hex>` folder is where a clone is made before it is moved
