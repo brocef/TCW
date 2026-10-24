@@ -5,6 +5,7 @@ relatesTo:
 - configure-skill
 vocabulary:
 - config-layer
+- environment-override
 - user-identity
 - work-item/lifecycle-stage
 - work-item/lifecycle-hook

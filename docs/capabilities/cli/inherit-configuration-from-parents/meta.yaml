@@ -1,0 +1,7 @@
+id: cap-1f5c06
+name: Inherit configuration from parents
+Status: Supported
+Subject:
+    - config-layer
+    - parent-link
+Feature: project-registry

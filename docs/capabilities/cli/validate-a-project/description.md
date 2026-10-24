@@ -20,7 +20,9 @@ There are three severities, and only one fails the run:
   includes a `.tcw/` file whose `tcw-version` is missing, is not a version
   written as text, is older than TCW 4 or is newer than the running TCW, and
   a key or project ID that is not lowercase letters and digits joined by
-  single hyphens. Any error makes `tcw validate` exit 1.
+  single hyphens. A problem with an override variable, `TCW_<KEY>__<PROJECT>`,
+  is an error whose `<where>` is `environment` and whose message starts with
+  the variable's name. Any error makes `tcw validate` exit 1.
 - `warning` — for example a `.tcw/tcw-config.local.yaml` or
   `.tcw/tcw-manifest.local.yaml` that version control is tracking, which should
   stay personal; a committed manifest entry overridden on this machine by the
@@ -28,7 +30,10 @@ There are three severities, and only one fails the run:
   an error; a TCW 3.x `tcw-config.yaml` left at
   the root of a TCW 4 project, which is not read; a load order that no order
   can keep (see [Read a project's ancestors in one load
-  order](tcw://C/cli/read-ancestors-in-one-load-order)); a parent or blocker that names no item, an item whose
+  order](tcw://C/cli/read-ancestors-in-one-load-order)); a problem in a tag
+  list or Jira setting a parent passes down, or a value a parent's
+  `.tcw/tcw-config.local.yaml` may not set, at that parent's file, since it is
+  that project's error and fails only its own run; a parent or blocker that names no item, an item whose
   latest verdict round is invalid, or a stage ahead of its artifacts. The run
   still exits 0.
 - `unresolved` — something declared that cannot be checked from here: a project
@@ -52,7 +57,10 @@ down to this project, or that it names its parent back. So is a parent whose
 own `parents:` cannot be read, or still holds the 3.x `projects:` key: its
 problem is its own, and this project's run goes on. When a taxonomy or
 capabilities check stops at such a project, the same finding adds that the
-taxonomy or capabilities inherited from it could not be checked.
+taxonomy or capabilities inherited from it could not be checked; and when a
+setting the project inherits could have come from it, that `the configuration
+inherited from it` could not be checked, and the checks needing that setting
+are skipped.
 The key 2.x used before `projects` was named is an error naming
 `docs/migration-guide-2.8-to-3.0.0.md`. A connected project still in the TCW
 3.x layout, or whose `.tcw/tcw-config.yaml` records a version this TCW cannot

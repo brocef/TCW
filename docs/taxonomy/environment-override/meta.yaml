@@ -1,0 +1,5 @@
+name: Environment override
+kind: Vocabulary
+relatesTo:
+    - config-layer
+    - personal-configuration

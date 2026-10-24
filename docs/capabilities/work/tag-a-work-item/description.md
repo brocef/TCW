@@ -4,6 +4,8 @@ Only registered tags may be applied. I apply tags with `tcw work new "<title>" -
 
 **Each `--tag` or `--untag` names one tag**; to give several I repeat the option, and a positional tag on `tags add` or `tags rm` is one tag per argument. A value containing a comma is refused as a usage error (exit 2) that tells me to repeat the option, rather than being split or quietly turned into one tag. A tag may only contain lowercase letters, digits and hyphens, and is read in that form wherever it is written: a `when: { tags: [...] }` condition in `tcw-config.yaml` treats `CLI` as `cli`.
 
+**Tags a parent registers are registered here too.** A project whose parent link passes `config` takes its parents' `work.tags` (see [Inherit configuration from parents](tcw://C/cli/inherit-configuration-from-parents)). In such a project `tcw work tags add` writes the new tag after an `inherit: true` entry when the project has no list of its own, so it keeps following tags its parents add later, and `tcw work tags rm` refuses (exit 3) a tag that would stay registered because a parent registers it, saying which parent. When a parent the tags could come from is not on this machine, applying, listing and adding tags stops with exit 7, while every other command on the project's own items still runs.
+
 Agent planning workflows inspect the registered tag set and apply materially
 useful tags when they create or refine a work item, registering a missing tag
 only when it is a reusable project category.

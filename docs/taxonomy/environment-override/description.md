@@ -1,0 +1,1 @@
+An environment variable named `TCW_<KEY>__<PROJECT>` that sets one personal configuration key of one project: the key's parts and the project's ID in capitals, joined by `_`, with `__` between them. It is the last personal layer, read after the project's `.tcw/tcw-config.local.yaml`, and may set only what a personal file may set. `TCW_NO_PERSONAL_CONFIG=1` turns it off.

@@ -1,3 +1,4 @@
 name: Configuration layer
 kind: Vocabulary
-relatesTo: []
+relatesTo:
+    - environment-override
