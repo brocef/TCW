@@ -3,6 +3,7 @@ import { ThemeProvider } from "../theme"
 import { capability, term, workItem } from "../test-fixtures"
 import { useState } from "react"
 import { LinkContext } from "./link-context"
+import { ProjectIdContext } from "./project-context"
 import { ItemMeta, Markdown, MarkdownEditor, Tree } from "./shared-components"
 
 const modified = "2026-07-22T18:30:00Z"
@@ -22,20 +23,23 @@ test("uses the same child grid and the row class at every depth", () => {
             children: [child],
         },
     ]
+    // Served from `p`, whose items are routed by folder (TCW-113 Design 6.3).
     const { container } = render(
         <ThemeProvider>
-            <Tree
-                nodes={nodes}
-                axis="work"
-                selected="child"
-                expanded={new Set(["p/parent"])}
-                visible={() => true}
-                rowClass={(item) =>
-                    `st-${item.stage === "ask" ? "flow" : "side"}`
-                }
-                onToggle={() => undefined}
-                onSelect={() => undefined}
-            />
+            <ProjectIdContext.Provider value="p">
+                <Tree
+                    nodes={nodes}
+                    axis="work"
+                    selected="child"
+                    expanded={new Set(["p/parent"])}
+                    visible={() => true}
+                    rowClass={(item) =>
+                        `st-${item.stage === "ask" ? "flow" : "side"}`
+                    }
+                    onToggle={() => undefined}
+                    onSelect={() => undefined}
+                />
+            </ProjectIdContext.Provider>
         </ThemeProvider>
     )
 
@@ -428,4 +432,70 @@ test("a link typed in full ends the line on the first Enter", () => {
     expect(fireEvent.keyDown(area, { key: "Enter" })).toBe(true)
     expect(text).toBe("See tcw://p.capabilities/web")
     expect(screen.queryByRole("listbox", { name: "Links" })).toBeNull()
+})
+
+// -- another project's rows, and a row's statuses (TCW-113 Design 6.7, 6.9) ---
+
+function meta(
+    axis: "work" | "capabilities",
+    item: Parameters<typeof ItemMeta>[0]["item"]
+) {
+    return render(
+        <ThemeProvider>
+            <ProjectIdContext.Provider value="shared">
+                <ItemMeta axis={axis} item={item} />
+            </ProjectIdContext.Provider>
+        </ThemeProvider>
+    )
+}
+
+test("a board row of another project's item carries the badge", () => {
+    meta(
+        "work",
+        workItem("x", { "full-id": "desktop.work/x", owner: "desktop" })
+    )
+    expect(screen.getByText("owned by desktop")).toBeInTheDocument()
+})
+
+test("a board row of the project's own item carries none", () => {
+    meta("work", workItem("x", { "full-id": "shared.work/x", owner: "shared" }))
+    expect(screen.queryByText(/owned by/)).toBeNull()
+})
+
+test("a tree row of another project's capability carries the badge", () => {
+    meta("capabilities", capability("abc", { status: "Supported" }, "desktop"))
+    expect(screen.getByText("owned by desktop")).toBeInTheDocument()
+})
+
+test("a capability row under down shows each status counted", () => {
+    meta(
+        "capabilities",
+        capability(
+            "abc",
+            {
+                status: "Missing",
+                statuses: [
+                    { project: "shared", status: "Missing", inherited: false },
+                    {
+                        project: "desktop",
+                        status: "Supported",
+                        inherited: false,
+                    },
+                    { project: "server", status: "Omitted", inherited: false },
+                ],
+            },
+            "shared"
+        )
+    )
+    expect(
+        screen.getByText("Missing(1), Supported(1), Omitted(1)", {
+            exact: false,
+        })
+    ).toBeInTheDocument()
+})
+
+test("a capability row with no statuses shows its status alone", () => {
+    meta("capabilities", capability("abc", { status: "Supported" }, "desktop"))
+    expect(screen.queryByText(/\(1\)/)).toBeNull()
+    expect(screen.getByText("Supported", { exact: false })).toBeInTheDocument()
 })

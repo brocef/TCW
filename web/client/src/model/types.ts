@@ -251,6 +251,8 @@ export type AxisItem = WorkItem | TaxonomyItem | CapabilityItem
 export interface TaxonomyDetail {
     term: TaxonomyItem
     coreRevision: string
+    /** Under a scope other than `own` (TCW-113 Design 6.2). */
+    projects?: TScopeProject[]
 }
 
 export interface CapabilityDetail {
@@ -260,6 +262,8 @@ export interface CapabilityDetail {
      * declares none: what the editor edits, never the combined `body`
      * (TCW-112 Design 4.5). */
     declaredDescription?: string | null
+    /** Under a scope other than `own` (TCW-113 Design 6.2). */
+    projects?: TScopeProject[]
 }
 
 export interface ApiResult<T = JsonRecord> {

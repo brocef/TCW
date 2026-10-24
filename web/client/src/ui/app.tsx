@@ -87,6 +87,7 @@ import type {
 import { WorkPage } from "./work-views"
 import { LinkContext } from "./link-context"
 import { tcwLinkOptions } from "../model/reference-search"
+import { fullIdText, parseFullId } from "../model/identifier"
 import {
     CommentBox,
     FileEditor,
@@ -213,6 +214,12 @@ export function App() {
     const [allWork, setAllWork] = useState<WorkItem[] | null>(null)
     // The taxonomy and capabilities a reference may name: the served
     // project's view, apart from the lists shown (plan choice 15).
+    // Each list's `projects`, under a scope other than `own`, for the
+    // notices of unavailable projects (Design 6.8).
+    const [listProjects, setListProjects] = useState<{
+        taxonomy?: TScopeProject[]
+        capabilities?: TScopeProject[]
+    }>({})
     const [pickable, setPickable] = useState<{
         taxonomy: TaxonomyItem[]
         capabilities: CapabilityItem[]
@@ -318,6 +325,10 @@ export function App() {
                 taxonomy: taxonomy.terms,
                 capabilities: capabilities.capabilities,
             }))
+            setListProjects({
+                taxonomy: taxonomy.projects,
+                capabilities: capabilities.projects,
+            })
             setPickable({
                 taxonomy: taxonomyUp.terms,
                 capabilities: capabilitiesUp.capabilities,
@@ -406,9 +417,16 @@ export function App() {
             .then((found) => {
                 if (stale) return
                 setWorkDetail(found)
-                if (found.folder !== selected) {
-                    setSelected(found.folder)
-                    navigate(pathFor("work", found.folder) + scopeKey, {
+                // The key the page is kept at: the folder of this project's
+                // item, the full identifier of another's (Design 6.3).
+                const owner = parseFullId(selected)?.project ?? projectId
+                const key =
+                    owner === projectId
+                        ? found.folder
+                        : fullIdText(owner, "work", found.folder)
+                if (key !== selected) {
+                    setSelected(key)
+                    navigate(pathFor("work", key) + scopeKey, {
                         replace: true,
                     })
                 }
@@ -878,7 +896,11 @@ export function App() {
     }
     // In filesystem mode the item record is the files' own and editable;
     // when the backend owns it, only the stage files are edited here.
-    const ownsRecord = project?.recordOwner === "local"
+    // Another project's item is read here and changed nowhere (TCW-113
+    // Design 6.7): its owner is the project its key names.
+    const ownsItem =
+        (parseFullId(selected ?? "")?.project ?? projectId) === projectId
+    const ownsRecord = project?.recordOwner === "local" && ownsItem
 
     const leaveWorkMode = () => {
         if (!confirmLeave()) return
@@ -1138,6 +1160,22 @@ export function App() {
                                 />
                             </Flex>
                         )}
+                        {(axis === "work" ? board.projects : listProjects[axis])
+                            ?.filter((entry) => entry.unavailable)
+                            .map((entry) => (
+                                <Callout.Root
+                                    className="unavailable-project"
+                                    color="amber"
+                                    role="status"
+                                    key={entry.id}
+                                >
+                                    <Callout.Text>
+                                        Project {entry.id} could not be read, so
+                                        its objects are not listed:{" "}
+                                        {entry.unavailable}
+                                    </Callout.Text>
+                                </Callout.Root>
+                            ))}
                         {axis === "work" && board.fallback && (
                             <Callout.Root
                                 className="fallback-banner"
@@ -1406,10 +1444,14 @@ export function App() {
                                         fileStage?.folder === workDetail.folder
                                             ? fileStage.stage
                                             : undefined,
-                                    onEditFile: (stage, path) =>
-                                        void openFile(stage, path),
-                                    onNewFile: (stage, kind) =>
-                                        void newFile(stage, kind),
+                                    onEditFile: ownsItem
+                                        ? (stage, path) =>
+                                              void openFile(stage, path)
+                                        : undefined,
+                                    onNewFile: ownsItem
+                                        ? (stage, kind) =>
+                                              void newFile(stage, kind)
+                                        : undefined,
                                     onEditProperties: ownsRecord
                                         ? () => {
                                               enterWorkMode({
@@ -1426,9 +1468,13 @@ export function App() {
                                     ) : undefined,
                                     declaration: (
                                         <DeclarationSection
-                                            folder={workDetail.folder}
+                                            folder={
+                                                ownsItem
+                                                    ? workDetail.folder
+                                                    : (selected ?? "")
+                                            }
                                             references={references}
-                                            editable
+                                            editable={ownsItem}
                                             onSaved={workSaved}
                                             onDirty={declarationDirty}
                                         />

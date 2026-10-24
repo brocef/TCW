@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { ThemeProvider } from "../theme"
-import { project, workDetail, workItem } from "../test-fixtures"
+import { fakeFetch, project, workDetail, workItem } from "../test-fixtures"
 import type { WorkDetail } from "../model/types"
 import { WorkPage } from "./work-views"
 
@@ -123,4 +123,41 @@ test("the request the backend keeps is shown, and the ticket opens there", () =>
 test("a missing priority reads as none", () => {
     renderPage(workDetail("x", { item: workItem("x", { priority: null }) }))
     expect(screen.getByText("none")).toBeInTheDocument()
+})
+
+// -- another project's item opens when it resolves (TCW-113 Design 6.4) -------
+
+test.each([
+    [
+        { ok: true, axis: "work", key: "q.work/2026-01-01-theirs" },
+        "/work/q.work/2026-01-01-theirs",
+    ],
+    [{ ok: false, reason: "other-project", project: "q" }, null],
+])("another project's item named %o", async (answer, href) => {
+    const uri = "tcw://q.work/2026-01-01-theirs"
+    globalThis.fetch = fakeFetch([
+        ["/api/resolve", 200, { [uri]: answer }],
+    ]) as unknown as typeof globalThis.fetch
+    renderPage(
+        workDetail("x", {
+            item: workItem("x", { "blocked-by": ["q.work/2026-01-01-theirs"] }),
+        })
+    )
+    if (href) {
+        const link = await screen.findByRole("link", {
+            name: /2026-01-01-theirs/,
+        })
+        expect(link).toHaveAttribute("href", href)
+        expect(link).toHaveAttribute("data-nav-key", "q.work/2026-01-01-theirs")
+    } else {
+        const theirs = await screen.findByText("2026-01-01-theirs", {
+            exact: false,
+        })
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        expect(theirs.closest("a")).toBeNull()
+        expect(theirs.closest("[title]")).toHaveAttribute(
+            "title",
+            "In project q; open it there"
+        )
+    }
 })

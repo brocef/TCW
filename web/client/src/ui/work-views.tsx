@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import {
     Badge,
     Button,
@@ -8,8 +8,8 @@ import {
     Heading,
     Text,
 } from "@radix-ui/themes"
-import { isUnavailable } from "../model/api"
-import { fullIdText } from "../model/identifier"
+import { isUnavailable, requestJson } from "../model/api"
+import { fullIdText, objectAddress } from "../model/identifier"
 import {
     folderOf,
     isLocal,
@@ -26,7 +26,14 @@ import type {
     WorkItem,
 } from "../model/types"
 import { CreatedAt } from "./modified-at"
-import { Field, Fields, Markdown } from "./shared-components"
+import { pathFor } from "./route-utils"
+import {
+    Field,
+    Fields,
+    Markdown,
+    OwnedBy,
+    type TResolution,
+} from "./shared-components"
 import { WorkDocumentTabs, type TNewFileKind } from "./work-document-tabs"
 
 /** A part the backend could not give: its message, and Retry. */
@@ -51,9 +58,10 @@ export function Unavailable({
     )
 }
 
-/** A work item named by its full identifier: a link that opens it when it is in this
- * project, and a labelled name that does not navigate when it is another
- * project's, which this page does not serve. */
+/** A work item named by its full identifier: a link that opens it. Another
+ * project's item is asked of the link resolver the Markdown links use, and
+ * opens at the key it answers (TCW-113 Design 6.4, 6.7); one whose project
+ * is not on this machine stays a labelled name that does not navigate. */
 export function SlugLink({
     slug,
     project,
@@ -62,7 +70,23 @@ export function SlugLink({
     project: TProject
 }) {
     const folder = folderOf(slug)
-    if (isLocal(slug, project))
+    const local = isLocal(slug, project)
+    const [target, setTarget] = useState<string | null>(null)
+    useEffect(() => {
+        if (local) return
+        let stale = false
+        const uri = objectAddress(slug)
+        void requestJson<Record<string, TResolution>>("/api/resolve", "POST", {
+            uris: [uri],
+        }).then((result) => {
+            const found = result.data?.[uri]
+            if (!stale && found?.ok && found.key) setTarget(found.key)
+        })
+        return () => {
+            stale = true
+        }
+    }, [slug, local])
+    if (local)
         return (
             <a
                 href={`/work/${encodeURIComponent(folder)}`}
@@ -73,6 +97,16 @@ export function SlugLink({
             </a>
         )
     const owner = projectOf(slug) ?? ""
+    if (target)
+        return (
+            <a
+                href={pathFor("work", target)}
+                data-nav-axis="work"
+                data-nav-key={target}
+            >
+                {folder} <Badge color="amber">{owner}</Badge>
+            </a>
+        )
     return (
         <span
             className="tcw-other-project-name"
@@ -260,6 +294,9 @@ export function WorkPage({
                     {item && <CreatedAt value={item.created} />}
                 </div>
                 <Flex className="detail-actions" align="center" gap="2">
+                    {item && item.owner !== project.id && (
+                        <OwnedBy owner={item.owner} />
+                    )}
                     {detail.link && (
                         <Button asChild variant="soft">
                             <a

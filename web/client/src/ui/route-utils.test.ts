@@ -45,3 +45,13 @@ describe("route utilities", () => {
         expect(parsePath("/not-an-axis")).toEqual({ axis: "work", key: null })
     })
 })
+
+test("TCW-113 Design 6.3: another project's work item is keyed by its full identifier", () => {
+    const theirs = workItem("x", {
+        "full-id": "desktop.work/x",
+        owner: "desktop",
+    })
+    expect(itemKey("work", theirs, "shared")).toBe("desktop.work/x")
+    const ours = workItem("x", { "full-id": "shared.work/x", owner: "shared" })
+    expect(itemKey("work", ours, "shared")).toBe("x")
+})

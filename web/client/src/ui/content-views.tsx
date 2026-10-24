@@ -18,16 +18,25 @@ import {
     referenceOptions,
     type TReferenceField,
 } from "../model/reference-search"
-import type { Axis, CapabilityDetail, TaxonomyDetail } from "../model/types"
+import type {
+    Axis,
+    CapabilityDetail,
+    CapabilityItem,
+    TaxonomyDetail,
+    TScopeProject,
+    TScopeStatus,
+} from "../model/types"
+import { parseFullId, routeKey } from "../model/identifier"
 import { ReferenceInput } from "./reference-input"
 import { ProjectIdContext } from "./project-context"
-import { LABELS, idPathOf, inherited } from "./route-utils"
+import { LABELS, idPathOf, inherited, pathFor } from "./route-utils"
 import {
     Errors,
     Field,
     Fields,
     Markdown,
     MarkdownEditor,
+    OwnedBy,
     SelectInput,
     TextInput,
 } from "./shared-components"
@@ -172,22 +181,12 @@ export function FacetPopover({
     )
 }
 
-/** An entry inherited from another project is read-only here: overriding
- * it is a deliberate act the command line offers. */
-function EditOrInherited({
-    owner,
-    onEdit,
-}: {
-    owner: string
-    onEdit: () => void
-}) {
+/** Another project's object is read-only here, whether this project
+ * inherits it or not (TCW-113 Design 6.7): overriding an inherited one is a
+ * deliberate act the command line offers. */
+function EditOrOwned({ owner, onEdit }: { owner: string; onEdit: () => void }) {
     const projectId = useContext(ProjectIdContext)
-    if (owner !== projectId)
-        return (
-            <Badge color="amber" title={`Edit it in project ${owner}`}>
-                inherited from {owner}
-            </Badge>
-        )
+    if (owner !== projectId) return <OwnedBy owner={owner} />
     return (
         <Button
             className="edit-btn"
@@ -247,7 +246,7 @@ export function DetailView({
                     </div>
                     <Flex className="detail-actions" align="center" gap="2">
                         <Badge>{term.kind}</Badge>
-                        <EditOrInherited owner={term.owner} onEdit={onEdit} />
+                        <EditOrOwned owner={term.owner} onEdit={onEdit} />
                     </Flex>
                 </div>
                 <Fields>
@@ -286,7 +285,7 @@ export function DetailView({
                 </div>
                 <Flex className="detail-actions" align="center" gap="2">
                     <Badge>{capability.status}</Badge>
-                    <EditOrInherited owner={capability.owner} onEdit={onEdit} />
+                    <EditOrOwned owner={capability.owner} onEdit={onEdit} />
                 </Flex>
             </div>
             <Fields>
@@ -302,8 +301,82 @@ export function DetailView({
                     )
                 )}
             </Fields>
+            <StatusByProject
+                capability={capability}
+                projects={(detail as CapabilityDetail).projects}
+            />
             <Markdown source={capability.body ?? ""} resolveLinks />
         </>
+    )
+}
+
+/** Each status a capability path holds across the scope, with its
+ * projects (TCW-113 Design 6.9): those that inherit it marked, each that
+ * has an object of its own at the path linked to that object's page, and
+ * the projects that could not be read. Shown only under `down` and `all`,
+ * whose records carry `statuses`. */
+function StatusByProject({
+    capability,
+    projects,
+}: {
+    capability: CapabilityItem
+    projects?: TScopeProject[]
+}) {
+    const projectId = useContext(ProjectIdContext)
+    if (!capability.statuses) return null
+    const own = new Map<string, string>()
+    for (const fullId of [
+        capability["full-id"],
+        ...(capability["overridden-by"] ?? []),
+    ]) {
+        const owner = parseFullId(fullId)?.project
+        if (owner) own.set(owner, fullId)
+    }
+    const byStatus = new Map<string, TScopeStatus[]>()
+    for (const entry of capability.statuses) {
+        const name = entry.status ?? "(no status)"
+        byStatus.set(name, [...(byStatus.get(name) ?? []), entry])
+    }
+    const unavailable = (projects ?? []).filter((p) => p.unavailable)
+    return (
+        <section className="status-by-project" aria-label="Status by project">
+            <Heading as="h3" size="3">
+                Status by project
+            </Heading>
+            <ul>
+                {[...byStatus].map(([status, entries]) => (
+                    <li key={status}>
+                        {status}:{" "}
+                        {entries.map((entry, index) => {
+                            const fullId = own.get(entry.project)
+                            const key = fullId && routeKey(fullId, projectId)
+                            return (
+                                <span key={entry.project}>
+                                    {index > 0 && ", "}
+                                    {key ? (
+                                        <a
+                                            href={pathFor("capabilities", key)}
+                                            data-nav-axis="capabilities"
+                                            data-nav-key={key}
+                                        >
+                                            {entry.project}
+                                        </a>
+                                    ) : (
+                                        entry.project
+                                    )}
+                                    {entry.inherited && " (inherited)"}
+                                </span>
+                            )
+                        })}
+                    </li>
+                ))}
+                {unavailable.length > 0 && (
+                    <li>
+                        unavailable: {unavailable.map((p) => p.id).join(", ")}
+                    </li>
+                )}
+            </ul>
+        </section>
     )
 }
 

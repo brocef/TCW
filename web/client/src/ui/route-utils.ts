@@ -6,7 +6,6 @@ import type {
     WorkItem,
 } from "../model/types"
 import { parseFullId, routeKey } from "../model/identifier"
-import { folderOf } from "../model/work"
 
 export const AXES: Axis[] = ["taxonomy", "capabilities", "work"]
 
@@ -16,13 +15,12 @@ export const LABELS: Record<Axis, string> = {
     capabilities: "Capabilities",
 }
 
-/** What a row is selected and routed by: a work item's folder; a term's or
- * capability's id-path when this project owns it, and its whole full
- * identifier when it is inherited (TCW-110 Design 4.5). */
+/** What a row is selected and routed by: the id-path of an object this
+ * project owns (a work item's folder), and the whole full identifier of
+ * any other project's, in every namespace (TCW-113 Design 6.3). */
 export function itemKey(axis: Axis, item: AxisItem, projectId: string): string {
-    if (axis === "work") return folderOf((item as WorkItem)["full-id"])
     return routeKey(
-        (item as TaxonomyItem | CapabilityItem)["full-id"],
+        (item as WorkItem | TaxonomyItem | CapabilityItem)["full-id"],
         projectId
     )
 }

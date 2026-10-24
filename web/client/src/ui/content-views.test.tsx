@@ -132,7 +132,7 @@ test("an inherited entry has no edit control and names its project", () => {
             </ProjectIdContext.Provider>
         </ThemeProvider>
     )
-    expect(screen.getByText("inherited from base")).toBeInTheDocument()
+    expect(screen.getByText("owned by base")).toBeInTheDocument()
     expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(1)
 })
 
@@ -263,4 +263,99 @@ test("the conflict banner nests no block inside its paragraph", () => {
     fireEvent.click(screen.getByRole("button", { name: "Discard draft" }))
     expect(onRefresh).toHaveBeenCalledOnce()
     expect(onDiscard).toHaveBeenCalledOnce()
+})
+
+// -- another project's capability, and its status by project (TCW-113) ---------
+
+function capabilityPage(detail: TDetail, projectId = "shared") {
+    const onEdit = vi.fn()
+    render(
+        <ThemeProvider>
+            <ProjectIdContext.Provider value={projectId}>
+                <DetailView
+                    axis="capabilities"
+                    detail={detail}
+                    onEdit={onEdit}
+                />
+            </ProjectIdContext.Provider>
+        </ThemeProvider>
+    )
+}
+
+test("a capability another project owns shows whose it is and no Edit", () => {
+    capabilityPage({
+        capability: capability("abc", { name: "Abc" }, "desktop"),
+        coreRevision: "",
+    })
+    expect(screen.getByText("owned by desktop")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull()
+})
+
+test("a capability the project owns shows Edit", () => {
+    capabilityPage({
+        capability: capability("abc", { name: "Abc" }, "shared"),
+        coreRevision: "",
+    })
+    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument()
+    expect(screen.queryByText(/owned by/)).toBeNull()
+})
+
+test("under down the page lists each status with its projects", () => {
+    capabilityPage({
+        capability: capability(
+            "abc",
+            {
+                name: "Abc",
+                status: "Missing",
+                statuses: [
+                    { project: "shared", status: "Missing", inherited: false },
+                    {
+                        project: "desktop",
+                        status: "Supported",
+                        inherited: false,
+                    },
+                    { project: "server", status: "Missing", inherited: true },
+                ],
+                "overridden-by": ["desktop.capabilities/abc"],
+            },
+            "shared"
+        ),
+        coreRevision: "",
+        projects: [
+            { id: "shared", relation: "current" },
+            { id: "desktop", relation: "descendant" },
+            { id: "server", relation: "descendant" },
+            {
+                id: "mobile",
+                relation: "descendant",
+                unavailable: "fetch it with tcw project provision mobile",
+            },
+        ],
+    })
+    const block = screen.getByRole("region", { name: "Status by project" })
+    const lines = [...block.querySelectorAll("li")].map((li) => li.textContent)
+    expect(lines).toEqual([
+        "Missing: shared, server (inherited)",
+        "Supported: desktop",
+        "unavailable: mobile",
+    ])
+    expect(screen.getByRole("link", { name: "desktop" })).toHaveAttribute(
+        "data-nav-key",
+        "desktop.capabilities/abc"
+    )
+    expect(screen.getByRole("link", { name: "shared" })).toHaveAttribute(
+        "data-nav-key",
+        "abc"
+    )
+    expect(screen.queryByRole("link", { name: "server" })).toBeNull()
+})
+
+test("with no statuses the page has no status block", () => {
+    capabilityPage({
+        capability: capability("abc", { name: "Abc" }, "shared"),
+        coreRevision: "",
+    })
+    expect(
+        screen.queryByRole("region", { name: "Status by project" })
+    ).toBeNull()
 })

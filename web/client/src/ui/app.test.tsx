@@ -857,3 +857,98 @@ test.each(["own", "down"])(
             expect(path).toBe("/api/work?all=1")
     }
 )
+
+// -- another project's object, unavailable projects (TCW-113 Design 6.7, 6.8) -
+
+test("another project's work item page offers no control that writes", async () => {
+    const theirs = workDetail("2026-10-01-d", {
+        item: workItem("2026-10-01-d", {
+            "full-id": "desktop.work/2026-10-01-d",
+            owner: "desktop",
+        }),
+    })
+    const fetch = serve({ scopes: FAMILY }, [
+        [/^GET \/api\/work\/desktop\.work%2F2026-10-01-d(\?|$)/, 200, theirs],
+        [
+            /^GET \/api\/work\/desktop\.work%2F2026-10-01-d\/declaration/,
+            200,
+            {
+                revision: "r",
+                present: true,
+                problem: null,
+                capabilities: { new: [], changed: [], removed: [] },
+                taxonomy: { new: [], changed: [], removed: [] },
+            },
+        ],
+    ])
+    renderApp("/work/desktop.work/2026-10-01-d")
+    expect(await screen.findByText(/^Stage:/)).toBeInTheDocument()
+    expect(screen.getByText("owned by desktop")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull()
+    expect(screen.queryByRole("textbox", { name: "New comment" })).toBeNull()
+    const panel = screen.getByRole("tabpanel")
+    expect(within(panel).queryByRole("button", { name: "Create" })).toBeNull()
+    expect(within(panel).queryByRole("button", { name: "Edit" })).toBeNull()
+    const declaration = await screen.findByRole("region", {
+        name: "Declaration",
+    })
+    expect(within(declaration).queryByRole("button")).toBeNull()
+    // The page stays at the full identifier, and reads from the owner.
+    expect(screen.getByTestId("where")).toHaveTextContent(
+        "/work/desktop.work/2026-10-01-d"
+    )
+    expect(fetch.calls.map((call) => call.path)).toContain(
+        "/api/work/desktop.work%2F2026-10-01-d/declaration"
+    )
+})
+
+test("an unavailable project's notice gives its reason", async () => {
+    const reason =
+        "project 'mobile' is not on this machine; fetch it with tcw project provision mobile"
+    serve({ scopes: FAMILY }, [
+        [
+            /^GET \/api\/work\?scope=down/,
+            200,
+            {
+                items: [workItem("2026-10-01-a", { title: "Alpha" })],
+                people: {},
+                fallback: false,
+                projects: [
+                    { id: "p", relation: "current" },
+                    {
+                        id: "mobile",
+                        relation: "descendant",
+                        unavailable: reason,
+                    },
+                ],
+            },
+        ],
+    ])
+    renderApp("/work?scope=down")
+    const notice = await screen.findByText(/Project mobile could not be read/)
+    expect(notice).toHaveTextContent("tcw project provision mobile")
+    expect(
+        screen.getAllByText(/could not be read, so its objects/)
+    ).toHaveLength(1)
+})
+
+test("with one project chosen no capability row shows a summary", async () => {
+    serve({ scopes: FAMILY }, [
+        [
+            "/api/capabilities?scope=down&project=desktop$",
+            200,
+            {
+                capabilities: [
+                    capability(
+                        "abc",
+                        { name: "Abc", status: "Supported" },
+                        "desktop"
+                    ),
+                ],
+            },
+        ],
+    ])
+    renderApp("/capabilities?scope=down&project=desktop")
+    expect(await screen.findByText("Abc")).toBeInTheDocument()
+    expect(screen.queryByText(/\(1\)/)).toBeNull()
+})

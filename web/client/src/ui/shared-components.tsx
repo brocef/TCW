@@ -8,6 +8,7 @@ import {
     type ReactNode,
 } from "react"
 import {
+    Badge,
     Button,
     Callout,
     Card,
@@ -37,6 +38,7 @@ import type {
     TreeNode,
     WorkItem,
 } from "../model/types"
+import { statusSummary } from "../model/scope"
 import { personName } from "../model/work"
 import { CreatedAt, ModifiedAt } from "./modified-at"
 import { useThemePreference } from "../theme-context"
@@ -44,7 +46,8 @@ import { parseThemePreference } from "../theme-preference"
 import { inherited, itemKey, itemTitle, pathFor } from "./route-utils"
 import { beginResize } from "./ui-state"
 
-type Resolution = {
+/** What `POST /api/resolve` answers for one `tcw://` link. */
+export type TResolution = {
     ok: boolean
     axis?: Axis
     key?: string
@@ -125,7 +128,7 @@ export function Markdown({
         // response then finds nothing left to repair, because that pass already
         // stripped their hrefs.
         let superseded = false
-        void requestJson<Record<string, Resolution>>("/api/resolve", "POST", {
+        void requestJson<Record<string, TResolution>>("/api/resolve", "POST", {
             uris,
         }).then((result) => {
             if (superseded) return
@@ -173,6 +176,16 @@ export function Markdown({
             className="body"
             dangerouslySetInnerHTML={{ __html: html }}
         />
+    )
+}
+
+/** The badge of another project's object, on its page and its row
+ * (TCW-113 Design 6.7). */
+export function OwnedBy({ owner }: { owner: string }) {
+    return (
+        <Badge color="amber" title={`Edit it in project ${owner}`}>
+            owned by {owner}
+        </Badge>
     )
 }
 
@@ -400,6 +413,12 @@ export function ItemMeta({
         return (
             <div>
                 <span className="work-status">{work.stage ?? "no stage"}</span>
+                {work.owner !== projectId && (
+                    <>
+                        {" "}
+                        <OwnedBy owner={work.owner} />
+                    </>
+                )}
                 {[
                     work.priority && `priority ${work.priority}`,
                     work.assignee && personName(work.assignee, people),
@@ -417,9 +436,13 @@ export function ItemMeta({
         return (
             <div>
                 <div>
-                    {[term.kind, inherited(term, projectId) && term.owner]
-                        .filter(Boolean)
-                        .join(" · ")}
+                    {term.kind}
+                    {inherited(term, projectId) && (
+                        <>
+                            {" "}
+                            <OwnedBy owner={term.owner} />
+                        </>
+                    )}
                 </div>
                 <ModifiedAt value={term.modified} />
             </div>
@@ -428,12 +451,17 @@ export function ItemMeta({
     const capability = item as CapabilityItem
     return (
         <div>
-            {[
-                capability.status,
-                inherited(capability, projectId) && capability.owner,
-            ]
-                .filter(Boolean)
-                .join(" · ")}
+            {/* Under `down` and `all`, each project's status, counted
+                (TCW-113 Design 6.9). */}
+            {capability.statuses
+                ? statusSummary(capability.statuses)
+                : capability.status}
+            {inherited(capability, projectId) && (
+                <>
+                    {" "}
+                    <OwnedBy owner={capability.owner} />
+                </>
+            )}
             <ModifiedAt value={capability.modified} />
         </div>
     )
