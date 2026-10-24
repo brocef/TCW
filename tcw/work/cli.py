@@ -432,11 +432,27 @@ def _comment(args) -> int:
     return codes.OK
 
 
+def _as_given(args, *words: str) -> str:
+    """The command as typed, for a stopped move's "run the same command
+    again" (TCW-114 Design 5.8)."""
+    import shlex
+    chdir = "".join(f" -C {shlex.quote(c)}" for c in getattr(args, "chdir", None) or [])
+    return f"tcw{chdir} " + " ".join(shlex.quote(w) for w in words)
+
+
 def _rename(args) -> int:
-    slug, backend, root = resolve_item(args.slug, writing=True)
-    item = backend.rename(slug.folder, args.new_name)
-    print(item.slug)
-    return codes.OK
+    from tcw.move import move_object
+    command = _as_given(args, "work", "rename", args.slug, args.new_name)
+    return move_object("work", args.slug, new_name=args.new_name, command=command,
+                       as_json=args.json)
+
+
+def _move_item(args) -> int:
+    from tcw.move import move_object
+    where = ["--top"] if args.top else ["--into", args.into]
+    command = _as_given(args, "work", "move", args.slug, *where)
+    return move_object("work", args.slug, into=args.into, top=args.top,
+                       command=command, as_json=args.json)
 
 
 def _tickets_list(args) -> int:
@@ -892,13 +908,38 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("slug", help=SLUG_HELP)
     p.set_defaults(func=_comment)
 
-    p = command(cmds, "rename", help="rename an item's folder",
-                prints="the item's new full identifier", writes="the item's folder name",
+    p = command(cmds, "rename", help="rename an item's folder, and every item nested "
+                                     "in it",
+                prints="one `<old full id> -> <new full id>` line per identifier it "
+                       "changed, the item first",
+                writes="the item's folder name, the references that name it in this "
+                       "project, and in Jira each moved ticket's TCW Item",
                 examples=["rename 2026-10-01-refund-a-payment refund-an-order"])
     p.add_argument("slug", help=SLUG_HELP)
-    p.add_argument("new_name", help="the new words after the date, lower case "
+    p.add_argument("new_name", help="the new words after the date or key, lower case "
                                     "and hyphenated")
+    p.add_argument("--json", action="store_true",
+                   help="print the changed identifiers as JSON")
     p.set_defaults(func=_rename)
+
+    p = command(cmds, "move", help="move an item's folder into another folder, or to "
+                                   "the top; the items nested in it move with it",
+                prints="one `<old full id> -> <new full id>` line per identifier it "
+                       "changed, the item first",
+                writes="the item's folder place, the references that name it in this "
+                       "project, and in Jira each moved ticket's TCW Item",
+                examples=["move 2026-10-01-refund-a-payment --into 2026-09-01-payments",
+                          "move 2026-09-01-payments/2026-10-01-refund-a-payment --top"])
+    p.add_argument("slug", help=SLUG_HELP)
+    place = p.add_mutually_exclusive_group(required=True)
+    place.add_argument("--into", metavar="<id-path>",
+                       help="an item, or an organising folder (made when missing), "
+                            "to put the item's folder in")
+    place.add_argument("--top", action="store_true",
+                       help="put the item's folder at the top of the work folder")
+    p.add_argument("--json", action="store_true",
+                   help="print the changed identifiers as JSON")
+    p.set_defaults(func=_move_item)
 
     p = group(cmds, "stage", help="read a stage's instructions")
     verbs = p.add_subparsers(dest="stage_verb", required=True)

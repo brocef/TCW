@@ -67,22 +67,26 @@ def test_a_failure_before_anything_exists_prints_nothing_on_stdout(run, fx, monk
     assert (code, out) == (1, "")
 
 
-def test_a_rename_that_fails_after_the_move_prints_the_new_slug(run, fx, monkeypatch):
+def test_a_rename_that_stops_prints_nothing_on_stdout(run, fx, monkeypatch):
+    # The folder moves last (TCW-114 Design 5.8): a write that fails first
+    # leaves the item at its old name, so stdout names nothing, and the
+    # message says what was written and to run the same command again.
     code, out, _ = run(["work", "new", "A b"], fx)
     first = out.strip()
     code, out, _ = run(["work", "new", "C d", "--blocked-by", first], fx)
     assert code == 0
     import tcw.work.fs_backend as fs_backend
-    real = fs_backend.FsWorkBackend._write
 
-    def failing(self, item, raw_stage):
+    def failing(path, text):
         raise OSError("disk full")
-    monkeypatch.setattr(fs_backend.FsWorkBackend, "_write", failing)
+    monkeypatch.setattr(fs_backend, "_replace_file", failing)
     code, out, err = run(["work", "rename", first, "other"], fx)
-    monkeypatch.setattr(fs_backend.FsWorkBackend, "_write", real)
-    new = first.rsplit("-a-b", 1)[0] + "-other"
-    assert (code, out) == (1, new + "\n")
-    assert "still name the old slug" in err
+    monkeypatch.undo()
+    assert (code, out) == (1, "")
+    assert "disk full" in err and "the folder is still at" in err
+    assert f"run the same command again to finish the move: tcw work rename " \
+           f"{first} other" in err
+    assert (fx / "docs" / "work" / first.split("/", 1)[1]).is_dir()
 
 
 def test_an_abbreviated_option_is_not_accepted(run, fx):

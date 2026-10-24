@@ -49,8 +49,6 @@ ALLOWED = {
         "the package's own prompt files",
     ("tcw/rewrite.py", "_text_files"):
         "every file's text, for links and mentions, not objects",
-    ("tcw/work/fs_backend.py", "report_mentions"):
-        "every file's text after a rename, for mentions, not objects",
     ("tcw/work/fs_backend.py", "create"):
         "create's rollback of the one folder it made",
     ("tcw/work/fs_backend.py", "read_comments"):

@@ -175,8 +175,10 @@ def run(project_root: Path, *, live: bool, say: Callable[[str], None] = print) -
     assert "api" not in fields["labels"] and blocker_keys(fields["issuelinks"]) == ()
 
     # 7. rename.
-    renamed = r.work("rename", other, "renamed-by-scenario")
-    assert renamed == str(Slug(backend.project, f"{other_key}-renamed-by-scenario"))
+    # A rename prints one `<old> -> <new>` line per identifier it changed.
+    line = r.work("rename", other, "renamed-by-scenario")
+    renamed = str(Slug(backend.project, f"{other_key}-renamed-by-scenario"))
+    assert line == f"{other} -> {renamed}"
     assert r.fields(other_key)[ids["item"]] == renamed
     assert (backend.work_path / renamed.split("/", 1)[1]).is_dir()
 

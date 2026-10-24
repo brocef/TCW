@@ -14,7 +14,7 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from tcw.errors import MovedWithoutNote, NotFound, Refused
+from tcw.errors import MovedWithoutNote, NotFound, Refused, UsageError
 from tcw.work.backend import Comment, Query, nesting_parent
 from tcw.work.model import (
     DEFAULT_PRIORITY, UNSET, Changes, Item, Slug, apply_changes, title_words,
@@ -120,17 +120,32 @@ class MemoryBackend:
         self.calls.append(("comment", folder, text))
         self._add_comment(folder, text)
 
-    def rename(self, folder: str, title_words_: str) -> Item:
-        item = self._get(folder)
-        self.calls.append(("rename", folder, title_words_))
-        prefix = folder.split("-", 1)[0]
-        new = f"{prefix}-{title_words_}"
-        (self.work_root / folder).rename(self.work_root / new)
-        del self.items[folder]
-        for store in (self.requests, self.comments):
-            if folder in store:
-                store[new] = store.pop(folder)
-        return self._put(replace(item, slug=Slug(self.project, new)))
+    def move(self, folder: str, new_folder: str, before_folder) -> list[tuple[Slug, Slug]]:
+        """The contract's move (TCW-114 Design 7.1): its own references
+        first, then `before_folder`, then the records' id-paths."""
+        self._get(folder)
+        prefix = folder.rpartition("/")[2].split("-", 1)[0]
+        if new_folder.rpartition("/")[2].split("-", 1)[0] != prefix:
+            raise UsageError(f"a move keeps the prefix {prefix}")
+        self.calls.append(("move", folder, new_folder))
+        moved = [folder, *sorted(f for f in self.items if f.startswith(folder + "/"))]
+        pairs = [(Slug(self.project, f), Slug(self.project, new_folder + f[len(folder):]))
+                 for f in moved]
+        changed = dict(pairs)
+        for name, item in list(self.items.items()):
+            self.items[name] = replace(
+                item, parent=changed.get(item.parent, item.parent),
+                blocked_by=tuple(changed.get(b, b) for b in item.blocked_by))
+        before_folder()
+        (self.work_root / new_folder).parent.mkdir(parents=True, exist_ok=True)
+        (self.work_root / folder).rename(self.work_root / new_folder)
+        for old, new in pairs:
+            item = self.items.pop(old.folder)
+            for store in (self.requests, self.comments):
+                if old.folder in store:
+                    store[new.folder] = store.pop(old.folder)
+            self._put(replace(item, slug=new))
+        return pairs
 
     def lookup(self, name: str) -> str | None:
         return next((f for f in self.items if f.startswith(f"{name}-")), None)

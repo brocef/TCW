@@ -31,8 +31,10 @@ from tcw.errors import BackendError, MovedWithoutNote, NotFound, Refused, UsageE
 from tcw.findings import Finding
 from tcw.ids import length_problem
 from tcw.object_folders import (STATE_FILES, existing_version_line, id_problem, is_object,
-                                length_problems, objects_below, shape_problems, state_text,
-                                walk)
+                                length_problems, move_object_folder, objects_below,
+                                shape_problems, state_text, walk)
+from tcw.reference_fields import fields_of
+from tcw.rewrite import rewrite_own_id, rewrite_yaml
 from tcw.project_files import VERSION_KEY, version_problem
 from tcw.output import shown
 from tcw.store.base import normalize_tag
@@ -249,34 +251,6 @@ def read_all(work_path: Path, project: str,
         except Unreadable as error:
             bad.append(error)
     return items, bad
-
-
-def refuse_nested_rename(backend, id_path: str, named: Callable[[str], bool]) -> None:
-    """Refuse to rename an item that has items nested in its folder: their
-    id-paths would change with it, which is TCW-114's to do (Design 5, row 7).
-    `named` is the backend's rule for an item folder's name."""
-    nested = [p for p in objects_below(backend.work_path, "work", id_path)
-              if named(p.rpartition("/")[2])]
-    if nested:
-        shown_ = ", ".join(str(Slug(backend.project, p)) for p in nested[:3])
-        more = ", …" if len(nested) > 3 else ""
-        raise Refused(f"{Slug(backend.project, id_path)} has items nested in it "
-                      f"({shown_}{more}); renaming it waits for TCW-114")
-
-
-def report_mentions(work_path: Path, old: str, report: Callable[[str], None]) -> None:
-    """After a rename, every line of the work path's files, other than the
-    state files, that still names the old folder. None is rewritten."""
-    for path in sorted(work_path.rglob("*")):
-        if not path.is_file() or path.name == STATE_FILE:
-            continue
-        try:
-            lines = path.read_text(encoding="utf-8").splitlines()
-        except (OSError, UnicodeDecodeError):
-            continue
-        for number, line in enumerate(lines, start=1):
-            if old in line:
-                report(f"{path}:{number}: names {old}, not rewritten")
 
 
 def _stderr(line: str) -> None:
@@ -496,67 +470,58 @@ class FsWorkBackend:
         except OSError as error:
             raise BackendError(f"cannot write the comment: {error}") from None
 
-    def rename(self, folder: str, title_words: str) -> Item:
-        old_path = self._folder(folder)
-        refuse_nested_rename(self, folder, item_named)
-        # The item's own folder: `folder` is its whole id-path (Design 7.1).
-        under, _, own = folder.rpartition("/")
-        prefix = own[:10]
-        dated = DATED.match(title_words)
-        words = title_words
-        if dated:
-            if dated.group(1) != prefix:
-                raise UsageError(f"a rename keeps the date {prefix}; give the "
-                                 f"words alone, or {prefix}-<words>")
-            words = dated.group(2)
-        if not WORDS.match(words):
-            raise UsageError(f"{title_words!r} is not a folder name; did you "
-                             f"mean {make_title_words(words)}?")
-        new_name = f"{prefix}-{words}"
-        if len(new_name) > FOLDER_LIMIT:
-            raise UsageError(f"{new_name} is longer than {FOLDER_LIMIT} characters")
-        # Within the folder that holds the item (Design 7.2).
-        new = f"{under}/{new_name}" if under else new_name
-        new_path = self.work_path / new
-        if (problem := length_problem(Slug(self.project, new))) is not None:
-            raise UsageError(problem)
-        if new_path.exists():
-            raise Refused(f"{new_path} already exists")
-
+    def move(self, folder: str, new_folder: str,
+             before_folder: Callable[[], object]) -> list[tuple[Slug, Slug]]:
+        """Give the item, and every item nested in its folder, a new id-path
+        (TCW-114 Design 7.2): every item's state file is read; each one's
+        reference fields naming a changed identifier, and a renamed item's
+        own `id`, are rewritten; `before_folder` rewrites the repository;
+        the folder moves last. Every write names only new identifiers and
+        skips what already does, so running it again finishes it."""
+        self._folder(folder)
+        old_last, new_last = folder.rpartition("/")[2], new_folder.rpartition("/")[2]
+        if not DATED.match(new_last) or new_last[:10] != old_last[:10]:
+            raise UsageError(f"a move keeps the date {old_last[:10]}; "
+                             f"{new_last!r} does not")
         items, bad = read_all(self.work_path, self.project, self.enabled)
         if bad:
-            raise BackendError("not renaming, because an unreadable item might "
+            raise BackendError("not moving, because an unreadable item might "
                                "name it: " + "; ".join(str(b) for b in bad))
-        old_slug, new_slug = Slug(self.project, folder), Slug(self.project, new)
-        referencing = [i.slug.folder for i in items
-                       if i.parent == old_slug or old_slug in i.blocked_by]
-
-        os.rename(old_path, new_path)
-        self.report(f"moved {shown(old_path)} to {shown(new_path)}")
-
-        failed: list[str] = []
-        for name in referencing:
-            name = new if name == folder else name
+        moved = [folder, *objects_below(self.work_path, "work", folder)]
+        pairs = [(Slug(self.project, p), Slug(self.project, new_folder + p[len(folder):]))
+                 for p in moved]
+        rows = fields_of("work-item")
+        for item in items:
+            path = self.work_path / item.slug.folder / STATE_FILE
+            text = path.read_text(encoding="utf-8")
+            new, changed, done = rewrite_yaml(text, rows, pairs)
+            if item.slug.folder == folder and new_last != old_last:
+                new, own = rewrite_own_id(new, old_last, new_last)
+                if own == "changed":
+                    changed.append(f"id {old_last} -> {new_last}")
+                elif own == "done":
+                    done.append(f"id {new_last}")
+            if done:
+                self.report(f"{shown(path)} already names the new identifiers: "
+                            f"{', '.join(done)}")
+            if new == text:
+                continue
             try:
-                item, raw_stage = _load(self.work_path / name, self.project,
-                                        self.enabled, name)
-                item = replace(
-                    item,
-                    parent=new_slug if item.parent == old_slug else item.parent,
-                    blocked_by=tuple(new_slug if s == old_slug else s
-                                     for s in item.blocked_by))
-                self._write(item, raw_stage)
-            except (OSError, Unreadable) as error:
-                failed.append(f"{name} ({error})")
-        if failed:
-            raise BackendError(f"moved {folder} to {new}, but these items still "
-                               f"name the old slug: {', '.join(failed)}",
-                               name=str(new_slug))
-
-        report_mentions(self.work_path, folder, self.report)
-        self.report(f"items in other projects that name {old_slug} are not "
-                    f"rewritten; `tcw validate` there reports them")
-        return self.read(new)
+                _replace_file(path, new)
+            except OSError as error:
+                raise BackendError(f"could not write {shown(path)}: {error}") from None
+            self.report(f"wrote {shown(path)}: {', '.join(changed)}")
+        before_folder()
+        old_path, new_path = self.work_path / folder, self.work_path / new_folder
+        try:
+            created = move_object_folder(self.work_path, folder, new_folder)
+        except OSError as error:
+            raise BackendError(f"could not move {shown(old_path)} to "
+                               f"{shown(new_path)}: {error}") from None
+        for rel in created:
+            self.report(f"created {shown(self.work_path / rel)}/")
+        self.report(f"moved {shown(old_path)} to {shown(new_path)}")
+        return pairs
 
 
     def lookup(self, name: str) -> str | None:

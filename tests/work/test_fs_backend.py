@@ -16,6 +16,8 @@ from tcw.work.model import Changes, Slug
 from tests.statefiles import write_state, ITEM_STATE
 from tests.statefiles import read_state
 from tcw.project_files import version_line
+from tcw.cli import main
+from tests.work.projects import make_project, write_item as project_item
 
 TODAY = date(2026, 10, 2)
 
@@ -38,6 +40,20 @@ def config(**work):
 @pytest.fixture
 def work(tmp_path):
     return tmp_path / "work"
+
+
+@pytest.fixture
+def tcw_cli(monkeypatch, capsys):
+    """Run `tcw` in-process in a project; (exit code, stdout, stderr)."""
+    def run(argv, cwd):
+        monkeypatch.chdir(cwd)
+        try:
+            code = main(argv)
+        except SystemExit as stop:
+            code = stop.code if isinstance(stop.code, int) else 1
+        captured = capsys.readouterr()
+        return code, captured.out, captured.err
+    return run
 
 
 def backend_for(work, cfg=None, report=None, clock=None):
@@ -314,6 +330,9 @@ def test_a_note_that_cannot_be_written_leaves_the_move(backend, work):
 # -- AC 8: rename ---------------------------------------------------------------------------
 
 def test_rename_rewrites_references_and_reports_mentions(work):
+    # The backend's `move` writes the reference fields it owns and its own
+    # `id`, calls `before_folder`, and moves the folder last (TCW-114 Design
+    # 7.2). It no longer lists mentions: `tcw work rename` does, tested below.
     lines = []
     backend = backend_for(work, report=lines.append)
     a = new(backend, "A")
@@ -321,46 +340,77 @@ def test_rename_rewrites_references_and_reports_mentions(work):
                                       "parent": str(a.slug)})
     write_item(work, "2026-10-01-c", {"title": "c", "stage": "spec",
                                       "blocked-by": [str(a.slug)]})
-    spec = work / a.slug.folder / "spec" / "spec.md"
-    spec.parent.mkdir()
-    spec.write_text(f"intro\nsee {a.slug.folder}\n")
-
-    renamed = backend.rename(a.slug.folder, "new-words")
-    assert renamed.slug.folder == "2026-10-02-new-words"
+    seen = []
+    pairs = backend.move(a.slug.folder, "2026-10-02-new-words",
+                         lambda: seen.append((work / a.slug.folder).is_dir()))
+    assert seen == [True]                 # the folder had not moved yet
+    assert pairs == [(a.slug, Slug("tcw", "2026-10-02-new-words"))]
+    assert backend.read("2026-10-02-new-words").title == "A"
     b = read_state(work / "2026-10-01-b" / ITEM_STATE)
     c = read_state(work / "2026-10-01-c" / ITEM_STATE)
-    assert b == {"title": "b", "stage": "verify", "priority": "medium",
+    # The reference is rewritten in the text; nothing else is added.
+    assert b == {"title": "b", "stage": "verify",
                  "parent": "tcw.work/2026-10-02-new-words"}
     assert c["blocked-by"] == ["tcw.work/2026-10-02-new-words"]
-    new_spec = work / "2026-10-02-new-words" / "spec" / "spec.md"
-    assert any(line.startswith(f"{new_spec}:2:") and "not rewritten" in line
-               for line in lines)
+    assert any(line.startswith("moved ") for line in lines)
+    assert not any("not rewritten" in line for line in lines)
     assert not list(work.rglob("renames.yaml"))
 
 
-def test_rename_takes_a_full_name_with_the_same_date(backend):
-    item = new(backend, "A")
-    assert backend.rename(item.slug.folder, "2026-10-02-b").slug.folder == "2026-10-02-b"
+def test_a_rename_prints_each_mention_once(tcw_cli, tmp_path):
+    # Mentions are listed by `tcw work rename` after the move, one line per
+    # line of text that still names the old identifier (TCW-114 Design 5.8).
+    root = make_project(tmp_path, "p")
+    a = project_item(root, "2026-10-01-a", {"title": "a", "stage": "spec"})
+    (a / "spec").mkdir()
+    (a / "spec" / "spec.md").write_text("intro\nsee 2026-10-01-a\nand 2026-10-01-a\n")
+    code, out, err = tcw_cli(["work", "rename", "2026-10-01-a", "new-words"], root)
+    assert (code, out) == (0, "p.work/2026-10-01-a -> p.work/2026-10-01-new-words\n")
+    spec = root / "docs" / "work" / "2026-10-01-new-words" / "spec" / "spec.md"
+    for number in (2, 3):
+        mention = f"{spec}:{number}: names p.work/2026-10-01-a, not rewritten"
+        assert err.splitlines().count(mention) == 1, err
+
+
+def test_rename_takes_a_full_name_with_the_same_date(tcw_cli, tmp_path):
+    root = make_project(tmp_path, "p")
+    project_item(root, "2026-10-02-a", {"title": "a", "stage": "spec"})
+    code, out, _ = tcw_cli(["work", "rename", "2026-10-02-a", "2026-10-02-b"], root)
+    assert (code, out) == (0, "p.work/2026-10-02-a -> p.work/2026-10-02-b\n")
 
 
 @pytest.mark.parametrize("name", ["New Words", "2026-01-01-other", "a_b"])
-def test_rename_refuses_a_name_that_is_not_folder_shaped(backend, name):
-    with pytest.raises(UsageError):
-        backend.rename(new(backend, "A").slug.folder, name)
+def test_rename_refuses_a_name_that_is_not_folder_shaped(tcw_cli, tmp_path, name):
+    root = make_project(tmp_path, "p")
+    project_item(root, "2026-10-02-a", {"title": "a", "stage": "spec"})
+    code, out, err = tcw_cli(["work", "rename", "2026-10-02-a", name], root)
+    assert (code, out) == (2, "")
+    assert (root / "docs" / "work" / "2026-10-02-a").is_dir()
 
 
-def test_rename_to_an_existing_name_is_refused(backend):
+def test_move_refuses_a_new_last_part_with_another_date(backend, work):
     a = new(backend, "A")
-    new(backend, "B")
-    with pytest.raises(Refused):
-        backend.rename(a.slug.folder, "b")
+    with pytest.raises(UsageError, match="keeps the date 2026-10-02"):
+        backend.move(a.slug.folder, "2026-01-01-other", lambda: None)
+    assert (work / a.slug.folder).is_dir()
+
+
+def test_rename_to_an_existing_name_is_refused(tcw_cli, tmp_path):
+    root = make_project(tmp_path, "p")
+    project_item(root, "2026-10-02-a", {"title": "a", "stage": "spec"})
+    project_item(root, "2026-10-02-b", {"title": "b", "stage": "spec"})
+    code, out, err = tcw_cli(["work", "rename", "2026-10-02-a", "b"], root)
+    assert (code, out) == (3, "") and "already exists" in err
+    assert (root / "docs" / "work" / "2026-10-02-a").is_dir()
 
 
 def test_rename_refuses_with_an_unreadable_item_and_moves_nothing(backend, work):
     a = new(backend, "A")
     write_item(work, "2026-10-01-bad", "title: [x\n")
+    called = []
     with pytest.raises(BackendError, match="2026-10-01-bad"):
-        backend.rename(a.slug.folder, "new-words")
+        backend.move(a.slug.folder, "2026-10-02-new-words", lambda: called.append(1))
+    assert called == []
     assert (work / a.slug.folder).is_dir()
 
 

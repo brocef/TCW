@@ -183,6 +183,7 @@ class FakeJira:
         # each request, and tickets nobody can see.
         self._fail_edit: int | None = None
         self._unreachable_after_failed_edit = False
+        self._fail_edit_status = 500
         self._before_request = None
         self.hidden: set[str] = set()
         self.add_project("TCW")
@@ -245,12 +246,15 @@ class FakeJira:
         """The next comment posted on its own drops before Jira adds it."""
         self._drop_comment = "before"
 
-    def fail_edit(self, n: int, *, then_unreachable: bool = False) -> None:
-        """The `n`-th `PUT /issue/<key>` from now answers 500 and changes
+    def fail_edit(self, n: int, *, then_unreachable: bool = False,
+                  status: int = 500) -> None:
+        """The `n`-th `PUT /issue/<key>` from now answers `status` (500 unless
+        given: Jira could not do it; 400: Jira refused it) and changes
         nothing; with `then_unreachable`, its connection drops instead and
         every later request fails, as `drop_after_next_write` leaves it."""
         self._fail_edit = n
         self._unreachable_after_failed_edit = then_unreachable
+        self._fail_edit_status = status
 
     def before_request(self, callback) -> None:
         """`callback(method, path)` runs before each request is answered, so
@@ -319,7 +323,7 @@ class FakeJira:
                 if self._unreachable_after_failed_edit:
                     self.unreachable()
                     raise self.down
-                raise self._error(500, route, "the edit failed")
+                raise self._error(self._fail_edit_status, route, "the edit failed")
         payload = self._route(me, method, route, query, body)
         if comment and self._drop_comment == "after":
             self._drop_comment = None

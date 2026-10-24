@@ -452,3 +452,14 @@ def gates_for(target: str, enabled: frozenset[str]) -> tuple[str, ...]:
     if target == records_gate_stage(enabled):
         gates += (RECORDS_GATE,)
     return gates
+
+
+#: What an item folder's last part starts with: its date, in the files
+#: backend, or its ticket key, in Jira (TCW-114 Design 5.1).
+_ITEM_PREFIX = re.compile(r"^(\d{4}-\d{2}-\d{2}|[A-Z][A-Z0-9_]*-[1-9][0-9]*)-")
+
+
+def item_prefix(last_part: str) -> str | None:
+    """The date or ticket key an item folder's name starts with, or None."""
+    found = _ITEM_PREFIX.match(last_part) if isinstance(last_part, str) else None
+    return found.group(1) if found else None

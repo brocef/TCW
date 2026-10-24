@@ -1927,6 +1927,30 @@ class FsTreeStore:
         noun = "term" if self.COMPONENT == "taxonomy" else "capability"
         return f"no such {noun}: {target}"
 
+    def move(self, id_path: str, new_id_path: str, before_folder, *,
+             report=None) -> list[tuple[FullId, FullId]]:
+        """Design 8: `before_folder`, then one move of the object's folder,
+        which carries every nested folder; the missing organising folders
+        above the new place are made first, and removed again if the move
+        fails."""
+        from tcw.object_folders import move_object_folder, objects_below
+        report = report or (lambda line: None)
+        moved = [id_path, *objects_below(self.root, self.COMPONENT, id_path)]
+        pairs = [(FullId(self.project_id, self.COMPONENT, p),
+                  FullId(self.project_id, self.COMPONENT, new_id_path + p[len(id_path):]))
+                 for p in moved]
+        before_folder()
+        old_path, new_path = self.root / id_path, self.root / new_id_path
+        try:
+            created = move_object_folder(self.root, id_path, new_id_path)
+        except OSError as error:
+            raise BackendError(f"could not move {_shown(old_path)} to "
+                               f"{_shown(new_path)}: {error}") from None
+        for rel in created:
+            report(f"created {_shown(self.root / rel)}/")
+        report(f"moved {_shown(old_path)} to {_shown(new_path)}")
+        return pairs
+
     def removal_target(self, target: "FullId | str") -> FullId:
         """The full identifier of this project's own object that `rm` removes
         for `target` (TCW-112 choice 9). Another project's full identifier

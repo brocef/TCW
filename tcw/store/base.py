@@ -883,6 +883,15 @@ class TaxonomyStore(ABC):
         store, else at the root. Refuse a collision."""
 
     @abstractmethod
+    def move(self, id_path: str, new_id_path: str, before_folder,
+             *, report=None) -> list:
+        """Give the object, and every object nested in its folder, a new
+        id-path (TCW-114 Design 8): call `before_folder`, which rewrites the
+        repository's references, then move the folder or records. Returns
+        the `(old, new)` full identifiers, the object first. The store writes
+        nothing else: references live in repository files in both modes."""
+
+    @abstractmethod
     def remove(self, ref: "FullId | str") -> None:
         """Remove a local term, writing nothing when refused. `ref` is a full
         identifier, or text read as command input is (TCW-110 Design 3.1). Raise `ValueError`
@@ -1104,6 +1113,15 @@ class CapabilitiesStore(ABC):
         `parent` (command input naming a capability) written as its full
         identifier when given. Refuse a collision. `fields` are validated as `set` validates them, before
         anything is written, so a create carrying a bad field writes nothing."""
+
+    @abstractmethod
+    def move(self, id_path: str, new_id_path: str, before_folder,
+             *, report=None) -> list:
+        """Give the object, and every object nested in its folder, a new
+        id-path (TCW-114 Design 8): call `before_folder`, which rewrites the
+        repository's references, then move the folder or records. Returns
+        the `(old, new)` full identifiers, the object first. The store writes
+        nothing else: references live in repository files in both modes."""
 
     @abstractmethod
     def remove(self, identifier: "FullId | str") -> None:

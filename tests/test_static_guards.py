@@ -39,6 +39,9 @@ EXEMPT = {
     # TCW-107: an entry folder holding only `.git` is named as such, because
     # the command that fetches the project refuses it (TCW-115's handoff).
     ("store/project.py", "_holds_only_git"),
+    # TCW-114 Design 5.8: after a clash with a move made in another clone,
+    # that clone's folder move arrives only by pulling its commit.
+    ("move.py", "clash_advice"),
 }
 
 WORKTREE_SENTENCE = ("while this worktree has its own at",

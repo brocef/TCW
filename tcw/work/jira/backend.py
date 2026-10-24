@@ -33,10 +33,12 @@ from tcw.store.base import normalize_tag
 from tcw.store.fs import exact_child
 from tcw.work.backend import Comment, Query, nesting_parent
 from tcw.work.config import WorkConfig
-from tcw.object_folders import (UNMADE, id_problem, is_object, length_problems, object_paths,
-                                read_state, shape_problems, state_text, walk)
+from tcw.object_folders import (UNMADE, id_problem, is_object, length_problems,
+                                move_object_folder, object_paths, objects_below, read_state,
+                                shape_problems, state_text, walk)
 from tcw.project_files import VERSION_KEY, version_line, version_problem
-from tcw.work.fs_backend import STATE_FILE, WORDS, refuse_nested_rename, report_mentions
+from tcw.rewrite import rewrite_own_id
+from tcw.work.fs_backend import STATE_FILE, WORDS
 from tcw.work.jira import jql
 from tcw.work.jira.client import (
     JiraClient, Transition, TrackerAuthError, TrackerError, TrackerNotFound,
@@ -330,6 +332,18 @@ def recorded_problems(backend: "JiraBackend", resolve) -> list[Finding]:
                 f"{name} {ref} is a ticket on {backend.jira.site}; run tcw work edit "
                 f"{holder.slug} {flag} {ref} to make it a Jira link"))
     return findings
+
+
+def _field(issue: Mapping, field_id: str) -> Any:
+    fields = issue.get("fields") if isinstance(issue, Mapping) else None
+    return fields.get(field_id) if isinstance(fields, Mapping) else None
+
+
+def _clash(error: TcwError) -> TcwError:
+    """Mark a stop as the clash with another command moving the same item
+    (TCW-114 Design 7.3), so its message advises waiting, not a re-run."""
+    error.clash = True
+    return error
 
 
 @dataclass(frozen=True)
@@ -1214,51 +1228,112 @@ class JiraBackend:
         with _jira():
             self.client.add_comment(key, text_document(text))
 
-    def rename(self, folder: str, title_words: str) -> Item:
+    def move(self, folder: str, new_folder: str,
+             before_folder: Callable[[], object]) -> list[tuple[Slug, Slug]]:
+        """Give the item, and every item nested in its folder, a new id-path
+        (TCW-114 Design 7.3): every moved ticket is read, and the move
+        refused before any change when one holds a value that is neither
+        the old nor the new identifier; then each ticket's `TCW Item` is
+        set, the item's first, each read again just before its edit; then
+        the item's own `id`; then `before_folder`; the folder moves last.
+        Nothing is set back: running the same command again finishes it."""
         key = self._key(folder)
         self._forget_walk()
-        refuse_nested_rename(self, folder, _key_named)
-        under = folder.rpartition("/")[0]
-        words = title_words
-        keyed = KEY_FOLDER.fullmatch(title_words) if isinstance(title_words, str) else None
-        if keyed:
-            if keyed.group("key") != key:
-                raise UsageError(f"a rename keeps the key {key}; give the words alone, "
-                                 f"or {key}-<words>")
-            words = title_words[len(key) + 1:]
-        if not isinstance(words, str) or not WORDS.fullmatch(words):
-            raise UsageError(f"{title_words!r} is not a folder name; did you mean "
-                             f"{make_title_words(str(title_words))}?")
-        new_name = f"{key}-{words}"
-        if len(new_name) > FOLDER_LIMIT:
-            raise UsageError(f"{new_name} is longer than {FOLDER_LIMIT} characters")
-        # Within the folder that holds the item (Design 6.3, 7.2).
-        new = f"{under}/{new_name}" if under else new_name
-        if (problem := length_problem(Slug(self.project, new))) is not None:
-            raise UsageError(problem)
-        if new == folder:
-            raise Refused(f"{folder} already has that name")
-        old_path, new_path = self.work_path / folder, self.work_path / new
-        if new_path.exists():
-            raise Refused(f"{new_path} already exists")
+        new_last = new_folder.rpartition("/")[2]
+        if folder_key(new_folder) != key:
+            raise UsageError(f"a move keeps the key {key}; {new_last!r} does not")
+        moved = [folder, *(p for p in objects_below(self.work_path, "work", folder)
+                           if folder_key(p))]
+        pairs = [(Slug(self.project, p), Slug(self.project, new_folder + p[len(folder):]))
+                 for p in moved]
+        keys = [folder_key(p) for p in moved]
         item_field = self.metadata().field_ids["item"]
-        old_slug, new_slug = Slug(self.project, folder), Slug(self.project, new)
-        with _jira():
-            self.client.edit_issue(key, {item_field: str(new_slug)})
+        # 1. Read every moved ticket, writing nothing.
+        returned: dict[str, Mapping] = {}
+        for chunk in _chunks(keys, jql.MAX_KEYS):
+            with _jira():
+                for issue in self.client.search(jql.keys_query(chunk), [item_field]):
+                    returned[str(issue.get("key"))] = issue
+        to_set: list[int] = []
+        three_x: list[str] = []
+        for index, (key_, (old, new)) in enumerate(zip(keys, pairs)):
+            issue = returned.get(key_)
+            if issue is None:
+                raise NotFound(f"{old}: Jira has no ticket {key_}, or this account "
+                               f"cannot see it")
+            value = _field(issue, item_field)
+            if value == str(old):
+                to_set.append(index)
+            elif value == str(new):
+                self.report(f"{key_}'s TCW Item already names {new}")
+            elif three_x_item(value):
+                three_x.append(key_)
+            else:
+                raise Refused(f"{key_}'s TCW Item is {value!r}, not {old}; run "
+                              f"`tcw validate --remote` to see what it names")
+        if three_x:
+            raise Refused(f"{', '.join(three_x)} still "
+                          f"{'hold' if len(three_x) > 1 else 'holds'} a TCW 3.x TCW "
+                          f"Item; run 'tcw migrate' in this project first")
+        # 2. Set each, read again just before its edit.
+        self._set_items(keys, pairs, to_set, item_field)
+        # 3. The item's own `id`, then the repository, then the folder.
+        old_last = folder.rpartition("/")[2]
+        if new_last != old_last:
+            document = self.work_path / folder / STATE_FILE
+            text = document.read_text(encoding="utf-8")
+            new_text, own = rewrite_own_id(text, old_last, new_last)
+            if own == "changed":
+                try:
+                    document.write_text(new_text, encoding="utf-8")
+                except OSError as error:
+                    raise BackendError(f"could not write {shown(document)}: "
+                                       f"{error}") from None
+                self.report(f"wrote {shown(document)}: id {old_last} -> {new_last}")
+        before_folder()
+        old_path, new_path = self.work_path / folder, self.work_path / new_folder
         try:
-            os.rename(old_path, new_path)
+            created = move_object_folder(self.work_path, folder, new_folder)
         except OSError as error:
-            try:
-                self.client.edit_issue(key, {item_field: str(old_slug)})
-                restored = f"TCW Item is set back to {old_slug}"
-            except TrackerError as again:
-                restored = (f"TCW Item still says {new_slug} and could not be set back "
-                            f"to {old_slug} ({again})")
-            raise BackendError(f"could not move {old_path} to {new_path}: {error}; "
-                               f"{restored}") from None
+            raise BackendError(f"could not move {shown(old_path)} to "
+                               f"{shown(new_path)}: {error}") from None
+        finally:
+            self._forget_walk()
+        for rel in created:
+            self.report(f"created {shown(self.work_path / rel)}/")
         self.report(f"moved {shown(old_path)} to {shown(new_path)}")
-        report_mentions(self.work_path, folder, self.report)
-        return self.read(new)
+        return pairs
+
+    def _set_items(self, keys: list[str], pairs, to_set: list[int],
+                   item_field: str) -> None:
+        """Set each moved ticket's `TCW Item`, the item's first (Design 7.3
+        step 2). A stop names, as `pending`, the tickets still to be set."""
+        for done, index in enumerate(to_set):
+            try:
+                self._set_item(keys[index], *pairs[index], item_field)
+            except TcwError as error:
+                error.pending = [keys[i] for i in to_set[done:]]
+                raise
+
+    def _set_item(self, key_: str, old: Slug, new: Slug, item_field: str) -> None:
+        """One ticket, read again just before its edit: set only while it
+        still holds the old value."""
+        try:
+            with _jira():
+                issue = self.client.issue(key_, (item_field,))
+        except NotFound:
+            raise NotFound(f"{old}: Jira has no ticket {key_}, or this account "
+                           f"cannot see it") from None
+        value = _field(issue, item_field)
+        if value == str(new):
+            self.report(f"{key_}'s TCW Item already names {new}")
+            return
+        if value != str(old):
+            raise _clash(Refused(f"{key_}'s TCW Item is now {value}: another "
+                                 f"command may be moving this item"))
+        with _jira():
+            self.client.edit_issue(key_, {item_field: str(new)})
+        self.report(f"set {key_}'s TCW Item to {new}")
 
     # -- set_stage (Design 5) --------------------------------------------------------------
 

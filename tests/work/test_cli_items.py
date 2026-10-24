@@ -275,7 +275,8 @@ def test_rename(tcw, tmp_path):
                                       "blocked-by": ["p.work/2026-09-01-a"]})
     before = (other / "docs/work/2026-09-01-x/tcw-work-item.yaml").read_text()
     r = tcw(["rename", "2026-09-01-a", "new-words"], root)
-    assert (r.code, r.out) == (0, "p.work/2026-09-01-new-words\n")
+    # One line per changed identifier, old then new (TCW-114 Design 5.6).
+    assert (r.code, r.out) == (0, "p.work/2026-09-01-a -> p.work/2026-09-01-new-words\n")
     assert item_yaml(root, "2026-09-01-b")["parent"] == "p.work/2026-09-01-new-words"
     assert item_yaml(root, "2026-09-01-c")["blocked-by"] == ["p.work/2026-09-01-new-words"]
     assert "spec.md:2" in r.err

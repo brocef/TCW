@@ -249,6 +249,23 @@ def rewrite_yaml(text: str, fields: Iterable[Field], changes: Changes
     return text, changed, done
 
 
+def rewrite_own_id(text: str, old_part: str, new_part: str) -> tuple[str, str | None]:
+    """A state file's text with its own top-level `id` changed from the old
+    last part to the new one, its quoting kept (Design 5.2); and `changed`,
+    `done` (it already holds the new one) or None (no `id`, or another
+    value, left as it is)."""
+    for key_path, event in _scalars(text):
+        if key_path != ("id",) or not isinstance(event.value, str):
+            continue
+        if event.value == new_part:
+            return text, "done"
+        if event.value != old_part:
+            return text, None
+        start, end = event.start_mark.index, event.end_mark.index
+        return text[:start] + _scalar_text(new_part, event.style) + text[end:], "changed"
+    return text, None
+
+
 def rewrite_links(text: str, changes: Changes) -> tuple[str, list[str], list[str]]:
     """`text` with every `tcw://` object link outside code that names an old
     identifier pointing at the new one; the link's text and everything

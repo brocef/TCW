@@ -19,16 +19,17 @@ import pytest
 from tcw.cli import build_parser
 
 # Design 2's 3.0 column, less `config show`, which TCW-72 adds with its own row,
-# and less the four `extends` commands, which TCW 4.0 removes (TCW-112 Design 1).
+# and less the four `extends` commands, which TCW 4.0 removes (TCW-112 Design 1),
+# with the five move commands TCW 4.0 adds (TCW-114 Design 5.1).
 SURFACE = {
     "init", "provision", "validate", "serve", "projects list", "config show",
     "taxonomy list", "taxonomy add", "taxonomy show", "taxonomy path", "taxonomy rm",
-    "taxonomy search",
+    "taxonomy search", "taxonomy rename", "taxonomy move",
     "capabilities list", "capabilities show", "capabilities path", "capabilities add",
     "capabilities set", "capabilities reset", "capabilities rm", "capabilities search",
-    "capabilities drift",
+    "capabilities drift", "capabilities rename", "capabilities move",
     "work new", "work list", "work show", "work path", "work edit", "work advance",
-    "work discard", "work comment", "work rename", "work stage prompt",
+    "work discard", "work comment", "work rename", "work move", "work stage prompt",
     "work procedure", "work lifecycle", "work docs", "work tags list", "work tags add",
     "work tags rm", "work tickets list", "work tickets adopt",
 }
@@ -71,7 +72,7 @@ def leaves(commands):
 
 
 def test_the_surface_is_exactly_the_3_0_column(leaves):
-    assert len(SURFACE) == 39
+    assert len(SURFACE) == 44
     assert set(leaves) == SURFACE
 
 

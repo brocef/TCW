@@ -201,10 +201,21 @@ def test_set_stage_without_a_note_writes_no_comment(backend):
 
 
 def test_rename_keeps_the_prefix(backend):
+    # `move` takes the whole new id-path (TCW-114 Design 7.1): it returns the
+    # (old, new) pair for every identifier it changed, the item's first, and
+    # refuses a new last part that does not keep the old date or key.
     item = new(backend, "old words")
     prefix = item.slug.folder[: -len("old-words")]
-    renamed = backend.rename(item.slug.folder, "new-words")
-    assert renamed.slug.folder == f"{prefix}new-words"
+    with pytest.raises(UsageError):
+        backend.move(item.slug.folder, "2001-01-01-new-words", lambda: None)
+    backend.read(item.slug.folder)        # the refusal moved nothing
+    called = []
+    pairs = backend.move(item.slug.folder, f"{prefix}new-words",
+                         lambda: called.append(True))
+    assert called == [True]
+    assert [(old.folder, new.folder) for old, new in pairs] == [
+        (item.slug.folder, f"{prefix}new-words")]
+    assert backend.read(f"{prefix}new-words").slug.folder == f"{prefix}new-words"
     with pytest.raises(NotFound):
         backend.read(item.slug.folder)
 

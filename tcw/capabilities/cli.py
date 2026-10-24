@@ -355,6 +355,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                                                 "full identifier or its path")
     prm.set_defaults(func=_rm)
 
+    from tcw.move import add_tree_commands
+    add_tree_commands(g, command, "capabilities", "capability", "capabilities rename billing/refund return",
+                      "capabilities move billing/refund --into payments")
+
     pse = command(g, "search", help="capabilities whose name or body holds the text",
                   prints="one full identifier per line, or --json", writes="nothing",
                   examples=["capabilities search refund"])

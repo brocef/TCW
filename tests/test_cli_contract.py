@@ -59,6 +59,8 @@ ROWS: dict[str, tuple[list[str], int]] = {
     "taxonomy path": (["taxonomy", "path"], 1),
     "taxonomy rm": (["taxonomy", "rm", "widget"], 1),
     "taxonomy search": (["taxonomy", "search", "w"], 1),
+    "taxonomy rename": (["taxonomy", "rename", "widget", "gadget"], 1),
+    "taxonomy move": (["taxonomy", "move", "widget", "--top"], 1),
     "capabilities list": (["capabilities", "list"], 1),
     "capabilities show": (["capabilities", "show", "ns/a"], 1),
     "capabilities path": (["capabilities", "path"], 1),
@@ -68,6 +70,8 @@ ROWS: dict[str, tuple[list[str], int]] = {
     "capabilities rm": (["capabilities", "rm", "ns/a"], 1),
     "capabilities search": (["capabilities", "search", "a"], 1),
     "capabilities drift": (["capabilities", "drift"], 1),
+    "capabilities rename": (["capabilities", "rename", "ns/a", "b"], 1),
+    "capabilities move": (["capabilities", "move", "ns/a", "--top"], 1),
     "work new": (["work", "new", "A b"], 1),
     "work list": (["work", "list"], 1),
     # Flags that need an identity get rows of their own (TCW-72).
@@ -81,6 +85,7 @@ ROWS: dict[str, tuple[list[str], int]] = {
     "work discard": (["work", "discard", "fx.work/2026-10-01-a", "--reason", "r"], 1),
     "work comment": (["work", "comment", "fx.work/2026-10-01-a"], 1),
     "work rename": (["work", "rename", "fx.work/2026-10-01-a", "b"], 1),
+    "work move": (["work", "move", "fx.work/2026-10-01-a", "--top"], 1),
     "work stage prompt": (["work", "stage", "prompt", "spec"], 1),
     "work procedure": (["work", "procedure", "audit-backlog"], 0),
     "work lifecycle": (["work", "lifecycle"], 1),
@@ -361,8 +366,9 @@ def test_naming_an_item(fx):
     assert run(fx, "work", "show", "a/b c").code == 2
     assert run(fx, "work", "show", folder[:10]).code == 4
     assert run(fx, "work", "advance", slug, "--to", "nonsense").code == 2
+    # One `<old> -> <new>` line per changed identifier (TCW-114 Design 5.6).
     renamed = ok(fx, "work", "rename", slug, "other").out.strip()
-    assert renamed == f"fx.work/{TODAY}-other"
+    assert renamed == f"{slug} -> fx.work/{TODAY}-other"
     assert run(fx, "work", "show", slug).code == 4
 
 
@@ -423,7 +429,10 @@ def test_filesystem_mode_usage_errors(fx):
 # -- AC 26: a late failure still names what it made -------------------------------
 
 
-def test_a_rename_that_fails_after_moving_prints_the_new_slug(fx):
+def test_a_rename_that_stops_prints_nothing_and_says_how_to_finish(fx):
+    # The folder moves last (TCW-114 Design 5.8), so a stop leaves the item
+    # where it was: nothing is printed on stdout, and the message says to run
+    # the same command again.
     slug = new(fx, "Target")
     child = new(fx, "Child", "--parent", slug)
     folder = fx / "docs" / "work" / child.split("/", 1)[1]
@@ -434,7 +443,11 @@ def test_a_rename_that_fails_after_moving_prints_the_new_slug(fx):
     finally:
         folder.chmod(0o755)
         (folder / ITEM_STATE).chmod(0o644)
-    assert (result.code, result.out) == (1, f"fx.work/{TODAY}-moved\n"), result
+    assert (result.code, result.out) == (1, ""), result
+    assert "the folder is still at" in result.err, result.err
+    assert "run the same command again to finish the move: tcw work rename" in \
+        result.err, result.err
+    assert (fx / "docs" / "work" / slug.split("/", 1)[1]).is_dir()
 
 
 # -- Jira mode, in-process (plan choice 1) ------------------------------------------
@@ -656,7 +669,8 @@ def test_the_reading_commands_in_a_project(fx):
 def test_the_writing_work_commands_in_a_project(fx):
     configure(fx, tags=["a"])
     slug = new(fx, "A b")
-    renamed = checked(fx, "work", "rename", slug, "other", out=f"fx.work/{TODAY}-other\n")
+    renamed = checked(fx, "work", "rename", slug, "other",
+                      out=f"{slug} -> fx.work/{TODAY}-other\n")
     assert any(MOVED.match(l) for l in renamed.err.splitlines()), renamed.err
     slug = f"fx.work/{TODAY}-other"
     checked(fx, "work", "discard", slug, "--reason", "r", out="discarded\n")
@@ -748,7 +762,7 @@ def test_jira_edit_comment_and_rename(jira_fx, fake):  # noqa: F811
     assert fake.tickets[key].labels == ["ui"]
     assert jira_written(jira_fx, "work", "comment", slug, stdin="hello\n").out == ""
     renamed = jira_written(jira_fx, "work", "rename", slug, "other")
-    assert renamed.out == f"fx.work/{key}-other\n", renamed
+    assert renamed.out == f"{slug} -> fx.work/{key}-other\n", renamed
     assert any(MOVED.match(l) for l in renamed.err.splitlines()), renamed.err
 
 

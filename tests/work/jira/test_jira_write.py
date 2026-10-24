@@ -264,44 +264,63 @@ def test_comment_text_reads_back_exactly(jira_project):
 
 
 def test_rename(jira_project):
+    # The backend's `move` takes the whole new id-path, sets the ticket's TCW
+    # Item, calls `before_folder`, and moves the folder last (TCW-114 Design
+    # 7.3); it refuses a new last part that does not keep the key.
     key, folder = jira_project.item("x", "old-words")
-    (jira_project.work / "TCW-2-other").mkdir()
-    (jira_project.work / "TCW-2-other" / "notes.md").write_text(f"see {folder}\n")
-    item = jira_project.backend().rename(folder, "new-words")
-    assert item.slug == Slug("tcw", f"{key}-new-words")
+    backend = jira_project.backend()
+    with pytest.raises(UsageError, match=f"keeps the key {key}"):
+        backend.move(folder, "TCW-9-new-words", lambda: None)
+    assert jira_project.fake.writes() == []
+    seen = []
+    pairs = backend.move(folder, f"{key}-new-words",
+                         lambda: seen.append((jira_project.work / folder).is_dir()))
+    assert seen == [True]
+    assert pairs == [(Slug("tcw", folder), Slug("tcw", f"{key}-new-words"))]
     assert jira_project.fake.custom(key, "TCW Item") == f"tcw.work/{key}-new-words"
     assert (jira_project.work / f"{key}-new-words").is_dir()
     assert not (jira_project.work / folder).exists()
 
 
 @pytest.mark.parametrize("words", ["TCW-9-new", "Not Words", "x/y"])
-def test_rename_keeps_the_key_and_takes_words(jira_project, words):
+def test_rename_keeps_the_key_and_takes_words(jira_project, tcw, words):
+    # The words rules live in `tcw work rename` (TCW-114 Design 5.4 b).
     _, folder = jira_project.item("x", "old")
-    with pytest.raises(UsageError):
-        jira_project.backend().rename(folder, words)
+    r = tcw(["rename", folder, words], jira_project.root)
+    assert (r.code, r.out) == (2, "")
     assert jira_project.fake.writes() == []
+    assert (jira_project.work / folder).is_dir()
 
 
-def test_rename_with_the_key_given(jira_project):
+def test_rename_with_the_key_given(jira_project, tcw):
     key, folder = jira_project.item("x", "old")
-    assert jira_project.backend().rename(folder, f"{key}-new").slug.folder == f"{key}-new"
+    r = tcw(["rename", folder, f"{key}-new"], jira_project.root)
+    assert (r.code, r.out) == (0, f"tcw.work/{folder} -> tcw.work/{key}-new\n")
 
 
 def test_a_failed_tcw_item_edit_keeps_the_folder(jira_project, monkeypatch):
     _, folder = jira_project.item("x", "old")
     refuse(jira_project.fake, monkeypatch, "_edit")
+    called = []
     with pytest.raises(BackendError):
-        jira_project.backend().rename(folder, "new")
+        jira_project.backend().move(folder, folder.rsplit("-", 1)[0] + "-new",
+                                    lambda: called.append(1))
+    assert called == []
     assert (jira_project.work / folder).is_dir()
 
 
-def test_rename_reports_other_mentions(jira_project, capsys):
+def test_rename_reports_other_mentions(jira_project, tcw):
+    # `tcw work rename` lists each line that still names the old identifier,
+    # once, after the move (TCW-114 Design 5.8).
     key, folder = jira_project.item("x", "old")
     note = jira_project.work / folder / "notes.md"
     note.write_text(f"{folder} is mine\n")
-    jira_project.backend().rename(folder, "new")
-    assert f"names {folder}, not rewritten" in capsys.readouterr().err
-    assert (jira_project.work / f"{key}-new" / "notes.md").read_text() == f"{folder} is mine\n"
+    r = tcw(["rename", folder, "new"], jira_project.root)
+    assert r.code == 0, r.err
+    moved = jira_project.work / f"{key}-new" / "notes.md"
+    mention = f"{moved}:1: names tcw.work/{folder}, not rewritten"
+    assert r.err.splitlines().count(mention) == 1, r.err
+    assert moved.read_text() == f"{folder} is mine\n"
 
 
 def test_step_6_without_permission_is_not_unreachable(jira_project, monkeypatch, tcw):

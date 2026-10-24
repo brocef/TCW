@@ -56,8 +56,7 @@ WORK_WRITES = [
     (["work", "discard", f"core.work/{C}", "--reason", "x"], ""),
     (["work", "comment", f"core.work/{C}"], "a comment\n"),
     (["work", "rename", f"core.work/{C}", "other"], ""),
-    pytest.param(["work", "move", f"core.work/{C}", "--top"], "", marks=pytest.mark.xfail(
-        strict=True, reason="tcw work move arrives in Step 18")),
+    (["work", "move", f"core.work/{C}", "--top"], ""),
 ]
 
 
@@ -148,12 +147,10 @@ def family(tmp_path):
 
 TREE_WRITES = [
     pytest.param(["taxonomy", "rm", "core.taxonomy/t"], id="taxonomy-rm"),
-    pytest.param(["taxonomy", "rename", "core.taxonomy/t", "u"], id="taxonomy-rename",
-                 marks=pytest.mark.xfail(strict=True, reason="arrives in Step 19")),
+    pytest.param(["taxonomy", "rename", "core.taxonomy/t", "u"], id="taxonomy-rename"),
     pytest.param(["capabilities", "rm", "core.capabilities/cli/x"], id="capabilities-rm"),
     pytest.param(["capabilities", "move", "core.capabilities/cli/x", "--top"],
-                 id="capabilities-move",
-                 marks=pytest.mark.xfail(strict=True, reason="arrives in Step 19")),
+                 id="capabilities-move"),
 ]
 
 

@@ -23,6 +23,7 @@ them.
 
 from __future__ import annotations
 
+import errno
 import os
 import re
 from dataclasses import dataclass
@@ -482,3 +483,60 @@ def disagreement(child: FullId, folder_parent: FullId | None,
     named = str(parent) if parent is not None else "not set"
     return (f"{child} sits in the folder of {folder_parent}, but its parent is "
             f"{named}; parent: decides (set it to {folder_parent}, or move the folder)")
+
+
+# ---------------------------------------------------------------------------
+# Moving an object's folder (TCW-114 Design 5.3, 5.8 step 2.4)
+
+
+def move_object_folder(store_root: Path, old_path: str, new_path: str) -> list[str]:
+    """Move the object folder at `old_path` to `new_path`, both relative to
+    `store_root`: each missing folder above `new_path` is made, in order,
+    then one `os.rename` carries the folder and everything in it. Returns
+    the folders made. When any of it fails, each folder this call made that
+    is still empty is removed, deepest first, before the error is raised;
+    a source that is no longer there is `NotFound`."""
+    from tcw.errors import NotFound
+    root = Path(store_root)
+    created: list[str] = []
+    try:
+        parts = new_path.split("/")[:-1]
+        for depth in range(1, len(parts) + 1):
+            rel = "/".join(parts[:depth])
+            if not (root / rel).is_dir():
+                os.mkdir(root / rel)
+                created.append(rel)
+        try:
+            os.rename(root / old_path, root / new_path)
+        except FileNotFoundError:
+            if not (root / old_path).exists():
+                raise NotFound(f"{root / old_path} is no longer there") from None
+            raise
+    except BaseException:
+        for rel in reversed(created):
+            try:
+                os.rmdir(root / rel)
+            except OSError:
+                pass
+        raise
+    return created
+
+
+def remove_emptied(store_root: Path, old_path: str) -> list[str]:
+    """Remove each folder above `old_path` that a move left completely
+    empty, from the deepest up to the store root or the first that still
+    holds anything, hidden files included (Design 5.3). Returns them."""
+    root = Path(store_root)
+    removed: list[str] = []
+    parts = old_path.split("/")[:-1]
+    for depth in range(len(parts), 0, -1):
+        rel = "/".join(parts[:depth])
+        # `rmdir` removes only an empty folder, so nothing is listed.
+        try:
+            os.rmdir(root / rel)
+        except OSError as error:
+            if error.errno in (errno.ENOTEMPTY, errno.EEXIST):
+                break
+            raise
+        removed.append(rel)
+    return removed

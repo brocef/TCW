@@ -210,6 +210,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                                  "or its path")
     pr.set_defaults(func=_rm)
 
+    from tcw.move import add_tree_commands
+    add_tree_commands(g, command, "taxonomy", "term", "taxonomy rename invoice bill",
+                      "taxonomy move invoice/refund --top")
+
     pse = command(g, "search", help="entries whose name or description holds the text",
                   prints="one full identifier per line, or --json", writes="nothing",
                   examples=["taxonomy search refund", "taxonomy search refund --json"])

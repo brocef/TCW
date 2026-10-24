@@ -13,9 +13,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol, runtime_checkable
+from typing import Callable, Protocol, runtime_checkable
 
 from tcw.errors import UsageError
+from tcw.ids import FullId
 from tcw.work.model import TERMINAL, Changes, Item, Slug, stage as table_stage
 
 
@@ -97,7 +98,13 @@ class WorkBackend(Protocol):
 
     def comment(self, id_path: str, text: str) -> None: ...
 
-    def rename(self, id_path: str, title_words: str) -> Item: ...
+    def move(self, id_path: str, new_id_path: str,
+             before_folder: Callable[[], object]) -> list[tuple[FullId, FullId]]:
+        """Give the item, and every item nested in its folder, a new id-path
+        (TCW-114 Design 7.1), keeping its last part's date or key
+        (`UsageError` otherwise): write what the backend owns that names a
+        moved item, call `before_folder`, then move the folder or records.
+        Returns the pairs of full identifiers, the item first."""
 
     def lookup(self, name: str) -> str | None:
         """A backend-specific name (a Jira key) as an id-path, or None."""
