@@ -37,6 +37,7 @@ def write_cap(root: Path, path: str, *, id=None, body="", docs=None, **meta) -> 
     write_state(d / CAPABILITY_STATE, yaml.safe_dump(m, sort_keys=False, allow_unicode=True))
     (d / "description.md").write_text(body)
     for fn, text in (docs or {}).items():
+        (d / fn).parent.mkdir(parents=True, exist_ok=True)
         (d / fn).write_text(text)
 
 
@@ -110,8 +111,8 @@ def test_override_body_append(tmp_path):
         "media/upload": {"id": "cap-bbb222", "Status": "Supported",
                          "body": "Upload an image via a UI control."}})
     write_cap(child, "ov/upload", overrides="cap-bbb222",
-              appendedDocs=["camera.md"],
-              docs={"camera.md": "Or take a photo with the device camera."})
+              appendedDocs=["resources/camera.md"],
+              docs={"resources/camera.md": "Or take a photo with the device camera."})
     body = store(child).get_view("media/upload").body
     assert "Upload an image" in body and "take a photo" in body
 
@@ -199,15 +200,21 @@ def test_check_ambiguous_override(tmp_path):
 
 def test_check_missing_attachment(tmp_path):
     root = repo(tmp_path, "solo")
-    write_cap(root, "x", id="cap-x", Status="Supported", appendedDocs=["ghost.md"])
+    # Under `resources/`, the only place a listed document is read from
+    # (TCW-111 Design 2.2).
+    write_cap(root, "x", id="cap-x", Status="Supported", appendedDocs=["resources/ghost.md"])
     assert any("missing attachment" in p for p in map(str, store(root).check()))
 
 
 def test_check_unlisted_extra_doc(tmp_path):
+    """The "unlisted extra doc" check is gone since TCW-111: a loose file in a
+    capability's folder, `.md` or not, is the shape check's row a."""
     root = repo(tmp_path, "solo")
     write_cap(root, "x", id="cap-x", Status="Supported",
               docs={"stray.md": "unreferenced"})
-    assert any("unlisted extra doc" in p for p in map(str, store(root).check()))
+    problems = list(map(str, store(root).check()))
+    assert any("stray.md: is not one of" in p and "move it into resources/" in p
+               for p in problems), problems
 
 
 def test_check_federation_cycle(tmp_path):

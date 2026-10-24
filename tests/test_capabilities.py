@@ -702,11 +702,13 @@ def test_cli_set_ambiguous_ref_reports_ambiguity(tmp_path, monkeypatch, capsys):
 def test_the_capabilities_store_has_no_attachment_surface_to_regress(tmp_path):
     """Why spec criterion 12 has only a taxonomy half.
 
-    `_entry_reserved` names the files in a node folder that are not attachments,
-    and it is per-store — taxonomy reserves `config.yaml`, capabilities
+    The 3.x `_entry_reserved` named the files in a node folder that were not
+    attachments, per store — taxonomy reserved `config.yaml`, capabilities
     `.config.yaml`. The obvious worry when `extends` left those files was that
     changing the reservation would move the attachment surface underneath
-    someone. On the capabilities side it cannot: `_capability` throws the
+    someone. Since TCW-111 attachments are read only from `resources/`, so no
+    name needs reserving; and on the capabilities side the surface never
+    existed anyway: `_capability` throws the
     attachment list away (`tcw/store/fs.py`, `meta, description, _attachments =
     self._load_entry(d)`) and `Capability` has no field to hold it. Composition
     reads `prependedDocs`/`appendedDocs` **by name from meta**, never from the
@@ -726,10 +728,11 @@ def test_the_capabilities_store_has_no_attachment_surface_to_regress(tmp_path):
     st.add("billing/refund", "Refund")
     d = root / "docs" / "capabilities" / "billing" / "refund"
     (d / "config.yaml").write_text("not a store config; just a file\n")
-    (d / "extra.md").write_text("appended text")
+    (d / "resources").mkdir()
+    (d / "resources" / "extra.md").write_text("appended text")
     yaml_path = d / CAPABILITY_STATE
     meta = yaml.safe_load(yaml_path.read_text())
-    meta["appendedDocs"] = ["extra.md"]
+    meta["appendedDocs"] = ["resources/extra.md"]
     write_state(yaml_path, yaml.safe_dump(meta, sort_keys=False))
 
     cap = FsCapabilitiesStore.open(root).get_view("billing/refund")

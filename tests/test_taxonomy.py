@@ -897,17 +897,21 @@ def test_every_extends_refusal_names_the_key_path(tmp_path, declared, expected):
 
 def test_a_config_yaml_in_a_term_folder_is_still_not_an_attachment(tmp_path):
     """Spec criterion 12, the taxonomy half. Nothing writes `config.yaml` any
-    more, but the taxonomy store still reserves the name, so a term folder's
-    attachment list does not change under anyone who has one."""
+    more, and since TCW-111 attachments are read only from a term's
+    `resources/` (Design 2.2), so a loose `config.yaml` is never one: neither
+    loose file is an attachment, and `check` reports both as loose files."""
     root = node(tmp_path, "repo")
     write_term(root, "widget", name="Widget")
     d = root / "docs" / "taxonomy" / "widget"
     (d / "config.yaml").write_text("extends:\n  - ghost\n")
     (d / "notes.md").write_text("a real attachment")
 
-    term = FsTaxonomyStore.open(root).get_view("widget")
+    st = FsTaxonomyStore.open(root)
+    term = st.get_view("widget")
     assert term is not None
-    assert term.attachments == ["notes.md"]
+    assert term.attachments == []
+    loose = [str(f) for f in st.check() if "is not one of" in f.message]
+    assert len(loose) == 2 and any("widget/config.yaml" in f for f in loose), loose
 
 
 # ── inheritance belongs to the project, not to the store folder ─────────────

@@ -34,7 +34,8 @@ import yaml
 
 from tcw.errors import InheritedUnavailable, ProjectGraphError, Unreachable
 from tcw.findings import Finding
-from tcw.object_folders import STATE_FILES
+from tcw.errors import TcwError
+from tcw.object_folders import STATE_FILES, walk
 from tcw.project_files import LEGACY_SENTINEL, SENTINEL
 from tcw.locate import UNRESOLVED
 from tcw.refs import resolve_address
@@ -346,6 +347,25 @@ def _target_roots(project_root: Path, target: ValidationTarget) -> list[Path]:
     return store._validation_resources(target.ref)
 
 
+def _resource_folders(project_root: Path) -> list[Path]:
+    """Every object's `resources/` folder in this project's stores, resolved:
+    what the YAML scan leaves alone and the link scan reads leniently (TCW-111
+    Design 2.2). Found by each store's walk, so a folder named `resources`
+    that is no object's is not among them. A store that will not open has
+    none here; its own check reports why."""
+    found: list[Path] = []
+    for comp in ("taxonomy", "capabilities"):
+        try:
+            root = STORE_CLASSES[comp].open(project_root).root
+        except (ValueError, TcwError):
+            continue
+        found += [(root / p).resolve() for p in walk(root, comp).resources]
+    work_root = _work_root(project_root)
+    if work_root is not None:
+        found += [(work_root / p).resolve() for p in walk(work_root, "work").resources]
+    return found
+
+
 def _file_findings(project_root: Path, roots: list[Path]) -> tuple[list[Finding], bool]:
     """(a) and (b) over `roots`: YAML well-formedness, and `tcw://` links.
     Also whether a YAML problem was found that the component checks would
@@ -364,8 +384,20 @@ def _file_findings(project_root: Path, roots: list[Path]) -> tuple[list[Finding]
     # without a report here an item whose state file is not a state file reads
     # as healthy everywhere.
     work_root = _work_root(project_root)
+    # An object's `resources/` holds whatever its author put there, so a YAML
+    # file in it is never parsed: a file that is not valid YAML is a resource
+    # like any other, and must not switch the component checks off (TCW-111
+    # Design 2.2). Its Markdown is still read for `tcw://` links, below.
+    resources = _resource_folders(project_root)
+
+    def in_resources(f: Path) -> bool:
+        resolved = f.resolve()
+        return any(_under(resolved, folder) for folder in resources)
+
     for root in roots:
         for f in _iter(root, "*.yaml"):
+            if in_resources(f):
+                continue
             if f.name == WORK_STATE_FILE and work_root is not None \
                     and _under(f.resolve(), work_root):
                 # The work checks read every item's state file and report one that
@@ -398,7 +430,13 @@ def _file_findings(project_root: Path, roots: list[Path]) -> tuple[list[Finding]
         for f in _iter(root, "*.md"):
             raw, unreadable = _read_text(f)
             if unreadable is not None:
-                problems.append(Finding("error", _rel(f, project_root), unreadable))
+                # A resource that cannot be read as text is still a resource:
+                # said, not counted against the project.
+                if in_resources(f):
+                    problems.append(Finding("warning", _rel(f, project_root),
+                                            f"not checked for tcw:// links: {unreadable}"))
+                else:
+                    problems.append(Finding("error", _rel(f, project_root), unreadable))
                 continue
             text = _strip_code(raw)
             for m in _LINK_RE.finditer(text):

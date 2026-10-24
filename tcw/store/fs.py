@@ -31,9 +31,10 @@ from tcw.errors import (BackendError, NotFound, Refused, StateFileProblem, TcwEr
 from tcw.findings import Finding
 from tcw.ids import (SCHEME, FolderAddress, FullId, IdError, MalformedId, id_path_problem,
                      parse_address, parse_stored, sort_input)
-from tcw.object_folders import (STATE_FILES, exact_child, exact_path,
-                                id_problem, is_object, is_reserved, object_paths,
-                                read_state, removal_blockers, state_text)
+from tcw.object_folders import (EXTRA, LEGACY, MISPLACED, RESERVED, RESOURCES, STATE_FILES,
+                                Walk, exact_child, exact_path, id_problem, is_object,
+                                is_reserved, object_paths, read_state, removal_blockers,
+                                shape_problems, state_text, walk)
 from tcw.output import shown as _shown
 from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
 from tcw.store.base import (
@@ -1234,9 +1235,9 @@ class FsTreeStore:
     COMPONENT: str
     #: The filename this component once kept its own `extends` in, before it
     #: moved to the project's `tcw-config.yaml`. Nothing reads or writes the file
-    #: any more. The name survives on the class for two reasons: `_entry_reserved`
-    #: keeps it out of a folder's attachments (see the comment there), and
-    #: `_legacy_config_problems` reports a copy left at the store root.
+    #: any more. The name survives on the class so `_legacy_config_problems`
+    #: reports a copy left at the store root, and so the store's shape check
+    #: leaves that copy to it rather than reporting it a second time.
     LEGACY_CONFIG_NAME: str | None = None
     #: The file whose presence makes a folder one of this store's objects
     #: (TCW-111 Design 1.1).
@@ -1685,27 +1686,69 @@ class FsTreeStore:
                 if f.is_file() and self._within_store(f) else ""
                 for f in (d / self.STATE_FILE, d / "description.md")]
 
-    def _entry_reserved(self) -> set[str]:
-        """Filenames in an entry folder that are not attachments.
+    def _resource_files(self, d: Path) -> list[str]:
+        """The files under the entry folder `d`'s `resources/`, at any depth,
+        as paths relative to `d`, sorted: its attachments (TCW-111 Design 2.2).
 
-        **Kept per-store after `extends` moved to the project config.** Each store
-        still reserves the file it used to write — taxonomy `config.yaml`,
-        capabilities `.config.yaml` — so a folder holding a leftover copy lists
-        the same attachments it listed before.
+        `exact_child`, so a `Resources/` folder on a disk that ignores letter
+        case is never read as it. Hidden names are left out, as they were from
+        the 3.x loose-file listing, and each file is asked `_within_store`, so
+        one that is a symbolic link out of the store is not an attachment. Only
+        `resources/` is read: a file loose in the folder is no attachment
+        whatever its name, so the leftover per-store config files (`config.yaml`,
+        `.config.yaml`) that the 3.x listing had to leave out by name are left
+        out by construction, and reported as loose files by the shape check."""
+        if exact_child(d, RESOURCES) is not True:
+            return []
+        folder = d / RESOURCES
+        if folder.is_symlink() or not folder.is_dir():
+            return []
+        found = []
+        for f in folder.rglob("*"):
+            rel = f.relative_to(d)
+            if any(part.startswith(".") for part in rel.parts):
+                continue
+            if f.is_file() and self._within_store(f):
+                found.append(rel.as_posix())
+        return sorted(found)
 
-        Only taxonomy can actually observe this: `_term` carries the list onto
-        `Term.attachments`, while `_capability` discards it and composes bodies
-        from `prependedDocs`/`appendedDocs` read by name out of the state file. So
-        the capabilities half is inert, and is kept anyway — the two stores
-        reading alike costs one string and removes the question. See
-        `test_the_capabilities_store_has_no_attachment_surface_to_regress`,
-        which fails if `Capability` ever grows an attachments field and makes
-        this reasoning stale.
-        """
-        names = {self.STATE_FILE, "description.md"}
-        if self.LEGACY_CONFIG_NAME:
-            names.add(self.LEGACY_CONFIG_NAME)
-        return names
+    def _in_resources(self, d: Path, name: str) -> bool:
+        """Whether the listed document `name` resolves inside the entry folder
+        `d`'s own `resources/` (TCW-111 Design 2.2), and inside the store.
+        With no `resources/` yet, by its spelling, so a document listed there
+        and not written is a missing attachment rather than a misplaced one."""
+        spelled = exact_child(d, RESOURCES)
+        if spelled is False:
+            parts = Path(name).parts
+            return bool(parts) and parts[0] == RESOURCES and ".." not in parts \
+                and len(parts) > 1
+        if spelled is not True:
+            return False
+        folder = d / RESOURCES
+        try:
+            (d / name).resolve().relative_to(folder.resolve())
+        except (ValueError, OSError, RuntimeError):
+            return False
+        return self._within_store(d / name)
+
+    def _shape_findings(self, id_path: str | None = None) -> list[Finding]:
+        """Rows a to g of TCW-111 Design 2.6 for this store: a whole store's
+        when `id_path` is None, else only the rows naming a file or folder
+        directly inside that object's own folder (a, b, c and f), which is how
+        `tcw serve` checks the object it just wrote. Row d leaves out the
+        leftover config file `_legacy_config_problems` already reports."""
+        found = walk(self.root, self.COMPONENT)
+        if id_path is not None:
+            def own(path: str) -> bool:
+                return path.rpartition("/")[0] == id_path
+            found = Walk(found.objects,
+                         tuple(f for f in found.folders
+                               if own(f[0]) and f[1] in (MISPLACED, RESERVED, LEGACY)),
+                         tuple(f for f in found.files if own(f[0]) and f[1] == EXTRA),
+                         found.resources)
+        skip = {self.root / self.LEGACY_CONFIG_NAME} if self.LEGACY_CONFIG_NAME else set()
+        return shape_problems(found, self.root, self.COMPONENT, self.project_id,
+                              where=self._where, skip=skip)
 
     def _where(self, path: Path | str) -> str:
         """A finding's `where`: `path`, or an entry's slug joined onto the store
@@ -1747,7 +1790,8 @@ class FsTreeStore:
     def _load_entry(self, d: Path) -> tuple[dict, str, list[str]]:
         """Read a folder entry → (meta mapping, description text, attachment names).
 
-        Attachments are the folder's non-reserved, non-dot files (bounded set).
+        Attachments are the files under the folder's `resources/`
+        (`_resource_files`), as paths relative to the folder.
         """
         # Containment per resource, not just per folder. A folder can be
         # legitimately inside the store while a file in it is a symlink pointing
@@ -1760,12 +1804,7 @@ class FsTreeStore:
         desc = d / "description.md"
         description = (desc.read_text(encoding="utf-8")
                        if desc.exists() and self._within_store(desc) else "")
-        reserved = self._entry_reserved()
-        attachments = sorted(
-            f.name for f in d.iterdir()
-            if f.is_file() and f.name not in reserved and not f.name.startswith(".")
-            and self._within_store(f))
-        return meta, description, attachments
+        return meta, description, self._resource_files(d)
 
     def _write_entry(self, d: Path, meta: dict, description: str) -> None:
         """Create/overwrite a folder entry's meta + description, atomically, staged.
@@ -2220,6 +2259,10 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         else:
             terms = self.list_all(local_only=True)
             problems += self._unreadable_findings()
+        if identifier is None:
+            problems += self._shape_findings()
+        elif selected.origin == "local":
+            problems += self._shape_findings(selected.slug)
         for term in terms:
             def found(message: str) -> None:
                 problems.append(Finding("error", self._where(term.slug), message))
@@ -2481,17 +2524,19 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     def _compose_body(self, d: Path, meta: dict, raw_desc: str) -> str:
         """Effective body = prependedDocs + description + appendedDocs (bounded lists)."""
         parts = []
-        # `_within_store` on each attachment: these are read by name from meta,
-        # so they never pass through `_load_entry`'s filtered name list.
+        # `_in_resources` on each document: these are read by name from meta,
+        # so they never pass through `_load_entry`'s listing. Only a document
+        # in the capability's own `resources/` is read (TCW-111 Design 2.2);
+        # `check` reports one listed anywhere else.
         for fn in _as_list(meta.get("prependedDocs")):
             f = d / fn
-            if f.is_file() and self._within_store(f):
+            if self._in_resources(d, fn) and f.is_file():
                 parts.append(f.read_text(encoding="utf-8").strip())
         if raw_desc.strip():
             parts.append(raw_desc.strip())
         for fn in _as_list(meta.get("appendedDocs")):
             f = d / fn
-            if f.is_file() and self._within_store(f):
+            if self._in_resources(d, fn) and f.is_file():
                 parts.append(f.read_text(encoding="utf-8").strip())
         return "\n\n".join(parts)
 
@@ -3079,6 +3124,10 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             seen_ids = {}
             caps = self.list_all(local_only=True)
             problems += self._unreadable_findings()
+        if identifier is None:
+            problems += self._shape_findings()
+        elif selected.origin == "local":
+            problems += self._shape_findings(selected.path)
         for cap in caps:
             where = self._where(cap.path)
 
@@ -3134,12 +3183,12 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 problems.append(Finding("error", self._where(p), message))
             listed = _as_list(meta.get("prependedDocs")) + _as_list(meta.get("appendedDocs"))
             for fn in listed:
-                if not (d / fn).is_file():
+                if not self._in_resources(d, str(fn)):
+                    found(f"'{fn}' is not in {RESOURCES}/")
+                elif not (d / fn).is_file():
                     found(f"missing attachment '{fn}'")
-            for f in d.iterdir():
-                if (f.is_file() and f.suffix == ".md" and f.name != "description.md"
-                        and f.name not in listed):
-                    found(f"unlisted extra doc '{f.name}'")
+            # A loose document the lists do not name is the shape check's row
+            # a, which reports any loose file, `.md` or not.
             target = meta.get("overrides")
             if target and (e := self._override_problem(str(target))):
                 found(e)
