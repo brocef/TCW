@@ -86,3 +86,9 @@ Run here: `tests/serve` and `tests/test_procedure_config.py`, from the v4
 root (result below). The full suite is run by the dispatching session.
 
 `.venv/bin/pytest -q -p no:cacheprovider tests/serve tests/test_procedure_config.py`: 411 passed. No other file in the repository repeats the old `delegation` message.
+
+The full suite as CI runs it, `.venv/bin/pytest -q -p no:cacheprovider`, run by
+the dispatching session at `76f053fc` (2026-10-24) in two halves by folder:
+`2068 passed, 2 skipped` (`tests/work`, `tests/serve`) and `4750 passed,
+111 skipped` (the rest). `pnpm test` `198 passed`; `tsc --noEmit`,
+`pnpm lint` and `pnpm check:build` clean.
