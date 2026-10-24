@@ -26,8 +26,9 @@ EXCEPTED = ("tcw/serve/dist",)
 #: The 3.x names, which only `tcw/object_folders.py` spells.
 THREE_X = re.compile(r"(?<![\w-])(?:meta|item)\.yaml|ITEM_FILE")
 NAMES_KEPT_IN = "tcw/object_folders.py"
-#: Folders the 3.x-name check leaves out. Empty: TCW-116 adds `tcw migrate`'s.
-MIGRATION_FOLDERS: tuple[str, ...] = ()
+#: Folders the 3.x-name check leaves out, each as its path parts from the
+#: root, matched by whole parts. Empty: TCW-116 adds `tcw migrate`'s.
+MIGRATION_FOLDERS: tuple[tuple[str, ...], ...] = ()
 
 #: The directory listings, by the method or function called.
 LISTING_METHODS = {"iterdir", "rglob", "glob", "scandir", "listdir", "walk"}
@@ -116,14 +117,18 @@ def _listings(source: str) -> list[tuple[int, str]]:
     return found
 
 
+def _migration(rel: str) -> bool:
+    parts = Path(rel).parts
+    return any(parts[:len(m)] == m for m in MIGRATION_FOLDERS)
+
+
 def offenders(root: Path) -> list[str]:
     """Every 3.x name outside its one place, and every directory listing not
     in `ALLOWED`, under `root`, as `<file>:<line>: <what>`."""
     found = []
     for rel, path in _files(root):
         text = path.read_text(encoding="utf-8")
-        if rel != NAMES_KEPT_IN and not any(rel.startswith(m + "/")
-                                            for m in MIGRATION_FOLDERS):
+        if rel != NAMES_KEPT_IN and not _migration(rel):
             for number, line in enumerate(text.splitlines(), start=1):
                 if THREE_X.search(line):
                     found.append(f"{rel}:{number}: names a TCW 3.x state file")

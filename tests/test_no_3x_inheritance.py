@@ -74,14 +74,20 @@ ALLOWED = {
 }
 
 #: Code and tests that a later item (TCW-116, `tcw migrate`) adds, which read
-#: and rewrite the 3.x forms on purpose. Empty until then.
-MIGRATION_CODE: tuple[str, ...] = ()
-MIGRATION_TESTS: tuple[str, ...] = ()
+#: and rewrite the 3.x forms on purpose: folders, each as its path parts from
+#: the package's folder or the tests' folder, matched by whole parts. Empty
+#: until then.
+MIGRATION_CODE: tuple[tuple[str, ...], ...] = ()
+MIGRATION_TESTS: tuple[tuple[str, ...], ...] = ()
+
+
+def _under(path: Path, root: Path, folders: tuple[tuple[str, ...], ...]) -> bool:
+    parts = path.relative_to(root).parts
+    return any(parts[:len(folder)] == folder for folder in folders)
 
 
 def code_files(root: Path = CODE) -> list[Path]:
-    return sorted(p for p in root.rglob("*.py")
-                  if str(p.relative_to(root)) not in MIGRATION_CODE)
+    return sorted(p for p in root.rglob("*.py") if not _under(p, root, MIGRATION_CODE))
 
 
 def test_no_removed_check_message_is_left_in_the_code():
@@ -103,7 +109,7 @@ def test_no_removed_function_is_defined_or_called_in_the_code():
 def offenders(root: Path = TESTS) -> list[str]:
     found = []
     for path in sorted(root.rglob("*.py")):
-        if path.name in MIGRATION_TESTS:
+        if _under(path, root, MIGRATION_TESTS):
             continue
         text = path.read_text(encoding="utf-8")
         for form, pattern in FIXTURE_FORMS.items():
