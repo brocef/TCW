@@ -252,10 +252,14 @@ def validate_changes(changes: Changes, *, item_slug: Slug | None,
     _check_scale(changes.effort, SIZES, "effort")
     _check_scale(changes.complexity, SIZES, "complexity")
 
-    registered = {_tag(t) for t in registered_tags}
-    for tag in changes.add_tags:
-        if _tag(tag) not in registered:
-            raise UsageError(f"tag {tag!r} is not registered for this project")
+    if changes.add_tags:
+        # Read only when a tag is added: an inherited tag list a missing
+        # parent leaves unknown stops only a command that applies a tag
+        # (TCW-109 Design 3.4, row b).
+        registered = {_tag(t) for t in registered_tags}
+        for tag in changes.add_tags:
+            if _tag(tag) not in registered:
+                raise UsageError(f"tag {tag!r} is not registered for this project")
 
     for blocker in changes.add_blocked_by:
         if _as_slug(blocker, current_project, "blocked-by") == item_slug:

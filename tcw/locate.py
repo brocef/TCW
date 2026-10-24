@@ -117,20 +117,22 @@ class Locator:
         return self._stores[key]
 
     def _read_work(self, full_id: FullId, named_by: Path) -> Outcome:
-        from tcw.work.jira.backend import JiraBackend, link_exists
-        from tcw.work.open import open_backend
+        from tcw.work.jira.backend import link_exists
+        from tcw.work.open import item_folders
         try:
             root = self.owner_root(full_id.project, named_by)
         except (Unreachable, ProjectGraphError) as error:
             return outcome_of(error)
         try:
-            backend = open_backend(root, personal=root == self.root)
-            if isinstance(backend, JiraBackend):
-                # The folder scan, never a read of the ticket, so a check
-                # needs no Jira (TCW-71 R20).
-                found = link_exists(backend.work_path, full_id.id_path)
+            target = item_folders(root, personal=root == self.root,
+                                  registry=self.registry)
+            if isinstance(target, Path):
+                # A Jira-mode project: the folder scan, never a read of the
+                # ticket, so a check needs no Jira (TCW-71 R20) and no Jira
+                # setting a parent may hold (TCW-109 Design 3.4).
+                found = link_exists(target, full_id.id_path)
                 return _answer(full_id if found else None, full_id)
-            return Outcome(FOUND, backend.read(full_id.id_path))
+            return Outcome(FOUND, target.read(full_id.id_path))
         except NotFound:
             return _answer(None, full_id)
         except BackendError as error:

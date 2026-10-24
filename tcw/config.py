@@ -204,6 +204,16 @@ class Config:
     #: True when `tcw-config.yaml` itself could not be read, so nothing above
     #: it could be merged.
     unreadable: bool = False
+    #: Each inherited key that cannot be used, by its dotted name (TCW-109
+    #: Design 3.4): a `Withheld` carrying the error a reader of it gets.
+    withheld: dict = field(default_factory=dict)
+
+    def require(self, key: str) -> None:
+        """Raise the error of `key` (`work.tags`, `work.jira`) when it is
+        withheld; return when it can be used."""
+        held = self.withheld.get(key)
+        if held is not None:
+            raise held.error()
 
     @property
     def user_name(self) -> str | None:
@@ -215,6 +225,52 @@ class Config:
         """The personal files that set the chain list at `key_path`."""
         return [o.file for o in self.written.get(tuple(key_path), ())
                 if o.personal and o.file is not None]
+
+
+class Withheld:
+    """A configuration value that cannot be used (TCW-109 Design 3.4): an
+    inherited key a missing parent may have set, or one whose inherited value
+    has a problem. Holding it, passing it along and printing it are fine;
+    using it raises the error it carries, a new one at each use: iterating
+    it, `in`, `len`, a truth test, or reading an attribute. So `config.tags
+    or ()` is not a safe test for it; `isinstance(value, Withheld)` is."""
+
+    __slots__ = ("_make",)
+
+    def __init__(self, make):
+        self._make = make
+
+    def error(self) -> Exception:
+        return self._make()
+
+    def _raise(self):
+        raise self._make()
+
+    def __iter__(self):
+        self._raise()
+
+    def __contains__(self, item):
+        self._raise()
+
+    def __len__(self):
+        self._raise()
+
+    def __bool__(self):
+        self._raise()
+
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        self._raise()
+
+    def __copy__(self):
+        return self
+
+    def __deepcopy__(self, memo):
+        return self
+
+    def __repr__(self) -> str:
+        return "Withheld(...)"
 
 
 def user_config_path() -> Path | None:
@@ -702,7 +758,8 @@ def _origin_for(key_path: KeyPath, origins: dict, project: Origin) -> Origin:
     return project
 
 
-def load_config(project_root: Path, *, personal: bool = True) -> Config:
+def load_config(project_root: Path, *, personal: bool = True,
+                registry=None) -> Config:
     """The effective configuration of the project at `project_root`: its four
     layers read, checked, merged and parsed. Never raises for a problem in
     the configuration; every problem found is in `problems`.
@@ -804,14 +861,15 @@ def end_command() -> None:
     project.end_command()
 
 
-def effective(project_root: Path) -> Config:
+def effective(project_root: Path, registry=None) -> Config:
     """The configuration of the project a command acts on, personal layers
-    included, read once per command."""
+    included, read once per command. `registry`, the project's own, is used
+    by the call that reads it."""
     if _EFFECTIVE is None:
-        return load_config(project_root)
+        return load_config(project_root, registry=registry)
     key = Path(project_root).resolve()
     if key not in _EFFECTIVE:
-        _EFFECTIVE[key] = load_config(project_root)
+        _EFFECTIVE[key] = load_config(project_root, registry=registry)
     return _EFFECTIVE[key]
 
 

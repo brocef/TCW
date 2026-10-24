@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from tcw.errors import (BackendError, ConfigError, NotFound, ProjectGraphError, Refused,
                         Unreachable)
@@ -35,49 +36,116 @@ def work_path(project_root: Path) -> Path:
     return WorkLocation.open(Path(project_root)).root
 
 
-def _layered(project_root: Path, personal: bool):
+def _layered(project_root: Path, personal: bool, registry=None):
     """The project's configuration through the layered loader; `ConfigError`
     naming every problem. Personal layers apply only to the project a command
-    acts on (TCW-72 Design 1.7)."""
+    acts on (TCW-72 Design 1.7). `registry` is the command's, through which a
+    project read for itself finds its parents (TCW-109 Design 5.2)."""
     from tcw.config import effective, load_config
-    config = (effective(project_root) if personal
-              else load_config(project_root, personal=False))
+    config = (effective(project_root, registry=registry) if personal
+              else load_config(project_root, personal=False, registry=registry))
     if config.problems:
         raise ConfigError(config.problems)
     return config
 
 
-def read_work_config(project_root: Path, *, personal: bool = True) -> WorkConfig:
+def read_work_config(project_root: Path, *, personal: bool = True,
+                     registry=None) -> WorkConfig:
     """The project's parsed `work:` configuration, without opening the
     store: what the tag registry commands need."""
-    return _layered(Path(project_root), personal).work
+    return _layered(Path(project_root), personal, registry).work
 
 
-def open_backend(project_root: Path, *,
-                 report: Callable[[str], None] | None = None,
-                 personal: bool = True) -> WorkBackend:
-    """The work backend of the project at `project_root`, from its effective
-    configuration. `personal=False` for any project other than the one the
-    command acts on: its backend is built from `tcw-config.yaml` alone, with
-    no `user.name`."""
+@dataclass(frozen=True)
+class ProjectFacts:
+    """What opening a project's work store checks and reads before it builds
+    a backend (TCW-109 Design 3.4): its layered configuration, its ID, its
+    work path, and the registry used for the active project."""
+
+    layered: Any
+    project: str
+    path: Path
+    registry: Any = None
+
+
+def project_facts(project_root: Path, *, personal: bool = True,
+                  registry=None) -> ProjectFacts:
+    """Every check `open_backend` makes before it builds a backend, and what
+    they read, without building one, so a command that needs only the
+    project's own configuration, its ID or its work path never reads a key
+    the project inherits. Fails as `open_backend` does: `ConfigError` for a
+    configuration problem, `BackendError` for an invalid project graph or no
+    work path.
+
+    For the active project (`personal`) the registry passed, or one opened at
+    `project_root`, answers for its whole graph and its ID. For a project read
+    for itself, the passed registry, the command's, is used only to find its
+    parents; its ID is read from its own registry, never from the passed
+    one, whose current project is the active one (Design 5.2)."""
     root = Path(project_root)
-    layered = _layered(root, personal)
-    config = layered.work
     try:
-        registry = FsProjectRegistry.open(root)
+        if personal and registry is None:
+            registry = FsProjectRegistry.open(root)
+    except ValueError as error:
+        raise BackendError(str(error)) from None
+    layered = _layered(root, personal, registry)
+    try:
         if personal:
             # The project the command acts on answers for its whole graph, as
             # `taxonomy` and `validate` do; another project's broken child does
             # not stop reading that project from here.
             registry.require_valid()
-        project = registry.current.id
+            project = registry.current.id
+        else:
+            project = FsProjectRegistry.open(root).current.id
         path = work_path(root)
     except ValueError as error:
         raise BackendError(str(error)) from None
+    return ProjectFacts(layered, project, path, registry if personal else None)
+
+
+def external_stages_of(config: WorkConfig) -> frozenset[str]:
+    """The stages whose record the project's backend keeps, a fixed fact of
+    its kind, read without building it."""
+    return (JiraBackend.external_stages if config.backend == "jira"
+            else FsWorkBackend.external_stages)
+
+
+def open_backend(project_root: Path, *,
+                 report: Callable[[str], None] | None = None,
+                 personal: bool = True, registry=None) -> WorkBackend:
+    """The work backend of the project at `project_root`, from its effective
+    configuration. `personal=False` for any project other than the one the
+    command acts on: its backend is built from its shared files and the
+    variables naming it, with no personal file and no `user.name`.
+    `registry` is the command's, as `project_facts` takes it."""
+    root = Path(project_root)
+    facts = project_facts(root, personal=personal, registry=registry)
+    layered = facts.layered
+    config = layered.work
     if config.backend == "jira":
-        return JiraBackend(project, path, config, layered.jira, report=report,
-                           root=root)
-    return FsWorkBackend(project, path, config, layered.user_name, report=report)
+        # Before the backend exists, so a key a missing parent leaves unknown
+        # stops the command before any request (TCW-109 Design 3.3): opening
+        # reads `work.jira`, and reading tickets reads `work.tags`.
+        layered.require("work.jira")
+        layered.require("work.tags")
+        return JiraBackend(facts.project, facts.path, config, layered.jira,
+                           report=report, root=root)
+    return FsWorkBackend(facts.project, facts.path, config, layered.user_name,
+                         report=report)
+
+
+def item_folders(project_root: Path, *, personal: bool = True, registry=None
+                 ) -> "Path | WorkBackend":
+    """What answers whether an item of the project at `project_root` exists:
+    for a Jira-mode project its work path, since a reference into it is
+    answered from the item folders, which need no Jira setting (TCW-71 R20,
+    TCW-109 Design 3.4); for a filesystem project its backend."""
+    facts = project_facts(project_root, personal=personal, registry=registry)
+    if facts.layered.work.backend == "jira":
+        return facts.path
+    return FsWorkBackend(facts.project, facts.path, facts.layered.work,
+                         facts.layered.user_name)
 
 
 def _registry(here: Path) -> FsProjectRegistry:
@@ -92,12 +160,20 @@ def open_project(project_id: str, here: Path) -> WorkBackend:
     not only one `projects:` names (TCW-110 Design 6.1). `Unreachable` when
     it is named but not on this machine; `UnknownProject` for an ID nothing
     knows and `ProjectGraphError` for a problem in the project graph."""
+    root, registry = _reading_root(project_id, here)
+    return open_backend(root, personal=False, registry=registry)
+
+
+def _reading_root(project_id: str, here: Path):
+    """Another project's root, as the active project at `here` finds it, and
+    the command's registry, through which that project's parents are found
+    (TCW-109 Design 5.2)."""
     from tcw.locate import Locator
     try:
         locator = Locator.of(Path(here))
     except ValueError as error:
         raise BackendError(str(error)) from None
-    return open_backend(locator.owner_root(project_id, locator.root), personal=False)
+    return locator.owner_root(project_id, locator.root), locator.registry
 
 
 def resolve_work_input(text, active: Callable[[], WorkBackend], root: Path
@@ -285,14 +361,19 @@ def reference_resolver(project_root: Path) -> Callable[[Slug], str]:
     project that is here but cannot be opened or read answers `broken`; one
     that cannot be looked up, `GraphError` with the reason (TCW-110 Design
     6.3)."""
+    from tcw.errors import InheritedUnavailable
     from tcw.work.references import BROKEN, FOUND, MISSING, UNRESOLVED, GraphError
     opened: dict[str, object] = {}
 
     def resolve(ref: Slug) -> "str | GraphError":
         if ref.project not in opened:
             try:
-                opened[ref.project] = open_project(ref.project, project_root)
-            except Unreachable:
+                root, registry = _reading_root(ref.project, project_root)
+                opened[ref.project] = item_folders(root, personal=False,
+                                                   registry=registry)
+            except (Unreachable, InheritedUnavailable):
+                # Not here, or what it inherits is not: it could not be
+                # checked, and the run goes on (TCW-109 Design 3.6).
                 opened[ref.project] = UNRESOLVED
             except ProjectGraphError as error:
                 opened[ref.project] = GraphError(str(error))
@@ -301,8 +382,8 @@ def reference_resolver(project_root: Path) -> Callable[[Slug], str]:
         other = opened[ref.project]
         if isinstance(other, (str, GraphError)):
             return other
-        if isinstance(other, JiraBackend):
-            return FOUND if link_exists(other.work_path, ref.folder) else MISSING
+        if isinstance(other, Path):
+            return FOUND if link_exists(other, ref.folder) else MISSING
         try:
             other.read(ref.folder)
         except NotFound:

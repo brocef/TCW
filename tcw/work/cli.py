@@ -30,8 +30,9 @@ from tcw.work.model import (
     STAGES, UNSET, Changes, Slug, completion_stage, inbox_stage, stage as table_stage,
     start_stage,
 )
-from tcw.work.open import (delegate, existing_item, name_item, open_backend,
-                           open_for_update, read_work_config, resolve_work_input)
+from tcw.work.open import (delegate, existing_item, external_stages_of, name_item,
+                           open_backend, open_for_update, project_facts,
+                           read_work_config, resolve_work_input)
 from tcw.work.record import item_record, readable
 
 NAME = "work"
@@ -80,7 +81,7 @@ def _references(changes: Changes, backend: WorkBackend, root: Path) -> Changes:
 
 def _own(slug: Slug, backend: WorkBackend, root: Path) -> WorkBackend:
     """Refuse a write to another project's item."""
-    if slug.project != open_backend(root).project:
+    if slug.project != project_facts(root).project:
         raise Refused(f"{slug} belongs to project '{slug.project}'; run the "
                       f"command in that project")
     return backend
@@ -334,8 +335,9 @@ def _path(args) -> int:
     if args.slug is None:
         if args.stage or args.next or args.handoff:
             raise UsageError("name an item first")
-        backend = open_backend(project_root())
-        print(backend.work_path)
+        # The work path is the project's own: no store is opened for it, so
+        # nothing the project inherits is read (TCW-109 Design 3.4).
+        print(project_facts(project_root()).path)
         return codes.OK
     slug, backend, _ = resolve_item(args.slug)
     backend.read(slug.folder)
@@ -461,25 +463,31 @@ def _tickets_adopt(args) -> int:
 
 
 def _prompt_target(args):
-    """`(backend, item, record, request, layout, root)` for a composed prompt:
-    the named item's, or this project's with no item."""
+    """`(config, external, project, item, record, request, layout, root)` for
+    a composed prompt: the named item's, or, with no item, this project's,
+    read without opening its store, so nothing it inherits is read (TCW-109
+    Design 3.4). `external` is the backend kind's stages whose record it
+    keeps, and `project` the ID of the project whose lists are composed."""
     if args.slug is None:
         root = project_root()
-        return open_backend(root), None, None, None, None, root
+        facts = project_facts(root)
+        config = facts.layered.work
+        return (config, external_stages_of(config), facts.project, None, None, None,
+                None, root)
     slug, backend, root = resolve_item(args.slug)
     item = backend.read(slug.folder)
     record = item_record(item, _readable(backend), _layout(backend))
-    return (backend, item, record, backend.read_request(slug.folder),
-            _layout(backend), root)
+    return (backend.config, backend.external_stages, backend.project, item, record,
+            backend.read_request(slug.folder), _layout(backend), root)
 
 
-def _personal_note(backend: WorkBackend, root: Path, key_path: tuple) -> None:
+def _personal_note(project: str, root: Path, key_path: tuple) -> None:
     """Say on stderr when a personal file set the list being composed (TCW-72
     Design 7.3). Only for the project the command acts on: another
     project's lists never come from this person's files."""
     from tcw.config import effective
     from tcw.output import shown
-    if backend.project != open_backend(root).project:
+    if project != project_facts(root).project:
         return
     files = effective(root).personal_files(key_path)
     if files:
@@ -523,18 +531,18 @@ def _stage_prompt(args) -> int:
     if step.name == inbox_stage() and args.slug is not None:
         raise UsageError(f"'{step.name}' runs before an item exists and takes no "
                          f"work item; run it with no argument")
-    backend, item, record, request, layout, root = _prompt_target(args)
-    if step.name not in backend.config.enabled:
+    config, external, project, item, record, request, layout, root = _prompt_target(args)
+    if step.name not in config.enabled:
         _say(f"note: '{step.name}' is disabled in this project; printing its "
              f"instructions because you asked to read them")
     res = _resolved(lambda: stage_prompt(
-        backend.config, step.name, item=item, record=record, request=request,
+        config, step.name, item=item, record=record, request=request,
         layout=layout, project_root=root, execute=not args.no_exec))
-    _personal_note(backend, root, ("work", "stages", step.name, "prompt"))
+    _personal_note(project, root, ("work", "stages", step.name, "prompt"))
     label = f"stage {step.name}"
     if not args.no_exec and res.text:
         parts = [stage_header("<slug>"), res.text]
-        footer = stage_footer(step, backend.external_stages, "<slug>")
+        footer = stage_footer(step, external, "<slug>")
         if footer is not None:
             parts.append(footer)
         res.text = "\n\n".join(parts)
@@ -560,12 +568,12 @@ def _procedure(args) -> int:
         print(filter_backend(packaged_text("procedures", args.procedure),
                              None).rstrip())
         return codes.OK
-    backend, item, record, request, layout, root = _prompt_target(args)
+    config, _, project, item, record, request, layout, root = _prompt_target(args)
     res = _resolved(lambda: procedure_prompt(
-        backend.config, args.procedure, item=item, record=record,
+        config, args.procedure, item=item, record=record,
         request=request, layout=layout, project_root=root,
         execute=not args.no_exec))
-    _personal_note(backend, root, ("work", "procedures", args.procedure))
+    _personal_note(project, root, ("work", "procedures", args.procedure))
     return _print_resolution(res, f"procedure {args.procedure}",
                              args.no_exec)
 
@@ -590,8 +598,9 @@ def _phases(config, name: str) -> dict:
 
 def _lifecycle(args) -> int:
     """The stage table: every stage with its kind, whether this project enables
-    it, and its bindings (Design 2, decision 4)."""
-    config = open_backend(project_root()).config
+    it, and its bindings (Design 2, decision 4). The stages are the project's
+    own, so no store is opened (TCW-109 Design 3.4)."""
+    config = project_facts(project_root()).layered.work
     names = ([table_stage(args.stage).name] if args.stage is not None
              else [s.name for s in STAGES])
     if args.json:
@@ -620,7 +629,7 @@ def _lifecycle(args) -> int:
 
 
 def _docs(args) -> int:
-    entries = open_backend(project_root()).config.documentation
+    entries = project_facts(project_root()).layered.work.documentation
     if args.json:
         print_json(None, {"source": "config" if entries else "agent-guide",
                           "entries": [{"path": e.path, "trigger": e.trigger,
