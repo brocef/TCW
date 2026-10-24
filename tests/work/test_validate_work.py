@@ -7,7 +7,6 @@ import pytest
 from tcw.store.fs import FsProjectRegistry
 from tcw.locate import Locator
 from tcw.validate import _store_overlaps, _work_findings
-from tcw.work.config import MIGRATION_GUIDE
 from tests.work.projects import commit_all, connect, make_project, write_item
 from tests.statefiles import ITEM_STATE
 
@@ -82,12 +81,14 @@ def test_a_reference_found_in_another_project_is_fine(tmp_path):
     assert findings(p) == ([], None)
 
 
-def test_an_inbox_folder_names_the_guide(tmp_path):
+def test_an_inbox_folder_is_a_reserved_name(tmp_path):
+    """Since TCW-111 a stage name is reserved in the work store (Design 2.4,
+    row c), which replaces the 2.8-to-3.0 guide's pointer."""
     p = make_project(tmp_path, "p")
     (p / "docs" / "work" / "inbox").mkdir()
     [error] = by_severity(findings(p)[0], "error")
     assert error.where.endswith("inbox")
-    assert MIGRATION_GUIDE in error.message
+    assert error.message == "'inbox' is reserved in the work store"
 
 
 def test_a_bad_capabilities_file_on_an_unfinished_item_fails(tmp_path):
@@ -179,8 +180,8 @@ def test_validate_counts_only_errors(tmp_path, capsys, monkeypatch):
     assert "2026-10-01-bad/tcw-work-item.yaml" in text and "created" in text
 
 
-def test_validate_names_the_guide_for_a_status_folder(tmp_path, capsys, monkeypatch):
+def test_validate_reports_a_status_folder_as_reserved(tmp_path, capsys, monkeypatch):
     p = make_project(tmp_path, "p")
     (p / "docs" / "work" / "inbox").mkdir()
     code, text = run_validate(capsys, monkeypatch, p)
-    assert code == 1 and MIGRATION_GUIDE in text
+    assert code == 1 and "'inbox' is reserved in the work store" in text

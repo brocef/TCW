@@ -12,6 +12,7 @@ from tcw.work.model import Slug
 from tests.work.jira.conftest import JiraProject, jira_config
 from tests.work.jira.fake import FIELDS, Link
 from tests.work.projects import make_project
+from tests.work.jira.conftest import key_folder
 
 SINGLE_ISSUE = re.compile(r"^/rest/api/3/issue/[A-Z][A-Z0-9_]*-\d+(/|\?|$)")
 
@@ -77,7 +78,7 @@ def many(jira_project, count, **values):
         name = f"{ticket.key}-t"
         ticket.custom[FIELDS["TCW Project"]] = "tcw"
         ticket.custom[FIELDS["TCW Item"]] = f"tcw.work/{name}"
-        (work / name).mkdir()
+        key_folder(work, name)
         keys.append(ticket.key)
     return keys
 

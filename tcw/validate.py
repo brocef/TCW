@@ -622,21 +622,37 @@ def _work_target_findings(project_root: Path, registry,
     except TcwError as error:
         return [Finding("error", config_file, _config_message(error, project_root))]
     folder = Path(backend.work_path) / target.ref
-    if "/" in target.ref or target.ref.startswith(".") or not folder.is_dir():
+    # An id-path at any depth (TCW-111 Design 5); a folder that is no item of
+    # this backend's is no target, whatever is on the disk.
+    if not backend.is_item_folder(target.ref):
         return [Finding("error", target.ref, "no such work object")]
+    # The items nested in the target's folder are objects of their own, so
+    # what is found in their folders is theirs, not the target's.
+    nested = [Path(backend.work_path) / p for p in backend.layout.item_folders()
+              if p.startswith(target.ref + "/")]
+
+    resolved_folder = folder.resolve()
+    resolved_nested = [n.resolve() for n in nested]
+
+    def own(where: str) -> bool:
+        path = Path(where.rsplit(":", 1)[0] if re.search(r":\d+$", where) else where)
+        path = (path if path.is_absolute() else project_root / path).resolve()
+        return _under(path, resolved_folder) and \
+            not any(_under(path, n) for n in resolved_nested)
     # (a) leaves the state file to the backend's own check, below.
     problems, _ = _file_findings(project_root, [folder])
+    problems = [p for p in problems if own(p.where)]
     if isinstance(backend, JiraBackend):
-        store = jira_store_problems(backend.work_path, backend.jira)
+        store = jira_store_problems(backend.work_path, backend.jira, backend.project)
     elif isinstance(backend, FsWorkBackend):
         store = work_store_problems(backend.work_path, backend.project, backend.config)
     else:
         store = []
-    problems += [p for p in store if _under(Path(p.where), folder)
+    problems += [p for p in store if own(p.where)
                  or _names_folder(p, Path(backend.work_path), target.ref)]
     layout = backend.layout
     problems += round_findings(backend.work_path, backend.project, layout,
-                               folders={target.ref})
+                               folders={target.ref}, is_item=backend.is_item_folder)
 
     item = target.item
     if item is None and isinstance(backend, FsWorkBackend):
@@ -666,7 +682,7 @@ def _work_target_findings(project_root: Path, registry,
     for name, ref in refs:
         if ref.project != backend.project:
             continue
-        if not (Path(backend.work_path) / ref.folder).is_dir():
+        if not backend.is_item_folder(ref.folder):
             problems.append(Finding("warning", str(layout.item_dir(item.slug) / WORK_STATE_FILE),
                                     f"{name} references a missing item, {ref}"))
     return problems
@@ -699,15 +715,17 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
         # Offline: nothing Jira owns is checked here (TCW-71 Design 9.1).
         # Rounds and declarations are files in both modes, so they are
         # checked here too.
-        return [*jira_store_problems(backend.work_path, backend.jira),
-                *round_findings(backend.work_path, backend.project, backend.layout),
+        return [*jira_store_problems(backend.work_path, backend.jira, backend.project),
+                *round_findings(backend.work_path, backend.project, backend.layout,
+                                is_item=backend.is_item_folder),
                 *_declaration_findings(backend.layout, backend.project)], None
     if not isinstance(backend, FsWorkBackend):
         return [], None
     layout = backend.layout
     findings = [*work_store_problems(backend.work_path, backend.project,
                                      backend.config),
-                *round_findings(backend.work_path, backend.project, layout)]
+                *round_findings(backend.work_path, backend.project, layout,
+                                is_item=backend.is_item_folder)]
     items, unreadable = read_all(backend.work_path, backend.project, backend.enabled)
 
     def item_file(slug) -> str:
@@ -763,10 +781,13 @@ def _declaration_findings(layout, project: str, folders=None) -> list[Finding]:
     return findings
 
 
-def round_findings(work_path: Path, project: str, layout, folders=None) -> list[Finding]:
+def round_findings(work_path: Path, project: str, layout, folders=None,
+                   is_item=None) -> list[Finding]:
     """A warning for each verdict stage whose latest round is invalid, naming
     the round file (TCW-73 Design 6.1.7). Older rounds are history and are not
-    read. `folders` narrows the check to those item folders' names. A stage
+    read. Every item folder the walk finds is read, at any depth (TCW-111),
+    narrowed by `is_item`, the backend's naming rule, when given. `folders`
+    narrows the check to those item folders' id-paths. A stage
     the backend keeps (`layout.external`) is skipped, as `completion_gate`
     skips it: its folder is ignored, and `jira_store_problems` says so."""
     from tcw.work.layout import INVALID
@@ -778,12 +799,12 @@ def round_findings(work_path: Path, project: str, layout, folders=None) -> list[
     if not stages or not work_path.is_dir():
         return []
     findings = []
-    for entry in sorted(work_path.iterdir(), key=lambda p: p.name):
-        if entry.name.startswith(".") or not entry.is_dir():
+    for id_path in layout.item_folders():
+        if is_item is not None and not is_item(id_path):
             continue
-        if folders is not None and entry.name not in folders:
+        if folders is not None and id_path not in folders:
             continue
-        slug = Slug(project, entry.name)
+        slug = Slug(project, id_path)
         for name in stages:
             if layout.current_verdict(slug, name) != INVALID:
                 continue

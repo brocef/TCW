@@ -16,6 +16,7 @@ from tcw.work.model import Slug
 from tests.work.jira.conftest import EMAIL_ENV, ME, TOKEN_ENV
 from tests.work.jira.fake import FIELDS, Link
 from tests.work.projects import make_project
+from tests.work.jira.conftest import key_folder
 
 def blocks(fake, blocker, blocked):
     fake.link_counter += 1
@@ -27,8 +28,9 @@ def blocks(fake, blocker, blocked):
 
 @pytest.fixture
 def folders(jira_project):
-    for name in ("TCW-67-x", "TCW-5-a", "2026-10-01-x"):
-        (jira_project.work / name).mkdir(parents=True)
+    for name in ("TCW-67-x", "TCW-5-a"):
+        key_folder(jira_project.work, name)
+    (jira_project.work / "2026-10-01-x").mkdir(parents=True)
     return jira_project
 
 
@@ -43,7 +45,7 @@ def test_lookup(folders):
 
 
 def test_two_folders_with_one_key(folders, tcw):
-    (folders.work / "TCW-5-b").mkdir()
+    key_folder(folders.work, "TCW-5-b")
     with pytest.raises(BackendError, match="TCW-5-a, TCW-5-b"):
         folders.backend().lookup("TCW-5")
     assert tcw(["show", "TCW-5"], folders.root).code == 1
@@ -130,7 +132,7 @@ def test_an_untracked_parent_and_untracked_order(jira_project):
 
 
 def test_a_missing_ticket_is_not_found(jira_project, tcw):
-    (jira_project.work / "TCW-40-gone").mkdir(parents=True)
+    key_folder(jira_project.work, "TCW-40-gone")
     with pytest.raises(NotFound, match="no ticket TCW-40"):
         jira_project.backend().read("TCW-40-gone")
     assert tcw(["show", "TCW-40-gone"], jira_project.root).code == 4
@@ -147,7 +149,7 @@ def test_a_ticket_answered_under_another_key_is_returned_with_a_warning(
         jira_project, capsys):
     fake = jira_project.fake
     moved = fake.ticket("Moved")
-    (jira_project.work / "TCW-9-moved").mkdir(parents=True)
+    key_folder(jira_project.work, "TCW-9-moved")
     fake.tickets["TCW-9"] = moved
     item = jira_project.backend().read("TCW-9-moved")
     assert item.title == "Moved"

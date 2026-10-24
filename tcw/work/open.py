@@ -115,9 +115,10 @@ def resolve_work_input(text, active: Callable[[], WorkBackend], root: Path
         return _by_key(backend, found.key), backend
     if found.form == "d":
         backend = active()
-        if "/" in found.id_path:
-            # A work item's id-path is one folder until TCW-111, so several
-            # parts name nothing; a 3.x `<project>/<folder>` reads this way.
+        if "/" in found.id_path and not backend.is_item_folder(found.id_path):
+            # A nested item is named by its whole id-path (TCW-111); one that
+            # names no item may be a 3.x `<project>/<folder>`, and the hint
+            # (TCW-110 Design 3.4) is tried only then.
             from tcw.locate import Locator, three_x_hint
             try:
                 hint = three_x_hint(Locator.of(Path(root)), "work", found.id_path)

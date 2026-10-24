@@ -76,6 +76,16 @@ class JiraProject:
         return ticket.key, name
 
 
+def key_folder(work: Path, name: str, site: str = SITE) -> Path:
+    """An item folder in a Jira-mode work path, holding its state file: since
+    TCW-111 a key-named folder with no state file is no item (Design 6.1)."""
+    path = work / name
+    path.mkdir(parents=True, exist_ok=True)
+    key = "-".join(name.rpartition("/")[2].split("-")[:2])
+    write_state(path / ITEM_STATE, f"ticket: {site}/browse/{key}\n")
+    return path
+
+
 @pytest.fixture
 def fake(monkeypatch):
     monkeypatch.setenv(EMAIL_ENV, "dev@example.test")

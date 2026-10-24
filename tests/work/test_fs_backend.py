@@ -10,7 +10,7 @@ import yaml
 from tcw.errors import BackendError, MovedWithoutNote, Refused, UsageError
 from tcw.work import fs_backend
 from tcw.work.backend import Query
-from tcw.work.config import MIGRATION_GUIDE, parse_work_config
+from tcw.work.config import parse_work_config
 from tcw.work.fs_backend import FsWorkBackend, read_all, work_store_problems
 from tcw.work.model import Changes, Slug
 from tests.statefiles import write_state, ITEM_STATE
@@ -386,8 +386,11 @@ def test_work_store_problems(work):
                           ("warning", "dod.yaml")}
     assert "created" in found[("error", "2026-10-01-bad")]
     assert "'verify'" in found[("error", "2026-10-01-lost")]
-    assert MIGRATION_GUIDE in found[("error", "inbox")]
-    assert MIGRATION_GUIDE in found[("warning", "dod.yaml")]
+    # Since TCW-111 the store's shape is Design 2.6's: a stage name is
+    # reserved in the work store (row c), and a file in its root is part of
+    # no object (row d).
+    assert found[("error", "inbox")] == "'inbox' is reserved in the work store"
+    assert found[("warning", "dod.yaml")] == "is not part of any object"
     assert "gone" in found[("warning", "2026-10-01-tagged")]
 
 

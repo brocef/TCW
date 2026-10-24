@@ -20,7 +20,7 @@ from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tcw.store.project import FsProjectRegistry, begin_command, end_command
 from tests.projectfiles import (config_file, connect_projects, write_config_file,
                                 write_manifest)
-from tests.work.jira.conftest import jira_config
+from tests.work.jira.conftest import jira_config, key_folder
 from tests.work.projects import make_project, write_item
 from tests.statefiles import write_state, STATE_OF
 
@@ -190,12 +190,16 @@ def test_a_jira_owner_is_answered_by_its_folders_with_no_request(pair, monkeypat
     document = yaml.safe_load(path.read_text())
     document["work"] = jira_config("core")
     write_config_file(path, yaml.safe_dump(document, sort_keys=False))
-    (core / "docs" / "work" / "TCW-5-thing").mkdir(parents=True)
+    # With its state file: since TCW-111 a key-named folder without one is no
+    # item (Design 6.1).
+    key_folder(core / "docs" / "work", "TCW-5-thing")
+    (core / "docs" / "work" / "TCW-7-stateless").mkdir(parents=True)
     monkeypatch.setattr("urllib.request.urlopen",
                         lambda *a, **k: pytest.fail("a request was made"))
     locator = Locator.of(app)
     assert locator.read(FullId("core", "work", "TCW-5-thing"), app).kind == FOUND
     assert locator.read(FullId("core", "work", "TCW-6-none"), app).kind == MISSING
+    assert locator.read(FullId("core", "work", "TCW-7-stateless"), app).kind == MISSING
 
 
 def test_one_locator_and_one_registry_per_command(pair, command, monkeypatch):

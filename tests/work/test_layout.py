@@ -7,6 +7,7 @@ import pytest
 from tcw.errors import Refused, UsageError
 from tcw.work.layout import HANDOFF_NAME, Layout, Verdict, round_verdict
 from tcw.work.model import STAGES, Slug
+from tests.statefiles import ITEM_STATE
 
 ALL = frozenset(s.name for s in STAGES)
 SLUG = Slug("tcw", "1-thing")
@@ -154,14 +155,17 @@ def test_a_verdict_about_an_older_implementation_is_stale(layout):
 
 def test_item_folders_lists_the_folders_under_the_work_path_in_order(layout, tmp_path):
     """The board's fallback while the backend is unavailable (TCW-77 Design
-    7.3): folder names only, sorted, hidden entries and plain files left
-    out, and no `tcw-work-item.yaml` read."""
+    7.3): id-paths only, sorted, hidden entries and plain files left out.
+    Since TCW-111 these are the walk's objects, so a folder is listed when
+    it holds the state file, at any depth, and one without is not; the state
+    file's contents are never read."""
     work = tmp_path / "work"
-    for name in ("2-b", "1-a", ".hidden", "TCW-3-c"):
-        (work / name).mkdir(parents=True)
+    for name in ("2-b", "1-a", ".hidden", "TCW-3-c", "2026/4-d"):
+        write(work / name / ITEM_STATE, "not read: [")
+    (work / "5-no-state").mkdir()
     write(work / "stray.md", "not a folder")
-    assert layout.item_folders() == ["1-a", "2-b", "TCW-3-c"]
-    assert snapshot(work / "1-a") == []
+    assert layout.item_folders() == ["1-a", "2-b", "2026/4-d", "TCW-3-c"]
+    assert snapshot(work / "1-a") == [str(work / "1-a" / ITEM_STATE)]
 
 
 def test_item_folders_of_a_missing_work_path_is_empty(layout, tmp_path):

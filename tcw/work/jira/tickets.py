@@ -84,7 +84,10 @@ def inbox(backend: JiraBackend) -> tuple[list[dict], str]:
         if fields.get(ids["item"]) or fields.get(ids["project"]) not in (None, "",
                                                                           backend.project):
             continue
-        if backend.lookup(key) is not None:
+        # Any folder named for the key, with its state file or without one,
+        # as adopt refuses beside either: the list offers only what adopt
+        # accepts (TCW-111 Design 6.4).
+        if backend.key_folders(key):
             continue
         description = document_text(fields.get("description"))
         reporter = fields.get("reporter")
@@ -134,7 +137,15 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
     if tcw_project not in (None, "", backend.project):
         raise Refused(f"{key} belongs to TCW project {tcw_project!r}, not "
                       f"{backend.project!r}")
-    here = backend.lookup(key)
+    # Every folder named for the key, with its state file or without one, at
+    # any depth (TCW-111 Design 6.4): `lookup` answers only for items, and a
+    # folder an interrupted run left without its state file is adopt's to
+    # finish, or to refuse beside.
+    named_for_key = backend.key_folders(key)
+    if len(named_for_key) > 1:
+        raise BackendError(f"two folders in {backend.work_path} carry the key {key}: "
+                           f"{', '.join(named_for_key)}; rename or remove one")
+    here = named_for_key[0] if named_for_key else None
     if here is not None:
         _refuse_unreadable_state(backend.work_path / here / STATE_FILE)
     tcw_item = fields.get(ids["item"])

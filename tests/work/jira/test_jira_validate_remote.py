@@ -13,6 +13,7 @@ from tests.work.jira.conftest import JiraProject, jira_config
 from tests.work.jira.fake import FIELDS, Transition as Route
 from tests.work.projects import make_project
 from tests.statefiles import write_state, ITEM_STATE
+from tests.work.jira.conftest import key_folder
 
 ITEM = FIELDS["TCW Item"]
 LINE = re.compile(r"^(error|warning|unresolved): \S+: .+$")
@@ -141,7 +142,7 @@ def test_without_an_epic_type_a_task_still_needs_parent(clean, monkeypatch, caps
 
 
 def test_a_refused_key_search_reports_only_the_gone_ticket(clean, monkeypatch, capsys):
-    (clean.work / "TCW-50-gone").mkdir()
+    key_folder(clean.work, "TCW-50-gone")
     clean.fake.refuse_missing_key_search = True
     run = remote(clean, monkeypatch, capsys)
     # The offline check's line for the folder's missing `tcw-work-item.yaml` shares

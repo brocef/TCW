@@ -67,11 +67,9 @@ class Slug(FullId):
         identifier, its address, or its folder name in `current_project`."""
         found = sort_input(text, "work")
         if found.form == "d":
-            if "/" in found.id_path:
-                # A work item's id-path is one folder name until TCW-111, so
-                # an id-path of several parts names no item; a 3.x
-                # `<project>/<folder>` reads this way (Design 3.4).
-                raise NotFound(f"no work item {text} in project '{current_project}'")
+            # An id-path of any depth, each part already checked by
+            # `sort_input` (TCW-111: a nested item is named by its whole
+            # id-path). Whether it names an item is the backend's question.
             return cls(current_project, found.id_path)
         return cls.of(found.full_id)
 

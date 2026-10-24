@@ -3,7 +3,7 @@
 
 import pytest
 
-from tcw.errors import NotFound, UsageError
+from tcw.errors import UsageError
 from tcw.ids import ThreeXReference
 from tcw.work.model import FOLDER_LIMIT, Slug, title_words
 
@@ -38,12 +38,12 @@ def test_anything_else_is_a_usage_error(text):
 
 
 @pytest.mark.parametrize("text", ["a/b/c", "tcw/f"])
-def test_an_id_path_of_several_parts_names_no_work_item(text):
-    """A work item's id-path is one folder name until TCW-111, and a 3.x
-    `<project>/<folder>` reads as such an id-path (TCW-110 Design 3.4)."""
-    with pytest.raises(NotFound) as caught:
-        Slug.typed(text, "tcw")
-    assert f"no work item {text} in project 'tcw'" in str(caught.value)
+def test_an_id_path_of_several_parts_names_a_nested_item(text):
+    """Since TCW-111 a nested item is named by its whole id-path, so typed
+    input of several parts is that id-path in the current project. Whether
+    it names an item, and the 3.x `<project>/<folder>` hint when it does not
+    (TCW-110 Design 3.4), is the backend's (`resolve_work_input`)."""
+    assert Slug.typed(text, "tcw") == Slug("tcw", text)
 
 
 def test_a_folder_at_the_limit_is_accepted():

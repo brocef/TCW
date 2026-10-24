@@ -19,9 +19,10 @@ from typing import Any, Callable, Iterable, Mapping
 
 from tcw.errors import BackendError, NotFound, TcwError, Unreachable
 from tcw.findings import Finding
+from tcw.object_folders import object_paths
 from tcw.work.jira import jql
 from tcw.work.jira.backend import (
-    KEY_FOLDER, IssueType, JiraBackend, Refusal, _chunks, _jira, choose_transition,
+    IssueType, JiraBackend, Refusal, _chunks, _jira, choose_transition,
     field_id, folder_key, link_exists, three_x_item, three_x_item_message,
 )
 from tcw.work.jira.client import (
@@ -413,11 +414,13 @@ def _sampled_move(run: _Run, kind: IssueType, source: str, target: str,
 
 
 def _folders(work_path: Path) -> dict[str, list[str]]:
+    """Every item folder the walk finds, at any depth, grouped by its key, as
+    id-paths (TCW-111 Design 6.5), so each is compared with its ticket."""
     found: dict[str, list[str]] = {}
-    if work_path.is_dir():
-        for entry in sorted(work_path.iterdir(), key=lambda p: p.name):
-            if entry.is_dir() and KEY_FOLDER.fullmatch(entry.name):
-                found.setdefault(folder_key(entry.name), []).append(entry.name)
+    for id_path in object_paths(work_path, "work"):
+        key = folder_key(id_path)
+        if key is not None:
+            found.setdefault(key, []).append(id_path)
     return found
 
 

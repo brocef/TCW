@@ -100,13 +100,18 @@ class Layout:
         return self.item_dir(slug) / CAPABILITIES_FILE
 
     def item_folders(self) -> list[str]:
-        """The names of the folders directly under the work path, sorted, with
-        hidden ones left out: what any backend keeps one of per item. Reads
-        no item's own files, so it answers while the backend cannot."""
-        if not self.work_root.is_dir():
-            return []
-        return sorted(entry.name for entry in self.work_root.iterdir()
-                      if entry.is_dir() and not entry.name.startswith("."))
+        """The id-path of every folder in the work path holding an item's
+        state file, at any depth, sorted: the walk's objects (TCW-111 Design
+        2.5). Callers keep the ones whose name follows their backend's rule
+        (`is_item_folder`). Reads no item's own files, so it answers while the
+        backend cannot."""
+        return self.objects(self.work_root)
+
+    @staticmethod
+    def objects(work_root: Path) -> list[str]:
+        """`item_folders` of the work path at `work_root`."""
+        from tcw.object_folders import object_paths
+        return object_paths(work_root, "work")
 
     # -- rounds -------------------------------------------------------------
 

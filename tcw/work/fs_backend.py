@@ -29,13 +29,14 @@ import yaml
 
 from tcw.errors import BackendError, MovedWithoutNote, NotFound, Refused, UsageError
 from tcw.findings import Finding
-from tcw.object_folders import STATE_FILES, existing_version_line, id_problem, state_text
+from tcw.object_folders import (STATE_FILES, existing_version_line, id_problem, is_object,
+                                shape_problems, state_text, walk)
 from tcw.project_files import VERSION_KEY, version_problem
 from tcw.output import shown
 from tcw.store.base import normalize_tag
 from tcw.store.fs import _atomic_write_all, _umask, exact_child
 from tcw.work.backend import Comment, Query
-from tcw.work.config import MIGRATION_GUIDE, WorkConfig
+from tcw.work.config import WorkConfig
 from tcw.work.layout import Layout
 from tcw.work.model import (
     DEFAULT_PRIORITY, FLOW, FOLDER_LIMIT, PRIORITIES, SIZES, TERMINAL, Changes,
@@ -57,17 +58,31 @@ KEYS = (VERSION_KEY, "id", "title", "stage", "priority", "effort", "complexity",
         "tags", "assignee", "parent", "blocked-by")
 
 
-def is_item_folder(path: Path) -> bool:
-    """A directory whose name is `<real date>-<words>`, at most the folder
-    limit, holding a `tcw-work-item.yaml`."""
-    name = path.name
-    if len(name) > FOLDER_LIMIT or not ITEM_FOLDER.match(name):
+def item_named(name: str) -> bool:
+    """Whether the folder name `name`, an id-path's last part, follows this
+    backend's rule for an item: `<real date>-<words>`, at most the folder
+    limit. Holding the state file is the walk's question (`is_object`)."""
+    if not isinstance(name, str) or len(name) > FOLDER_LIMIT \
+            or not ITEM_FOLDER.match(name):
         return False
     try:
         date.fromisoformat(name[:10])
     except ValueError:
         return False
-    return path.is_dir() and (path / STATE_FILE).is_file()
+    return True
+
+
+def is_item_folder(work_path: Path, id_path: str) -> bool:
+    """Whether `id_path` names an item of the work store at `work_path`: its
+    last part follows `item_named`, and the walk's rule makes it an object,
+    at any depth (TCW-111 Design 5, row 12)."""
+    return item_named(id_path.rpartition("/")[2]) and is_object(work_path, "work", id_path)
+
+
+#: Row h's message, at the state file of a folder named as an item that holds
+#: none (TCW-111 Design 2.6). Decided by the implementing agent: the Jira
+#: backend's message says what the file holds, and this one says the same.
+UNMADE_MESSAGE = "is missing; it holds the item's properties and stage"
 
 
 # ---------------------------------------------------------------------------
@@ -95,9 +110,12 @@ def _reads_as_stage(raw: str, enabled: frozenset[str]) -> bool:
 
 
 def _load(folder: Path, project: str,
-          enabled: frozenset[str]) -> tuple[Item, str]:
-    """The item and the raw `stage` string as written. Strict: anything wrong
-    raises `Unreadable` naming the key."""
+          enabled: frozenset[str], id_path: str | None = None) -> tuple[Item, str]:
+    """The item at the id-path `id_path` (the folder's name when not given)
+    and the raw `stage` string as written. Strict: anything wrong raises
+    `Unreadable` naming the key."""
+    id_path = folder.name if id_path is None else id_path
+    name = id_path.rpartition("/")[2]
     path = folder / STATE_FILE
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -159,10 +177,10 @@ def _load(folder: Path, project: str,
         raise Unreadable(path, "blocked-by", "must be a list of slugs")
     parent = raw.get("parent")
     item = Item(
-        slug=Slug(project, folder.name),
+        slug=Slug(project, id_path),
         title=title,
         stage=raw_stage if _reads_as_stage(raw_stage, enabled) else None,
-        created=date.fromisoformat(folder.name[:10]),
+        created=date.fromisoformat(name[:10]),
         priority=priority,
         effort=scale("effort", SIZES),
         complexity=scale("complexity", SIZES),
@@ -216,17 +234,16 @@ def _replace_file(path: Path, text: str) -> None:
 
 def read_all(work_path: Path, project: str,
              enabled: frozenset[str]) -> tuple[list[Item], list[Unreadable]]:
-    """Every item folder directly inside the work path, in name order, read
-    one by one. An unreadable one is set aside rather than failing the rest."""
+    """Every item the walk finds in the work path, at any depth, in name
+    order, read one by one. An unreadable one is set aside rather than
+    failing the rest."""
     items: list[Item] = []
     bad: list[Unreadable] = []
-    if not work_path.is_dir():
-        return items, bad
-    for entry in sorted(work_path.iterdir(), key=lambda p: p.name):
-        if not is_item_folder(entry):
+    for id_path in Layout.objects(work_path):
+        if not item_named(id_path.rpartition("/")[2]):
             continue
         try:
-            items.append(_load(entry, project, enabled)[0])
+            items.append(_load(work_path / id_path, project, enabled, id_path)[0])
         except Unreadable as error:
             bad.append(error)
     return items, bad
@@ -280,21 +297,24 @@ class FsWorkBackend:
         return self.config.enabled
 
     def _folder(self, folder: str) -> Path:
+        """The folder of the item at the id-path `folder`, at any depth."""
         path = self.work_path / folder
-        if "/" in folder or not is_item_folder(path):
+        if not isinstance(folder, str) or not is_item_folder(self.work_path, folder):
+            # A disk that ignores letter case finds a folder by another
+            # spelling; an id-path is compared exactly (TCW-110 Design 1.1),
+            # and the spelling found is said when there is one.
+            spelled = exact_child(self.work_path, folder) \
+                if isinstance(folder, str) and "/" not in folder else False
+            if isinstance(spelled, str) and is_item_folder(self.work_path, spelled):
+                raise NotFound(f"no work item {Slug(self.project, folder)} (the "
+                               f"folder is spelled {spelled})")
             raise NotFound(f"no work item {Slug(self.project, folder)}")
-        # A disk that ignores letter case finds the folder by another
-        # spelling; an id-path is compared exactly (TCW-110 Design 1.1).
-        spelled = exact_child(self.work_path, folder)
-        if spelled is not True:
-            raise NotFound(f"no work item {Slug(self.project, folder)} (the folder "
-                           f"is spelled {spelled})")
         return path
 
     def _load(self, folder: str) -> tuple[Item, str]:
         path = self._folder(folder)
         try:
-            return _load(path, self.project, self.enabled)
+            return _load(path, self.project, self.enabled, folder)
         except Unreadable as error:
             raise BackendError(str(error)) from None
 
@@ -511,8 +531,7 @@ class FsWorkBackend:
         return None
 
     def is_item_folder(self, folder: str) -> bool:
-        return "/" not in folder and is_item_folder(self.work_path / folder) \
-            and exact_child(self.work_path, folder) is True
+        return isinstance(folder, str) and is_item_folder(self.work_path, folder)
 
     def read_request(self, folder: str) -> str | None:
         self._folder(folder)
@@ -558,28 +577,28 @@ class FsWorkBackend:
 
 def work_store_problems(work_path: Path, project: str,
                         config: WorkConfig) -> list[Finding]:
-    """The checks that read only the files in the work path: unreadable
-    items, items with no stage, folders and files that are not items, and
-    unregistered tags."""
+    """The checks that read only the files in the work path: the store's
+    shape (TCW-111 Design 2.6 rows a to i), then, for every item the walk
+    finds at any depth, an unreadable state file, an id that is not its
+    folder's name, no stage, and unregistered tags."""
     findings: list[Finding] = []
     if not work_path.is_dir():
         return findings
     registered = set(config.tags)
-    guide = f"see {MIGRATION_GUIDE} for the work store layout"
-    for entry in sorted(work_path.iterdir(), key=lambda p: p.name):
-        if entry.name.startswith("."):
-            continue
-        if entry.is_file():
-            findings.append(Finding("warning", str(entry),
-                                    f"is not part of a work store; {guide}"))
-            continue
-        if not is_item_folder(entry):
+    found = walk(work_path, "work", item_named=item_named)
+    findings += shape_problems(found, work_path, "work", project,
+                               unmade_message=UNMADE_MESSAGE)
+    for id_path in found.objects:
+        entry = work_path / id_path
+        if not item_named(id_path.rpartition("/")[2]):
+            # Row i: the state file makes it an object, but its name is not
+            # one this backend gives an item, so it is no item.
             findings.append(Finding("error", str(entry),
-                                    f"is not an item folder, so it is not part "
-                                    f"of a work store; {guide}"))
+                                    "is not an item folder: its name must be a "
+                                    "date, then title words"))
             continue
         try:
-            item, raw_stage = _load(entry, project, config.enabled)
+            item, raw_stage = _load(entry, project, config.enabled, id_path)
         except Unreadable as error:
             key = f" ({error.key})" if error.key else ""
             findings.append(Finding("error", str(error.path),

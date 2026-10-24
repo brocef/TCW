@@ -33,7 +33,8 @@ from tcw.store.base import normalize_tag
 from tcw.store.fs import exact_child
 from tcw.work.backend import Comment, Query
 from tcw.work.config import WorkConfig
-from tcw.object_folders import id_problem
+from tcw.object_folders import (UNMADE, id_problem, is_object, object_paths, shape_problems,
+                                walk)
 from tcw.project_files import VERSION_KEY, version_line, version_problem
 from tcw.work.fs_backend import STATE_FILE, WORDS, report_mentions
 from tcw.work.jira import jql
@@ -115,21 +116,33 @@ def _jira() -> Iterator[None]:
 
 
 def folder_key(folder: str) -> str | None:
-    """The key a Jira-mode folder name starts with, or None."""
-    match = KEY_FOLDER.fullmatch(folder) if isinstance(folder, str) else None
+    """The key a Jira-mode item's folder name starts with, or None. Read from
+    an id-path's last part, so a nested item's key is its own folder's
+    (TCW-111 Design 6.1)."""
+    name = folder.rpartition("/")[2] if isinstance(folder, str) else None
+    match = KEY_FOLDER.fullmatch(name) if name is not None else None
     return match.group("key") if match else None
 
 
 def link_exists(work_path: Path, folder: str) -> bool:
-    """Whether `folder` is an item of a Jira-mode project, by the folder scan
-    `lookup` uses: the key in the name is authoritative, so no read of the
-    ticket is needed, and a work link stays offline (R20)."""
-    return folder_key(folder) is not None and "/" not in folder \
-        and (Path(work_path) / folder).is_dir() \
-        and exact_child(Path(work_path), folder) is True
+    """Whether the id-path `folder` is an item of a Jira-mode project: its
+    last part is named for a key, and the walk's rule makes it an object,
+    at any depth (TCW-111 Design 5, row 12). The key in the name is
+    authoritative, so no read of the ticket is needed, and a work link stays
+    offline (R20). A key-named folder with no state file is no item."""
+    return folder_key(folder) is not None and is_object(Path(work_path), "work", folder)
 
 
-def jira_store_problems(work_path: Path, jira: JiraConfig) -> list[Finding]:
+#: Row h's message in Jira mode, at the state file: today's message for an
+#: item folder whose `item.yaml` was missing (TCW-111 Design 2.6).
+UNMADE_MESSAGE = "is missing; it holds the ticket's link"
+
+
+def _key_named(name: str) -> bool:
+    return KEY_FOLDER.fullmatch(name) is not None
+
+
+def jira_store_problems(work_path: Path, jira: JiraConfig, project: str) -> list[Finding]:
     """The offline checks of a Jira-mode work path (Design 9.1): each folder's
     name and state file, keys used twice, and record folders for stages Jira
     keeps. Reads no network."""
@@ -137,18 +150,24 @@ def jira_store_problems(work_path: Path, jira: JiraConfig) -> list[Finding]:
     work_path = Path(work_path)
     if not work_path.is_dir():
         return findings
+    # The walk once: the store's shape (rows a to h; a key-named folder with
+    # no state file is row h, with today's message), then every item folder
+    # at any depth (TCW-111 Design 6.1).
+    found = walk(work_path, "work", item_named=_key_named)
+    findings += shape_problems(found, work_path, "work", project,
+                               unmade_message=UNMADE_MESSAGE)
     by_key: dict[str, list[str]] = {}
-    for entry in sorted(work_path.iterdir(), key=lambda p: p.name):
-        if entry.name.startswith(".") or not entry.is_dir():
-            continue
-        key = folder_key(entry.name)
+    for id_path in found.objects:
+        entry = work_path / id_path
+        key = folder_key(id_path)
         if key is None:
+            # Row i: a folder holding the state file whose name breaks the rule.
             findings.append(Finding("error", str(entry),
                                     "is not a Jira item folder: its name must be the "
                                     "ticket's key, then title words, such as "
                                     "TCW-5-add-export"))
             continue
-        by_key.setdefault(key, []).append(entry.name)
+        by_key.setdefault(key, []).append(id_path)
         findings.extend(_item_file_problems(entry / STATE_FILE, key, jira.site))
         for stage in sorted(EXTERNAL_STAGES):
             if (entry / table_stage(stage).name).is_dir():
@@ -347,14 +366,45 @@ class JiraBackend:
     def is_item_folder(self, folder: str) -> bool:
         return link_exists(self.work_path, folder)
 
+    def _walked(self):
+        """The walk of the work path, kept for this backend's life, so
+        `resolve_keys`, which asks `lookup` once per key, walks the store once
+        per command (TCW-111 spec Risks). Dropped by `_item_file` and `rename`,
+        the two methods that make or move a folder."""
+        if getattr(self, "_walk_cache", None) is None:
+            self._walk_cache = walk(self.work_path, "work", item_named=_key_named)
+        return self._walk_cache
+
+    def _forget_walk(self) -> None:
+        self._walk_cache = None
+
+    def _key_index(self) -> dict[str, list[str]]:
+        """`{key: [id-paths]}` of every item folder, at any depth."""
+        index: dict[str, list[str]] = {}
+        for id_path in self._walked().objects:
+            key = folder_key(id_path)
+            if key is not None:
+                index.setdefault(key, []).append(id_path)
+        return index
+
+    def key_folders(self, key: str) -> list[str]:
+        """Every folder the walk met whose last part is named for `key`, with
+        a state file or without one (an item, or row h's folder), as
+        id-paths, sorted. Only adopt asks this: it can finish a folder an
+        interrupted run left without its state file (TCW-111 Design 6.4)."""
+        walked = self._walked()
+        found = [p for p in walked.objects if folder_key(p) == key]
+        found += [p for p, kind, _ in walked.folders
+                  if kind == UNMADE and folder_key(p) == key]
+        return sorted(found)
+
     def lookup(self, name: str) -> str | None:
         if not isinstance(name, str):
             return None
         key = name.upper()
         if not KEY.fullmatch(key) or not self.work_path.is_dir():
             return None
-        found = sorted(entry.name for entry in self.work_path.iterdir()
-                       if entry.is_dir() and folder_key(entry.name) == key)
+        found = sorted(self._key_index().get(key, []))
         if len(found) > 1:
             raise BackendError(f"two folders in {self.work_path} carry the key {key}: "
                                f"{', '.join(found)}; rename or remove one")
@@ -362,12 +412,16 @@ class JiraBackend:
 
     def _key(self, folder: str) -> str:
         key = folder_key(folder)
-        if key is None or "/" in folder or not (self.work_path / folder).is_dir():
+        if key is None or not isinstance(folder, str):
             raise NotFound(f"no work item {Slug(self.project, folder)}")
-        spelled = exact_child(self.work_path, folder)
-        if spelled is not True:
-            raise NotFound(f"no work item {Slug(self.project, folder)} (the folder "
-                           f"is spelled {spelled})")
+        if not link_exists(self.work_path, folder):
+            # A disk that ignores letter case finds a folder by another
+            # spelling; an id-path is compared exactly (TCW-110 Design 1.1).
+            spelled = exact_child(self.work_path, folder) if "/" not in folder else False
+            if isinstance(spelled, str) and link_exists(self.work_path, spelled):
+                raise NotFound(f"no work item {Slug(self.project, folder)} (the "
+                               f"folder is spelled {spelled})")
+            raise NotFound(f"no work item {Slug(self.project, folder)}")
         return key
 
     # -- reading -----------------------------------------------------------------
@@ -516,8 +570,7 @@ class JiraBackend:
                 continue
             slug = self._slug_of(value)
             if slug is None or slug.project != self.project \
-                    or folder_key(slug.folder) is None \
-                    or not (self.work_path / slug.folder).is_dir():
+                    or not self.is_item_folder(slug.folder):
                 _warn(f"warning: Jira ticket {issue.get('key')} names the item "
                       f"{value!r}, whose folder is not in {self.work_path}; it is "
                       f"left out (it may exist in another copy of this "
@@ -693,6 +746,7 @@ class JiraBackend:
         """Make the folder and its state file. `resume` finishes a folder an
         interrupted run made, and refuses nothing when it exists."""
         path = self.work_path / folder
+        self._forget_walk()
         if not (resume and path.is_dir()):
             path.mkdir(parents=True)
             self.report(f"created {shown(path)}/")
@@ -921,6 +975,7 @@ class JiraBackend:
 
     def rename(self, folder: str, title_words: str) -> Item:
         key = self._key(folder)
+        self._forget_walk()
         words = title_words
         keyed = KEY_FOLDER.fullmatch(title_words) if isinstance(title_words, str) else None
         if keyed:

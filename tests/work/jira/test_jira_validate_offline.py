@@ -12,6 +12,7 @@ from tests.work.jira.fake import SITE
 from tests.work.projects import connect, make_project, write_item
 from tests.projectfiles import config_file, write_config_file
 from tests.statefiles import write_state, ITEM_STATE
+from tests.work.jira.conftest import key_folder
 
 
 @pytest.fixture
@@ -53,7 +54,7 @@ def test_a_clean_tree_is_clean(offline, monkeypatch, capsys):
      "is not on"),
     (lambda p: folder(p, "TCW-1-x", ticket=f"{SITE}/browse/TCW-2"), "names TCW-2"),
     (lambda p: (folder(p, "TCW-5-a"), folder(p, "TCW-5-b")), "the key TCW-5 names 2 folders"),
-    (lambda p: (p.work / "tcw-5-x").mkdir(parents=True), "is not a Jira item folder"),
+    (lambda p: folder(p, "tcw-5-x", ticket=f"{SITE}/browse/TCW-5"), "is not a Jira item folder"),
     (lambda p: (p.work / "TCW-1-x").mkdir(parents=True), "is missing"),
 ])
 def test_each_error(offline, monkeypatch, capsys, make, words):
@@ -100,10 +101,23 @@ def test_a_link_to_a_missing_folder(offline, monkeypatch, capsys):
     assert code == 1 and "tcw://tcw.work/TCW-9-gone" in text, text
 
 
+def test_an_empty_folder_not_named_for_a_key_is_an_empty_organising_folder(
+        offline, monkeypatch, capsys):
+    """Since TCW-111 (Design 2.3) a folder with no state file in the work
+    store is an organising folder, so an empty `tcw-5-x/` is row e's warning,
+    not "is not a Jira item folder", which is row i's, for a folder holding
+    the state file."""
+    (offline.work / "tcw-5-x").mkdir(parents=True)
+    code, text = validate(offline, monkeypatch, capsys)
+    assert code == 0 and "docs/work/tcw-5-x: holds no TCW object" in text, text
+
+
 def test_link_exists(tmp_path):
-    (tmp_path / "TCW-1-x").mkdir()
+    key_folder(tmp_path, "TCW-1-x")
+    (tmp_path / "TCW-1-z").mkdir()
     (tmp_path / "2026-10-01-y").mkdir()
     assert link_exists(tmp_path, "TCW-1-x")
+    assert not link_exists(tmp_path, "TCW-1-z")
     assert not link_exists(tmp_path, "TCW-1-y")
     assert not link_exists(tmp_path, "2026-10-01-y")
     assert not link_exists(tmp_path, "TCW-1-x/../TCW-1-x")
