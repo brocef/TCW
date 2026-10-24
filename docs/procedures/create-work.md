@@ -1,5 +1,5 @@
-<!-- Bound to the `create-work` procedure in `tcw-config.yaml`, after TCW's own
-     text. Read as a continuation of it, not on its own. -->
+<!-- Bound to the `create-work` procedure in `.tcw/tcw-config.yaml`, after TCW's
+     own text. Read as a continuation of it, not on its own. -->
 
 ## This project: say why the work is worth doing
 

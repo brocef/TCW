@@ -19,9 +19,11 @@ know what mattered. At least:
   as a test that fails and what you think the cause is;
 - what you decided and what is still open.
 
-Use bare slugs for other items, never links of the form `tcw://`: `tcw validate`
-reports every such link that resolves to nothing, and a handoff stays in the
-item after the work it describes has moved on.
+Name other items by their full identifier, `<project>.work/<id-path>` (the
+owning project's ID, then the item's folder path in its work store), written as
+plain text, never as a link of the form `tcw://`: `tcw validate` reports every
+such link that resolves to nothing as an error, and a handoff stays in the item
+after the work it describes has moved on.
 
 With nothing unfinished and nothing held only in your head, there is nothing to
 hand off: say so in the report instead of writing one.

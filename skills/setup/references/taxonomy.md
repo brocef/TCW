@@ -14,10 +14,14 @@ refine loop below. Bootstrap both taxonomy entry kinds:
 
 ## 2. Inheritance
 
-Ask whether this project inherits taxonomy from another registered project.
-If it does, name that project under `parents:` in `.tcw/tcw-config.yaml`,
-with an `inherit` that includes `taxonomy` (the configure skill's reference on
-projects explains the declaration), then continue.
+Ask whether this project inherits taxonomy from another TCW project, its
+parent. If it does, name that project under `parents:` in
+`.tcw/tcw-config.yaml`, with an `inherit` that includes `taxonomy` (a parent
+named by its ID alone passes everything; the configure skill's reference on
+projects explains the declaration), then continue. This project's features
+can then name the parent's terms, so the draft below leaves out every term the
+parent already has: `tcw taxonomy list --scope up` lists them, while a plain
+`tcw taxonomy list` shows only this project's own entries.
 
 ## 3. Deep-dive (draft)
 
@@ -50,8 +54,10 @@ writes nothing.
 - Vocabulary: `tcw taxonomy add "<Name>" [--parent <path>]` (pipe the
   description on stdin).
 - Features: `tcw taxonomy add "<Name>" --kind feature --vocab <ref> [--vocab <ref>...]`
-  (pipe the description on stdin). A `<ref>` is a term path, an
-  `<alias>/<path>`, or a leaf slug unique across the local tree; a unique leaf
-  slug is stored as its full path.
+  (pipe the description on stdin). A `<ref>` is the term's full identifier
+  (`<project>.taxonomy/<path>`, the name every store keeps for it), its path in
+  this project, or a leaf slug (the last part of its path) unique among the
+  terms this project can see, its parents' included; whichever is given, the
+  full identifier is what is stored.
 
 Finish with `tcw validate` and show the resulting `tcw taxonomy list`.

@@ -54,10 +54,14 @@ destroys a working setup, and the bootstrap script declines for the same reason 
 which is why it sometimes does nothing and prints nothing.
 
 **A `tcw` that runs is not an install problem.** In particular, a `tcw work`
-command reporting that the store is _declared but not provisioned here_ is a
-working install telling you the truth: the project keeps its store in another
-repository and this machine has not obtained it. Run `tcw project provision`. That is
-`project.md`'s concern, not this document's.
+command reporting that the work store is declared in another repository _but
+has not been provisioned here_ is a working install telling you the truth: the
+project keeps its store in another repository and this machine has not
+obtained it. Run the command the message names,
+`tcw project provision --component work`. The same goes for a message that a
+related project is not on this machine, or that a folder is a TCW 3.x project
+to be moved over with `tcw migrate`. Each is `project.md`'s concern, not this
+document's.
 
 **Installing into a cloud environment** — a session that is thrown away, so
 anything installed by hand is gone by the next one — is a session-start hook in

@@ -9,7 +9,10 @@ session that dispatched you writes the review round and moves the item.
 
 ## What you are given
 
-A work item slug. Everything else you find yourself.
+A work item's full identifier (`<project>.work/<id-path>`: the owning
+project's ID, then the item's folder path in its work store) or tracker key,
+written `<slug>` below (slug is a nickname for the full identifier).
+Everything else you find yourself.
 
 ## What to check, and how to report it
 

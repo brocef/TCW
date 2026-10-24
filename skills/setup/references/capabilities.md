@@ -27,6 +27,8 @@ user. Then write each agreed capability:
 `tcw capabilities add <namespace/path> "<Name>" --status <Status>` (pipe the body;
 the read is bounded, so a stalled producer is refused rather than stored half-written,
 and nothing piped simply means no body),
-and set status/fields with `tcw capabilities set` where needed. A new namespace's
-first capability is a fresh single-capability file; add later ones in that namespace
-as additional flat files (`<namespace>/<slug>`). Finish with `tcw validate`.
+and set status/fields with `tcw capabilities set` where needed. Each capability is
+a folder at its path, holding `tcw-capability.yaml` (its name and status) and
+`description.md` (its body); later capabilities in the same namespace are folders
+beside it (`<namespace>/<slug>`). `add` prints the new capability's full
+identifier, `<project>.capabilities/<path>`. Finish with `tcw validate`.

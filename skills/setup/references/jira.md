@@ -14,7 +14,8 @@ project must already work on files (see `project.md`).
 its items from Jira only, and items kept as files are not seen by any
 `tcw work` command. Before step 2, run `tcw work list` with the user and settle
 every unfinished item first: take it to completed, or discard it with
-`tcw work discard <slug> --reason "<why>"`. Anything still wanted is filed as a
+`tcw work discard <item> --reason "<why>"`, where `<item>` is the item's full
+identifier (`<project>.work/<id-path>`) or its path in the work store. Anything still wanted is filed as a
 Jira ticket once the switch is made.
 
 ## 1. Choose the stages and their statuses
@@ -30,7 +31,7 @@ status it maps to, and whether that status exists yet.
 
 ## 2. Write the configuration
 
-In `tcw-config.yaml`, set `work.backend: jira`, the `work.jira` block (the site,
+In `.tcw/tcw-config.yaml`, set `work.backend: jira`, the `work.jira` block (the site,
 the Jira project key, the names of the environment variables holding the
 credentials, and the Jira fields TCW writes), and a `status` for each enabled
 stage under `work.stages`. The credentials themselves never go in the file:
@@ -74,4 +75,6 @@ workflow in Jira. Three kinds of finding need their own explanation:
 
 Repeat `tcw validate --remote` until it prints no findings. Then try one item
 end to end with the user: adopt a ticket from the inbox with
-`tcw work tickets adopt <KEY>`, and move it with `tcw work advance <slug>`.
+`tcw work tickets adopt <KEY>`, which prints the new item's full identifier,
+and move it with `tcw work advance <item>`, giving that full identifier or the
+ticket's key.

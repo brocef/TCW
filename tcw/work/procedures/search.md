@@ -19,24 +19,30 @@ should not be spent on:
   do this"). Without it the list leaves out items at `completed` and
   `discarded`, which silently drops what a "have we done this before" question
   is asking about.
-- `--parent <slug>` for an epic's children, and `--mine` or
+- `--parent <item>` for an epic's children, and `--mine` or
   `--assignee <name>` when the question is about who.
-- `--json` when you need the fields rather than the slugs.
+- `--json` when you need the fields rather than the identifiers alone.
 
-For a question that spans another project, run the same commands with that
-project's slugs (`<project>/<folder>`); `tcw project list` names the projects
-this one declares. Keep the project in every slug you report: a bare folder
-name from another project addresses nothing.
+Each line `tcw work list` prints is an item's full identifier,
+`<project>.work/<id-path>`: the ID of the project that owns the item, then its
+folder's path in that project's work store. It names the item from any
+project. For a question that spans related projects, add `--scope`: `up` adds
+this project's ancestors, `down` its descendants, and `all` both (never a
+sibling); `--project <id>` then keeps one of those projects' items.
+`tcw project list` names this project and its related projects. Report every
+item by its full identifier: a bare `<id-path>` names an item in the active
+project only.
 
 ## 2. Read the requests only where the list cannot answer
 
-`tcw work list --json` already carries each item's slug, stage, priority,
-title, tags, assignee, parent and blockers. Most questions are answered from
-that alone; spend a read only on a question it cannot settle.
+`tcw work list --json` already carries each item's full identifier
+(`full-id`), owning project (`owner`), stage, priority, title, tags, assignee,
+parent and blockers. Most questions are answered from that alone; spend a read
+only on a question it cannot settle.
 
-When you need more, `tcw work show <slug>` prints the item's request and its
-comments, and `tcw work path <slug> spec` and `tcw work path <slug> plan` name
-its documents.
+When you need more, `tcw work show <item>` prints the item's request and its
+comments, and `tcw work path <item> spec` and `tcw work path <item> plan` name
+its documents; each takes the full identifier, whichever project owns it.
 <!-- backend: filesystem -->
 
 To choose which items to open, search under the folder `tcw work path`
@@ -66,12 +72,13 @@ question, and keep `tcw work list`'s own order among equals.
 
 One Markdown table:
 
-| Slug | Stage | Priority | Title | Tags | Notes |
+| Item | Stage | Priority | Title | Tags | Notes |
 | ---- | ----- | -------- | ----- | ---- | ----- |
 
-`Notes` holds what an item only sometimes has: `blocked-by: <slugs>`,
-`assignee: <name>`, `parent: <slug>`. Leave it empty otherwise. **Copy the
-cells from `tcw work list --json`; never work them out yourself.**
+`Item` is the full identifier. `Notes` holds what an item only sometimes has:
+`blocked-by: <full identifiers>`, `assignee: <name>`,
+`parent: <full identifier>`. Leave it empty otherwise. **Copy the cells from
+`tcw work list --json`; never work them out yourself.**
 
 Above the table, one line saying how the question was read: which flags were
 used, and any reading the description left open. Below it, anything a cell
