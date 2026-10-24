@@ -336,9 +336,16 @@ def test_plan_says_how_to_file_a_part_into_another_project():
     project, with `tcw -C` and `--parent`; the removed `--project` is not
     named, and neither is anything it needed afterwards."""
     paragraph = _paragraph_with(prompt("plan", "filesystem"), "Too large for one item")
-    assert 'tcw -C tcw://<id>.path/ work new "<title>" --parent <slug>' in paragraph
-    for gone in ("--project", "ticket key printed", "version control"):
-        assert gone not in paragraph, gone
+    flat = " ".join(paragraph.split())
+    order = [flat.index(s) for s in (
+        "--parent <slug> --nest` per part",
+        'tcw -C tcw://<id>.path/ work new "<title>" --parent <slug> --nest',
+        "set `--blocked-by` the same way",
+        "TCW records it in the part's folder")]
+    assert order == sorted(order)
+    for gone in ("--project", "ticket key printed", "version control", "uncommitted",
+                 "only a ticket on its own site"):
+        assert gone not in flat, gone
 
 
 def test_no_shipped_procedure_or_prompt_names_project_filing():

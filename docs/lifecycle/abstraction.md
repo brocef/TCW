@@ -56,9 +56,9 @@ signatures. In plain words, a backend can:
   of the same move where the backend allows it. It runs no checks and no
   hooks; that is the job of the code that calls it.
 - **comment**: add a comment to an item.
-- **rename**: change the words of an item's folder name, keeping its date or
-  ticket key. The item's title does not change. It takes an id-path, and
-  refuses an item that has items nested in it.
+- **move**: change an item's id-path, keeping the date or ticket key of its
+  last part; every item nested in its folder moves with it. The item's title
+  does not change.
 - **lookup**: turn a name only this backend uses, such as a Jira key, into the
   item's id-path.
 - **read request**: return the item's request, the text saying what it asks
@@ -109,6 +109,5 @@ assumption the model depends on. Where a folder sits never declares a parent;
     - **any operation that changes git state.** TCW never changes git state:
       committing, pulling and pushing belong to the project's own prompts and
       hooks. The git reads TCW does make (finding the repository's root,
-      checking a work store for uncommitted changes before creating an item in
-      another project, recognizing a linked worktree) sit in the code that
-      resolves projects and creates items in them, not in the model.
+      recognizing a linked worktree) sit in the code that resolves projects,
+      not in the model.

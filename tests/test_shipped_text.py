@@ -340,7 +340,7 @@ def test_the_command_check_sees_each_mistake(span, problem):
 @pytest.mark.parametrize("span", [
     "tcw work procedure <id>", "tcw work procedure pause-work",
     "tcw work stage prompt review <slug>", "tcw work stage prompt <stage> <slug>",
-    'tcw work new "<title>" --project <id>', "tcw work path <slug> qa --next",
+    "tcw work path <slug> qa --next",
     "tcw capabilities add <path> \"<Name>\" --status Supported",
     'tcw -C tcw://<id>.path/ work new "<title>" --parent <slug> --nest',
     "tcw -C <folder> -C <folder> work list",

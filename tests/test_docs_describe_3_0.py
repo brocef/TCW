@@ -336,7 +336,7 @@ MOVED_PHRASES = (
 )
 
 BACKEND_OPERATIONS = ("create", "read", "list", "update", "set stage", "comment",
-                      "rename", "lookup", "read request", "read comments",
+                      "move", "lookup", "read request", "read comments",
                       "current user", "is item folder")
 
 
@@ -467,3 +467,12 @@ def test_the_abstraction_document_bounds_an_object_folder_by_resources():
 def test_the_backend_docstring_counts_twelve_operations():
     import tcw.work.backend
     assert "Twelve operations" in tcw.work.backend.__doc__
+
+
+def test_abstraction_names_move_and_no_rename_and_no_uncommitted_check():
+    """TCW-114 Design 9.3, AC 23."""
+    text = " ".join((REPO / "docs/lifecycle/abstraction.md").read_text(
+        encoding="utf-8").split())
+    assert "- **move**: change an item's id-path" in text
+    assert "- **rename**:" not in text
+    assert "uncommitted changes before creating an item in another project" not in text

@@ -40,7 +40,11 @@ tests cannot check.
    the part's folder inside the parent's folder (or says why not); `--parent`,
    not the folder, is what makes it a part. A part for another project is made
    in that project:
-   `tcw -C tcw://<id>.path/ work new "<title>" --parent <slug>`.
+   `tcw -C tcw://<id>.path/ work new "<title>" --parent <slug> --nest`
+   (`--nest` then makes it at the top of that project's store and says so);
+   set `--blocked-by` the same way. When Jira cannot link the parent (an epic
+   kept in files, or on another Jira site), TCW records it in the part's
+   folder and says so, and Jira itself does not show it.
 7. **No placeholders.** "TBD", "add error handling", "as in step 3": a step
    nobody can carry out without asking you a question is not a step.
 8. **Self-review.** Re-read the plan against the spec: every acceptance
