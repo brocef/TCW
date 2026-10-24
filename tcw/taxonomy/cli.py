@@ -17,6 +17,7 @@ from tcw.errors import BackendError, InheritedUnavailable, UsageError
 from tcw.ids import identity, inherited_keys, parent_text
 from tcw.locate import find_tree, find_tree_writable
 from tcw.output import changed, left_out, own_only, print_json, say
+from tcw.scope import scope_options
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import NotASlug, Term
 from tcw.store.fs import FsTaxonomyStore, find_component_project
@@ -24,11 +25,15 @@ from tcw.store.fs import FsTaxonomyStore, find_component_project
 NAME = "taxonomy"
 
 
+def _missing() -> BackendError:
+    return BackendError("no taxonomy store here — run `tcw init taxonomy --id <id>` "
+                        "in the project folder")
+
+
 def _store() -> FsTaxonomyStore:
     project = find_component_project(NAME)
     if project is None:
-        raise BackendError("no taxonomy store here — run `tcw init taxonomy --id <id>` "
-                           "in the project folder")
+        raise _missing()
     return FsTaxonomyStore.open(project)
 
 
@@ -70,7 +75,16 @@ def _warn_view(st: FsTaxonomyStore, terms: list[Term]) -> None:
         say(f"warning: {warning}")
 
 
+def _covered(args: argparse.Namespace):
+    from tcw.tree_scope import covered_for
+    return covered_for(args, NAME, _missing)
+
+
 def _list(args: argparse.Namespace) -> int:
+    covered = _covered(args)
+    if covered is not None:
+        from tcw.tree_scope import print_rows
+        return print_rows(covered, NAME, "terms", _record, args.json)
     st = _store()
     try:
         terms = st.list_all(local_only=args.local)
@@ -87,6 +101,10 @@ def _list(args: argparse.Namespace) -> int:
 
 
 def _search(args: argparse.Namespace) -> int:
+    covered = _covered(args)
+    if covered is not None:
+        from tcw.tree_scope import print_rows
+        return print_rows(covered, NAME, "terms", _record, args.json, query=args.query)
     st = _store()
     terms = list(st.search(args.query))
     _warn_view(st, terms)
@@ -95,17 +113,37 @@ def _search(args: argparse.Namespace) -> int:
 
 
 def _show(args: argparse.Namespace) -> int:
-    st = _store()
-    term = find_tree(st, args.path)
+    covered = _covered(args)
+    if covered is None:
+        st = _store()
+        term = find_tree(st, args.path)
+        row = None
+    else:
+        from tcw.tree_scope import LEFT_OUT, active_store, show_row
+        st = active_store(covered, NAME)
+        row = show_row(covered, NAME, args.path)
+        term = row.obj
+        covered.warn(LEFT_OUT[NAME][1], say)
     if term.partial and st.view_error is not None:
         own_only(st.view_error, st.project_id)
     detail = _detail(term)
     if args.json:
-        print_json("term", detail)
+        if row is None:
+            print_json("term", detail)
+        else:
+            from tcw.tree_scope import scope_keys
+            projects = covered.projects_json()
+            print_json(None, {"term": {**detail, **scope_keys(row)},
+                              **({} if projects is None else {"projects": projects})})
         return codes.OK
+    overridden = []
+    if row is not None:
+        from tcw.tree_scope import show_lines
+        overridden, _ = show_lines(covered, row)
     lines = [f"full-id: {term.full_id}", f"owner: {term.owner}",
              *([f"parent: {term.parent}"] if term.parent is not None else []),
              *([f"overrides: {term.overrides}"] if term.overrides is not None else []),
+             *overridden,
              *(["partial: inherited content could not be read"] if term.partial else []),
              f"name: {term.name}", f"kind: {term.kind}"]
     for key in ("vocabulary", "relatesTo", "attachments"):
@@ -165,10 +203,13 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pl = command(g, "list", help="every entry's full identifier",
                  prints="one full identifier per line, or --json", writes="nothing",
-                 examples=["taxonomy list", "taxonomy list --local --json"])
+                 examples=["taxonomy list", "taxonomy list --local --json",
+                           "taxonomy list --scope down"])
     pl.add_argument("--local", action="store_true", help="local entries only")
+    scope_options(pl, default=None)
     pl.add_argument("--json", action="store_true",
-                    help='print {"schema": 2, "terms": [...]}')
+                    help='print {"schema": 2, "terms": [...]}, and "projects" when the '
+                         'scope is not own')
     pl.set_defaults(func=_list)
 
     pa = command(g, "add", help="create a vocabulary term or feature; the "
@@ -191,12 +232,15 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     ps = command(g, "show", help="read an entry", prints="the record, or --json",
                  writes="nothing", examples=["taxonomy show invoice",
-                                             "taxonomy show shared.taxonomy/invoice --json"])
+                                             "taxonomy show shared.taxonomy/invoice --json",
+                                             "taxonomy show invoice --scope up"])
     ps.add_argument("path",
                     help="the entry: its full identifier (<project>.taxonomy/<path>), "
                          "or its path in this project, e.g. event/log-batch")
+    scope_options(ps, default=None)
     ps.add_argument("--json", action="store_true",
-                    help='print {"schema": 2, "term": {...}}')
+                    help='print {"schema": 2, "term": {...}}, and "projects" when the '
+                         'scope is not own')
     ps.set_defaults(func=_show)
 
     command(g, "path", help="print the taxonomy store folder", prints="the folder",
@@ -216,8 +260,11 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pse = command(g, "search", help="entries whose name or description holds the text",
                   prints="one full identifier per line, or --json", writes="nothing",
-                  examples=["taxonomy search refund", "taxonomy search refund --json"])
+                  examples=["taxonomy search refund", "taxonomy search refund --json",
+                            "taxonomy search refund --scope down"])
     pse.add_argument("query", help="text matched case-insensitively in names + descriptions")
+    scope_options(pse, default=None)
     pse.add_argument("--json", action="store_true",
-                     help='print {"schema": 2, "terms": [...]}')
+                     help='print {"schema": 2, "terms": [...]}, and "projects" when the '
+                          'scope is not own')
     pse.set_defaults(func=_search)

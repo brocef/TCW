@@ -128,9 +128,13 @@ class Covered:
 
 
 def _reason(error: BaseException) -> str:
+    """The reason as one line, so each unavailable project's warning is one
+    line (Design 1.8): a YAML loader's message, which names the file over
+    several lines, has its lines joined."""
     if isinstance(error, ConfigError):
         return "; ".join(str(p) for p in error.problems)
-    return str(error) or error.__class__.__name__
+    text = str(error) or error.__class__.__name__
+    return " ".join(line.strip() for line in text.splitlines() if line.strip())
 
 
 def cover(root: Path, scope: str, project: str | None = None) -> Covered:

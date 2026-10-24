@@ -541,32 +541,34 @@ def scope_rows(id_path: str, *, order: list[str], own: list[ScopeObject],
     objects' owners' scope order."""
     place = {pid: i for i, pid in enumerate(order)}
     objects = ([v] if v is not None else []) + list(own)
-    nodes: dict[FullId, ScopeObject | None] = {o.full_id: o for o in objects}
+    # Each object's link towards its group's representative: a union-find
+    # over the scope objects and, under `all`, V(X)'s chain.
+    towards: dict[FullId, FullId] = {o.full_id: o.full_id for o in objects}
     if v is not None:
         for member in chain:
-            nodes.setdefault(member, None)
-    parent = {node: node for node in nodes}
+            towards.setdefault(member, member)
 
-    def root(node: FullId) -> FullId:
-        while parent[node] != node:
-            parent[node] = parent[parent[node]]
-            node = parent[node]
-        return node
+    def first(fid: FullId) -> FullId:
+        while towards[fid] != fid:
+            towards[fid] = towards[towards[fid]]
+            fid = towards[fid]
+        return fid
 
     def join(a: FullId, b: FullId) -> None:
-        parent[root(a)] = root(b)
+        towards[first(a)] = first(b)
 
     for o in objects:
-        if o.overrides is not None and o.overrides in nodes:
+        if o.overrides is not None and o.overrides in towards:
             join(o.full_id, o.overrides)
     if v is not None:
         for member in chain:
             join(member, v.full_id)
-    groups: dict[FullId, set[FullId]] = {}
-    for node in nodes:
-        groups.setdefault(root(node), set()).add(node)
+    groups: dict[FullId, list[FullId]] = {}
+    for fid in towards:
+        groups.setdefault(first(fid), []).append(fid)
     rows = []
-    for members in groups.values():
+    for listed in groups.values():
+        members = frozenset(listed)
         if v is not None and v.full_id in members:
             shown = v.full_id
         else:
@@ -580,7 +582,7 @@ def scope_rows(id_path: str, *, order: list[str], own: list[ScopeObject],
             {"project": view.project, "status": view.status,
              "inherited": not view.sets_status}
             for view in views if view.view_object in members]
-        rows.append(ScopeRow(shown, frozenset(members), statuses, overridden_by))
+        rows.append(ScopeRow(shown, members, statuses, overridden_by))
     rows.sort(key=lambda row: place.get(row.shown.project, len(place)))
     return rows
 

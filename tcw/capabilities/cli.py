@@ -18,6 +18,7 @@ from tcw.errors import BackendError, InheritedUnavailable, UsageError
 from tcw.ids import identity, inherited_keys, parent_text
 from tcw.locate import find_tree, find_tree_writable
 from tcw.output import changed, left_out, own_only, print_json, say
+from tcw.scope import scope_options
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import CAP_STATUSES, Capability
 from tcw.store.fs import FsCapabilitiesStore, find_component_project
@@ -25,11 +26,15 @@ from tcw.store.fs import FsCapabilitiesStore, find_component_project
 NAME = "capabilities"
 
 
+def _missing() -> BackendError:
+    return BackendError("no capabilities store here — run `tcw init capabilities "
+                        "--id <id>` in the project folder")
+
+
 def _project():
     project = find_component_project(NAME)
     if project is None:
-        raise BackendError("no capabilities store here — run `tcw init capabilities "
-                           "--id <id>` in the project folder")
+        raise _missing()
     return project
 
 
@@ -68,7 +73,17 @@ def _warn_view(st: FsCapabilitiesStore, caps: list[Capability]) -> None:
         say(f"warning: {warning}")
 
 
+def _covered(args: argparse.Namespace):
+    from tcw.tree_scope import covered_for
+    return covered_for(args, NAME, _missing)
+
+
 def _list(args: argparse.Namespace) -> int:
+    covered = _covered(args)
+    if covered is not None:
+        from tcw.tree_scope import print_rows
+        return print_rows(covered, NAME, "capabilities", _record, args.json,
+                          status=args.status, namespace=args.namespace)
     st = _store()
     try:
         caps = st.list_all(status=args.status, namespace=args.namespace,
@@ -88,6 +103,11 @@ def _list(args: argparse.Namespace) -> int:
 
 
 def _search(args: argparse.Namespace) -> int:
+    covered = _covered(args)
+    if covered is not None:
+        from tcw.tree_scope import print_rows
+        return print_rows(covered, NAME, "capabilities", _record, args.json,
+                          query=args.query)
     st = _store()
     caps = st.search(args.query)
     _warn_view(st, caps)
@@ -96,19 +116,40 @@ def _search(args: argparse.Namespace) -> int:
 
 
 def _show(args: argparse.Namespace) -> int:
-    st = _store()
-    cap = find_tree(st, args.id)
+    covered = _covered(args)
+    if covered is None:
+        st = _store()
+        cap = find_tree(st, args.id)
+        row = None
+    else:
+        from tcw.tree_scope import LEFT_OUT, active_store, show_row
+        st = active_store(covered, NAME)
+        row = show_row(covered, NAME, args.id)
+        cap = row.obj
+        covered.warn(LEFT_OUT[NAME][1], say)
     if cap.partial and st.view_error is not None:
         own_only(st.view_error, st.project_id)
     if args.json:
-        print_json("capability", _detail(cap))
+        if row is None:
+            print_json("capability", _detail(cap))
+        else:
+            from tcw.tree_scope import scope_keys
+            projects = covered.projects_json()
+            print_json(None, {"capability": {**_detail(cap), **scope_keys(row)},
+                              **({} if projects is None else {"projects": projects})})
         return codes.OK
+    overridden, block = [], []
+    if row is not None:
+        from tcw.tree_scope import show_lines
+        overridden, block = show_lines(covered, row)
     lines = [f"full-id: {cap.full_id}", f"owner: {cap.owner}",
              *([f"parent: {cap.parent}"] if cap.parent is not None else []),
              *([f"overrides: {cap.overrides}"] if cap.overrides is not None else []),
+             *overridden,
              *(["partial: inherited content could not be read"] if cap.partial else []),
              f"name: {cap.name}"]
     lines += [f"{k}: {_fmt(v)}" for k, v in cap.fields.items()]
+    lines += block
     body = cap.body.strip()
     if body:
         lines += ["", "body:", *(f"  {line}" if line else "" for line in body.splitlines())]
@@ -277,26 +318,32 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pl = command(g, "list", help="every capability's full identifier",
                  prints="one full identifier per line, or --json", writes="nothing",
                  examples=["capabilities list", "capabilities list --status Missing",
-                           "capabilities list --namespace billing --json"])
+                           "capabilities list --namespace billing --json",
+                           "capabilities list --scope down --json"])
     pl.add_argument("--status", choices=sorted(CAP_STATUSES),
                     help="only capabilities with this status")
     pl.add_argument("--namespace", help="only capabilities under this namespace folder")
     pl.add_argument("--local", action="store_true",
                     help="local capabilities only, none inherited")
+    scope_options(pl, default=None)
     pl.add_argument("--json", action="store_true",
-                    help='print {"schema": 2, "capabilities": [...]}')
+                    help='print {"schema": 2, "capabilities": [...]}, and "projects" '
+                         'when the scope is not own')
     pl.set_defaults(func=_list)
 
     ps = command(g, "show", help="read a capability", prints="the record, or --json",
                  writes="nothing", examples=["capabilities show billing/refund",
                                              "capabilities show shared.capabilities/web/login "
-                                             "--json"])
+                                             "--json",
+                                             "capabilities show web/login --scope down"])
     ps.add_argument("id", metavar="path",
                     help="the capability: its full identifier "
                          "(<project>.capabilities/<path>), or its path in this "
                          "project, e.g. web/login")
+    scope_options(ps, default=None)
     ps.add_argument("--json", action="store_true",
-                    help='print {"schema": 2, "capability": {...}}')
+                    help='print {"schema": 2, "capability": {...}}, and "projects" when '
+                         'the scope is not own')
     ps.set_defaults(func=_show)
 
     command(g, "path", help="print the capabilities store folder", prints="the folder",
@@ -361,10 +408,13 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pse = command(g, "search", help="capabilities whose name or body holds the text",
                   prints="one full identifier per line, or --json", writes="nothing",
-                  examples=["capabilities search refund"])
+                  examples=["capabilities search refund",
+                            "capabilities search refund --scope up"])
     pse.add_argument("query", help="text matched case-insensitively in names + bodies")
+    scope_options(pse, default=None)
     pse.add_argument("--json", action="store_true",
-                     help='print {"schema": 2, "capabilities": [...]}')
+                     help='print {"schema": 2, "capabilities": [...]}, and "projects" '
+                          'when the scope is not own')
     pse.set_defaults(func=_search)
 
     pd = command(g, "drift", help="inherited capabilities never ruled on, and what "

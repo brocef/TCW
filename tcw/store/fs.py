@@ -355,7 +355,8 @@ def refuse_retired_config(start: Path | None = None) -> None:
         raise BackendError(f"{os.path.relpath(root / SENTINEL)}: {retired}")
 
 
-def find_component_project(component: str, start: Path | None = None) -> Path | None:
+def find_component_project(component: str, start: Path | None = None,
+                           opener=None) -> Path | None:
     """The project owning `component`'s store, or None. A project is the nearest
     ancestor marked by a `tcw-config.yaml` sentinel (FS-adapter-local). Returns
     the project iff it has that component, preserving the prior contract.
@@ -366,13 +367,16 @@ def find_component_project(component: str, start: Path | None = None) -> Path | 
     `docs/taxonomy/`, because the taxonomy is in the other repository — so
     looking for the folder answered None before the resolution ladder could read
     the declaration, and the project's own config went unread.
+
+    `opener(root)`, when given, opens the store asked about, so a command that
+    holds one `Locator` opens its own store once (TCW-113 plan choice 4).
     """
     nr = find_project_root(start)
     if nr is None:
         return None
     FsProjectRegistry.open(nr).require_valid()
     try:
-        store = STORE_CLASSES[component].open(nr)
+        store = (opener or STORE_CLASSES[component].open)(nr)
     except (StoreNotProvisioned, StoreDeclarationError):
         # Not "no project here" — the project is right in front of us and says where
         # its store comes from. Flattening this to None is what made `tcw work
