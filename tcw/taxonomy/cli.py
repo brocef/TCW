@@ -84,7 +84,8 @@ def _list(args: argparse.Namespace) -> int:
     covered = _covered(args)
     if covered is not None:
         from tcw.tree_scope import print_rows
-        return print_rows(covered, NAME, "terms", _record, args.json)
+        return print_rows(covered, NAME, "terms", _record, args.json,
+                          reorder=lambda terms: _ordered(terms, covered.active))
     st = _store()
     try:
         terms = st.list_all(local_only=args.local)

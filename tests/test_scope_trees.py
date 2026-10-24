@@ -399,3 +399,20 @@ def test_another_projects_listing_needs_no_view_of_the_active_one(family):
                      "--project", "shared")
     assert ran.code == 0, ran.err
     assert ran.lines == [ABC, GHI]
+
+
+@pytest.mark.parametrize("scope", ["own", "down"])
+def test_a_path_not_found_keeps_find_trees_hints(family, scope):
+    ran = family.run("shared", "capabilities", "show", "desktop/abc", "--scope", scope)
+    assert ran.code == 4
+    assert ("to name an object in project 'desktop', write desktop.capabilities/abc"
+            in ran.err)
+
+
+def test_up_and_own_keep_each_commands_order_today(family):
+    # A taxonomy listing puts the project's own entries first (TCW-110 AC 4);
+    # only the grouped rows of `down` and `all` take Design 4.4's order.
+    family.term("desktop", "zebra", description="", name="Zebra", kind="vocabulary")
+    up = family.run("desktop", "taxonomy", "list", "--scope", "up")
+    assert up.lines == ["desktop.taxonomy/zebra", "shared.taxonomy/invoice"]
+    assert up.lines == family.run("desktop", "taxonomy", "list").lines

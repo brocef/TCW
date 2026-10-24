@@ -105,8 +105,11 @@ def list_rows(covered: Covered, axis: str, *, status: str | None = None,
               namespace: str | None = None, query: str | None = None,
               say: Callable[[str], None] | None = None) -> TreeRead:
     """The rows of a `list` (or, with `query`, a `search`) of `axis` over
-    the projects `covered` keeps, filtered (Design 4.5) and in Design 4.4's
-    order."""
+    the projects `covered` keeps, filtered (Design 4.5). The grouped rows of
+    `down` and `all` are in Design 4.4's order; `own`, `up` and `--project`
+    keep the order the store gives, which is each command's order today, so
+    `--scope up` answers exactly what the command answered before TCW-113
+    and `own` exactly what `--local` did."""
     from tcw.output import say as default_say
     say = say or default_say
     store = active_store(covered, axis)
@@ -137,8 +140,9 @@ def list_rows(covered: Covered, axis: str, *, status: str | None = None,
                                                           query):
                     continue
                 rows.append(row)
-    return TreeRead(row_order(rows, covered.ids, shown=lambda r: r.obj.full_id),
-                    store, view_built)
+    if covered.only is None and covered.scope in ("down", "all"):
+        rows = row_order(rows, covered.ids, shown=lambda r: r.obj.full_id)
+    return TreeRead(rows, store, view_built)
 
 
 @dataclass
@@ -249,7 +253,8 @@ def show_row(covered: Covered, axis: str, text: str) -> TreeRow:
     if covered.scope == "own":
         if store.has_own(x):
             return TreeRow(find_tree(store, text))
-        raise NotFound(_no_such(axis, text) + _inherits_hint(store, x))
+        raise NotFound(_no_such(axis, text) + _hints(store, axis, x)
+                       + _inherits_hint(store, x))
     if covered.scope == "up":
         store.list_all()        # `P`'s view, which `up` needs (Design 4.9)
         return TreeRow(find_tree(store, text))
@@ -257,10 +262,18 @@ def show_row(covered: Covered, axis: str, text: str) -> TreeRow:
     if len(rows) == 1:
         return rows[0]
     if not rows:
-        raise NotFound(f"{_no_such(axis, text)} in --scope {covered.scope}")
+        raise NotFound(f"{_no_such(axis, text)} in --scope {covered.scope}"
+                       + _hints(store, axis, x))
     raise UsageError(f"'{x}' names {len(rows)} objects in --scope {covered.scope}: "
                      f"{', '.join(str(r.obj.full_id) for r in rows)}; name one by its "
                      f"full identifier")
+
+
+def _hints(store, axis: str, id_path: str) -> str:
+    """The hints `find_tree` gives a path it does not find: the folder's
+    spelling on disk, and how to name another project's object."""
+    from tcw.locate import _spelled, _three_x_hint
+    return _spelled(store, id_path) + _three_x_hint(store, axis, id_path)
 
 
 def _inherits_hint(store, id_path: str) -> str:
@@ -322,12 +335,17 @@ def scope_keys(row: TreeRow) -> dict:
 
 
 def print_rows(covered: Covered, axis: str, key: str, record: Callable[[Any], dict],
-               as_json: bool, **filters) -> int:
+               as_json: bool, reorder: Callable[[list], list] | None = None,
+               **filters) -> int:
     """A `list` or `search` over `covered`: the warnings, then one full
     identifier per line, or the `--json` document; the exit code is the
-    active project's, as today (`left_out`)."""
+    active project's, as today (`left_out`). `reorder`, when given, orders
+    the objects of an ungrouped listing as the command orders them today."""
     from tcw.output import left_out, print_json, say
     read = list_rows(covered, axis, **filters)
+    if reorder is not None and (covered.only is not None
+                                or covered.scope not in ("down", "all")):
+        read.rows = [TreeRow(o) for o in reorder([r.obj for r in read.rows])]
     covered.warn(LEFT_OUT[axis][0], say)
     if read.view_built:
         for warning in read.store.view_warnings(
