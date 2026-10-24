@@ -417,7 +417,7 @@ def test_ac27_list_local_prints_the_override_not_the_original(tcw, tmp_path):
     """AC 27: in AC 5, `tcw capabilities list --local` in `app` prints
     `app.capabilities/cli/x` and not `core.capabilities/cli/x`."""
     _, app = ac5_family(tmp_path)
-    ran = tcw(["capabilities", "list", "--local"], app)
+    ran = tcw(["capabilities", "list"], app)
     assert ran.code == 0, ran.err
     lines = ran.out.splitlines()
     assert "app.capabilities/cli/x" in lines

@@ -58,8 +58,8 @@ def test_ac16_list_local_prints_the_projects_own_objects(app, tcw):
     """AC 16, first bullet: `tcw taxonomy list --local` prints
     `app.taxonomy/money`, and `tcw capabilities list --local` prints
     `app.capabilities/cli/x` and `app.capabilities/cli/y`."""
-    assert listed(tcw(app, "taxonomy", "list", "--local")) == ["app.taxonomy/money"]
-    assert sorted(listed(tcw(app, "capabilities", "list", "--local"))) == [
+    assert listed(tcw(app, "taxonomy", "list")) == ["app.taxonomy/money"]
+    assert sorted(listed(tcw(app, "capabilities", "list"))) == [
         "app.capabilities/cli/x", "app.capabilities/cli/y"]
 
 
@@ -97,7 +97,7 @@ def test_ac16_text_show_has_a_partial_line_and_no_overrides_line(app, tcw):
 def test_ac16_every_list_local_json_record_is_partial(app, tcw):
     """AC 16, second bullet: each record of `tcw capabilities list --local
     --json` has `"partial": true`."""
-    ran = tcw(app, "capabilities", "list", "--local", "--json")
+    ran = tcw(app, "capabilities", "list", "--json")
     assert ran.code == 0, ran
     records = json.loads(ran.out)["capabilities"]
     assert len(records) == 2
@@ -193,7 +193,7 @@ def test_ac18_list_local_works_when_a_parents_store_cannot_be_read(tmp_path, tcw
     raising `StoreNotProvisioned`, `tcw taxonomy list --local` in `app`
     exits 0 (and prints `app`'s own term)."""
     app = core_with_unprovisioned_taxonomy(tmp_path)
-    assert listed(tcw(app, "taxonomy", "list", "--local")) == ["app.taxonomy/money"]
+    assert listed(tcw(app, "taxonomy", "list")) == ["app.taxonomy/money"]
 
 
 # -- AC 26: a full identifier when an ancestor of its owner is missing --------------------

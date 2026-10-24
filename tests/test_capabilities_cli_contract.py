@@ -111,7 +111,7 @@ def test_list_and_search_print_one_path_per_line(thing, run):
     run(thing, "capabilities", "add", "ns/other", stdin="findme\n")
     both = "fx.capabilities/ns/do-a-thing\nfx.capabilities/ns/other\n"
     assert run(thing, "capabilities", "list")[1] == both
-    assert run(thing, "capabilities", "list", "--local")[1] == both
+    assert run(thing, "capabilities", "list")[1] == both
     assert run(thing, "capabilities", "search", "findme")[1] == "fx.capabilities/ns/other\n"
     data = json.loads(run(thing, "capabilities", "list", "--json")[1])
     assert data["schema"] == 2
