@@ -58,8 +58,15 @@ PERSONAL_KEYS = (
 #: personal list is added after the committed one (Design 2.1).
 LOCAL_ONLY_KEYS = ("children",)
 
-LAYERS = ("built-in", "project", "user", "local")
-PERSONAL_LAYERS = ("user", "local")
+#: The keys that cross a parent link passing `config` (TCW-109 Design 1.1):
+#: `work.tags`, and `work.jira` with every key under it. Everything else is
+#: each project's own, `work.backend` included. The list grows only in a
+#: release, and its order is the order `tcw config show` names an undecided
+#: key in (Design 7.1).
+INHERITED_KEYS = ("work.tags", "work.jira")
+
+LAYERS = ("built-in", "project", "user", "local", "environment")
+PERSONAL_LAYERS = ("user", "local", "environment")
 
 _PATTERNS = tuple(tuple(path.split(".")) for path in PERSONAL_KEYS)
 _CREDENTIALS = ("work", "jira", "credentials")
@@ -70,14 +77,21 @@ KeyPath = tuple  # of str keys and int list indexes
 @dataclass(frozen=True)
 class Origin:
     """The layer a value came from, and the file that layer was read from
-    (none for `built-in`)."""
+    (none for `built-in` and `environment`); for `environment`, the
+    variable's name. `project` is the ID of the project that declared the
+    value, and `position` that project's place in the fold (TCW-109 Design
+    2.6), so a value one project passes to another still names its file."""
 
     layer: str
     file: Path | None = None
     # The project root a personal file is read for, when that is not the root
     # of the folder holding it: a linked worktree borrowing its main checkout's
-    # file (TCW-107 Design 4.2).
+    # file (TCW-107 Design 4.2); for a variable, the root of the project it
+    # names (TCW-109 Design 4.8).
     root: Path | None = field(default=None, compare=False)
+    variable: str | None = None
+    project: str | None = field(default=None, compare=False)
+    position: int = field(default=0, compare=False)
 
     @property
     def folder(self) -> Path | None:
@@ -99,16 +113,20 @@ class Origin:
         return self.layer in PERSONAL_LAYERS
 
     @property
-    def rank(self) -> int:
-        return LAYERS.index(self.layer)
+    def rank(self) -> tuple[int, int]:
+        """A later project in the fold outranks an earlier one; within one
+        project, a higher layer a lower one."""
+        return (self.position, LAYERS.index(self.layer))
 
     def __str__(self) -> str:
+        if self.variable is not None:
+            return f"{self.layer}: {self.variable}"
         if self.file is None or self.layer == "project":
             return self.layer
         return f"{self.layer}: {self.file}"
 
 
-BUILT_IN = Origin("built-in")
+BUILT_IN = Origin("built-in", position=-1)
 
 
 def dotted(key_path: KeyPath) -> str:
@@ -161,12 +179,14 @@ class Problem:
 
 @dataclass(frozen=True)
 class Setting:
-    """A personal value that was read but not applied, and why."""
+    """A personal value that was read but not applied, and why; `variable` is
+    the override variable's name when it came from one."""
 
     file: Path | None
     key_path: KeyPath
     value: Any
     reason: str
+    variable: str | None = None
 
 
 @dataclass
@@ -418,45 +438,63 @@ def _leads_to_allowed(path: KeyPath) -> bool:
                for pattern in _PATTERNS)
 
 
-def _allowed(mapping: dict, origin: Origin, root: Path, refused: list,
-             path: KeyPath = ()) -> tuple[dict, list[Problem]]:
+def _allowed(mapping: dict, origin: Origin, root: Path | None, refused: list,
+             path: KeyPath = (), *, variable: str | None = None
+             ) -> tuple[dict, list[Problem]]:
     """The part of a personal file the allowlist lets it set, and a problem
     for everything else (Design 4.4, 4.5, 3.10). A refused value is recorded in
-    `refused` and not merged."""
+    `refused` and not merged. With `variable`, the same walk speaks for an
+    override variable of that name (TCW-109 Design 4.5): each problem has no
+    file, and its message starts with the name and its key."""
     problems: list[Problem] = []
     kept: dict = {}
+
+    def problem(here: KeyPath, message: str) -> None:
+        if variable is None:
+            problems.append(Problem(origin.file, here, message, root))
+        else:
+            problems.append(Problem(None, (), f"{variable}: {dotted(here)}: {message}",
+                                    root))
+
+    def shared(here: KeyPath, value: Any, message: str) -> None:
+        if variable is not None:
+            problems.append(Problem(None, (), f"{variable}: {dotted(here)} is a shared "
+                                              f"key; an environment variable cannot "
+                                              f"set it", root))
+        else:
+            problems.append(Problem(origin.file, here, message, root))
+        refused.append(Setting(origin.file, here, value, "shared key", variable))
+
+    null = ("null has no meaning in an environment variable; unset it instead"
+            if variable is not None
+            else "null has no meaning in a personal file; remove the key instead")
     for key, value in mapping.items():
         here = (*path, key)
         if not path and key in LOCAL_ONLY_KEYS:
-            if origin.layer != "local":
-                problems.append(Problem(
-                    origin.file, here, f"{key} may be listed only in this project's own "
-                    f"files, .tcw/tcw-config.yaml or .tcw/tcw-config.local.yaml; the "
-                    f"user-wide file applies to every project", root))
-                refused.append(Setting(origin.file, here, value, "shared key"))
+            if variable is not None or origin.layer != "local":
+                shared(here, value, f"{key} may be listed only in this project's own "
+                       f"files, .tcw/tcw-config.yaml or .tcw/tcw-config.local.yaml; the "
+                       f"user-wide file applies to every project")
             elif value is None:
-                problems.append(Problem(origin.file, here, "null has no meaning in a "
-                                        "personal file; remove the key instead", root))
+                problem(here, null)
             else:
                 kept[key] = value
             continue
         if value is None and (any(_matches(here, p) for p in _PATTERNS)
                               or _leads_to_allowed(here)):
-            problems.append(Problem(origin.file, here, "null has no meaning in a "
-                                    "personal file; remove the key instead", root))
+            problem(here, null)
         elif any(_matches(here, pattern) for pattern in _PATTERNS):
             if here == ("user", "name") and not _good_name(value):
-                problems.append(Problem(origin.file, here, "must be a name: a "
-                                        "non-blank string with no space at either "
-                                        "end, matched exactly", root))
+                problem(here, "must be a name: a non-blank string with no space at "
+                              "either end, matched exactly")
                 continue
             kept[key] = value
         elif _leads_to_allowed(here):
             if not isinstance(value, dict):
-                problems.append(Problem(origin.file, here, "must be a mapping",
-                                        root))
+                problem(here, "must be a mapping")
                 continue
-            inner, found = _allowed(value, origin, root, refused, here)
+            inner, found = _allowed(value, origin, root, refused, here,
+                                    variable=variable)
             problems += found
             if inner:
                 kept[key] = inner
@@ -465,8 +503,7 @@ def _allowed(mapping: dict, origin: Origin, root: Path, refused: list,
                        "a shared key; a personal file cannot set it")
             # Each value named by its whole key path, as it was written.
             for leaf, leaf_value in _leaves(here, value):
-                problems.append(Problem(origin.file, leaf, message, root))
-                refused.append(Setting(origin.file, leaf, leaf_value, "shared key"))
+                shared(leaf, leaf_value, message)
     return kept, problems
 
 
