@@ -14,7 +14,7 @@ from tcw.cli_help import command, group
 from tcw.errors import BackendError, UsageError
 from tcw.ids import identity
 from tcw.locate import find_tree, find_tree_writable
-from tcw.output import changed, print_json
+from tcw.output import changed, left_out, print_json
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import NotASlug, Term
 from tcw.store.fs import FsTaxonomyStore, find_component_project
@@ -60,12 +60,14 @@ def _print_terms(terms: list[Term], as_json: bool) -> int:
 
 def _list(args: argparse.Namespace) -> int:
     st = _store()
-    return _print_terms(_ordered(st.list_all(local_only=args.local), st.project_id),
-                        args.json)
+    _print_terms(_ordered(st.list_all(local_only=args.local), st.project_id), args.json)
+    return left_out(st.unreadable_files())
 
 
 def _search(args: argparse.Namespace) -> int:
-    return _print_terms(list(_store().search(args.query)), args.json)
+    st = _store()
+    _print_terms(list(st.search(args.query)), args.json)
+    return left_out(st.unreadable_files())
 
 
 def _show(args: argparse.Namespace) -> int:

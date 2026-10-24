@@ -17,7 +17,7 @@ from tcw.cli_help import command, group
 from tcw.errors import BackendError, UsageError
 from tcw.ids import identity
 from tcw.locate import find_tree, find_tree_writable
-from tcw.output import changed, print_json
+from tcw.output import changed, left_out, print_json
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import CAP_STATUSES, Capability
 from tcw.store.fs import FsCapabilitiesStore, find_component_project
@@ -59,12 +59,16 @@ def _print_caps(caps: list[Capability], as_json: bool) -> int:
 
 
 def _list(args: argparse.Namespace) -> int:
-    return _print_caps(_store().list_all(status=args.status, namespace=args.namespace,
-                                         local_only=args.local), args.json)
+    st = _store()
+    _print_caps(st.list_all(status=args.status, namespace=args.namespace,
+                            local_only=args.local), args.json)
+    return left_out(st.unreadable_files())
 
 
 def _search(args: argparse.Namespace) -> int:
-    return _print_caps(_store().search(args.query), args.json)
+    st = _store()
+    _print_caps(st.search(args.query), args.json)
+    return left_out(st.unreadable_files())
 
 
 def _show(args: argparse.Namespace) -> int:

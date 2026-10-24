@@ -33,7 +33,9 @@ from tcw.store.base import normalize_tag
 from tcw.store.fs import exact_child
 from tcw.work.backend import Comment, Query
 from tcw.work.config import WorkConfig
-from tcw.work.fs_backend import ITEM_FILE, WORDS, report_mentions
+from tcw.object_folders import id_problem
+from tcw.project_files import VERSION_KEY, version_line, version_problem
+from tcw.work.fs_backend import STATE_FILE, WORDS, report_mentions
 from tcw.work.jira import jql
 from tcw.work.jira.client import (
     JiraClient, Transition, TrackerAuthError, TrackerError, TrackerNotFound,
@@ -129,7 +131,7 @@ def link_exists(work_path: Path, folder: str) -> bool:
 
 def jira_store_problems(work_path: Path, jira: JiraConfig) -> list[Finding]:
     """The offline checks of a Jira-mode work path (Design 9.1): each folder's
-    name and `item.yaml`, keys used twice, and record folders for stages Jira
+    name and state file, keys used twice, and record folders for stages Jira
     keeps. Reads no network."""
     findings: list[Finding] = []
     work_path = Path(work_path)
@@ -147,7 +149,7 @@ def jira_store_problems(work_path: Path, jira: JiraConfig) -> list[Finding]:
                                     "TCW-5-add-export"))
             continue
         by_key.setdefault(key, []).append(entry.name)
-        findings.extend(_item_file_problems(entry / ITEM_FILE, key, jira.site))
+        findings.extend(_item_file_problems(entry / STATE_FILE, key, jira.site))
         for stage in sorted(EXTERNAL_STAGES):
             if (entry / table_stage(stage).name).is_dir():
                 findings.append(Finding("warning", str(entry / stage),
@@ -161,8 +163,17 @@ def jira_store_problems(work_path: Path, jira: JiraConfig) -> list[Finding]:
     return findings
 
 
+#: The keys a Jira item's state file holds, and the one it may hold (TCW-111
+#: Design 1.2).
+STATE_KEYS = frozenset({VERSION_KEY, "ticket"})
+OPTIONAL_STATE_KEYS = frozenset({"id"})
+
+
 def _item_file_problems(path: Path, key: str, site: str) -> list[Finding]:
-    """`item.yaml` must be exactly `ticket: <site>/browse/<KEY>` (Design 2.2)."""
+    """The state file must hold exactly `tcw-version` and `ticket:
+    <site>/browse/<KEY>`, and may hold `id` (Design 2.2; TCW-111 Design
+    1.2). Its version is checked first: a file this TCW cannot read is
+    reported for that alone (Design 1.5)."""
     where = str(path)
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -170,10 +181,17 @@ def _item_file_problems(path: Path, key: str, site: str) -> list[Finding]:
         return [Finding("error", where, "is missing; it holds the ticket's link")]
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as error:
         return [Finding("error", where, f"cannot be read: {error}")]
-    if not isinstance(data, dict) or set(data) != {"ticket"}:
-        extra = sorted(map(str, set(data) - {"ticket"})) if isinstance(data, dict) else []
+    if isinstance(data, dict) and (problem := version_problem(data)) is not None:
+        return [Finding("error", where, problem)]
+    if not isinstance(data, dict) or not STATE_KEYS <= set(data) \
+            or set(data) - STATE_KEYS - OPTIONAL_STATE_KEYS:
+        extra = sorted(map(str, set(data) - STATE_KEYS - OPTIONAL_STATE_KEYS)) \
+            if isinstance(data, dict) else []
         detail = f"; it also has {', '.join(extra)}" if extra else ""
-        return [Finding("error", where, f"must hold exactly one key, ticket{detail}")]
+        return [Finding("error", where, f"must hold exactly tcw-version and ticket "
+                                        f"(and may hold id){detail}")]
+    if (problem := id_problem(data, path.parent.name)) is not None:
+        return [Finding("error", where, problem)]
     url = data["ticket"]
     prefix = f"{site}/browse/"
     if not isinstance(url, str) or not url.startswith(prefix):
@@ -672,14 +690,15 @@ class JiraBackend:
                        remove_tags=tuple(normalize_tag(t) for t in changes.remove_tags))
 
     def _item_file(self, folder: str, key: str, *, resume: bool = False) -> None:
-        """Make the folder and its item.yaml. `resume` finishes a folder an
+        """Make the folder and its state file. `resume` finishes a folder an
         interrupted run made, and refuses nothing when it exists."""
         path = self.work_path / folder
         if not (resume and path.is_dir()):
             path.mkdir(parents=True)
             self.report(f"created {shown(path)}/")
-        document = path / ITEM_FILE
-        document.write_text(f"ticket: {self.jira.site}/browse/{key}\n", encoding="utf-8")
+        document = path / STATE_FILE
+        document.write_text(f"{version_line()}ticket: {self.jira.site}/browse/{key}\n",
+                            encoding="utf-8")
         self.report(f"wrote {shown(document)}")
 
     # -- create (Design 4.1) -------------------------------------------------------
@@ -743,7 +762,7 @@ class JiraBackend:
             raise _named(BackendError(
                 f"created Jira ticket {key}, but could not set its TCW Item: {error}; "
                 f"finish with `tcw work tickets adopt {key}`"), key) from None
-        # 5. Write the folder and item.yaml.
+        # 5. Write the folder and its state file.
         try:
             self._item_file(folder, key)
         except OSError as error:

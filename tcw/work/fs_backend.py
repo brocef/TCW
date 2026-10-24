@@ -1,8 +1,8 @@
 """The filesystem work backend: every work item is a folder in the work path.
 
 An item folder is `<date>-<title words>`, directly inside the work path, holding
-`item.yaml` (the item's properties and stage), the stage folders TCW-69's
-layout names, and `comments/`. The folder never moves when the item's stage
+`tcw-work-item.yaml` (its state file: the item's properties and stage, after
+its `tcw-version`), the stage folders TCW-69's layout names, and `comments/`. The folder never moves when the item's stage
 changes; only `rename` moves it, because a person asked.
 
 Every write replaces a whole file in one step, and every file written, moved or
@@ -29,6 +29,8 @@ import yaml
 
 from tcw.errors import BackendError, MovedWithoutNote, NotFound, Refused, UsageError
 from tcw.findings import Finding
+from tcw.object_folders import STATE_FILES, existing_version_line, id_problem, state_text
+from tcw.project_files import VERSION_KEY, version_problem
 from tcw.output import shown
 from tcw.store.base import normalize_tag
 from tcw.store.fs import _atomic_write_all, _umask, exact_child
@@ -41,7 +43,7 @@ from tcw.work.model import (
     title_words as make_title_words, validate_changes,
 )
 
-ITEM_FILE = "item.yaml"
+STATE_FILE = STATE_FILES["work"]
 COMMENTS = "comments"
 ITEM_FOLDER = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(-[a-z0-9]+)*$")
 WORDS = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -49,14 +51,15 @@ DATED = re.compile(r"^(\d{4}-\d{2}-\d{2})-(.*)$")
 COMMENT_NAME = re.compile(r"^(\d{8}T\d{6}Z)\.md$")
 COMMENT_STAMP = "%Y%m%dT%H%M%SZ"
 
-# The keys of item.yaml, in the order they are written.
-KEYS = ("title", "stage", "priority", "effort", "complexity", "tags",
-        "assignee", "parent", "blocked-by")
+# The keys of an item's state file, in the order they are written. `id` is
+# never written by TCW, only kept where a person wrote it (Design 1.3).
+KEYS = (VERSION_KEY, "id", "title", "stage", "priority", "effort", "complexity",
+        "tags", "assignee", "parent", "blocked-by")
 
 
 def is_item_folder(path: Path) -> bool:
     """A directory whose name is `<real date>-<words>`, at most the folder
-    limit, holding an `item.yaml`."""
+    limit, holding a `tcw-work-item.yaml`."""
     name = path.name
     if len(name) > FOLDER_LIMIT or not ITEM_FOLDER.match(name):
         return False
@@ -64,15 +67,15 @@ def is_item_folder(path: Path) -> bool:
         date.fromisoformat(name[:10])
     except ValueError:
         return False
-    return path.is_dir() and (path / ITEM_FILE).is_file()
+    return path.is_dir() and (path / STATE_FILE).is_file()
 
 
 # ---------------------------------------------------------------------------
-# Reading and writing item.yaml
+# Reading and writing an item's state file
 
 
 class Unreadable(Exception):
-    """An `item.yaml` that cannot be read, naming the key at fault when there
+    """A state file that cannot be read, naming the key at fault when there
     is one: raised by the reader, and returned as a value by `read_all`."""
 
     def __init__(self, path: Path, key: str | None, message: str):
@@ -95,13 +98,18 @@ def _load(folder: Path, project: str,
           enabled: frozenset[str]) -> tuple[Item, str]:
     """The item and the raw `stage` string as written. Strict: anything wrong
     raises `Unreadable` naming the key."""
-    path = folder / ITEM_FILE
+    path = folder / STATE_FILE
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as error:
         raise Unreadable(path, None, f"cannot be read: {error}") from None
     if not isinstance(raw, dict):
         raise Unreadable(path, None, "must be a mapping of the item's properties")
+    # The version first: a file this TCW cannot read is never interpreted, so
+    # a newer one's keys are not reported as unknown (Design 1.5).
+    problem = version_problem(raw)
+    if problem is not None:
+        raise Unreadable(path, VERSION_KEY, problem)
     for key in raw:
         if key not in KEYS:
             raise Unreadable(path, str(key), f"unknown key; the keys are "
@@ -166,7 +174,8 @@ def _load(folder: Path, project: str,
     return item, raw_stage
 
 
-def _dump(item: Item, raw_stage: str) -> str:
+def _dump(item: Item, raw_stage: str) -> dict[str, Any]:
+    """The state file's mapping for `item`, without `tcw-version`."""
     data: dict[str, Any] = {"title": item.title, "stage": raw_stage,
                             "priority": item.priority or DEFAULT_PRIORITY}
     if item.effort:
@@ -181,7 +190,22 @@ def _dump(item: Item, raw_stage: str) -> str:
         data["parent"] = str(item.parent)
     if item.blocked_by:
         data["blocked-by"] = [str(s) for s in item.blocked_by]
-    return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+    return data
+
+
+def _state_text(path: Path, item: Item, raw_stage: str) -> str:
+    """What `path` is rewritten with: its `tcw-version` line as written (or
+    this TCW's, for a new file), the `id` a person wrote, kept, and the
+    item's properties (Design 1.3, 1.4)."""
+    data = _dump(item, raw_stage)
+    if existing_version_line(path) is not None:
+        try:
+            old = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, yaml.YAMLError):
+            old = None
+        if isinstance(old, dict) and "id" in old:
+            data = {"id": old["id"], **data}
+    return state_text(path, data)
 
 
 def _replace_file(path: Path, text: str) -> None:
@@ -209,10 +233,10 @@ def read_all(work_path: Path, project: str,
 
 
 def report_mentions(work_path: Path, old: str, report: Callable[[str], None]) -> None:
-    """After a rename, every line of the work path's files, other than
-    `item.yaml`, that still names the old folder. None is rewritten."""
+    """After a rename, every line of the work path's files, other than the
+    state files, that still names the old folder. None is rewritten."""
     for path in sorted(work_path.rglob("*")):
-        if not path.is_file() or path.name == ITEM_FILE:
+        if not path.is_file() or path.name == STATE_FILE:
             continue
         try:
             lines = path.read_text(encoding="utf-8").splitlines()
@@ -275,8 +299,8 @@ class FsWorkBackend:
             raise BackendError(str(error)) from None
 
     def _write(self, item: Item, raw_stage: str) -> None:
-        path = self.work_path / item.slug.folder / ITEM_FILE
-        _replace_file(path, _dump(item, raw_stage))
+        path = self.work_path / item.slug.folder / STATE_FILE
+        _replace_file(path, _state_text(path, item, raw_stage))
         self.report(f"wrote {shown(path)}")
 
     def _parent_of(self, slug: Slug) -> Slug | None:
@@ -561,13 +585,25 @@ def work_store_problems(work_path: Path, project: str,
             findings.append(Finding("error", str(error.path),
                                     f"unreadable{key}: {error.message}"))
             continue
+        problem = id_problem(_raw(entry / STATE_FILE), entry.name)
+        if problem is not None:
+            findings.append(Finding("error", str(entry / STATE_FILE), problem))
         if item.stage is None:
-            findings.append(Finding("error", str(entry / ITEM_FILE),
+            findings.append(Finding("error", str(entry / STATE_FILE),
                                     f"stage {raw_stage!r} is not an enabled stage, "
                                     f"so the item has no stage; move it with "
                                     f"`tcw work advance --to <stage> --force`"))
         for tag in item.tags:
             if tag not in registered:
-                findings.append(Finding("warning", str(entry / ITEM_FILE),
+                findings.append(Finding("warning", str(entry / STATE_FILE),
                                         f"tag {tag!r} is not in the tag registry"))
     return findings
+
+
+def _raw(path: Path) -> Any:
+    """A state file's mapping as written, or None when it cannot be read
+    (its reader has reported why)."""
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        return None

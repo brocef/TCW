@@ -50,6 +50,15 @@ def changed(lines: list[tuple[str, Path]]) -> None:
         {"wrote": wrote, "removed": removed, "created": created}[verb](path)
 
 
+def left_out(unreadable: dict) -> int:
+    """After a listing, each object it left out because its state file's
+    version cannot be read, one `<file>: <problem>` line on stderr, and the
+    exit code: 1 when there was one (TCW-111 Design 1.5), else 0."""
+    for path, problem in sorted(unreadable.items()):
+        say(f"{shown(path)}: {problem}")
+    return 1 if unreadable else 0
+
+
 def print_json(key: str | None, value: Any) -> None:
     """Exactly one JSON object on stdout with `"schema": 2` first: `value`
     under `key`, or `value`'s own keys when `key` is None (Design 1.6).

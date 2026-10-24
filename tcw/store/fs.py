@@ -26,11 +26,13 @@ from pathlib import Path
 
 import yaml
 
-from tcw.errors import BackendError, NotFound, Refused, TcwError, Unreachable, UsageError
+from tcw.errors import (BackendError, NotFound, Refused, StateFileProblem, TcwError,
+                        Unreachable, UsageError)
 from tcw.findings import Finding
 from tcw.ids import (SCHEME, FolderAddress, FullId, IdError, MalformedId, id_path_problem,
                      parse_address, parse_stored, sort_input)
-from tcw.object_folders import exact_child, exact_path
+from tcw.object_folders import (STATE_FILES, exact_child, exact_path, id_problem, read_state,
+                                state_text)
 from tcw.output import shown as _shown
 from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
 from tcw.store.base import (
@@ -134,7 +136,7 @@ def _modified_timestamp(resources: list[Path]) -> str:
 
 def _capability_resources(folder: Path, meta: dict) -> list[Path]:
     names = [
-        "meta.yaml",
+        STATE_FILES["capabilities"],
         "description.md",
         *_as_list(meta.get("prependedDocs")),
         *_as_list(meta.get("appendedDocs")),
@@ -654,13 +656,14 @@ _UniqueKeyLoader = UniqueKeyLoader
 #: contract by `tcw validate`. Named rather than inferred and kept in one place,
 #: because naming what TCW owns is narrower than exempting what it does not.
 #:
-#: `item.yaml` is a work item's record (TCW-70 Design 3.2). The project sentinel
+#: They are the three state files (TCW-111 Design 1.1), a work item's among
+#: them (TCW-70 Design 3.2). The project sentinel
 #: `tcw-config.yaml` sits outside the scanned trees and is refused by
 #: `load_config` the moment anything reads it. A work item's `capabilities.yaml`
 #: is checked by the work checks in `tcw validate`, not by this list. A leftover
 #: per-store `config.yaml` is not a record of ours: `check()` names any copy at a
 #: store root as no longer read (`FsTreeStore._legacy_config_problems`).
-OWNED_YAML_NAMES = frozenset({"meta.yaml", "item.yaml"})
+OWNED_YAML_NAMES = frozenset(STATE_FILES.values())
 
 
 class NotAMapping(yaml.YAMLError):
@@ -1206,6 +1209,9 @@ class FsTreeStore:
     #: keeps it out of a folder's attachments (see the comment there), and
     #: `_legacy_config_problems` reports a copy left at the store root.
     LEGACY_CONFIG_NAME: str | None = None
+    #: The file whose presence makes a folder one of this store's objects
+    #: (TCW-111 Design 1.1).
+    STATE_FILE: str
 
     def __init__(self, root: Path, *, project_root: Path | None = None,
                  store_git_root: Path | None = None):
@@ -1225,6 +1231,11 @@ class FsTreeStore:
         # own record (TCW-73 Design 1.2), read by the commands to name every
         # file they touched; a store kept somewhere else has nothing to list.
         self.changed: list[tuple[str, Path]] = []
+        # Each object a listing left out because its state file's version is
+        # one this TCW cannot read, by file, with the version check's message
+        # (TCW-111 Design 1.5). Filled only by a listing, so `check` lists
+        # first, and a command that lists says so on stderr and exits 1.
+        self.unreadable: dict[Path, str] = {}
         # This component's section of the *project's* config, not a file inside the
         # store. Re-read here rather than threaded down from `resolve_store`,
         # because `tcw/validate.py` builds a store by calling `_open_at`
@@ -1408,11 +1419,49 @@ class FsTreeStore:
 
         Two questions, because they fail apart: the folder can be reached
         through a symlink out of the store, or the folder can be ordinary while
-        its `meta.yaml` is the symlink. Guarding only the folder leaves the
+        its state file is the symlink. Guarding only the folder leaves the
         second open, and an escaped meta reads as `{}`, which `_term` would turn
         into a *phantom* term named after its own slug rather than a miss.
         """
-        return self._within_store(d) and self._within_store(d / "meta.yaml")
+        return self._within_store(d) and self._within_store(d / self.STATE_FILE)
+
+    def _state(self, d: Path) -> dict:
+        """The object folder `d`'s state file, without `tcw-version`: `{}`
+        when it has none or the file escapes the store, and `StateFileProblem`
+        (exit 1) when its version is one this TCW cannot read, so such a file
+        is never interpreted or rewritten (TCW-111 Design 1.5)."""
+        path = d / self.STATE_FILE
+        if not self._within_store(path):
+            return {}
+        data, problem = read_state(path, load_yaml)
+        if problem is not None:
+            raise StateFileProblem(path, problem)
+        return data
+
+    def _listable(self, d: Path) -> bool:
+        """Whether a listing may show the object folder `d`: not when its
+        state file's version cannot be read, which is recorded in
+        `unreadable` instead (Design 1.5)."""
+        try:
+            self._state(d)
+        except StateFileProblem as problem:
+            self.unreadable[problem.path] = problem.problem
+            return False
+        return True
+
+    def unreadable_files(self) -> dict[Path, str]:
+        """`unreadable`, with that of every store this one inherits from:
+        what a `list` of the whole view left out."""
+        found = dict(self.unreadable)
+        for store in self._inherited().values():
+            found.update(store.unreadable)
+        return found
+
+    def _unreadable_findings(self) -> list[Finding]:
+        """An error for each object of this store a listing left out (Design
+        1.5); no other check of its file runs."""
+        return [Finding("error", self._where(path), problem)
+                for path, problem in sorted(self.unreadable.items())]
 
     def _within_store(self, path: Path) -> bool:
         """True iff `path` stays inside the store root once symlinks resolve.
@@ -1590,9 +1639,9 @@ class FsTreeStore:
         self.changed += [("removed", f) for f in files]
 
 
-    # -- shared folder-entry anatomy (meta.yaml + description.md + attachments) --
+    # -- shared folder-entry anatomy (state file + description.md + attachments) --
     #
-    # A "entry" is a folder holding a `meta.yaml` (named fields), a
+    # A "entry" is a folder holding its state file (named fields), a
     # `description.md` (the body), and zero or more named attachment files. Both
     # the taxonomy and capabilities adapters realize their items this way; the
     # read/write mechanics live here so they are defined once. (Abstract spine:
@@ -1602,7 +1651,7 @@ class FsTreeStore:
         """A folder entry's [meta, description] texts; empty strings when absent."""
         return [f.read_text(encoding="utf-8")
                 if f.is_file() and self._within_store(f) else ""
-                for f in (d / "meta.yaml", d / "description.md")]
+                for f in (d / self.STATE_FILE, d / "description.md")]
 
     def _entry_reserved(self) -> set[str]:
         """Filenames in an entry folder that are not attachments.
@@ -1614,14 +1663,14 @@ class FsTreeStore:
 
         Only taxonomy can actually observe this: `_term` carries the list onto
         `Term.attachments`, while `_capability` discards it and composes bodies
-        from `prependedDocs`/`appendedDocs` read by name out of `meta.yaml`. So
+        from `prependedDocs`/`appendedDocs` read by name out of the state file. So
         the capabilities half is inert, and is kept anyway — the two stores
         reading alike costs one string and removes the question. See
         `test_the_capabilities_store_has_no_attachment_surface_to_regress`,
         which fails if `Capability` ever grows an attachments field and makes
         this reasoning stale.
         """
-        names = {"meta.yaml", "description.md"}
+        names = {self.STATE_FILE, "description.md"}
         if self.LEGACY_CONFIG_NAME:
             names.add(self.LEGACY_CONFIG_NAME)
         return names
@@ -1675,8 +1724,7 @@ class FsTreeStore:
         # already uses for the folder. An empty meta is what makes the entry stop
         # resolving: `_is_capability` and the `overrides` test both read falsey,
         # and a taxonomy entry with no kind is not a term.
-        meta_path = d / "meta.yaml"
-        meta = load_yaml(meta_path) if self._within_store(meta_path) else {}
+        meta = self._state(d)
         desc = d / "description.md"
         description = (desc.read_text(encoding="utf-8")
                        if desc.exists() and self._within_store(desc) else "")
@@ -1702,8 +1750,7 @@ class FsTreeStore:
         # check and our failure would have had its directory removed.
         owned = _mkdir_owned(d)
         self._write_files(
-            [(d / "meta.yaml",
-              yaml.safe_dump(meta, sort_keys=False, allow_unicode=True)),
+            [(d / self.STATE_FILE, state_text(d / self.STATE_FILE, meta)),
              (d / "description.md", description)],
             owned_dir=d if owned else None)
 
@@ -1758,6 +1805,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
     """
     COMPONENT = "taxonomy"
     LEGACY_CONFIG_NAME = "config.yaml"
+    STATE_FILE = STATE_FILES["taxonomy"]
 
     def __init__(self, root: Path, *,
                  _walk: "_FederationWalk | None" = None,
@@ -1790,7 +1838,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             attachments=attachments,
             origin=origin,
             modified=_modified_timestamp(
-                [d / "meta.yaml", d / "description.md"]
+                [d / self.STATE_FILE, d / "description.md"]
             ),
             owner=self.owner_of(origin),
         )
@@ -1820,7 +1868,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         # can be one — but that is the case this filter is for.
         return sorted(
             str(p.relative_to(self.root)) for p in self.root.rglob("*")
-            if p.is_dir() and self._entry_readable(p))
+            if p.is_dir() and self._entry_readable(p) and self._listable(p))
 
     def _inherited_stores(self) -> dict[str, "FsTaxonomyStore"]:
         """Every inherited taxonomy keyed by its owning project ID.
@@ -1956,15 +2004,15 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                              f"(edit it at its source)")
         d = self.root / term.slug
         # Refused, never cascaded, and decided from the disk (TCW-73 Design
-        # 8.2): a nested term is a folder under this one holding a `meta.yaml`.
+        # 8.2): a nested term is a folder under this one holding a state file.
         # Everything else in the folder — attachments, files an operating
         # system writes on its own, files git has never seen — goes with it.
-        # A sub-folder without a `meta.yaml` still lists as a term, so the
+        # A sub-folder without a state file still lists as a term, so the
         # reference checks below cover it too: a term or capability naming
         # `invoice/sub` refuses the removal of `invoice` exactly as one naming
         # `invoice` does, and nothing is left pointing at a deleted folder.
         nested = sorted({str(m.parent.relative_to(self.root))
-                         for m in d.rglob("meta.yaml") if m.parent != d})
+                         for m in d.rglob(self.STATE_FILE) if m.parent != d})
         if nested:
             raise Refused(f"cannot remove '{term.slug}': nested under it: "
                           f"{', '.join(nested)} (remove those first)")
@@ -2113,6 +2161,9 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
 
     def check(self, identifier: str | None = None) -> list[Finding]:
         problems: list[Finding] = []
+        # A full listing first, so what is reported about state files that
+        # cannot be read never depends on what was called before.
+        self.unreadable.clear()
         top_level = {s.split("/")[0] for s in self._local_slugs()}
         for project_id in self._federation_cycles():
             problems.append(self._store_finding(
@@ -2127,18 +2178,26 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             problems += self._legacy_config_problems()
 
         if identifier is not None:
-            selected = self.get_view(identifier)
+            try:
+                selected = self.get_view(identifier)
+            except StateFileProblem as problem:
+                return [Finding("error", self._where(problem.path), problem.problem)]
             if selected is None:
                 return [Finding("error", self._where(self.root),
                                 f"no such term: {identifier}")]
             terms = [selected]
         else:
             terms = self.list_all(local_only=True)
+            problems += self._unreadable_findings()
         for term in terms:
             def found(message: str) -> None:
                 problems.append(Finding("error", self._where(term.slug), message))
             if (problem := _bad_name(term.slug)):
                 found(problem)
+            if term.origin == "local" and (problem := id_problem(
+                    self._state(self.root / term.slug), term.slug)):
+                problems.append(Finding("error", self._where(
+                    self.root / term.slug / self.STATE_FILE), problem))
             if term.kind not in TAXONOMY_KINDS:
                 found(f"unknown kind '{term.kind}'")
             def report(problem) -> None:
@@ -2173,7 +2232,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             folder = owner.root / term.slug
         # Asked of the *owning* store: an inherited term's files are bounded by
         # its own root, not this one.
-        return [path for path in (folder / "meta.yaml", folder / "description.md")
+        return [path for path in (folder / self.STATE_FILE, folder / "description.md")
                 if path.is_file() and owner._within_store(path)]
 
     # -- revision-bearing detail + update --
@@ -2223,7 +2282,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                     f"(expected {core_revision}, got {detail.core_revision})")
 
         # Read current state
-        meta, desc_text = load_yaml(d / "meta.yaml"), ""
+        meta, desc_text = self._state(d), ""
         if (d / "description.md").is_file() and self._within_store(d / "description.md"):
             desc_text = (d / "description.md").read_text(encoding="utf-8")
 
@@ -2307,13 +2366,14 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     """`CapabilitiesStore` over folder-per-capability entries under
     `docs/capabilities/`, optionally federated via `extends`.
 
-    A capability is a folder with `meta.yaml` (`id` + `name` + the locked
+    A capability is a folder with `tcw-capability.yaml` (`id` + `name` + the locked
     metadata vocabulary) and `description.md` (the body). A directory is a
-    capability iff it holds a `meta.yaml`; dirs without one are pure grouping
+    capability iff it holds that state file; dirs without one are pure grouping
     parents. Mirrors `FsTaxonomyStore` on the shared tree-store core.
     """
     COMPONENT = "capabilities"
     LEGACY_CONFIG_NAME = ".config.yaml"
+    STATE_FILE = STATE_FILES["capabilities"]
 
     def __init__(self, root: Path, *,
                  _walk: "_FederationWalk | None" = None,
@@ -2334,10 +2394,11 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     # -- resolution --
 
     def _is_capability(self, d: Path) -> bool:
-        return (d / "meta.yaml").is_file()
+        return (d / self.STATE_FILE).is_file()
 
     def _all_meta_dirs(self) -> list[str]:
-        """Every folder holding a meta.yaml (capabilities + overrides), minus dot-dirs."""
+        """Every folder holding a state file (capabilities + overrides), minus
+        dot-dirs and those whose state file's version cannot be read."""
         out = []
         for p in sorted(self.root.rglob("*")):
             if not p.is_dir():
@@ -2347,15 +2408,15 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 continue
             if not self._entry_readable(p):
                 continue                      # before the _is_capability stat
-            if self._is_capability(p):
+            if self._is_capability(p) and self._listable(p):
                 out.append(str(rel))
         return out
 
     def _local_paths(self) -> list[str]:
-        """Standalone local capabilities — meta.yaml folders WITHOUT an `overrides`
+        """Standalone local capabilities — state-file folders WITHOUT an `overrides`
         pointer (those are deltas, not caps; see `_override_index`)."""
         return [p for p in self._all_meta_dirs()
-                if not load_yaml(self.root / p / "meta.yaml").get("overrides")]
+                if not self._state(self.root / p).get("overrides")]
 
     def _override_fields(self) -> list[tuple[str, dict]]:
         """`(path, fields)` for every local override: the fields it sets on the
@@ -2368,7 +2429,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         so leaving it out of either lets a reference dangle unreported."""
         out = []
         for p in self._all_meta_dirs():
-            meta = load_yaml(self.root / p / "meta.yaml")
+            meta = self._state(self.root / p)
             if meta.get("overrides"):
                 out.append((p, self._set_fields(meta)))
         return out
@@ -2383,7 +2444,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         """`overrides` target string → (override folder, override meta)."""
         idx: dict[str, tuple[Path, dict]] = {}
         for p in self._all_meta_dirs():
-            meta = load_yaml(self.root / p / "meta.yaml")
+            meta = self._state(self.root / p)
             target = meta.get("overrides")
             if target:
                 idx[str(target)] = (self.root / p, meta)
@@ -2477,12 +2538,12 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         d = self.root / path
         # Reordered rather than extended: the old one-expression form called
         # `load_yaml` inside the condition, so a containment test appended to
-        # the end would parse a meta.yaml outside the store before rejecting it.
+        # the end would parse a state file outside the store before rejecting it.
         # The stat stays first so a miss pays no `resolve()`.
         if not (path and self._is_capability(d) and self._entry_readable(d)
                 and exact_path(self.root, path) is True):
             return None
-        return None if load_yaml(d / "meta.yaml").get("overrides") else self._capability(path)
+        return None if self._state(d).get("overrides") else self._capability(path)
 
     def get_by_id(self, cap_id: str) -> Capability | None:
         """Resolve an opaque id to its local capability (keyed lookup)."""
@@ -2637,12 +2698,12 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         self._rm(d)
 
     def _nested_entries(self, d: Path) -> list[str]:
-        """Every folder below `d` holding a `meta.yaml`, relative to the store.
+        """Every folder below `d` holding a state file, relative to the store.
         Asked of the folder itself rather than `_all_meta_dirs`, which skips
         dot-directories and unreadable entries that `git rm -rf` would delete
         all the same."""
         return sorted(str(m.parent.relative_to(self.root))
-                      for m in d.rglob("meta.yaml") if m.parent != d)
+                      for m in d.rglob(self.STATE_FILE) if m.parent != d)
 
     def _referrers(self, target: Path) -> list[str]:
         """`<folder> (<field>)` for every other local capability or override whose
@@ -2671,7 +2732,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             folder = self.root / p
             if same(folder):
                 continue
-            meta = load_yaml(folder / "meta.yaml")
+            meta = self._state(folder)
             for field in ("Superseded by", "Blocked by", "Roles", "When"):
                 if field not in meta:
                     continue
@@ -2827,8 +2888,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         """
         owned = _mkdir_owned(d)
         self._write_files(
-            [(d / "meta.yaml",
-              yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))],
+            [(d / self.STATE_FILE, state_text(d / self.STATE_FILE, meta))],
             owned_dir=d if owned else None, removed=removed)
 
     def _write_target(self, identifier: "FullId | str") -> tuple[Path, dict, bool]:
@@ -2846,7 +2906,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             raise NotFound(f"no such capability: {identifier}")
         if cap.origin == "local":
             d = self.root / cap.path
-            return d, load_yaml(d / "meta.yaml"), False
+            return d, self._state(d), False
         ov_index = self._override_index()
         ov = ov_index.get(cap.id) or ov_index.get(f"{cap.origin}/{cap.id}")
         if ov is not None:
@@ -2863,7 +2923,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 f"'{cap.origin}/{cap.path}' are already taken")
         # The mirror is the one write not downstream of a guarded lookup: a local
         # symlink shadowing the first segment of the upstream path would have it
-        # create the folder and its meta.yaml outside the store.
+        # create the folder and its state file outside the store.
         if not self._within_store(d):
             raise NotFound(f"no such capability: {identifier}")
         return d, {"overrides": f"{cap.origin}/{cap.id}"}, True
@@ -2948,6 +3008,8 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         # problem is.
         problems: list[Finding] = []
         unchecked = ""
+        # A full listing first, as `FsTaxonomyStore.check` does.
+        self.unreadable.clear()
         if taxonomy is None:
             try:
                 taxonomy = self._taxonomy()
@@ -2969,7 +3031,10 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         if identifier is None:
             problems += self._legacy_config_problems()     # see FsTaxonomyStore.check
 
-        selected = self.get_view(identifier) if identifier is not None else None
+        try:
+            selected = self.get_view(identifier) if identifier is not None else None
+        except StateFileProblem as problem:
+            return [Finding("error", self._where(problem.path), problem.problem)]
         if identifier is not None and selected is None:
             return [Finding("error", self._where(self.root),
                             f"no such capability: {identifier}")]
@@ -2979,8 +3044,8 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 if path == selected.path:
                     continue
                 try:
-                    candidate_id = str(load_yaml(self.root / path / "meta.yaml").get("id") or "")
-                except yaml.YAMLError:
+                    candidate_id = str(self._state(self.root / path).get("id") or "")
+                except (yaml.YAMLError, StateFileProblem):
                     continue
                 if candidate_id:
                     seen_ids[candidate_id] = path
@@ -2988,6 +3053,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         else:
             seen_ids = {}
             caps = self.list_all(local_only=True)
+            problems += self._unreadable_findings()
         for cap in caps:
             where = self._where(cap.path)
 
@@ -3037,7 +3103,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             # a local folder of that name exists only when its override sits there.
             if not d.is_dir() or not self._entry_readable(d):
                 continue          # `selected` bypasses the _all_meta_dirs filter
-            meta = load_yaml(d / "meta.yaml")
+            meta = self._state(d)
 
             def found(message: str) -> None:
                 problems.append(Finding("error", self._where(p), message))
@@ -3072,7 +3138,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         except UsageError:
             return []
         local_folder = self.root / identifier
-        if (local_folder / "meta.yaml").is_file() and self._entry_readable(local_folder):
+        if (local_folder / self.STATE_FILE).is_file() and self._entry_readable(local_folder):
             owner, folder = self, local_folder
         else:
             cap = self.get_view(identifier)
@@ -3081,10 +3147,10 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             owner = self if cap.origin == "local" else self.extends[cap.origin]
             folder = owner.root / cap.path
         try:
-            meta = load_yaml(folder / "meta.yaml")
-        except yaml.YAMLError:
+            meta = owner._state(folder)
+        except (yaml.YAMLError, StateFileProblem):
             meta = {}
-        names = ["meta.yaml", "description.md", *_as_list(meta.get("prependedDocs")),
+        names = [self.STATE_FILE, "description.md", *_as_list(meta.get("prependedDocs")),
                  *_as_list(meta.get("appendedDocs"))]
         # `validate()` parses and reads whatever comes back, so a listed
         # attachment that is a symlink out of the store would be read there —
@@ -3241,7 +3307,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         # No mkdir and no outer guard here any more: `_write_meta` and
         # `_write_entry` each own their directory and roll back what they
         # created. Doing it here as well would double-delete — and, worse, the
-        # old guard had to key on `meta.yaml` being absent precisely because it
+        # old guard had to key on the state file being absent precisely because it
         # wrapped a callee that stages internally.
         if is_override and not desc_text.strip():
             # An override's description.md is a *body delta*, and an empty one

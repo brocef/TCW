@@ -34,6 +34,7 @@ import yaml
 
 from tcw.errors import InheritedUnavailable, ProjectGraphError, Unreachable
 from tcw.findings import Finding
+from tcw.object_folders import STATE_FILES
 from tcw.project_files import LEGACY_SENTINEL, SENTINEL
 from tcw.locate import UNRESOLVED
 from tcw.refs import resolve_address
@@ -55,6 +56,8 @@ _FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})[^\n]*\n.*?^[ \t]*\1[ \t]*$",
 # Inline code span: a backtick run not adjacent to more backticks, closed by an
 # equal-length run (CommonMark-ish — handles adjacent runs in scheme-teaching docs).
 _INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)", re.DOTALL)
+
+WORK_STATE_FILE = STATE_FILES["work"]
 
 
 @dataclass(frozen=True)
@@ -363,9 +366,9 @@ def _file_findings(project_root: Path, roots: list[Path]) -> tuple[list[Finding]
     work_root = _work_root(project_root)
     for root in roots:
         for f in _iter(root, "*.yaml"):
-            if f.name == "item.yaml" and work_root is not None \
+            if f.name == WORK_STATE_FILE and work_root is not None \
                     and _under(f.resolve(), work_root):
-                # The work checks read every `item.yaml` and report one that
+                # The work checks read every item's state file and report one that
                 # cannot be read with its file and key; a second line here
                 # would only repeat it.
                 continue
@@ -562,7 +565,7 @@ def _work_target_findings(project_root: Path, registry,
     Two checks need the item's stage or links: the records check on its
     `capabilities.yaml` (when the stage is not terminal) and its `parent` and
     `blocked-by` within this project. They use `target.item` when given; in
-    filesystem mode they read `item.yaml` otherwise; in Jira mode, with no
+    filesystem mode they read its state file otherwise; in Jira mode, with no
     item, they are skipped, so this never contacts Jira. In Jira mode, whenever
     the records check does not run (no item, or a terminal stage), whether
     `capabilities.yaml` parses is still checked, as a full `tcw validate`
@@ -583,7 +586,7 @@ def _work_target_findings(project_root: Path, registry,
     folder = Path(backend.work_path) / target.ref
     if "/" in target.ref or target.ref.startswith(".") or not folder.is_dir():
         return [Finding("error", target.ref, "no such work object")]
-    # (a) leaves `item.yaml` to the backend's own check, below.
+    # (a) leaves the state file to the backend's own check, below.
     problems, _ = _file_findings(project_root, [folder])
     if isinstance(backend, JiraBackend):
         store = jira_store_problems(backend.work_path, backend.jira)
@@ -626,7 +629,7 @@ def _work_target_findings(project_root: Path, registry,
         if ref.project != backend.project:
             continue
         if not (Path(backend.work_path) / ref.folder).is_dir():
-            problems.append(Finding("warning", str(layout.item_dir(item.slug) / "item.yaml"),
+            problems.append(Finding("warning", str(layout.item_dir(item.slug) / WORK_STATE_FILE),
                                     f"{name} references a missing item, {ref}"))
     return problems
 
@@ -670,7 +673,7 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
     items, unreadable = read_all(backend.work_path, backend.project, backend.enabled)
 
     def item_file(slug) -> str:
-        return str(layout.item_dir(slug) / "item.yaml")
+        return str(layout.item_dir(slug) / WORK_STATE_FILE)
 
     resolve = reference_resolver(project_root)
 

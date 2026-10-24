@@ -438,6 +438,18 @@ def state_text(path: Path, mapping: dict) -> str:
                     if body else "")
 
 
+def id_problem(mapping: dict, id_path: str) -> str | None:
+    """Row k (Design 1.3): an `id` in a state file must be its folder's name
+    exactly; the folder's name is what every command reads the object by."""
+    if not isinstance(mapping, dict) or "id" not in mapping:
+        return None
+    name = id_path.rpartition("/")[2]
+    if mapping["id"] == name:
+        return None
+    return (f"id {mapping['id']!r} is not its folder's name, {name!r}; an object's "
+            f"ID is its folder's name, so remove id or set it to {name!r}")
+
+
 # ---------------------------------------------------------------------------
 # Where the folder and `parent` disagree (Design 3.2)
 

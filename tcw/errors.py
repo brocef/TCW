@@ -34,6 +34,16 @@ class BackendError(TcwError):
     code = codes.ERROR
 
 
+class StateFileProblem(BackendError):
+    """An object's state file whose `tcw-version` this TCW cannot read
+    (TCW-111 Design 1.5): the object is never interpreted or rewritten.
+    `path` is the file, `problem` the version check's message."""
+
+    def __init__(self, path, problem: str, *, name: str | None = None):
+        super().__init__(f"{path}: {problem}", name=name)
+        self.path, self.problem = path, problem
+
+
 class ConfigError(BackendError):
     """The configuration of the project a command acts on has problems, in
     `tcw-config.yaml`, a personal file, or the environment that switches

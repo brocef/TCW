@@ -13,14 +13,16 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+import yaml
+
 from tcw import exit as codes
-from tcw.errors import BackendError, NotFound, Refused, TcwError, UsageError
+from tcw.errors import BackendError, NotFound, Refused, StateFileProblem, TcwError, UsageError
 from tcw.ids import IdError
 from tcw.work.advance import run_post
 from tcw.work.config import WorkConfig
 from tcw.work.jira import jql
 from tcw.work.jira.backend import (
-    ITEM_FILE, KEY, JiraBackend, Refusal, _jira, _named, choose_transition, folder_key,
+    KEY, STATE_FILE, JiraBackend, Refusal, _jira, _named, choose_transition, folder_key,
 )
 from tcw.work.jira.client import (
     JiraClient, TrackerError, TrackerNotFound, TrackerRequestInvalid,
@@ -133,6 +135,8 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
         raise Refused(f"{key} belongs to TCW project {tcw_project!r}, not "
                       f"{backend.project!r}")
     here = backend.lookup(key)
+    if here is not None:
+        _refuse_unreadable_state(backend.work_path / here / STATE_FILE)
     tcw_item = fields.get(ids["item"])
     # Statuses of stages past request: adopting from one would skip stages.
     moved_on = set(backend.statuses.values()) - {inbox_status, request_status}
@@ -144,10 +148,10 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
         if here is not None and here != named.folder:
             raise Refused(f"a folder for {key} already exists here ({here}), but the "
                           f"ticket names {named.folder}")
-        # A folder without item.yaml is an adoption that stopped part way, but
+        # A folder without its state file is an adoption that stopped part way, but
         # only at a status nothing has moved it on from (Design 7.2).
         unfinished = (here is not None and status not in moved_on
-                      and not (backend.work_path / here / ITEM_FILE).is_file())
+                      and not (backend.work_path / here / STATE_FILE).is_file())
         if here is not None and status != inbox_status and not unfinished:
             raise Refused(f"{key} is already the item {named}")
         slug, resuming = named, True
@@ -176,8 +180,8 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
         with _jira():
             backend.client.edit_issue(key, {ids["project"]: backend.project,
                                             ids["item"]: str(slug)})
-    # 4. Write the folder and item.yaml, or finish a folder left without one.
-    if not (backend.work_path / slug.folder / ITEM_FILE).is_file():
+    # 4. Write the folder and its state file, or finish a folder left without one.
+    if not (backend.work_path / slug.folder / STATE_FILE).is_file():
         try:
             backend._item_file(slug.folder, key, resume=True)
         except OSError as error:
@@ -225,6 +229,18 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
         report(f"adopted {key} as {slug}, but {failure}")
         return str(slug), codes.MOVED_WITH_PROBLEM
     return str(slug), codes.OK
+
+
+def _refuse_unreadable_state(path: Path) -> None:
+    """Adopt writes nothing over a state file whose version this TCW cannot
+    read (TCW-111 Design 1.5): exit 1 with the version check's message."""
+    from tcw.object_folders import read_state
+    try:
+        _, problem = read_state(path)
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        return                       # `tcw validate` reports a file that cannot be read
+    if problem is not None:
+        raise StateFileProblem(path, problem)
 
 
 def _own_slug(backend: JiraBackend, value: Any, key: str) -> Slug | None:
