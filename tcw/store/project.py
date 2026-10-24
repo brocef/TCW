@@ -274,6 +274,41 @@ class _Answer:
     # problem, so the problem is recorded only where it stays one.
     unreadable: Path | None = None
     deferred: tuple | None = None
+    # The root of the project whose `.tcw/` holds the deciding entry's
+    # manifest; for a personal file a linked worktree borrows, the worktree
+    # (TCW-115 Design 8.1).
+    owner: Path | None = None
+
+
+@dataclass(frozen=True)
+class Placement:
+    """Where the lookup placed project `id`, and why (TCW-115 Design 8.1): the
+    answer to "where is `id`, asked by `asked_by`" with its deciding manifest
+    entry made readable. `folder` is the project's root when it is here;
+    `entry` the deciding entry (None when the search or `TCW_PROJECT_<ID>`
+    decided, or nothing did), `owner` the root of the project whose `.tcw/`
+    holds that entry's manifest, `entry_folder` the entry's `path` resolved
+    and `repository_folder` that with `subfolder` removed (TCW-107 Design
+    1.6). `repository_path` is the same folder before any link is followed:
+    the entry's path as written, joined to the folder it is read from.
+
+    Deployment layer: a store that is not a folder of files has no manifest."""
+
+    id: str
+    asked_by: Path
+    folder: Path | None = None
+    entry: ManifestEntry | None = None
+    owner: Path | None = None
+    entry_folder: Path | None = None
+    repository_folder: Path | None = None
+    repository_path: Path | None = None
+
+
+def _without_subfolder(path: Path, subfolder: str | None) -> Path:
+    """`path` with the last folders `subfolder` names removed."""
+    if subfolder is None:
+        return path
+    return path.parents[len(Path(subfolder).parts) - 1]
 
 
 def _not_here_message(project_id: str, remedy: str) -> str:
@@ -1318,6 +1353,61 @@ class FsProjectRegistry(ProjectRegistry):
             return {"by": "variable", "name": override_variable(project_id)}
         return {"by": "search"}
 
+    def placement(self, project_id: str, named_by: Path | None = None) -> Placement | None:
+        """Where the lookup placed `project_id` and the manifest entry that
+        decided it (TCW-115 Design 8.1). With `named_by`, looked up exactly as
+        `project_folder` looks it up, raising `UnknownProject` and
+        `ProjectGraphError` the same way; a project not on this machine is an
+        answer with no `folder`, not an error. Without it, the first answer
+        this registry recorded for the ID, reading nothing; None when it has
+        none. Every folder in it is resolved but `repository_path`."""
+        if named_by is not None:
+            root = self._root_key(named_by)
+            try:
+                folder = self.project_folder(project_id, named_by)
+            except Unreachable:
+                folder = None
+            answer = self._answers.get((project_id, root))
+            if answer is None:                 # the asking project itself
+                return Placement(id=project_id, asked_by=root, folder=folder)
+            return self._placement(project_id, root, answer)
+        for (answered_id, root), answer in self._answers.items():
+            if answered_id == project_id:
+                return self._placement(project_id, root, answer)
+        return None
+
+    def _placement(self, project_id: str, asked_by: Path, answer: _Answer) -> Placement:
+        entry = answer.entry
+        folder = Path(os.path.realpath(answer.folder)) if answer.folder else None
+        if entry is None or answer.owner is None:
+            return Placement(id=project_id, asked_by=asked_by, folder=folder)
+        written = Path(entry.path).expanduser()
+        entry_folder = Path(os.path.realpath(
+            root_of(self._locator_path(answer.owner / SENTINEL, str(written)))))
+        return Placement(
+            id=project_id, asked_by=asked_by, folder=folder, entry=entry,
+            owner=Path(os.path.realpath(answer.owner)), entry_folder=entry_folder,
+            repository_folder=_without_subfolder(entry_folder, entry.subfolder),
+            repository_path=_without_subfolder(
+                self._read_from(answer.owner, written) / written, entry.subfolder))
+
+    def _read_from(self, owner: Path, written: Path) -> Path:
+        """The folder an entry's relative path is read from: its owner's root,
+        or, in the active project's linked worktree, the owner's counterpart in
+        the main checkout when the path leads outside the repository (TCW-107
+        Design 4.3, `_locator_path` rule 1). Nothing is resolved."""
+        source = Path(owner)
+        if written.is_absolute() or self._anchors is None:
+            return source
+        top, main = self._anchors
+        inside = _below(source.resolve(), top)
+        if inside is None:
+            return source
+        leads_to = _config_file(source.resolve() / written / SENTINEL)
+        if _below(root_of(leads_to), top) is not None:
+            return source
+        return main / inside
+
     def _found_roots(self) -> set[Path]:
         return {self.project_root, *(root_of(path) for path in self._cache),
                 *(root_of(path) for path in self._outside), *self._found.values()}
@@ -1564,7 +1654,8 @@ class FsProjectRegistry(ProjectRegistry):
                 return _Answer(problem=self._manifest_problem[self._root_key(root)])
             for _, base, entries in manifests:
                 if project_id in entries:
-                    answer = self._entry_answer(entries[project_id], base)
+                    answer = replace(self._entry_answer(entries[project_id], base),
+                                     owner=base)
                     if index == 0 or answer.problem is not None:
                         return answer
                     # Another project's manifest decided: the search from the
