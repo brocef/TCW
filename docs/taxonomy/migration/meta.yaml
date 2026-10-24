@@ -1,0 +1,5 @@
+name: Migration
+kind: Vocabulary
+relatesTo:
+- format-version
+- project

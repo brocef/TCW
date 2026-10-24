@@ -13,7 +13,7 @@ exit 1 when it cannot read it, naming the file and saying what to do:
 - **No `tcw-version`**: the file is read as a TCW 3.x file. The message first
   gives the exact line to add as the file's first line, such as
   `tcw-version: 4.0.0`, and then names the command that converts a TCW 3.x
-  file to TCW 4.
+  file to TCW 4, `tcw migrate`.
 - **Not a version written as text**, such as an unquoted `4.0`, which YAML reads
   as a number: the message shows the form to write, such as `'4.0.0'`.
 - **Older than TCW 4**: the message names the format's version and the

@@ -1,0 +1,7 @@
+id: cap-eeaeb9
+name: Migrate a TCW 3.x project to TCW 4
+Status: Supported
+Subject:
+    - project
+    - migration
+Feature: project-registry
