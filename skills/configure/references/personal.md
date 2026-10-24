@@ -126,7 +126,7 @@ user:
 ```
 
 The built-in entry stands for TCW's own text, and its comment names the
-packaged file that holds it. It is how `config show` prints that text; a
+packaged file that holds it. It is how `tcw project config` prints that text; a
 configuration file never writes it, and one that does is reported. To keep
 TCW's own text in a list, write `- inherit: true`.
 
