@@ -31,8 +31,9 @@ from tcw.errors import (BackendError, NotFound, Refused, StateFileProblem, TcwEr
 from tcw.findings import Finding
 from tcw.ids import (SCHEME, FolderAddress, FullId, IdError, MalformedId, id_path_problem,
                      parse_address, parse_stored, sort_input)
-from tcw.object_folders import (STATE_FILES, exact_child, exact_path, id_problem, read_state,
-                                state_text)
+from tcw.object_folders import (STATE_FILES, exact_child, exact_path,
+                                id_problem, is_object, is_reserved, object_paths,
+                                read_state, removal_blockers, state_text)
 from tcw.output import shown as _shown
 from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
 from tcw.store.base import (
@@ -1063,6 +1064,34 @@ def _check_id_path(id_path: str, label: str) -> None:
         raise MalformedId(f"invalid {label} {id_path!r}: {problem}")
 
 
+def _check_reserved(id_path: str, namespace: str, label: str) -> None:
+    """Refuse a new object's id-path with a part that is one of the store's
+    reserved names, ignoring letter case (TCW-111 Design 2.4), before anything
+    is written."""
+    for part in id_path.split("/"):
+        if is_reserved(part, namespace):
+            raise UsageError(f"invalid {label} {id_path!r}: '{part}' is reserved in "
+                             f"the {namespace} store")
+
+
+def _blocked_removal(d: Path, root: Path, namespace: str, id_path: str) -> None:
+    """Refuse the removal of the object folder `d` while anything below it is
+    an object of any store, or a TCW 3.x one (TCW-111 Design 2.5, review
+    decision 16): `Refused`, before anything is deleted. The search is of the
+    folder itself, not the walk, because `git rm -rf` deletes hidden folders,
+    fixed folders and `resources/` all the same."""
+    blockers = removal_blockers(d, root)
+    legacy = [(where, name) for where, name in blockers if name != "state"]
+    if legacy:
+        where, name = legacy[0]
+        raise Refused(f"{where} holds a TCW 3.x {name}; run 'tcw migrate' in this "
+                      f"project first")
+    nested = [where for where, _ in blockers]
+    if nested:
+        raise Refused(f"cannot remove '{id_path}': nested under it: "
+                      f"{', '.join(nested)} (remove those first)")
+
+
 def _bad_name(id_path: str) -> str | None:
     """Why a folder's name breaks the identifier rule, as `check` reports it
     (Design 1.6), or None."""
@@ -1863,15 +1892,16 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         # containment second; the spelling, read from the listings, third;
         # the read (`_term`) only after all three.
         return self._term(slug) if d.is_dir() and self._entry_readable(d) \
-            and exact_path(self.root, slug) is True else None
+            and is_object(self.root, "taxonomy", slug) else None
 
     def _local_slugs(self) -> list[str]:
-        # `list` must not advertise what `show`/`rm` refuse. Note `rglob` does
-        # not descend into a symlinked directory, so only the final component
-        # can be one — but that is the case this filter is for.
-        return sorted(
-            str(p.relative_to(self.root)) for p in self.root.rglob("*")
-            if p.is_dir() and self._entry_readable(p) and self._listable(p))
+        # The walk is the one listing of a store's objects (TCW-111 Design
+        # 2.5): a folder with no state file is never a term. `list` must not
+        # advertise what `show`/`rm` refuse, so a state file reached through
+        # a symbolic link out of the store is left out too; the walk never
+        # enters a symlinked folder, but the file itself can be one.
+        return [p for p in object_paths(self.root, "taxonomy")
+                if self._entry_readable(self.root / p) and self._listable(self.root / p)]
 
     def _inherited_stores(self) -> dict[str, "FsTaxonomyStore"]:
         """Every inherited taxonomy keyed by its owning project ID.
@@ -1968,7 +1998,10 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             _check_id_path(parent.strip("/"), "parent")
         full = f"{parent.strip('/')}/{leaf}" if parent else leaf
         _check_id_path(full, "slug")
-        if parent and not (self.root / parent).is_dir():
+        _check_reserved(full, "taxonomy", "slug")
+        # A term, not merely a folder: an organising folder holds no state
+        # file and is no term (Design 2.3).
+        if parent and not is_object(self.root, "taxonomy", parent.strip("/")):
             raise UsageError(f"parent term does not exist: {parent}")
         kind = _normalize_taxonomy_kind(kind)
         if kind not in TAXONOMY_KINDS:
@@ -2007,18 +2040,13 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                              f"(edit it at its source)")
         d = self.root / term.slug
         # Refused, never cascaded, and decided from the disk (TCW-73 Design
-        # 8.2): a nested term is a folder under this one holding a state file.
-        # Everything else in the folder — attachments, files an operating
-        # system writes on its own, files git has never seen — goes with it.
-        # A sub-folder without a state file still lists as a term, so the
-        # reference checks below cover it too: a term or capability naming
-        # `invoice/sub` refuses the removal of `invoice` exactly as one naming
-        # `invoice` does, and nothing is left pointing at a deleted folder.
-        nested = sorted({str(m.parent.relative_to(self.root))
-                         for m in d.rglob(self.STATE_FILE) if m.parent != d})
-        if nested:
-            raise Refused(f"cannot remove '{term.slug}': nested under it: "
-                          f"{', '.join(nested)} (remove those first)")
+        # 8.2): a nested object is a folder under this one holding a state
+        # file of any store, or a 3.x file (TCW-111 Design 2.5). Everything
+        # else in the folder — attachments, files an operating system writes
+        # on its own, files git has never seen — goes with it. The search is
+        # the folder's own, not the walk's, which skips hidden folders and
+        # `resources/` that the removal deletes all the same.
+        _blocked_removal(d, self.root, "taxonomy", term.slug)
         referrers = self._referrers(d) + self._capability_referrers(d, term.slug)
         if referrers:
             raise Refused(f"cannot remove '{term.slug}': still referenced by "
@@ -2397,28 +2425,25 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     # -- resolution --
 
     def _is_capability(self, d: Path) -> bool:
-        return (d / self.STATE_FILE).is_file()
+        """Whether the folder `d` is an object of this store, by the walk's
+        rule (TCW-111 Design 2.5): a capability or an override."""
+        try:
+            rel = d.relative_to(self.root).as_posix()
+        except ValueError:
+            return False
+        return is_object(self.root, "capabilities", rel)
 
-    def _all_meta_dirs(self) -> list[str]:
-        """Every folder holding a state file (capabilities + overrides), minus
-        dot-dirs and those whose state file's version cannot be read."""
-        out = []
-        for p in sorted(self.root.rglob("*")):
-            if not p.is_dir():
-                continue
-            rel = p.relative_to(self.root)
-            if any(part.startswith(".") for part in rel.parts):
-                continue
-            if not self._entry_readable(p):
-                continue                      # before the _is_capability stat
-            if self._is_capability(p) and self._listable(p):
-                out.append(str(rel))
-        return out
+    def _object_dirs(self) -> list[str]:
+        """The id-path of every object the walk finds (capabilities and
+        overrides), minus those whose state file is reached through a
+        symbolic link out of the store or whose version cannot be read."""
+        return [p for p in object_paths(self.root, "capabilities")
+                if self._entry_readable(self.root / p) and self._listable(self.root / p)]
 
     def _local_paths(self) -> list[str]:
         """Standalone local capabilities — state-file folders WITHOUT an `overrides`
         pointer (those are deltas, not caps; see `_override_index`)."""
-        return [p for p in self._all_meta_dirs()
+        return [p for p in self._object_dirs()
                 if not self._state(self.root / p).get("overrides")]
 
     def _override_fields(self) -> list[tuple[str, dict]]:
@@ -2431,7 +2456,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         override's `Subject` becomes the composed capability's (`_apply_override`),
         so leaving it out of either lets a reference dangle unreported."""
         out = []
-        for p in self._all_meta_dirs():
+        for p in self._object_dirs():
             meta = self._state(self.root / p)
             if meta.get("overrides"):
                 out.append((p, self._set_fields(meta)))
@@ -2446,7 +2471,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     def _override_index(self) -> dict[str, tuple[Path, dict]]:
         """`overrides` target string → (override folder, override meta)."""
         idx: dict[str, tuple[Path, dict]] = {}
-        for p in self._all_meta_dirs():
+        for p in self._object_dirs():
             meta = self._state(self.root / p)
             target = meta.get("overrides")
             if target:
@@ -2543,8 +2568,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         # `load_yaml` inside the condition, so a containment test appended to
         # the end would parse a state file outside the store before rejecting it.
         # The stat stays first so a miss pays no `resolve()`.
-        if not (path and self._is_capability(d) and self._entry_readable(d)
-                and exact_path(self.root, path) is True):
+        if not (path and self._is_capability(d) and self._entry_readable(d)):
             return None
         return None if self._state(d).get("overrides") else self._capability(path)
 
@@ -2647,6 +2671,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             fields=None) -> Capability:
         path = _safe_store_id(identifier, "path")
         _check_id_path(path, "path")
+        _check_reserved(path, "capabilities", "path")
         if status not in CAP_STATUSES:
             raise UsageError(f"invalid Status '{status}' "
                              f"(choose: {', '.join(sorted(CAP_STATUSES))})")
@@ -2690,10 +2715,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                              f"`tcw capabilities reset`)")
         d = self.root / cap.path
         # Refused, never cascaded: `_rm` deletes the whole folder.
-        nested = self._nested_entries(d)
-        if nested:
-            raise Refused(f"cannot remove '{cap.path}': nested under it: "
-                             f"{', '.join(nested)} (remove those first)")
+        _blocked_removal(d, self.root, "capabilities", cap.path)
         referrers = self._referrers(d)
         if referrers:
             raise Refused(f"cannot remove '{cap.path}': still referenced by "
@@ -2701,12 +2723,12 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         self._rm(d)
 
     def _nested_entries(self, d: Path) -> list[str]:
-        """Every folder below `d` holding a state file, relative to the store.
-        Asked of the folder itself rather than `_all_meta_dirs`, which skips
-        dot-directories and unreadable entries that `git rm -rf` would delete
-        all the same."""
-        return sorted(str(m.parent.relative_to(self.root))
-                      for m in d.rglob(self.STATE_FILE) if m.parent != d)
+        """Every folder below `d` holding a state file of any store or a 3.x
+        one, relative to the store: `removal_blockers`, asked of the folder
+        itself rather than `_object_dirs`, which skips dot-directories,
+        `resources/` and unreadable entries that `git rm -rf` would delete all
+        the same."""
+        return [where for where, _ in removal_blockers(d, self.root)]
 
     def _referrers(self, target: Path) -> list[str]:
         """`<folder> (<field>)` for every other local capability or override whose
@@ -2731,7 +2753,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             return _same_folder(a, target)
 
         out = []
-        for p in self._all_meta_dirs():
+        for p in self._object_dirs():
             folder = self.root / p
             if same(folder):
                 continue
@@ -3097,7 +3119,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 unchecked = ""
 
         # Override + attachment validation (every meta dir, incl. override folders).
-        meta_dirs = self._all_meta_dirs()
+        meta_dirs = self._object_dirs()
         if selected is not None:
             meta_dirs = [selected.path]
         for p in meta_dirs:
@@ -3105,7 +3127,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             # `is_dir` because an inherited capability's path is upstream's, and
             # a local folder of that name exists only when its override sits there.
             if not d.is_dir() or not self._entry_readable(d):
-                continue          # `selected` bypasses the _all_meta_dirs filter
+                continue          # `selected` bypasses the _object_dirs filter
             meta = self._state(d)
 
             def found(message: str) -> None:

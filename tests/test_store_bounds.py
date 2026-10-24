@@ -17,6 +17,7 @@ import pytest
 
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, write_sentinel
 from tcw.errors import TcwError
+from tcw.object_folders import object_paths
 from tests.statefiles import write_state, CAPABILITY_STATE, TAXONOMY_STATE
 
 
@@ -194,6 +195,9 @@ def test_taxonomy_list_does_not_advertise_a_symlinked_entry(tmp_path):
     store = FsTaxonomyStore.open(root)
     slugs = [t.slug for t in store.list_all(local_only=True)]
     assert "alpha/link" not in slugs
+    # The listing is the walk's (TCW-111 Design 2.5), which never enters a
+    # folder reached through a symbolic link.
+    assert not any(p.startswith("alpha/link") for p in object_paths(store.root, "taxonomy"))
 
 
 def test_taxonomy_validation_resources_refuses_an_escaping_ref(tmp_path):
@@ -229,6 +233,7 @@ def test_capabilities_list_does_not_advertise_a_symlinked_entry(tmp_path):
     _cap_link(root)
     store = FsCapabilitiesStore.open(root)
     assert "link" not in [c.path for c in store.list_all(local_only=True)]
+    assert "link" not in object_paths(store.root, "capabilities")
 
 
 def test_capabilities_set_through_a_symlink_mutates_nothing_outside(tmp_path):

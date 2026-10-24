@@ -194,7 +194,7 @@ def test_remove_refuses_nested_capability(tmp_path):
 
 
 def test_remove_refuses_capability_nested_in_a_dot_directory(tmp_path):
-    """`_all_meta_dirs` skips dot-directories, but `git rm -rf` does not."""
+    """`_object_dirs` (the walk) skips dot-directories, but `git rm -rf` does not."""
     root = repo(tmp_path, "solo")
     write_cap(root, "routes", id="cap-rou001", Status="Supported")
     write_cap(root, "routes/.drafts/login", id="cap-log001", Status="Supported")
@@ -224,8 +224,8 @@ def test_remove_skips_a_folder_that_vanished_after_listing(tmp_path, monkeypatch
     root = repo(tmp_path, "solo")
     write_cap(root, "x", id="cap-x00001", Status="Supported")
     st = store(root)
-    listed = st._all_meta_dirs()
-    monkeypatch.setattr(st, "_all_meta_dirs", lambda: [*listed, "gone/away"])
+    listed = st._object_dirs()
+    monkeypatch.setattr(st, "_object_dirs", lambda: [*listed, "gone/away"])
     st.remove("x")
     assert store(root).get_view("x") is None
 

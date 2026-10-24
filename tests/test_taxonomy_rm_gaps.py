@@ -176,22 +176,24 @@ def test_a_malformed_capability_names_the_capabilities_check(tmp_path, monkeypat
     assert lists(root, "zed")
 
 
-# ── review fix S1: a sub-folder without a tcw-taxonomy.yaml still lists as a term ────
+# ── review fix S1, after TCW-111: a nested term refuses the removal ──────────
+#
+# These two tests were about a sub-folder with no state file listing as a
+# term, so that something could name `zed/sub`. Since TCW-111 (Design 2.3) a
+# folder with no state file in a term's folder is no term, only a misplaced
+# folder that `tcw validate` reports, so nothing can name it. `zed/sub` now
+# holds a state file, and the removal is still refused, as nested, before any
+# reference is looked at.
 
 def test_a_reference_to_a_folder_under_the_term_refuses_the_removal(
         tmp_path, monkeypatch, capsys):
-    """`taxonomy list` counts a folder with no `tcw-taxonomy.yaml` as a term, so a
-    capability can name `zed/sub`. Removing `zed` would delete that folder and
-    leave the capability pointing at nothing, so the removal is refused."""
     root = node(tmp_path)
     term(root, "zed")
-    sub = root / "docs" / "taxonomy" / "zed" / "sub"
-    sub.mkdir()
-    (sub / "f").write_text("x")
+    term(root, "zed/sub")
     assert lists(root, "zed/sub")
     cap(root, "pay", Subject=[fid("node", "taxonomy", "zed/sub")])
     code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 3 and "capability pay (Subject)" in err, err
+    assert code == 3 and "nested under it: zed/sub" in err, err
     assert lists(root, "zed") and lists(root, "zed/sub")
 
 
@@ -199,10 +201,25 @@ def test_a_term_naming_a_folder_under_the_term_refuses_the_removal(
         tmp_path, monkeypatch, capsys):
     root = node(tmp_path)
     term(root, "zed")
-    (root / "docs" / "taxonomy" / "zed" / "sub").mkdir()
+    term(root, "zed/sub")
     term(root, "other")
     meta = root / "docs" / "taxonomy" / "other" / TAXONOMY_STATE
     write_state(meta, yaml.safe_dump({"name": "other",
                                     "relatesTo": [fid("node", "taxonomy", "zed/sub")]}))
     code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 3 and "other (relatesTo)" in err, err
+    assert code == 3 and "nested under it: zed/sub" in err, err
+
+
+def test_a_folder_with_no_state_file_under_the_term_is_removed_with_it(
+        tmp_path, monkeypatch, capsys):
+    """The other half of the change: `zed/sub` with no state file is no term,
+    so it neither lists nor blocks; it goes with `zed`."""
+    root = node(tmp_path)
+    term(root, "zed")
+    sub = root / "docs" / "taxonomy" / "zed" / "sub"
+    sub.mkdir()
+    (sub / "f").write_text("x")
+    assert not lists(root, "zed/sub")
+    code, err = rm(root, monkeypatch, capsys, "zed")
+    assert code == 0, err
+    assert not (root / "docs" / "taxonomy" / "zed").exists()
