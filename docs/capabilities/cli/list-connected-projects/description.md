@@ -22,9 +22,7 @@ manifest>}`, `{"by": "variable", "name": "TCW_PROJECT_<ID>"}` or
 ID](tcw://C/cli/find-a-projects-folder-from-its-id)); it is `null` for this
 project and for one not on this machine. A parent adds `inherit`, the axes it
 passes down (`[]` when it passes none); a child adds `personal`, true when only
-my personal file lists it; every project but this one adds `read-only`, true
-when work cannot be created in it from here, and `null` when it is not on this
-machine. `load-order` is the order this project's ancestors are read in (see
+my personal file lists it. `load-order` is the order this project's ancestors are read in (see
 [Read a project's ancestors in one load
 order](tcw://C/cli/read-ancestors-in-one-load-order)), `load-order-complete` is
 false when one of them is not on this machine or its parents could not be read,
@@ -33,6 +31,6 @@ project's own order of parents, or `null`.
 
 That makes it the command to run first when something in another project is not
 behaving: the projects listed here as present are the ones
-delegation and full identifiers can reach. If a project I expected is missing, the
+full identifiers and `tcw -C` can reach. If a project I expected is missing, the
 problem is its declaration or its manifest entry, not the command I was trying
 to run.

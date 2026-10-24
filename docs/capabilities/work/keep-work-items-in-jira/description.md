@@ -5,4 +5,13 @@ Each stage maps to one Jira status (`work.stages.<stage>.status`), and `tcw work
 The TCW Item field holds the item's full identifier,
 `<project>.work/<folder>`.
 
+A parent or blocker that is a ticket on the same Jira site is a Jira link.
+One that is not, such as an item of a project that keeps its items in files or
+a ticket on another Jira site, is recorded in the item's state file by its full
+identifier, and TCW says that Jira will not show it; `tcw validate` checks
+those values without reading Jira. A rename or move sets the `TCW Item` of
+every ticket whose folder moved, reading each ticket again just before its
+edit, and never sets one back: one that stops can be finished by running the
+same command again.
+
 In Jira mode the item folder holds `tcw-work-item.yaml`; a ticket's key is found at any depth of the work store; and a full identifier never exceeds the 255 characters of the `TCW Item` field.

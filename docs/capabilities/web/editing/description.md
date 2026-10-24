@@ -6,11 +6,11 @@ round of a stage that judges carries its verdict, chosen from a fixed list),
 and edit the item's declared ledger changes, `capabilities.yaml`, as six
 lists. A declaration the parser cannot read opens as plain text with the
 parser's message, so it can be fixed. In filesystem mode I also change the
-item's properties, add `blocks` links one at a time, and add comments; a
-comment is never edited. I create items, in this project or, with only a
-title, request text and priority, in a connected one; the form marks a
-project that is read-only from here, as the command line decides it, and one
-that is not on this machine. In Jira mode I adopt
+item's properties and add comments; a comment is never edited. I create items
+in this project only: the form offers no other project, since an item for
+another project is made there. Its blocked-by field may name an item of any
+project, and a value the backend records rather than links comes back with a
+warning. In Jira mode I adopt
 inbox tickets as items, which runs the request stage's `post` hooks as
 `tcw work tickets adopt` does.
 

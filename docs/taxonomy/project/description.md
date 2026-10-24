@@ -15,4 +15,5 @@ search of the folders next to the naming project and enclosing it, which
 never looks inside a project. Folder layout is consulted only to find a
 project's folder from its ID, and to resolve a relative path to the place it
 was written against — as inside a linked git worktree — never to infer a
-relation.
+relation. A project changes only its own objects, whatever its relation to
+another; it runs a command as another project with `tcw -C`.

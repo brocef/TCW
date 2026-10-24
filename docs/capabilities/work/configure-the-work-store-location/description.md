@@ -18,7 +18,7 @@ the checkout, while one that stays inside belongs to the worktree like the
 default store does (see
 [Run TCW from inside a git worktree](tcw://C/cli/run-from-a-git-worktree)). TCW follows symlinks and routes every
 work command to that store, while lifecycle hooks still run in the owning
-software project. That routing is uniform: delegation into another project,
+software project. That routing is uniform: `tcw -C`, a move or rename,
 capability drift, `tcw validate` and the project graph all resolve the
 configured store rather than a default folder, and a leftover `docs/work/`
 directory beside a configured store is ignored rather than treated as the store.

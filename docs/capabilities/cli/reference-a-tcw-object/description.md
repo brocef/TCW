@@ -17,12 +17,14 @@ a labelled name that names its project, and shows an unresolved target inert
 with the reason.
 
 A work link names the item's folder, `tcw://<project>.work/<folder>`. An
-item's folder never moves, whatever its stage, so a reference to finished
-work — completed or discarded — resolves exactly as one to unfinished work
-does. A reference to a folder the project does not hold is unresolved.
+item's folder does not move with its stage, so a reference to finished work —
+completed or discarded — resolves exactly as one to unfinished work does. A
+reference to a folder the project does not hold is unresolved. When I move or
+rename an object, its project's own links to every identifier that changed are
+rewritten; links in other projects are left, and `tcw validate` there reports
+them.
 
-A work reference into a project that is read-only from here — a parent that
-does not list this project among its children, or a project reached only
-through one — reads: `show`, `path` and links resolve. It refuses to write:
-every command or web route that would change the item says it is read-only
-from here.
+A reference into another project reads: `show`, `path` and links resolve.
+Changing the object it names is refused from here, whatever the projects'
+relation, and the refusal names the folder to run the command in
+([Change objects only in the project that owns them](tcw://C/cli/change-objects-only-in-the-project-that-owns-them)).

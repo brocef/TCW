@@ -1,0 +1,6 @@
+name: Owning project
+kind: Vocabulary
+relatesTo:
+    - project
+    - full-identifier
+    - reference
