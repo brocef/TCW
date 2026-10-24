@@ -1,0 +1,90 @@
+"""The lines `tcw migrate` prints (TCW-116 Design 1.5, 2.9, 2.10; Decided 14).
+
+Every line goes to standard error. A change line names its file or ticket,
+its action and its conversions, and a dry run puts `would ` first:
+
+    write <path>: C9, C10, C16
+    move <old> -> <new>: C13
+    delete <path>: C9
+    edit <KEY>: C17 TCW Item: <old> -> <new>
+
+Reports are `<code> <where>: <text>` under `needs attention:` (A1-A13) and
+`reads differently in TCW 4:` (D1-D8); blockers are `<code> <where>: <why>;
+<what to do>` under `refused:`.
+"""
+
+from __future__ import annotations
+
+import sys
+from typing import Iterable
+
+from tcw.migrate.model import Blocker, Delete, Move, Report, Step, TicketEdit, Write
+
+#: The lines a stopped run ends with (Design 2.7, 8.6).
+RUN_AGAIN = "run 'tcw migrate' again to finish"
+DO_NOT_SAVE = ("do not save these files in version control until 'tcw migrate' "
+               "finishes")
+
+
+def say(line: str = "") -> None:
+    print(line, file=sys.stderr)
+
+
+def _conversions(codes: Iterable[str]) -> str:
+    codes = list(codes)
+    return f": {', '.join(codes)}" if codes else ""
+
+
+def step_line(step: Step, *, dry: bool = False) -> str:
+    would = "would " if dry else ""
+    if isinstance(step, Write):
+        return f"{would}write {step.path}{_conversions(step.conversions)}"
+    if isinstance(step, Move):
+        return f"{would}move {step.old} -> {step.new}{_conversions(step.conversions)}"
+    return f"{would}delete {step.path}{_conversions(step.conversions)}"
+
+
+def ticket_line(edit: TicketEdit, *, dry: bool = False) -> str:
+    would = "would " if dry else ""
+    return f"{would}edit {edit.key}: C17 TCW Item: {edit.old} -> {edit.new}"
+
+
+def report_line(report: Report) -> str:
+    return f"{report.code} {report.where}: {report.text}"
+
+
+def blocker_line(blocker: Blocker) -> str:
+    fix = f"; {blocker.fix}" if blocker.fix else ""
+    return f"{blocker.code} {blocker.where}: {blocker.why}{fix}"
+
+
+def reports(found: list[Report]) -> None:
+    attention = [r for r in found if r.code.startswith("A")]
+    different = [r for r in found if r.code.startswith("D")]
+    if attention:
+        say("needs attention:")
+        for report in attention:
+            say(f"  {report_line(report)}")
+    if different:
+        say("reads differently in TCW 4:")
+        for report in different:
+            say(f"  {report_line(report)}")
+
+
+def blockers(found: list[Blocker]) -> None:
+    if found:
+        say("refused:")
+        for blocker in found:
+            say(f"  {blocker_line(blocker)}")
+
+
+def stopped(reason: str, not_done: list[Step]) -> None:
+    """A stopped run's end (Design 2.7): why, what was not done, and the two
+    instructions."""
+    say(f"stopped: {reason}")
+    if not_done:
+        say("not done:")
+        for step in not_done:
+            say(f"  {step_line(step)}")
+    say(RUN_AGAIN)
+    say(DO_NOT_SAVE)

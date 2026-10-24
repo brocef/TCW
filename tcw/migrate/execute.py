@@ -1,0 +1,231 @@
+"""Carrying out a plan's local steps, phases A to E (TCW-116 Design 2.4-2.8).
+
+Every change goes through four functions (Decided 7): `_write` (one file,
+atomically, then read back), `_move` (one rename, never a copy), `_delete`
+and `_mkdir`. A run following a progress record walks the recorded steps in
+order: a step whose result is on disk is skipped, one whose input is still as
+recorded is done, and any other stops the run before it with blocker B17
+(Design 2.7). A step that fails stops the run with `MigrateStopped`, which
+says what was done and what was not; an operating-system error becomes one
+too, so the instruction to run again is never lost (Decided 21).
+
+Nothing here imports anything of Jira: phase F is a function the Jira half
+hands over (Decided 19).
+"""
+
+from __future__ import annotations
+
+import errno
+import os
+from pathlib import Path
+from typing import Callable
+
+from tcw.migrate import progress
+from tcw.migrate.model import (ABSENT, Blocker, Delete, Move, Plan, Step, Write,
+                               digest, file_digest, resolve)
+from tcw.store import fs
+from tcw.store.config_edit import read_text
+
+DONE, TODO, CHANGED = "done", "todo", "changed"
+
+Say = Callable[[Step], None]
+
+
+class MigrateStopped(Exception):
+    """A local step failed partway: the run stops, and running it again
+    finishes it (Design 2.7). `not_done` are the steps left, in order."""
+
+    def __init__(self, reason: str, not_done: list[Step] | None = None):
+        super().__init__(reason)
+        self.reason = reason
+        self.not_done = list(not_done or [])
+
+
+class MigrateRefused(Exception):
+    """A run following a progress record found something not as recorded:
+    blocker B17, before any more is written."""
+
+    def __init__(self, blocker: Blocker, not_done: list[Step]):
+        super().__init__(blocker.why)
+        self.blocker = blocker
+        self.not_done = not_done
+
+
+def cross_device_message(old: str, new: str) -> str:
+    """Design 2.5's refusal of a move between two filesystems."""
+    return (f"{old} and {new} are on different filesystems; tcw migrate does not "
+            f"copy across them: move it by hand, keeping its contents, then run "
+            f"'tcw migrate' again")
+
+
+# ---------------------------------------------------------------------------
+# The four writes
+
+
+def _mkdir(path: Path) -> None:
+    if not path.is_dir():
+        path.mkdir(parents=True, exist_ok=True)
+
+
+def _write(path: Path, text: str) -> None:
+    """Write `text` to `path` in one atomic write, through the store's
+    writer, then read it back; a file that does not read back as written
+    stops the run, so nothing that waits for it is deleted."""
+    _mkdir(path.parent)
+    fs._atomic_write_all([(path, text)])
+    if read_text(path) != text:
+        raise MigrateStopped(f"{path} does not read back as it was written")
+
+
+def _move(old: Path, new: Path, shown: tuple[str, str]) -> None:
+    """One rename. Across two filesystems it stops, and copies nothing."""
+    _mkdir(new.parent)
+    try:
+        os.rename(old, new)
+    except OSError as error:
+        if error.errno == errno.EXDEV:
+            raise MigrateStopped(cross_device_message(*shown)) from None
+        raise
+
+
+def _delete(path: Path) -> None:
+    path.unlink()
+
+
+# ---------------------------------------------------------------------------
+# Where each step stands
+
+
+def _files_of(path: Path) -> set[tuple[str, str]] | None:
+    """`(path within it, digest)` of each file at `path`, or None when nothing
+    is there."""
+    if path.is_symlink() or path.is_file():
+        return {("", file_digest(path))}
+    if not path.is_dir():
+        return None
+    found = set()
+    for dirpath, _, filenames in os.walk(path):
+        for name in filenames:
+            inner = Path(dirpath) / name
+            found.add((inner.relative_to(path).as_posix(), file_digest(inner)))
+    return found
+
+
+def state(step: Step, root: Path) -> str:
+    """`DONE` when the step's result is on disk, `TODO` when what it reads is
+    still as recorded, else `CHANGED` (Design 2.7)."""
+    return _where(step, root)[0]
+
+
+def _where(step: Step, root: Path) -> tuple[str, str | None]:
+    """`state`, and for `CHANGED` the path found not as recorded."""
+    if isinstance(step, Write):
+        now = file_digest(resolve(root, step.path))
+        if now == digest(step.text):
+            return DONE, None
+        if now != step.expect:
+            return CHANGED, step.path
+        for path, recorded in step.reads:
+            if file_digest(resolve(root, path)) != recorded:
+                return CHANGED, path
+        return TODO, None
+    if isinstance(step, Move):
+        old, new = resolve(root, step.old), resolve(root, step.new)
+        recorded = set(step.files)
+        old_files, new_files = _files_of(old), _files_of(new)
+        if old_files is None and new_files == recorded:
+            return DONE, None
+        if old_files == recorded and new_files is None:
+            return TODO, None
+        return CHANGED, step.old
+    path = resolve(root, step.path)
+    if not path.exists() and not path.is_symlink():
+        return DONE, None
+    if step.digest is not None and file_digest(path) != step.digest:
+        return CHANGED, step.path
+    if step.waits_for is not None and \
+            file_digest(resolve(root, step.waits_for)) != step.waits_digest:
+        return CHANGED, step.waits_for
+    return TODO, None
+
+
+def _changed_blocker(step: Step, where: str) -> Blocker:
+    fix = (f"restore it as it was, or restore the project from version control, "
+           f"delete {progress.PROGRESS}, and run 'tcw migrate' again")
+    recorded = f"is not as {progress.PROGRESS} recorded it"
+    if isinstance(step, Move):
+        return Blocker("B17", where, f"{recorded} when it planned to move it to "
+                       f"{step.new}", fix)
+    if isinstance(step, Delete):
+        if where == step.path:
+            return Blocker("B17", where, f"{recorded}, so it is not deleted", fix)
+        return Blocker("B17", where, f"{recorded}; {step.path} is deleted only once "
+                       f"it is", fix)
+    if where != step.path:
+        return Blocker("B17", where, f"{recorded}; {step.path} was planned from it",
+                       fix)
+    return Blocker("B17", where, recorded, fix)
+
+
+def _perform(step: Step, root: Path) -> None:
+    if isinstance(step, Write):
+        _write(resolve(root, step.path), step.text)
+    elif isinstance(step, Move):
+        _move(resolve(root, step.old), resolve(root, step.new), (step.old, step.new))
+    else:
+        _delete(resolve(root, step.path))
+
+
+def run_local(steps: list[Step], root: Path, say: Say) -> None:
+    """Walk `steps` in order: skip each done one, refuse at the first changed
+    one (B17), and otherwise do it, saying each change as it is made."""
+    for i, step in enumerate(steps):
+        found, where = _where(step, root)
+        if found == DONE:
+            continue
+        if found == CHANGED:
+            raise MigrateRefused(_changed_blocker(step, where), steps[i:])
+        try:
+            _perform(step, root)
+        except MigrateStopped as stop:
+            raise MigrateStopped(stop.reason, steps[i:]) from None
+        except OSError as error:
+            raise MigrateStopped(str(error), steps[i:]) from None
+        say(step)
+
+
+def apply(plan: Plan, root: Path, say: Say) -> None:
+    """Carry out `plan`'s local steps: phase A's writes (the record, then the
+    ignore line), then the progress record, then phases B to E, then the
+    progress record deleted last (Design 2.4; Decided 5)."""
+    first = [s for s in plan.steps if s.phase == "A"]
+    rest = [s for s in plan.steps if s.phase != "A"]
+    run_local(first, root, say)
+    record = Write(progress.PROGRESS, "A", ABSENT, progress.dump(plan))
+    try:
+        _write(resolve(root, record.path), record.text)
+    except MigrateStopped as stop:
+        raise MigrateStopped(stop.reason, rest) from None
+    except OSError as error:
+        raise MigrateStopped(str(error), rest) from None
+    _finish(rest, root, say)
+
+
+def follow(steps: list[Step], root: Path, say: Say) -> None:
+    """Finish a run that stopped, from its progress record's steps."""
+    _finish(steps, root, say)
+
+
+def _finish(steps: list[Step], root: Path, say: Say) -> None:
+    run_local(steps, root, say)
+    path = resolve(root, progress.PROGRESS)
+    try:
+        if path.exists():
+            _delete(path)
+    except OSError as error:
+        raise MigrateStopped(str(error), [Delete(progress.PROGRESS, "E", None)]) from None
+
+
+def pending(steps: list[Step], root: Path) -> list[Step]:
+    """The steps of a progress record not yet done, for a dry run."""
+    return [step for step in steps if state(step, root) != DONE]

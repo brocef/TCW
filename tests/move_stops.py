@@ -156,11 +156,19 @@ def _unexplained(before, after, writes, root: Path) -> list[str]:
     return out
 
 
+#: What a move's stopped run says (TCW-114 Design 5.8).
+MOVE_STOPPED = ("run the same command again", "the folder is still at")
+
+
 def every_stop(monkeypatch_factory, make: Callable[[], Fixture],
-               command: Callable[[Fixture], object]) -> int:
+               command: Callable[[Fixture], object], *,
+               stopped_says: tuple[str, ...] = MOVE_STOPPED) -> int:
     """Run the clean run, then a stop at each write in turn and its re-run;
     returns how many writes the clean run made. `monkeypatch_factory()`
-    gives a fresh `MonkeyPatch`, undone after each run."""
+    gives a fresh `MonkeyPatch`, undone after each run. `command` is any
+    callable that performs one run on a fixture and returns its `code`,
+    `out` and `err`; a stopped run's `err` must hold each of `stopped_says`
+    (a move's two lines by default; `tcw migrate` gives its own)."""
     clean = make()
     before = _snapshot(clean)
     counter = Counter()
@@ -189,8 +197,8 @@ def every_stop(monkeypatch_factory, make: Callable[[], Fixture],
             assert "warning:" in stopped.err, (k, stopped.err)
         else:
             assert stopped.out == "", (k, kind, stopped.out)
-            assert "run the same command again" in stopped.err, (k, kind, stopped.err)
-            assert "the folder is still at" in stopped.err, (k, kind, stopped.err)
+            for words in stopped_says:
+                assert words in stopped.err, (k, kind, stopped.err)
             again = command(fixture)
             assert again.code == 0, (k, kind, again.err)
         got = _snapshot(fixture)

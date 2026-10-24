@@ -9,8 +9,9 @@ input: `skips_checks` tells `_dispatch` to leave them out.
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
+
+from tcw import exit as codes
 
 NAME = "migrate"
 
@@ -43,5 +44,55 @@ def _cmd_migrate(args: argparse.Namespace) -> int:
 
 def run(root: Path, *, dry_run: bool, no_jira: bool) -> int:
     """Migrate the project at `root`; the exit code."""
-    print("nothing to migrate", file=sys.stderr)
-    return 0
+    from tcw.migrate import progress, report
+    try:
+        record = progress.load(root)
+    except progress.ProgressUnreadable as error:
+        report.blockers([_unreadable(error)])
+        return codes.REFUSED
+    if record is not None:
+        return follow_progress(root, record, dry_run=dry_run)
+    report.say("nothing to migrate")
+    return codes.OK
+
+
+def _unreadable(error) -> "Blocker":
+    from tcw.migrate import progress
+    from tcw.migrate.model import Blocker
+    return Blocker("B17", progress.PROGRESS, str(error).split(" ", 1)[1],
+                   f"restore the project from version control, delete "
+                   f"{progress.PROGRESS}, and run 'tcw migrate' again")
+
+
+def apply_plan(plan, root: Path) -> int:
+    """Carry out `plan`'s local steps, printing each change as it is made;
+    the exit code. A stop says what was not done and how to finish it."""
+    from tcw.migrate import execute, report
+    try:
+        execute.apply(plan, root, lambda step: report.say(report.step_line(step)))
+    except execute.MigrateRefused as refused:
+        report.blockers([refused.blocker])
+        return codes.REFUSED
+    except execute.MigrateStopped as stop:
+        report.stopped(stop.reason, stop.not_done)
+        return codes.ERROR
+    return codes.OK
+
+
+def follow_progress(root: Path, record, *, dry_run: bool) -> int:
+    """Finish a run that stopped, from its progress record (Design 2.7); a dry
+    run lists the steps still to do."""
+    from tcw.migrate import execute, report
+    if dry_run:
+        for step in execute.pending(record.steps, root):
+            report.say(report.step_line(step, dry=True))
+        return codes.OK
+    try:
+        execute.follow(record.steps, root, lambda step: report.say(report.step_line(step)))
+    except execute.MigrateRefused as refused:
+        report.blockers([refused.blocker])
+        return codes.REFUSED
+    except execute.MigrateStopped as stop:
+        report.stopped(stop.reason, stop.not_done)
+        return codes.ERROR
+    return codes.OK
