@@ -14,18 +14,11 @@ import pytest
 import yaml
 
 from tcw.cli import main
-from tcw.store.fs import FsTaxonomyStore, init, write_sentinel
+from tcw.store.fs import init, write_sentinel
 from tcw.project_files import version_line
-from tests.projectfiles import config_file, write_config, write_manifest
+from tests.projectfiles import config_file, write_config
 
 BOM = "\ufeff".encode()
-
-# The connections name IDs; `federated` places them in the child's manifest
-# (TCW-107), so the text compared here is the configuration's alone. `other`
-# is a parent passing only the taxonomy, because one test extends it there.
-PARENT = ("id: child\nparents:\n    - base\n"
-          "    - {id: other, inherit: [taxonomy]}\n")
-
 
 def git(root: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(root), *args], check=True,
@@ -43,28 +36,6 @@ def repository(root: Path) -> Path:
 def commit_all(root: Path) -> None:
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "fixture", "--allow-empty")
-
-
-def federated(tmp_path: Path, child_config: bytes) -> Path:
-    """Registered `base` and `other` projects and a `child` whose config is
-    exactly `child_config`, all with taxonomy and capabilities trees, committed
-    so the index starts clean."""
-    base = repository(tmp_path / "base")
-    other = repository(tmp_path / "other")
-    child = repository(tmp_path / "child")
-    for root in (base, other, child):
-        for tree in ("taxonomy", "capabilities"):
-            (root / "docs" / tree).mkdir(parents=True)
-            (root / "docs" / tree / ".gitkeep").touch()
-    write_config(base, "id: base\nchildren:\n- child\n")
-    write_manifest(base, {"child": "../child"})
-    write_config(other, "id: other\n")
-    write_config(child, child_config)
-    write_manifest(child, {"base": "../base", "other": "../other"})
-    commit_all(other)
-    commit_all(base)
-    commit_all(child)
-    return child
 
 
 def work_node(tmp_path: Path, config: bytes) -> Path:
@@ -117,106 +88,6 @@ def assert_refused_leaving_everything(root: Path, before: bytes, code: int, caps
     for text in expected:
         assert text in err, err
     return err
-
-
-# ── extends ──────────────────────────────────────────────────────────────────
-
-ANNOTATED = (PARENT + """\
-# Our own taxonomy lives beside the code.
-taxonomy:
-    path: docs/taxonomy   # moved here in 2.3
-work:
-    # A 3.0 work section, since every command now reads it (TCW-72).
-    stages:
-        # the spec stage runs our checklist first
-        spec:
-            pre: [{command: "./checklist.sh 'To Do' 'In Progress'"}]
-    tags: [web, api]   # the labels we use
-# end of file
-""").encode()
-
-
-def test_taxonomy_extends_add_changes_only_its_own_lines(tmp_path, monkeypatch):
-    child = federated(tmp_path, ANNOTATED)
-    assert run(child, monkeypatch, "taxonomy", "extends", "add", "base") == 0
-    assert_only_added(ANNOTATED, config(child), b"    extends:\n", b"        - base\n")
-
-
-def test_capabilities_extends_appends_a_missing_section(tmp_path, monkeypatch):
-    child = federated(tmp_path, ANNOTATED)
-    assert run(child, monkeypatch, "capabilities", "extends", "add", "base") == 0
-    assert config(child) == ANNOTATED + b"capabilities:\n    extends:\n        - base\n"
-
-
-def test_capabilities_extends_goes_before_a_document_end_marker(tmp_path, monkeypatch):
-    before = (PARENT + "...\n").encode()
-    child = federated(tmp_path, before)
-    assert run(child, monkeypatch, "capabilities", "extends", "add", "base") == 0
-    # PARENT holds no nested block mapping to copy an indentation from, so
-    # the new section takes the default of two spaces.
-    assert config(child) == (PARENT + "capabilities:\n  extends:\n"
-                             "    - base\n...\n").encode()
-
-
-def test_taxonomy_extends_rm_removes_only_that_line_then_the_key(tmp_path, monkeypatch):
-    before = (PARENT + "taxonomy:\n    path: docs/taxonomy\n    # inherited\n"
-              "    extends:\n        - base\n        - other  # kept\n").encode()
-    child = federated(tmp_path, before)
-    assert run(child, monkeypatch, "taxonomy", "extends", "rm", "base") == 0
-    after_one = config(child)
-    assert_only_removed(before, after_one, b"        - base\n")
-    assert run(child, monkeypatch, "taxonomy", "extends", "rm", "other") == 0
-    assert config(child) == (PARENT + "taxonomy:\n    path: docs/taxonomy\n"
-                             "    # inherited\n").encode()
-
-
-def test_extends_add_on_a_stub_section_keeps_its_comments(tmp_path, monkeypatch):
-    before = (PARENT + "taxonomy:\n    # extends:\n    #     - old-name\n").encode()
-    child = federated(tmp_path, before)
-    assert run(child, monkeypatch, "taxonomy", "extends", "add", "base") == 0
-    # Neither PARENT nor the comment-only section shows an indentation, so
-    # the new key takes the default of two spaces.
-    assert config(child) == (PARENT + "taxonomy:\n  extends:\n    - base\n"
-                             "    # extends:\n    #     - old-name\n").encode()
-
-
-def test_extends_add_on_an_empty_key_keeps_its_comment(tmp_path, monkeypatch):
-    before = (PARENT + "taxonomy:\n    extends: # filled in by tcw\n"
-              "    path: docs/taxonomy\n").encode()
-    child = federated(tmp_path, before)
-    assert run(child, monkeypatch, "taxonomy", "extends", "add", "base") == 0
-    assert config(child) == (PARENT + "taxonomy:\n    extends: # filled in by tcw\n"
-                             "        - base\n    path: docs/taxonomy\n").encode()
-
-
-def test_extends_add_into_a_brace_section_is_refused(tmp_path, monkeypatch, capsys):
-    before = (PARENT + "taxonomy: {path: docs/taxonomy}\n").encode()
-    child = federated(tmp_path, before)
-    code = run(child, monkeypatch, "taxonomy", "extends", "add", "base")
-    assert_refused_leaving_everything(child, before, code, capsys,
-                                      "inside the braces", ", extends: [base]")
-
-
-def test_extends_rm_over_an_aliased_anchor_is_refused(tmp_path, monkeypatch, capsys):
-    before = (PARENT + "taxonomy:\n    extends: &ids [base]\n"
-              "capabilities:\n    extends: *ids\n").encode()
-    child = federated(tmp_path, before)
-    code = run(child, monkeypatch, "taxonomy", "extends", "rm", "base")
-    assert_refused_leaving_everything(child, before, code, capsys, "taxonomy.extends")
-
-
-def test_a_refused_extends_add_leaves_the_store_object_unchanged(tmp_path):
-    before = (PARENT + "taxonomy: {path: docs/taxonomy}\n").encode()
-    child = federated(tmp_path, before)
-    store = FsTaxonomyStore.open(child)
-    with pytest.raises(ValueError, match="would lose its comments"):
-        store.extends_add("base")
-    assert "extends" not in store.config
-    write_config(child,
-        (PARENT + "taxonomy:\n    path: docs/taxonomy\n").encode())
-    store.extends_add("base")
-    assert store.config["extends"] == ["base"]
-    assert yaml.safe_load(config(child))["taxonomy"]["extends"] == ["base"]
 
 
 # ── tags ─────────────────────────────────────────────────────────────────────

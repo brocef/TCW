@@ -3,18 +3,20 @@
 stdout carries each command's product and nothing else (TCW-73 Design 1):
 `add` prints the new entry's full identifier, `list` and `search` one full
 identifier per line (`<project>.taxonomy/<slug>`, TCW-110 Design 4), `show`
-the record, `path` the store folder; `rm` and `extends add|rm` print nothing. Every file a write changed is named on stderr. A failure is
-raised for the top-level handler to print and turn into its exit code.
+the record, `path` the store folder; `rm` prints nothing. Every file a write
+changed is named on stderr, and so is each warning about the project's view
+(TCW-112 Design 3.2). A failure is raised for the top-level handler to print
+and turn into its exit code.
 """
 
 import argparse
 
 from tcw import exit as codes
 from tcw.cli_help import command, group
-from tcw.errors import BackendError, UsageError
-from tcw.ids import identity, parent_text
+from tcw.errors import BackendError, InheritedUnavailable, UsageError
+from tcw.ids import identity, inherited_keys, parent_text
 from tcw.locate import find_tree, find_tree_writable
-from tcw.output import changed, left_out, print_json
+from tcw.output import changed, left_out, own_only, print_json, say
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import NotASlug, Term
 from tcw.store.fs import FsTaxonomyStore, find_component_project
@@ -31,9 +33,10 @@ def _store() -> FsTaxonomyStore:
 
 
 def _record(term: Term) -> dict:
-    # `parent` after `owner` (TCW-111 Design 3.1): its text, or null.
+    # `parent` after `owner` (TCW-111 Design 3.1): its text, or null; then
+    # `overrides`, or `partial` (TCW-112 choice 7).
     return {**identity(term.full_id), "parent": parent_text(term.parent),
-            "name": term.name, "kind": term.kind}
+            **inherited_keys(term), "name": term.name, "kind": term.kind}
 
 
 def _detail(term: Term) -> dict:
@@ -60,26 +63,50 @@ def _print_terms(terms: list[Term], as_json: bool) -> int:
     return codes.OK
 
 
+def _warn_view(st: FsTaxonomyStore, terms: list[Term]) -> None:
+    """Design 2.5's warning for each id-path listed, on standard error,
+    before the list (TCW-112 Design 3.2)."""
+    for warning in st.view_warnings({t.slug for t in terms}):
+        say(f"warning: {warning}")
+
+
 def _list(args: argparse.Namespace) -> int:
     st = _store()
-    _print_terms(_ordered(st.list_all(local_only=args.local), st.project_id), args.json)
+    try:
+        terms = st.list_all(local_only=args.local)
+        _warn_view(st, terms)
+    except InheritedUnavailable as error:
+        # The project's own terms are listed without the view, each its own
+        # declaration alone (TCW-112 Design 3.4).
+        if not args.local:
+            raise
+        own_only(error, st.project_id)
+        terms = st.own_declarations()
+    _print_terms(_ordered(terms, st.project_id), args.json)
     return left_out(st.unreadable_files())
 
 
 def _search(args: argparse.Namespace) -> int:
     st = _store()
-    _print_terms(list(st.search(args.query)), args.json)
+    terms = list(st.search(args.query))
+    _warn_view(st, terms)
+    _print_terms(terms, args.json)
     return left_out(st.unreadable_files())
 
 
 def _show(args: argparse.Namespace) -> int:
-    term = find_tree(_store(), args.path)
+    st = _store()
+    term = find_tree(st, args.path)
+    if term.partial and st.view_error is not None:
+        own_only(st.view_error, st.project_id)
     detail = _detail(term)
     if args.json:
         print_json("term", detail)
         return codes.OK
     lines = [f"full-id: {term.full_id}", f"owner: {term.owner}",
              *([f"parent: {term.parent}"] if term.parent is not None else []),
+             *([f"overrides: {term.overrides}"] if term.overrides is not None else []),
+             *(["partial: inherited content could not be read"] if term.partial else []),
              f"name: {term.name}", f"kind: {term.kind}"]
     for key in ("vocabulary", "relatesTo", "attachments"):
         if detail[key]:
@@ -106,32 +133,29 @@ def _add(args: argparse.Namespace) -> int:
     except NotASlug as error:
         raise UsageError(f"--slug {error}") from None
     changed(st.changed)
+    if term.overrides is not None:
+        # At a path the project inherits, the new term is an override
+        # holding only what differs (TCW-112 Design 4.1).
+        say(f"{term.full_id} overrides {term.overrides}")
     print(term.full_id)
     return codes.OK
 
 
 def _rm(args: argparse.Namespace) -> int:
     st = _store()
-    target = find_tree_writable(st, args.path).full_id
+    target = find_tree_writable(st, args.path, removing=True)
     try:
         st.remove(target)
     finally:
         # A removal that stops partway has still deleted files; name them.
         changed(st.changed)
-    return codes.OK
-
-
-def _extends_add(args: argparse.Namespace) -> int:
-    st = _store()
-    st.extends_add(args.project_id)
-    changed(st.changed)
-    return codes.OK
-
-
-def _extends_rm(args: argparse.Namespace) -> int:
-    st = _store()
-    st.extends_remove(args.project_id)
-    changed(st.changed)
+    try:
+        now = st.get_view(target.id_path)
+    except (InheritedUnavailable, BackendError):
+        now = None
+    if now is not None:
+        # The removed term was an override (TCW-112 Design 4.4).
+        say(f"{target.id_path} now shows {now.full_id}")
     return codes.OK
 
 
@@ -158,8 +182,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pa.add_argument("--parent", help="the term this one belongs under: its full "
                                      "identifier or its path here; the folder is made "
                                      "inside it when it is this project's own")
-    pa.add_argument("--kind", choices=("vocabulary", "feature"), default="vocabulary",
-                    help="taxonomy object kind (default: vocabulary)")
+    pa.add_argument("--kind", choices=("vocabulary", "feature"),
+                    help="taxonomy object kind (default: vocabulary, or for an entry "
+                         "at a path this project inherits, the inherited entry's)")
     pa.add_argument("--vocab", action="append", metavar="REF",
                     help="vocabulary ref a feature involves; repeat for more")
     pa.set_defaults(func=_add)
@@ -177,7 +202,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     command(g, "path", help="print the taxonomy store folder", prints="the folder",
             writes="nothing", examples=["taxonomy path"]).set_defaults(func=_path)
 
-    pr = command(g, "rm", help="remove a local entry", prints="nothing",
+    pr = command(g, "rm", help="remove a local entry, an override included",
+                 prints="nothing",
                  writes="removes the entry's files, each named on stderr",
                  examples=["taxonomy rm invoice/refund"])
     pr.add_argument("path", help="the local entry to remove: its full identifier "
@@ -191,16 +217,3 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pse.add_argument("--json", action="store_true",
                      help='print {"schema": 2, "terms": [...]}')
     pse.set_defaults(func=_search)
-
-    pe = group(g, "extends", help="inherit other projects' taxonomies")
-    eg = pe.add_subparsers(dest="ecmd", required=True)
-    pea = command(eg, "add", help="inherit a connected project's taxonomy",
-                  prints="nothing", writes=".tcw/tcw-config.yaml, named on stderr",
-                  examples=["taxonomy extends add shared"])
-    pea.add_argument("project_id", help="registered project ID whose taxonomy to inherit")
-    pea.set_defaults(func=_extends_add)
-    per = command(eg, "rm", help="stop inheriting a project's taxonomy",
-                  prints="nothing", writes=".tcw/tcw-config.yaml, named on stderr",
-                  examples=["taxonomy extends rm shared"])
-    per.add_argument("project_id", help="registered project ID to stop inheriting")
-    per.set_defaults(func=_extends_rm)

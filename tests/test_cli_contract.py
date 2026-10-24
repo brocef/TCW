@@ -59,8 +59,6 @@ ROWS: dict[str, tuple[list[str], int]] = {
     "taxonomy path": (["taxonomy", "path"], 1),
     "taxonomy rm": (["taxonomy", "rm", "widget"], 1),
     "taxonomy search": (["taxonomy", "search", "w"], 1),
-    "taxonomy extends add": (["taxonomy", "extends", "add", "up"], 1),
-    "taxonomy extends rm": (["taxonomy", "extends", "rm", "up"], 1),
     "capabilities list": (["capabilities", "list"], 1),
     "capabilities show": (["capabilities", "show", "ns/a"], 1),
     "capabilities path": (["capabilities", "path"], 1),
@@ -69,8 +67,6 @@ ROWS: dict[str, tuple[list[str], int]] = {
     "capabilities reset": (["capabilities", "reset", "ns/a"], 1),
     "capabilities rm": (["capabilities", "rm", "ns/a"], 1),
     "capabilities search": (["capabilities", "search", "a"], 1),
-    "capabilities extends add": (["capabilities", "extends", "add", "up"], 1),
-    "capabilities extends rm": (["capabilities", "extends", "rm", "up"], 1),
     "capabilities drift": (["capabilities", "drift"], 1),
     "work new": (["work", "new", "A b"], 1),
     "work list": (["work", "list"], 1),
@@ -329,17 +325,6 @@ def test_the_tree_commands(fx):
     removed = written(fx, "taxonomy", "rm", "widget")
     assert removed.out == ""
     assert len([l for l in removed.err.splitlines() if l.startswith("removed ")]) == 2
-
-
-def test_extends_add_prints_nothing(tmp_path, fx):
-    up = tmp_path / "up"
-    up.mkdir()
-    ok(up, "init", "--id", "up")
-    document = yaml.safe_load((fx / ".tcw/tcw-config.yaml").read_text())
-    document["parents"] = [{"id": "up", "inherit": ["taxonomy"]}]
-    write_config(fx, yaml.safe_dump(document))
-    write_manifest(fx, {"up": "../up"})
-    assert written(fx, "taxonomy", "extends", "add", "up").out == ""
 
 
 def test_a_clean_validate_prints_nothing(fx):
@@ -750,15 +735,9 @@ def test_the_writing_tree_commands_in_a_project(tmp_path, fx):
     write_config(fx, yaml.safe_dump(document))
     write_manifest(fx, {"up": "../up"})
 
-    assert checked(fx, "taxonomy", "extends", "add", "up", out="").err == \
-        "wrote .tcw/tcw-config.yaml\n"
-    assert checked(fx, "taxonomy", "extends", "rm", "up", out="").err == \
-        "wrote .tcw/tcw-config.yaml\n"
-    checked(fx, "capabilities", "extends", "add", "up", out="")
     checked(fx, "capabilities", "set", "auth/login", "--status", "Missing", out="")
     reset = checked(fx, "capabilities", "reset", "auth/login", out="")
     assert any(l.startswith("removed ") for l in reset.err.splitlines()), reset.err
-    checked(fx, "capabilities", "extends", "rm", "up", out="")
 
     checked(fx, "capabilities", "add", "ns/gone", out="fx.capabilities/ns/gone\n")
     rm = checked(fx, "capabilities", "rm", "ns/gone", out="")

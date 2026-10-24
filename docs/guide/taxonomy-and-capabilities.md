@@ -33,9 +33,6 @@ tcw taxonomy list --local          # local entries only, none inherited
 tcw taxonomy show admin/permission # read one entry
 tcw taxonomy search invoice        # match names and descriptions
 tcw taxonomy path                  # the taxonomy store's folder
-
-tcw taxonomy extends add acme-shared   # inherit a connected project's taxonomy
-tcw taxonomy extends rm acme-shared    # stop inheriting it
 ```
 
 An entry's description is read from **standard input**, and may be left empty.
@@ -54,18 +51,17 @@ vocabulary before the features that name it. `tcw validate` checks the same
 refs across the whole tree. `tcw taxonomy rm` refuses to remove an entry that
 another entry still names.
 
-Taxonomies can **federate**: `tcw taxonomy extends add <project-id>` adds a
-connected project's ID, including an `upstream` one that does not name this
-project back (see [Working across
-repositories](multi-repo.md#reading-a-project-that-does-not-name-you-upstream)),
-to `taxonomy.extends` in `tcw-config.yaml`. It changes only those lines:
-comments and formatting elsewhere in the file are kept, and a file it cannot
-edit safely is refused with the edit to make by hand
-(`tcw capabilities extends add` behaves the same). Each project ID is its own
-namespace, including sources inherited through another project, and there is
-**no silent merge**: a local `permission` and an imported `acme/permission` stay
-distinct. Capabilities federate separately and also let a project **override**
-an inherited entry (see below).
+A project **inherits** the taxonomy of every parent whose `inherit` includes
+`taxonomy`, through every level, as configured under `parents:` in
+`.tcw/tcw-config.yaml` (the `configure` skill's
+[projects reference](../../skills/configure/references/projects.md) explains
+it). An inherited entry is read by its path like one of your own, and its full
+identifier (`acme-shared.taxonomy/permission`) names the project it belongs to.
+To change an inherited entry, put your own entry at the same path, holding only
+what you change: an **override**. `tcw taxonomy add` at an inherited path
+writes one, holding only what differs from the inherited entry, and says on
+standard error what it overrides; `tcw taxonomy rm` removes it. Capabilities
+are inherited and overridden the same way (see below).
 
 ## Bootstrapping a taxonomy or a capabilities ledger
 
@@ -76,8 +72,8 @@ first draft, refines it with you, and writes it.
 ## `tcw capabilities`: the user stories
 
 A capability is a **path-addressed folder** (`docs/capabilities/<path>/` holding
-`meta.yaml` and `description.md`) with an opaque, stable `id`. Its `meta.yaml`
-carries metadata fields from a fixed list:
+`meta.yaml` and `description.md`); its path is its identity, and it has no
+separate `id`. Its `meta.yaml` carries metadata fields from a fixed list:
 
 - **`Status`**, one of `Supported`, `Partial`, `Missing`, `Blocked`, `Omitted`;
 - **`Subject`**, a loose, **multi-valued** pointer to taxonomy entries;
@@ -202,46 +198,53 @@ job can run it. The kinds are:
 In Jira mode, drift asks Jira which items are completed, so it needs the
 network.
 
-## Federating and overriding a capability
+## Inheriting and overriding a capability
 
-**Federation.** Capabilities can inherit another project's, so a web frontend
-and a mobile app that drive the same server declare their shared user stories
-once:
+**Inheritance.** A project inherits the capabilities of every parent whose
+`inherit` includes `capabilities`, configured under `parents:` as for the
+taxonomy, so a web frontend and a mobile app that drive the same server
+declare their shared user stories once, in a parent both name.
 
-```sh
-tcw capabilities extends add web-frontend   # inherit a connected project's capabilities
-tcw capabilities extends rm web-frontend    # stop inheriting them
-```
-
-Inherited capabilities are listed with their origin (`web-frontend/<path>`) and
-are read-only in structure: a project cannot delete one, only **override** it.
-Set an inherited capability exactly like a local one, by any path `show`
-accepts:
+Inherited capabilities are listed by their path, and each one's full
+identifier names the project it belongs to
+(`web-frontend.capabilities/auth/login`). A project cannot delete one, only
+**override** it. Set an inherited capability exactly like a local one:
 
 ```sh
-tcw capabilities set web-frontend/auth/login --status Omitted
+tcw capabilities set auth/login --status Omitted
 ```
 
-The override is written for you. It is a local folder whose `meta.yaml` has
-`overrides: <upstream-id>` plus the changes: metadata fields are merged one by
-one (for example `Status: Missing`, or `Status: Omitted` for "we deliberately
-do not have this"; a YAML `null` clears a field), and the body is composed as
-`prependedDocs`, then a local `description.md` if there is one or else the
-upstream body, then `appendedDocs`, for example a mobile app appending "…or take
-a photo with the camera." That file shape is worth knowing (you can write one
-by hand, and `set` will keep using it), but `set` is the usual way in.
+The override is written for you: it is your project's own capability at the
+same path, holding only the fields you gave, and nothing in it points at the
+original (there is no `overrides:` key). The two are combined field by field
+(for example `Status: Missing`, or `Status: Omitted` for "we deliberately do
+not have this"; a YAML `null` clears a field; a list such as `Subject` or
+`appendedDocs` is replaced whole), and the body is composed as
+`prependedDocs`, then your `description.md` if it has text or else the
+inherited description, then `appendedDocs`, for example a mobile app appending
+"…or take a photo with the camera." An override that does not list
+`prependedDocs` or `appendedDocs` keeps the original's. `tcw capabilities add`
+at an inherited path is refused and points at `set`, since it would write a
+full copy. A capability that overrides nothing must be complete (a name, a
+`Status` and a `description.md`, which may be empty), so `tcw validate`
+reports an override whose original was moved or removed.
 
-To undo an override and go back to the upstream value, `reset` it:
+To undo an override and go back to the inherited capability, `reset` it:
 
 ```sh
-tcw capabilities reset web-frontend/auth/login   # drop the local override, inherit again
+tcw capabilities reset auth/login   # drop the local override, inherit again
 ```
 
-`reset` removes only your local override folder, never the upstream
-capability. It refuses with a clear message when there is nothing to drop: a
-standalone local capability (delete that with `tcw capabilities rm`) or a path
-that already inherits unchanged. It also refuses, with exit code 3, when a
-capability sits in a folder under the override's, since removing the override
-folder would delete it too; the message names each one. Delete a local one
-with `tcw capabilities rm` and drop a nested override with
-`tcw capabilities reset` first, then reset again.
+`reset` removes only your project's own capability at that path, never the
+inherited one, and also accepts the overridden capability's full identifier.
+It refuses with a clear message when there is nothing to drop: a capability
+that overrides nothing (delete that with `tcw capabilities rm`) or a path your
+project has nothing of its own at. It also refuses while another of your
+project's own capabilities or terms names the override by its full
+identifier; repoint it at the overridden capability's full identifier first.
+It also refuses, with exit code 3, when a capability sits in a folder under
+the override's, since removing the override folder would delete it too; the
+message names each one. Delete a local one with `tcw capabilities rm` and drop
+a nested override with `tcw capabilities reset` first, then reset again.
+`tcw capabilities rm` also removes an override, and says what the path shows
+afterwards.

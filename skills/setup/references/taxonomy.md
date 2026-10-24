@@ -15,9 +15,9 @@ refine loop below. Bootstrap both taxonomy entry kinds:
 ## 2. Inheritance
 
 Ask whether this project inherits taxonomy from another registered project.
-If it does, declare it with `tcw taxonomy extends add <project-id>` (the
-configure skill's reference on projects explains the declaration), then
-continue.
+If it does, name that project under `parents:` in `.tcw/tcw-config.yaml`,
+with an `inherit` that includes `taxonomy` (the configure skill's reference on
+projects explains the declaration), then continue.
 
 ## 3. Deep-dive (draft)
 

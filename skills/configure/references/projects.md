@@ -3,8 +3,8 @@
 A **project** is a folder holding a `tcw-config.yaml`. Three things join one
 project to others: `projects` in `tcw-config.yaml` says which projects it is
 connected to, the environment variable `TCW_PROJECT_<ID>` says where one of
-them is on this machine, and `extends` says whose taxonomy or capabilities it
-inherits. What an inherited term or capability looks like once it resolves is
+them is on this machine, and `parents:` says whose taxonomy and capabilities
+it inherits. What an inherited term or capability looks like once it resolves is
 in the `taxonomy` and `capabilities` skills.
 
 Every key here is shared: personal configuration cannot set any of them.
@@ -51,8 +51,8 @@ projects:
   described below.
 - A parent and its child each declare the other: the parent lists the child,
   and the child names the parent. `tcw validate` reports a connection declared
-  on one side only, and a command that needs the connected projects, such as
-  `tcw taxonomy extends add`, refuses until both sides agree.
+  on one side only, and a command that needs the connected projects refuses
+  until both sides agree.
 - `upstream` is the exception: a connection declared by one side only. See
   below.
 
@@ -114,10 +114,10 @@ projects:
 ```
 
 An **upstream** project is one this project reads without the upstream naming
-it back: its taxonomy and capabilities through `extends`, and its work items
-by full slug, such as `tcw work show shared-core/<folder>`. Use it for a shared
-library, or for a public project read by a private one that must not be named
-in the public project's files.
+it back: its work items by full slug, such as
+`tcw work show shared-core/<folder>`. Use it for a shared library, or for a
+public project read by a private one that must not be named in the public
+project's files.
 
 - **Declared by the reader only.** The upstream's own configuration never
   mentions its readers.
@@ -340,42 +340,44 @@ Shared: personal configuration cannot set it.
 
 Accepted on an upstream entry, as for the parent, and never used.
 
-## Inheriting taxonomy or capabilities: `extends`
+## Inheriting taxonomy and capabilities: `parents:`
 
 ```yaml
-taxonomy:
-    extends:
-        - shared-core
-capabilities:
-    extends:
-        - shared-core
+id: app
+parents:
+    - shared-core
+    - id: planning
+      inherit: [capabilities]
 ```
 
-### `taxonomy.extends`
+A project inherits taxonomy and capabilities from the parents listed under
+`parents:` in its `.tcw/tcw-config.yaml`, and from nothing else. Each entry is
+a project ID, or a mapping with `id` and `inherit`. `inherit` says what that
+parent passes down: `all` (the default), `none`, or a list drawn from
+`taxonomy`, `capabilities` and `config`. Inheritance goes through every level:
+a parent's own parents pass down to this project too, as far as each link's
+`inherit` allows, without being listed here. The order of the list decides the
+project's load order (the order in which TCW reads its parents), which
+matters only where two parents that do not inherit from each other both have
+an entry at one path: the one later in the load order is used, and
+`tcw validate` warns.
 
-Shared: personal configuration cannot set it.
+To change one inherited entry, the project puts its own entry at the same
+path, holding only what it changes; the `taxonomy` and `capabilities` skills
+say how.
 
-The projects whose taxonomy this project also resolves, as a list of project
-IDs. Each must be connected to this project; a connection alone never
-implies inheritance. Change it with `tcw taxonomy extends add <id>` and
-`tcw taxonomy extends rm <id>`, which check the ID first and change only the
-list's own lines of `tcw-config.yaml`. A file they cannot change in place,
-such as one that writes the section in braces, is refused with the edit to
-make by hand.
-
-### `capabilities.extends`
-
-Shared: personal configuration cannot set it.
-
-The projects whose capabilities this project inherits, the same way, changed
-with `tcw capabilities extends add <id>` and `tcw capabilities extends rm <id>`.
+Before TCW 4.0, each of the taxonomy and capabilities sections kept its own
+list of the projects it inherited from, edited by commands of its own. Both
+the lists and the commands are gone. A project's own `.tcw/tcw-config.yaml`
+that still holds such a list is an error that names `parents:`: name each
+project it listed under `parents:`, with an `inherit` that includes the axis,
+and delete the list.
 
 Inheritance belongs to the project, not to the store: two projects whose
-store `path` is the same folder can inherit differently. `tcw validate`
-reports an inheritance cycle. It also reports a `docs/taxonomy/config.yaml`
-or `docs/capabilities/.config.yaml` left from before TCW 2.5.0, which is not
-read; [the 2.5.0 migration guide](../../../docs/migration-guide-2.4.X-to-2.5.0.md)
-says how to move its lists here.
+store `path` is the same folder can inherit differently. `tcw validate` also
+reports a `docs/taxonomy/config.yaml` or `docs/capabilities/.config.yaml` left
+from before TCW 2.5.0, which is not read; delete it, and name under `parents:`
+any project it listed.
 
 After editing any of this, run `tcw validate`, then `tcw provision` if a
 `repository` was added.

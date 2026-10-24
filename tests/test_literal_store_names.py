@@ -67,7 +67,7 @@ def test_a_glob_named_capability_is_refused_and_writes_nothing(root, capsys):
 def test_writing_a_glob_named_capability_leaves_its_neighbour_alone(root, capsys):
     star = root / "docs" / "capabilities" / "a*"
     star.mkdir(parents=True)
-    write_state(star / CAPABILITY_STATE, "id: cap-star01\nname: Star\nStatus: Missing\n")
+    write_state(star / CAPABILITY_STATE, "name: Star\nStatus: Missing\n")
     (star / "description.md").write_text("")
     assert main(["capabilities", "add", "abc", "Abc"]) == 0
     git(root, "add", "-A")

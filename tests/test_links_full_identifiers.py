@@ -1,7 +1,6 @@
 """`tcw://` links in Markdown are object and folder addresses (TCW-110
 Design 2, 6; AC 3, 13, 13a): `app` and `core` in two repositories side by
-side, `core` named as a parent of `app` passing nothing (`inherit: none`),
-with no `extends`."""
+side, `core` named as a parent of `app` passing nothing (`inherit: none`)."""
 
 from __future__ import annotations
 
@@ -47,7 +46,7 @@ def app(tmp_path) -> Path:
     core = make_project(tmp_path, "core", config={})
     for root in (app, core):
         init(["taxonomy", "capabilities"], root)
-    entry(app, "capabilities", "cli/x", id="cap-x", Status="Supported")
+    entry(app, "capabilities", "cli/x", Status="Supported")
     entry(core, "taxonomy", "term")
     write_item(app, "2026-10-01-thing", {"title": "Thing", "stage": "request"})
     connect_projects(app, "parent", "core", inherit="none")

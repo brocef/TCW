@@ -3,8 +3,15 @@ Update a capability's status or any field in the locked set in place, by path â€
 web editor. Each `--field` sets one field; repeat it for more fields, and a list
 field such as `Subject` takes its values separated by commas
 (`--field Subject=invoice,payment`). Naming the same field twice, or a `--field`
-without `=`, is a usage error (exit 2). Addresses local and inherited (federated)
-capabilities alike; for an inherited one the local override is written for you.
+without `=`, is a usage error (exit 2). Addresses my own and inherited
+capabilities alike. On an inherited capability, named by its path or by the
+full identifier of the capability it inherits, `set` writes my project's own
+capability at the same path, holding only the fields given (see [Override an
+inherited capability](tcw://C/capabilities/override-inherited)). A capability of
+another project that mine does not inherit is refused (exit 3), naming the
+project to change it in. A field cleared on any of my project's own
+capabilities is written as an explicit `null`, so it stays cleared even if a
+parent later gains a capability at that path.
 
 The fields I can set are `Status`, `Priority`, `Lifecycle`, `Superseded by`,
 `Subject`, `Feature`, `Roles`, `When`, `Gaps` and `Blocked by`. Any other field
@@ -32,4 +39,4 @@ on standard error. It stages and commits nothing. A write that fails part-way
 removes the override folder it had just made, rather than leaving an empty one
 behind; an override that already existed keeps what the write put in it.
 
-`tcw capabilities set --parent` changes the parent, and an empty value clears it; it is refused, whole, on an inherited capability until TCW-112.
+`tcw capabilities set --parent` changes the parent, and an empty value clears it; on an inherited capability it is written into my override like any other field.

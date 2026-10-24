@@ -15,7 +15,7 @@ from tcw.errors import TcwError
 from tests.fullids import fid
 from tests.statefiles import write_state, CAPABILITY_STATE, TAXONOMY_STATE
 
-UPSTREAM = {"auth/login": {"id": "cap-aaa111", "Status": "Supported"}}
+UPSTREAM = {"auth/login": {"Status": "Supported"}}
 
 
 def T(slug: str) -> str:
@@ -24,8 +24,8 @@ def T(slug: str) -> str:
 
 
 def node(tmp_path: Path) -> Path:
-    """A child node with a local taxonomy that extends a `base` capabilities
-    ledger holding `cap-aaa111`."""
+    """A child node with a local taxonomy that inherits a `base` capabilities
+    ledger holding `auth/login`."""
     _base, child = child_of(tmp_path, UPSTREAM)
     init(["taxonomy"], child, "child")
     return child
@@ -43,7 +43,9 @@ def term(root: Path, slug: str, kind: str = "") -> None:
 
 
 def override(root: Path, **fields) -> None:
-    write_cap(root, "ov", overrides="cap-aaa111", **fields)
+    """The child's override of `auth/login`: its own object at the same path,
+    holding only `fields` (TCW-112 Design 2.2)."""
+    write_cap(root, "auth/login", complete=False, **fields)
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
 
 
@@ -57,15 +59,15 @@ def test_check_reports_a_dangling_feature_and_subject_in_an_override(tmp_path):
     root = node(tmp_path)
     override(root, Subject=[T("ghost")], Feature=T("nope"))
     problems = [str(f) for f in check(root)]
-    assert f"error: docs/capabilities/ov: Feature → dangling ref '{T('nope')}'" in problems, problems
-    assert f"error: docs/capabilities/ov: Subject → dangling ref '{T('ghost')}'" in problems, problems
+    assert f"error: docs/capabilities/auth/login: Feature → dangling ref '{T('nope')}'" in problems, problems
+    assert f"error: docs/capabilities/auth/login: Subject → dangling ref '{T('ghost')}'" in problems, problems
 
 
 def test_check_reports_a_dangling_identifier_an_override_sets(tmp_path):
     root = node(tmp_path)
     override(root, **{"Blocked by": fid("child", "capabilities", "missing-cap")})
     missing = fid("child", "capabilities", "missing-cap")
-    assert f"error: docs/capabilities/ov: Blocked by → dangling identifier '{missing}'" \
+    assert f"error: docs/capabilities/auth/login: Blocked by → dangling identifier '{missing}'" \
         in map(str, check(root))
 
 
@@ -74,14 +76,14 @@ def test_an_override_that_clears_fields_reports_nothing_for_them(tmp_path):
     it would be the string 'None' — a bogus `Roles` slug."""
     root = node(tmp_path)
     override(root, Subject=None, Roles=None)
-    assert not [p for p in map(str, check(root)) if p.startswith("ov:")], check(root)
+    assert not [p for p in map(str, check(root)) if "auth/login" in p], check(root)
 
 
 def test_an_override_naming_a_real_term_reports_nothing(tmp_path):
     root = node(tmp_path)
     term(root, "zed")
     override(root, Subject=[T("zed")])
-    assert not [p for p in map(str, check(root)) if p.startswith("ov:")]
+    assert not [p for p in map(str, check(root)) if "auth/login" in p], check(root)
 
 
 # ── criteria 4–5: taxonomy rm ────────────────────────────────────────────────
@@ -93,12 +95,13 @@ def test_rm_refuses_a_term_an_override_names(tmp_path, monkeypatch, capsys,
     root = node(tmp_path)
     term(root, "zed", kind)
     override(root, **{field: value})
-    with pytest.raises(TcwError, match=rf"capability override ov \({field}\)"):
+    # An override is one of the project's own capabilities (TCW-112 Design 7.3).
+    with pytest.raises(TcwError, match=rf"capability auth/login \({field}\)"):
         FsTaxonomyStore.open(root).remove("zed")
     monkeypatch.chdir(root)
     capsys.readouterr()
     assert main(["taxonomy", "rm", "zed"]) == 3
-    assert f"capability override ov ({field})" in capsys.readouterr().err
+    assert f"capability auth/login ({field})" in capsys.readouterr().err
     assert FsTaxonomyStore.open(root).get_view("zed") is not None
 
 
@@ -115,7 +118,8 @@ def test_a_malformed_override_refuses_the_removal_readably(tmp_path, monkeypatch
     root = node(tmp_path)
     term(root, "zed")
     override(root, Subject=[T("other")])
-    write_state(root / "docs" / "capabilities" / "ov" / CAPABILITY_STATE, "overrides: [unclosed\n")
+    write_state(root / "docs" / "capabilities" / "auth" / "login" / CAPABILITY_STATE,
+                "Subject: [unclosed\n")
     monkeypatch.chdir(root)
     capsys.readouterr()
     assert main(["taxonomy", "rm", "zed"]) == 3
@@ -127,18 +131,11 @@ def test_a_malformed_override_refuses_the_removal_readably(tmp_path, monkeypatch
 # ── review fold-in: check(identifier) on an inherited capability ────────────
 
 def test_checking_an_overridden_capability_by_path_reports_each_problem_once(tmp_path):
-    """`set` puts an override at the folder mirroring the upstream path, so the
-    selected capability's composed fields and its override folder are the same
+    """An override is at the inherited path, so the selected capability's
+    combined fields and its override's own declaration hold the same
     references."""
-    root = node(tmp_path)
-    write_cap(root, "auth/login", overrides="cap-aaa111", Subject=[T("ghost")])
-    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
-    problems = [str(f) for f in FsCapabilitiesStore.open(root).check(identifier="auth/login")]
-    assert problems.count(f"error: docs/capabilities/auth/login: Subject → dangling ref '{T('ghost')}'") == 1, problems
-
-
-def test_checking_an_inherited_capability_overridden_elsewhere_does_not_crash(tmp_path):
     root = node(tmp_path)
     override(root, Subject=[T("ghost")])
     problems = [str(f) for f in FsCapabilitiesStore.open(root).check(identifier="auth/login")]
-    assert f"error: docs/capabilities/auth/login: Subject → dangling ref '{T('ghost')}'" in problems, problems
+    assert problems.count(f"error: docs/capabilities/auth/login: Subject → dangling ref '{T('ghost')}'") == 1, problems
+

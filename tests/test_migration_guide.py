@@ -1052,6 +1052,16 @@ from tests.test_documented_cli_surface import _check, _invocations, tree  # noqa
 # with the reason it is named there.
 TWO_X_SPANS: dict[str, str] = {}
 
+# 3.0 commands this guide names that a later release removed, each with the
+# release and the reason. The guide describes the move to 3.0 and is not
+# rewritten for later releases.
+REMOVED_AFTER_3_0: dict[str, str] = {
+    "tcw capabilities extends add <id>":
+        "removed in TCW 4.0: a project inherits from its parents (TCW-112 Design 1)",
+    "tcw capabilities extends rm <id>":
+        "removed in TCW 4.0: a project inherits from its parents (TCW-112 Design 1)",
+}
+
 
 def _without_first_cells(text: str) -> str:
     """The guide with each table row's first cell emptied: that column names 2.x
@@ -1063,7 +1073,7 @@ def _without_first_cells(text: str) -> str:
 def test_every_command_outside_a_first_column_parses_on_3_0(tree):
     problems = []
     for span in _invocations(_without_first_cells(GUIDE)):
-        if span in TWO_X_SPANS:
+        if span in TWO_X_SPANS or span in REMOVED_AFTER_3_0:
             continue
         if (problem := _check(span, tree)) is not None:
             problems.append(f"`{span}`: {problem}")

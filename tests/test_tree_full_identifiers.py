@@ -16,7 +16,8 @@ from tcw.cli import main
 from tests.fullids import fid
 from tests.inherit import demo_inheriting_core, entry
 from tests.work.projects import make_project
-from tests.statefiles import CAPABILITY_STATE
+from tests.projectfiles import write_config
+from tests.statefiles import CAPABILITY_STATE, write_state
 
 
 @dataclass
@@ -161,7 +162,7 @@ def test_ac18_a_name_breaking_the_rule_is_refused_and_writes_nothing(tcw, demo):
 
 
 def test_ac18_a_hand_made_folder_breaking_the_rule_is_listed_and_reported(tcw, demo):
-    entry(demo, "capabilities", "cli/has.dot", id="cap-dot", Status="Missing")
+    entry(demo, "capabilities", "cli/has.dot", Status="Missing")
     assert "demo.capabilities/cli/has.dot" in tcw(["capabilities", "list"], demo).out
     checked = tcw(["validate"], demo)
     assert checked.code == 1
@@ -192,19 +193,30 @@ def test_ac18_a_hand_made_folder_breaking_the_rule_is_listed_and_reported(tcw, d
 
 
 def _overridden(demo: Path) -> Path:
-    """`demo`'s 3.x override of `core`'s `cli/y`, setting `Omitted`."""
-    entry(demo, "capabilities", "ov/y", overrides="core/cap-y", Status="Omitted")
+    """`demo`'s override of `core`'s `cli/y`, at the same path, setting
+    `Omitted` and nothing else."""
+    folder = demo / "docs" / "capabilities" / "cli" / "y"
+    folder.mkdir(parents=True)
+    write_state(folder / CAPABILITY_STATE, "Status: Omitted\n")
     return demo.parent / "core" / "docs" / "capabilities" / "cli" / "y" / CAPABILITY_STATE
 
 
 def test_ac23_an_inherited_capability_is_read_through_this_projects_view(tcw, demo):
+    """The view shows `demo`'s override at `cli/y`, combined with `core`'s
+    object; `core`'s full identifier still names `core`'s own object as
+    `core` sees it."""
     _overridden(demo)
     listed = json.loads(tcw(["capabilities", "list", "--json"], demo).out)
-    [y] = [c for c in listed["capabilities"] if c["full-id"] == "core.capabilities/cli/y"]
+    [y] = [c for c in listed["capabilities"] if c["full-id"].endswith("/cli/y")]
+    assert y["full-id"] == "demo.capabilities/cli/y"
     assert y["status"] == "Omitted"
-    shown = json.loads(tcw(["capabilities", "show", "core.capabilities/cli/y", "--json"],
-                           demo).out)
+    assert y["overrides"] == "core.capabilities/cli/y"
+    shown = json.loads(tcw(["capabilities", "show", "cli/y", "--json"], demo).out)
     assert shown["capability"]["status"] == "Omitted"
+    assert shown["capability"]["name"] == "Y"
+    upstream = json.loads(tcw(["capabilities", "show", "core.capabilities/cli/y",
+                               "--json"], demo).out)
+    assert upstream["capability"]["status"] == "Supported"
 
 
 def test_ac23_set_of_an_inherited_capability_changes_the_override_only(tcw, demo):
@@ -213,8 +225,9 @@ def test_ac23_set_of_an_inherited_capability_changes_the_override_only(tcw, demo
     found = tcw(["capabilities", "set", "core.capabilities/cli/y", "--status", "Partial"],
                 demo)
     assert found.code == 0, found.err
-    override = demo / "docs" / "capabilities" / "ov" / "y" / CAPABILITY_STATE
+    override = demo / "docs" / "capabilities" / "cli" / "y" / CAPABILITY_STATE
     assert "Partial" in override.read_text()
+    assert "name" not in override.read_text()
     assert upstream.read_bytes() == before
 
 
@@ -226,7 +239,7 @@ def test_ac25_letter_case_is_compared_exactly(tcw, demo, typed):
 
 
 def test_a_project_this_one_does_not_inherit_from_refuses_writes(tcw, demo):
-    tcw(["capabilities", "extends", "rm", "core"], demo)
+    write_config(demo, "id: demo\nparents:\n- id: core\n  inherit: [config]\n")
     shown = tcw(["capabilities", "show", "core.capabilities/cli/y"], demo)
     assert shown.code == 0, shown.err
     assert shown.out.splitlines()[:2] == ["full-id: core.capabilities/cli/y", "owner: core"]

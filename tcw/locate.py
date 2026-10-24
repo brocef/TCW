@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from tcw.errors import (BackendError, NotFound, ProjectGraphError, Refused, TcwError,
+from tcw.errors import (BackendError, NotFound, ProjectGraphError, TcwError,
                         Unreachable)
 from tcw.ids import FullId, is_project_id, sort_input
 from tcw.store.project import FsProjectRegistry
@@ -84,27 +84,42 @@ class Locator:
         return self.registry.project_folder(project_id, named_by)
 
     def read(self, full_id: FullId, named_by: Path) -> Outcome:
-        """The object `full_id` names, as the active project sees it (Design
-        6.2): its own object; an inherited one, overrides applied, when the
-        active store inherits from its owner; else the owner's own object,
-        never one the owner itself inherits."""
+        """The object `full_id` names: its owner's own object as its owner
+        sees it, combined over the owner's own sources (TCW-112 Design 3.1),
+        whether or not the active project inherits from the owner; never an
+        object the owner merely inherits. Raises `InheritedUnavailable` when
+        the owner's view cannot be built."""
         if full_id.namespace == "work":
             return self._read_work(full_id, named_by)
-        active = self._store(self.project_id, full_id.namespace, self.root)
-        if full_id.project == self.project_id:
-            return _answer(active.get_local(full_id.id_path), full_id)
-        if full_id.project in _inherited(active, full_id.namespace):
-            return _answer(active.get_inherited(full_id.project, full_id.id_path), full_id)
         try:
             owner = self.owner_store(full_id.project, full_id.namespace, named_by)
         except (Unreachable, ProjectGraphError) as error:
             return outcome_of(error)
         return _answer(owner.get_local(full_id.id_path), full_id)
 
+    def exists(self, full_id: FullId, named_by: Path) -> Outcome:
+        """Whether `full_id` names an object, asked of its owner's own store
+        alone (TCW-112 Design 3.1, second consequence): none of the owner's
+        sources is read, so a project missing above the owner never makes
+        the answer "could not check". `found` carries the identifier, not
+        the object."""
+        if full_id.namespace == "work":
+            return self._read_work(full_id, named_by)
+        try:
+            owner = self.owner_store(full_id.project, full_id.namespace, named_by)
+        except (Unreachable, ProjectGraphError) as error:
+            return outcome_of(error)
+        return _answer(full_id if owner.has_own(full_id.id_path) else None, full_id)
+
     def owner_store(self, project_id: str, namespace: str, named_by: Path):
         """The `namespace` store of project `project_id`, as the project at
         `named_by` finds it; raises as `owner_root` does."""
         return self._store(project_id, namespace, self.owner_root(project_id, named_by))
+
+    def store(self, project_id: str, namespace: str, root: Path):
+        """The `namespace` store of project `project_id` at `root`, opened once
+        per command: another project's store, unless it is the active one."""
+        return self._store(project_id, namespace, root)
 
     def _store(self, project_id: str, namespace: str, root: Path):
         from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
@@ -141,16 +156,18 @@ class Locator:
 
 def find_tree(store, text: str):
     """The taxonomy entry or capability that command input `text` names, as
-    the project `store` belongs to sees it (TCW-110 Design 3.1): a full
-    identifier of its own entry, of one it inherits (override applied), or of
-    another project's own entry; or an id-path read local first, then
-    inherited. Raises `NotFound` (exit 4) for nothing there, a usage error for
-    text in no form, and the lookup's own error for a project TCW cannot
-    find."""
+    TCW-112 Design 3.1 reads it: an id-path names the object in the view of
+    the project `store` belongs to; a full identifier names its owner's own
+    object as its owner sees it. The project's own object, by either form,
+    is its own declaration alone, marked partial, when the view cannot be
+    built (Design 3.4), with `store.view_error` set. Raises `NotFound` (exit
+    4) for nothing there, a usage error for text in no form, and the
+    lookup's own error for a project TCW cannot find."""
     namespace = store.COMPONENT
     found = sort_input(text, namespace)
     if found.form == "d":
-        hit = store.get_view(found.id_path)
+        hit = store.own_or_partial(found.id_path) if store.has_own(found.id_path) \
+            else store.get_view(found.id_path)
         if hit is None:
             raise NotFound(_no_such(namespace, text) + _spelled(store, found.id_path)
                            + _three_x_hint(store, namespace, found.id_path))
@@ -158,27 +175,25 @@ def find_tree(store, text: str):
     full_id = found.full_id
     if full_id.project == store.project_id:
         owner = store
-        hit = store.get_local(full_id.id_path)
-    elif full_id.project in _inherited(store, namespace):
-        owner = _inherited(store, namespace)[full_id.project]
-        hit = store.get_inherited(full_id.project, full_id.id_path)
+        hit = store.own_or_partial(full_id.id_path)
     else:
         locator = store.locator
         owner = locator.owner_store(full_id.project, namespace, locator.root)
-        hit = owner.get_local(full_id.id_path)
+        hit = store._as_seen_here(owner.get_local(full_id.id_path))
     if hit is None:
         raise NotFound(_no_such(namespace, text) + _spelled(owner, full_id.id_path))
     return hit
 
 
-def find_tree_writable(store, text: str):
-    """`find_tree`, refusing an entry that belongs to a project `store` does
-    not inherit from: a command changes only this project's own entries and
-    its overrides of inherited ones (as `_own` does for work items)."""
-    hit = find_tree(store, text)
-    if hit.owner != store.project_id and hit.owner not in _inherited(store, store.COMPONENT):
-        raise Refused(f"{hit.full_id} belongs to project '{hit.owner}'; change it there")
-    return hit
+def find_tree_writable(store, text: str, *, removing: bool) -> FullId:
+    """The full identifier of the project's own object a write changes for
+    command input `text` (TCW-112 choice 9): `removal_target` for `rm`
+    (`removing`), else `override_target`, which only a capabilities store
+    has. Either refuses what the project may not change, so what comes back
+    is always the active project's own full identifier."""
+    if removing:
+        return store.removal_target(text)
+    return store.override_target(text)
 
 
 def three_x_hint(locator: "Locator", namespace: str, id_path: str) -> str:
@@ -219,12 +234,6 @@ def _no_such(namespace: str, text: str) -> str:
 
 
 _SINGULAR = {"taxonomy": "term", "capabilities": "capability"}
-
-
-def _inherited(store, namespace: str) -> dict:
-    """The owners `store` inherits from: every project its taxonomy reaches,
-    or the projects its capabilities extend directly."""
-    return store._inherited_stores() if namespace == "taxonomy" else store.extends
 
 
 def _answer(found: Any, full_id: FullId) -> Outcome:

@@ -332,9 +332,11 @@ already exists, so vocabulary is registered first.
 Entries form a tree, and an entry's path is its address: `admin/permission` and
 `billing/permission` are two different entries.
 
-A project can **inherit** another project's taxonomy. Inherited entries keep the
-other project's ID as a prefix, so an inherited `acme/permission` never quietly
-becomes your own `permission`.
+A project **inherits** the taxonomy of each parent whose `inherit` includes
+taxonomy, at every level up. An inherited entry is read by its path like one of
+your own, and its full identifier (`acme.taxonomy/permission`) names the project
+it belongs to. To change an inherited entry, a project puts its own entry at the
+same path, holding only what it changes: an **override**.
 
 ### Usage
 
@@ -352,15 +354,16 @@ described in [Skills and Agents](#skills-and-agents).
 | Command                    | What it does                                                          |
 | -------------------------- | --------------------------------------------------------------------- |
 | `tcw taxonomy list`        | prints every entry's path                                             |
-| `tcw taxonomy add`         | creates a vocabulary entry or a feature; its description from standard input |
+| `tcw taxonomy add`         | creates a vocabulary entry or a feature; its description from standard input; at an inherited path, writes an override holding only what differs |
 | `tcw taxonomy show`        | prints one entry                                                      |
 | `tcw taxonomy path`        | prints the folder the taxonomy is stored in                           |
-| `tcw taxonomy rm`          | removes a local entry nothing is nested under or refers to            |
+| `tcw taxonomy rm`          | removes a local entry nothing is nested under or refers to, an override included |
 | `tcw taxonomy search`      | searches entry names and descriptions                                 |
-| `tcw taxonomy extends add` | inherits a connected project's taxonomy (`extends rm` stops)          |
 
 Creating the taxonomy's folder is `tcw init taxonomy`, and checking it is
-`tcw validate`.
+`tcw validate`. Which projects a taxonomy is inherited from is set by the
+project's parent links (`parents:` in `.tcw/tcw-config.yaml`), not by a
+taxonomy command.
 
 ```sh
 echo "A bill issued to a customer." | tcw taxonomy add Invoice   # vocabulary by default
@@ -368,7 +371,6 @@ echo "Running the shop." | tcw taxonomy add Admin
 tcw taxonomy add Permission --parent admin                       # → admin/permission
 tcw taxonomy add "PDF Export" --kind feature --vocab invoice
 tcw taxonomy list
-tcw taxonomy extends add acme-shared                             # inherit another project
 ```
 
 More in [Taxonomy and Capabilities](docs/guide/taxonomy-and-capabilities.md).
@@ -378,17 +380,17 @@ More in [Taxonomy and Capabilities](docs/guide/taxonomy-and-capabilities.md).
 ### Overview
 
 A capability is one thing a user can do, such as "Download an invoice as PDF".
-Each is addressed by a path (`billing/invoices`), gets a stable ID when created,
-and carries a **status**: `Supported`, `Partial`, `Missing`, `Blocked` or
+Each is addressed by a path (`billing/invoices`), and carries a **status**: `Supported`, `Partial`, `Missing`, `Blocked` or
 `Omitted`. The status is what makes the list useful: it says what the product
 actually does today. The `implement` stage changes the record in the same change
 as the code, and `Missing` means a gap the team has acknowledged, never a plan.
 
-Capabilities can be **inherited** from another project. A web frontend and a
-mobile app that drive the same server declare their shared capabilities once, and
-each **overrides** only what differs, for example marking one `Omitted` or adding
-to its description. An override can be undone to go back to the inherited
-version.
+Capabilities are **inherited** from each parent whose `inherit` includes
+capabilities. A web frontend and a mobile app that drive the same server declare
+their shared capabilities once, and each **overrides** only what differs, for
+example marking one `Omitted` or adding to its description. An override is the
+project's own capability at the same path as the inherited one, holding only the
+fields it changes, and can be undone to go back to the inherited version.
 
 #### Relationship to Taxonomy
 
@@ -413,23 +415,22 @@ registered in the taxonomy before a capability names it.
 | `tcw capabilities list`        | prints every capability's path; `--status` and `--local` narrow it               |
 | `tcw capabilities show`        | prints one capability                                                            |
 | `tcw capabilities path`        | prints the folder capabilities are stored in                                     |
-| `tcw capabilities add`         | creates a capability; its body from standard input                               |
-| `tcw capabilities set`         | changes a capability's status or fields; on an inherited one, writes an override |
+| `tcw capabilities add`         | creates a capability; its body from standard input; refused at an inherited path |
+| `tcw capabilities set`         | changes a capability's status or fields; on an inherited one, writes an override at the same path holding only the fields given |
 | `tcw capabilities reset`       | removes a local override, going back to the inherited version                    |
-| `tcw capabilities rm`          | removes a local capability                                                       |
+| `tcw capabilities rm`          | removes a local capability, an override included                                 |
 | `tcw capabilities search`      | searches names and descriptions                                                  |
-| `tcw capabilities extends add` | inherits a connected project's capabilities (`extends rm` stops)                 |
 | `tcw capabilities drift`       | reports inherited capabilities nobody here has ruled on, and changes finished work declared that today's records do not show |
 
 Creating the ledger's folder is `tcw init capabilities`, and checking it is
-`tcw validate`.
+`tcw validate`. Which projects capabilities are inherited from is set by the
+project's parent links (`parents:` in `.tcw/tcw-config.yaml`).
 
 ```sh
 tcw capabilities add billing/invoices "Download an invoice as PDF" < invoices.md
 tcw capabilities set billing/invoices --field "Subject=invoice" --field "Feature=pdf-export"
 tcw capabilities list --status Missing
 tcw capabilities set billing/invoices --status Supported
-tcw capabilities extends add web-frontend                 # inherit another project
 ```
 
 More in [Taxonomy and Capabilities](docs/guide/taxonomy-and-capabilities.md).

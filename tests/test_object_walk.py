@@ -34,7 +34,7 @@ def test_an_organising_taxonomy_folder_is_no_term(tcw, demo):
 
 
 def test_an_organising_capabilities_folder_is_no_capability(tcw, demo):
-    obj(demo, "capabilities", "group/x", id="cap-aaaaaa", name="X", Status="Missing")
+    obj(demo, "capabilities", "group/x", name="X", Status="Missing")
     listed = tcw(["capabilities", "list"], demo)
     assert (listed.code, listed.out) == (0, "demo.capabilities/group/x\n")
     assert tcw(["capabilities", "show", "group"], demo).code == 4
@@ -86,34 +86,44 @@ def test_a_3x_capability_folder_is_not_listed(tcw, demo):
     assert tcw(["capabilities", "list"], demo).out == ""
 
 
-# -- the 3.x override folders (Design 2.5, last paragraph) -------------------------
+# -- overrides by path (TCW-112 Design 2) ------------------------------------------
 
-def test_an_override_at_the_mirror_path_is_applied_and_not_listed(tmp_path):
+def test_an_override_at_the_originals_path_is_an_ordinary_object(tmp_path):
+    """An object of the child's at the path of an inherited one is its
+    override: it is walked and listed like any other object, holds only what
+    it changes, and takes the rest from the object it overrides."""
     base, child = federated(tmp_path)
     folder = child / "docs" / "capabilities" / "auth" / "login"
-    write_state(folder / "tcw-capability.yaml", "overrides: base/cap-aaa111\nStatus: Omitted\n")
-    st = FsCapabilitiesStore.open(child)
-    assert st.list_all(local_only=True) == []
-    [composed] = st.list_all()
-    assert str(composed.full_id) == "base.capabilities/auth/login"
-    assert composed.status == "Omitted"
-    assert "auth/login" in object_paths(st.root, "capabilities")
-
-
-def test_an_override_at_the_alias_path_is_applied_and_not_listed(tmp_path):
-    base, child = federated(tmp_path)
-    write_cap(child, "auth/login", id="cap-own001", Status="Supported")
-    folder = child / "docs" / "capabilities" / "base" / "auth" / "login"
-    write_state(folder / "tcw-capability.yaml", "overrides: base/cap-aaa111\nStatus: Omitted\n")
+    write_state(folder / "tcw-capability.yaml", "Status: Omitted\n")
     st = FsCapabilitiesStore.open(child)
     assert [str(c.full_id) for c in st.list_all(local_only=True)] == \
         ["child.capabilities/auth/login"]
-    assert st.get_inherited("base", "auth/login").status == "Omitted"
+    [composed] = st.list_all()
+    assert str(composed.full_id) == "child.capabilities/auth/login"
+    assert str(composed.overrides) == "base.capabilities/auth/login"
+    assert composed.status == "Omitted"
+    assert composed.name == "Login"
+    assert "auth/login" in object_paths(st.root, "capabilities")
+
+
+def test_a_folder_named_after_the_parent_project_is_no_alias(tmp_path):
+    """The 3.x alias folder `<alias>/<path>` means nothing any more: an
+    object there is the child's own at that path, and changes nothing of the
+    parent's object."""
+    base, child = federated(tmp_path)
+    write_cap(child, "auth/login", Status="Supported")
+    write_cap(child, "base/auth/login", Status="Omitted")
+    st = FsCapabilitiesStore.open(child)
+    assert [str(c.full_id) for c in st.list_all(local_only=True)] == \
+        ["child.capabilities/auth/login", "child.capabilities/base/auth/login"]
+    [at_path] = [c for c in st.list_all() if c.path == "auth/login"]
+    assert at_path.status == "Supported"
+    assert str(at_path.overrides) == "base.capabilities/auth/login"
     assert "base/auth/login" in object_paths(st.root, "capabilities")
 
 
 def test_the_walk_does_not_list_a_hidden_folder(tmp_path):
     root = repo(tmp_path, "solo")
-    write_cap(root, "routes", id="cap-rou001", Status="Supported")
-    write_cap(root, "routes/.drafts/login", id="cap-log001", Status="Supported")
+    write_cap(root, "routes", Status="Supported")
+    write_cap(root, "routes/.drafts/login", Status="Supported")
     assert [c.path for c in FsCapabilitiesStore.open(root).list_all()] == ["routes"]

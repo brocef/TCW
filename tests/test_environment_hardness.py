@@ -6,12 +6,14 @@ Four environments are scaffolded on ``tmp_path``:
    canonical layout).  No inheritance, no children.
 
 2. **Nested monorepo** — multiple TCW nodes nested inside a single git repo.
-   Subprojects inherit taxonomy from the root project via *relative* paths in
-   ``extends``.  Parent-child node relations derive from nesting.
+   Subprojects inherit from the root project through their ``parents:``
+   link, the root placed by a *relative* manifest location.  Parent-child
+   node relations derive from nesting.
 
 3. **Sibling nodes with absolute-path inheritance** — two (or more) sibling
-   git repos under a common parent directory.  Inheritance is declared with
-   *absolute* paths.  Parent-child relations derive from the enclosing git
+   git repos under a common parent directory.  Each inherits from the parent
+   through its ``parents:`` link, the parent's folder written from its
+   *absolute* path.  Parent-child relations derive from the enclosing git
    worktree.
 
 4. **Linked git worktree** — a node checked out in a linked worktree
@@ -62,7 +64,6 @@ def _descendant_folders(root):
 # ────────────────────────────────────────────────────────────────────────
 
 
-from nodeconfig import declare_extends
 from tests.projectfiles import config_file, write_config, write_config_file, write_manifest
 
 
@@ -100,8 +101,8 @@ def nested_monorepo(tmp_path: Path) -> tuple[Path, Path, Path]:
     """Return (root, child-a, child-b) for a monorepo with nested children.
 
     Root and children share **one git repo**; each is a node via its own
-    ``tcw-config.yaml`` sentinel.  Children inherit taxonomy from root via
-    *relative* paths in ``extends``.
+    ``tcw-config.yaml`` sentinel.  Children inherit from root through their
+    ``parents:`` link, which passes every axis.
 
     NB: cross-node *work* discovery (the registry's children, ``delegate``, ``reconcile``)
     is git-repo-scoped in SP1 — plain subfolders of one repo are valid single
@@ -133,27 +134,22 @@ def nested_monorepo(tmp_path: Path) -> tuple[Path, Path, Path]:
         }, sort_keys=False))
         write_manifest(child, {"root": ".."})
 
-    # Both children extend the root via relative paths
-    declare_extends(child_a, "taxonomy",
-        yaml.safe_dump({"extends": ["root"]}))
-    declare_extends(child_b, "taxonomy",
-        yaml.safe_dump({"extends": ["root"]}))
-
     return root, child_a, child_b
 
 
 def sibling_nodes(tmp_path: Path) -> tuple[Path, Path, Path]:
-    """Return (parent, left, right) for two sibling repos with absolute-path extends.
+    """Return (parent, left, right) for two sibling repos inheriting from parent.
 
     Each sibling is its own git repo.  The *parent* is a git repo that
     contains the two sibling repos as subdirectories (and has ``docs/work/``
     so it qualifies as a node for the registry's parents and children).
-    Left and right extend the parent via *absolute* paths.
+    Left and right inherit from the parent through their ``parents:`` link,
+    its folder written from its *absolute* path.
     """
     parent = tmp_path / "parent"
     parent.mkdir()
     _git_init(parent)
-    # parent needs taxonomy (children extend it) and work (node-relation ops)
+    # parent needs taxonomy (children inherit it) and work (node-relation ops)
     init(["taxonomy", "work"], parent, "parent")
     # NB: don't _commit_all(parent) — untracked nested git repos (left/right)
     # would block the commit. The registry only reads the files.
@@ -182,12 +178,6 @@ def sibling_nodes(tmp_path: Path) -> tuple[Path, Path, Path]:
             "parents": ["parent"],
         }, sort_keys=False))
         write_manifest(child, {"parent": os.path.relpath(parent.resolve(), child)})
-
-    # Both siblings extend parent using *absolute* paths
-    declare_extends(left, "taxonomy",
-        yaml.safe_dump({"extends": ["parent"]}))
-    declare_extends(right, "taxonomy",
-        yaml.safe_dump({"extends": ["parent"]}))
 
     return parent, left, right
 
@@ -328,20 +318,21 @@ class TestLoneProject:
 
 
 class TestNestedMonorepo:
-    """Subprojects inside one repo inherit taxonomy from root via relative paths."""
+    """Subprojects inside one repo inherit taxonomy from root through `parents:`."""
 
     def test_root_taxonomy_visible_to_child(self, tmp_path):
         root, child_a, _ = nested_monorepo(tmp_path)
         FsTaxonomyStore.open(root).add("Shared")
         st_a = FsTaxonomyStore.open(child_a)
-        assert st_a.get_inherited("root", "shared").name == "Shared"
+        shared = st_a.get_view("shared")
+        assert (shared.name, shared.owner) == ("Shared", "root")
 
     def test_child_cannot_see_other_child_taxonomy(self, tmp_path):
         root, child_a, child_b = nested_monorepo(tmp_path)
         FsTaxonomyStore.open(child_a).add("LocalA")
         st_b = FsTaxonomyStore.open(child_b)
         assert st_b.get_view("locala") is None
-        assert st_b.get_inherited("root", "locala") is None  # not in root either
+        assert FsTaxonomyStore.open(root).get_view("locala") is None  # not in root either
 
     def test_child_can_add_local_terms(self, tmp_path):
         root, child_a, _ = nested_monorepo(tmp_path)
@@ -349,14 +340,19 @@ class TestNestedMonorepo:
         st = FsTaxonomyStore.open(child_a)
         st.add("Plugin")
         assert st.get_view("plugin").origin == "local"
-        # Root's terms are visible through the inherited namespace
-        assert st.get_inherited("root", "shared").origin == "root"
+        # Root's terms are in the child's view, owned by root
+        assert st.get_view("shared").origin == "root"
 
     def test_local_wins_bare_ref_in_child(self, tmp_path):
         root, child_a, _ = nested_monorepo(tmp_path)
         FsTaxonomyStore.open(root).add("Shared")
-        FsTaxonomyStore.open(child_a).add("Shared", slug="shared")
-        assert FsTaxonomyStore.open(child_a).get_view("shared").origin == "local"
+        # At an inherited path, `add` writes an override, which must differ
+        # from what it inherits (TCW-112 Design 4.1).
+        FsTaxonomyStore.open(child_a).add("Shared", slug="shared",
+                                          description="The child's own meaning.")
+        found = FsTaxonomyStore.open(child_a).get_view("shared")
+        assert found.origin == "local"
+        assert str(found.overrides) == "root.taxonomy/shared"
 
     def test_child_node_relation_parent(self, tmp_path):
         root, child_a, _ = nested_monorepo(tmp_path)
@@ -414,13 +410,14 @@ class TestNestedMonorepo:
 
 
 class TestSiblingNodes:
-    """Two sibling repos under a common parent with absolute-path extends."""
+    """Two sibling repos under a common parent, each inheriting from it."""
 
     def test_sibling_inherits_via_absolute_path(self, tmp_path):
         parent, left, _ = sibling_nodes(tmp_path)
         FsTaxonomyStore.open(parent).add("Platform")
         st = FsTaxonomyStore.open(left)
-        assert st.get_inherited("parent", "platform").name == "Platform"
+        platform = st.get_view("platform")
+        assert (platform.name, platform.owner) == ("Platform", "parent")
 
     def test_sibling_standalone_taxonomy(self, tmp_path):
         _, left, _ = sibling_nodes(tmp_path)
@@ -433,7 +430,7 @@ class TestSiblingNodes:
         FsTaxonomyStore.open(left).add("Leftonly")
         st_right = FsTaxonomyStore.open(right)
         assert st_right.get_view("leftonly") is None
-        assert st_right.get_inherited("parent", "leftonly") is None
+        assert FsTaxonomyStore.open(parent).get_view("leftonly") is None
 
     def test_child_nodes_finds_siblings(self, tmp_path):
         parent, left, right = sibling_nodes(tmp_path)

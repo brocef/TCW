@@ -59,6 +59,12 @@ def left_out(unreadable: dict) -> int:
     return 1 if unreadable else 0
 
 
+def own_only(error: Exception, project_id: str) -> None:
+    """The one line a reader prints when it shows a project's own objects
+    without their inherited content (TCW-112 Design 3.4)."""
+    say(f"warning: {error}; showing only '{project_id}''s own declarations")
+
+
 def print_json(key: str | None, value: Any) -> None:
     """Exactly one JSON object on stdout with `"schema": 2` first: `value`
     under `key`, or `value`'s own keys when `key` is None (Design 1.6).

@@ -5,3 +5,5 @@ A `--vocab <ref>` is a term path (`alpha/zeta`), an `<alias>/<path>` into an inh
 Adding a term writes files and nothing else: it stages and commits nothing, and works the same inside or outside a git repository. A write that fails part-way is rolled back: whatever the command created is removed, and whatever was already there is left as it was.
 
 A term is a folder holding `tcw-taxonomy.yaml`. `tcw taxonomy add --parent` writes `parent:` and makes the folder inside the parent's only when the parent is a term of this project's own store; a term's other files go in its `resources/` folder.
+
+At a path my project already inherits a term at, `add` writes an override (see [Override an inherited term](tcw://C/taxonomy/override-an-inherited-term)): my own term there, holding only what differs from the inherited term, never `relatesTo`, and standard error says `<new full id> overrides <inherited full id>`. When nothing given differs, it is refused (exit 3) and writes nothing.

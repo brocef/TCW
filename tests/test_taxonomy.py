@@ -5,13 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from tcw.store.base import AmbiguousRef
+from tcw.errors import InheritedUnavailable
+from tcw.store.base import StoreDeclarationError
 from tcw.store.fs import FsTaxonomyStore, write_sentinel
 
-from nodeconfig import declare_extends, set_component_key
+from nodeconfig import set_component_key
 from tcw.errors import TcwError
 from tests.fullids import fid
-from tests.projectfiles import config_file, write_config_file, write_manifest
+from tests.projectfiles import config_file, write_manifest
 from tests.projectfiles import write_config as write_project_config
 from tests.statefiles import write_state, CAPABILITY_STATE, TAXONOMY_STATE
 
@@ -44,13 +45,6 @@ def write_term(root: Path, slug: str, name=None, relates_to=None, description=""
         meta["vocabulary"] = vocabulary
     write_state(d / TAXONOMY_STATE, yaml.safe_dump(meta))
     (d / "description.md").write_text(description)
-
-
-def declare_taxonomy_extends(root: Path, text: str):
-    """Declare `extends` for this node. Takes the same `extends:`-rooted text
-    these fixtures always passed, now merged into `taxonomy.extends` in
-    `tcw-config.yaml` instead of written to a file inside the store."""
-    declare_extends(root, "taxonomy", text)
 
 
 def connect_sources(consumer: Path, *sources: Path) -> None:
@@ -184,14 +178,13 @@ def test_add_refuses_collision(tmp_path):
         st.add("Admin")
 
 
-# ── extends: list/show/origin + the three resolution branches ───────────────
+# ── inheriting through parents: list/show/origin + resolution ─────────────────
 
-def consumer_with_shared(tmp_path, alias="shared", local_dup=False):
+def consumer_with_shared(tmp_path, local_dup=False):
     shared = node(tmp_path, "shared")
     write_term(shared, "Argument", name="Argument")
     cons = node(tmp_path, "consumer")
     connect_sources(cons, shared)
-    declare_taxonomy_extends(cons, "extends:\n  - shared\n")
     if local_dup:
         write_term(cons, "Argument", name="Local Argument")
     return cons, shared
@@ -210,8 +203,6 @@ def transitive_taxonomy(tmp_path):
     )
     write_manifest(b, {"charlie": "../charlie"})
     write_project_config(c, "id: charlie\n")
-    declare_taxonomy_extends(a, "extends:\n  - bravo\n")
-    declare_taxonomy_extends(b, "extends:\n  - charlie\n")
     write_term(b, "shared", name="B Shared", description="from project b")
     write_term(c, "shared", name="C Shared", description="from project c")
     write_term(c, "deep", name="Deep", description="transitive needle")
@@ -223,20 +214,22 @@ def test_list_flags_inherited_origin(tmp_path):
     st = FsTaxonomyStore.open(cons)
     by_slug = {t.slug: t for t in st.list_all()}
     assert by_slug["Argument"].origin == "shared"
-    assert str(st.get_inherited("shared", "Argument").full_id) == "shared.taxonomy/Argument"
+    assert str(st.get_view("Argument").full_id) == "shared.taxonomy/Argument"
     assert FsTaxonomyStore.open(cons).list_all(local_only=True) == []
 
 
-def test_transitive_extends_flattens_terms_by_owning_project(tmp_path):
+def test_transitive_inheritance_shows_each_path_once_by_its_nearest_declarer(tmp_path):
+    """Every id-path appears once in the view (TCW-112 Design 2.1): bravo's
+    `shared` overrides charlie's, so alpha sees bravo's alone."""
     a, _, c = transitive_taxonomy(tmp_path)
     st = FsTaxonomyStore.open(a)
 
     assert {(str(term.full_id), term.origin) for term in st.list_all()} == {
         ("bravo.taxonomy/shared", "bravo"),
         ("charlie.taxonomy/deep", "charlie"),
-        ("charlie.taxonomy/shared", "charlie"),
     }
-    assert str(st.get_inherited("charlie", "deep").full_id) == "charlie.taxonomy/deep"
+    assert str(st.get_view("shared").overrides) == "charlie.taxonomy/shared"
+    assert str(st.get_view("deep").full_id) == "charlie.taxonomy/deep"
     assert st.get_view("deep").origin == "charlie"
     assert [str(term.full_id) for term in st.search("transitive needle")] == ["charlie.taxonomy/deep"]
 
@@ -249,17 +242,23 @@ def test_transitive_extends_flattens_terms_by_owning_project(tmp_path):
     ]
 
 
-def test_transitive_extends_preserves_shadowing_and_ambiguity(tmp_path):
+def test_transitive_inheritance_takes_the_nearest_declarer_and_local_overrides_it(
+        tmp_path):
+    """A path two projects in one line of inheritance declare is not
+    ambiguous: the nearer one overrides the farther one (TCW-112 Design 2.1),
+    and the project's own object overrides both."""
     a, _, _ = transitive_taxonomy(tmp_path)
-    st = FsTaxonomyStore.open(a)
-    with pytest.raises(AmbiguousRef):
-        st.get_view("shared")
+    shared = FsTaxonomyStore.open(a).get_view("shared")
+    assert (shared.owner, shared.name, shared.description.strip()) == (
+        "bravo", "B Shared", "from project b")
 
     write_term(a, "shared", name="A Shared")
-    assert FsTaxonomyStore.open(a).get_view("shared").origin == "local"
+    shared = FsTaxonomyStore.open(a).get_view("shared")
+    assert shared.origin == "local"
+    assert str(shared.overrides) == "bravo.taxonomy/shared"
 
 
-def test_transitive_extends_deduplicates_a_diamond_by_project_id(tmp_path):
+def test_transitive_inheritance_deduplicates_a_diamond_by_project_id(tmp_path):
     a, _, c = transitive_taxonomy(tmp_path)
     d = node(tmp_path, "delta")
     write_project_config(a,
@@ -272,22 +271,22 @@ def test_transitive_extends_deduplicates_a_diamond_by_project_id(tmp_path):
     )
     write_manifest(d, {"charlie": "../charlie"})
     write_project_config(c, "id: charlie\n")
-    declare_taxonomy_extends(a, "extends:\n  - bravo\n  - delta\n")
-    declare_taxonomy_extends(d, "extends:\n  - charlie\n")
 
     full_ids = [str(term.full_id) for term in FsTaxonomyStore.open(a).list_all()]
     assert full_ids.count("charlie.taxonomy/deep") == 1
-    assert full_ids.count("charlie.taxonomy/shared") == 1
+    # bravo's `shared` overrides charlie's, which delta only passes along
+    # (TCW-112 Design 2.1), so the path appears once.
+    assert sorted(full_ids) == ["bravo.taxonomy/shared", "charlie.taxonomy/deep"]
 
 
-def test_transitive_extends_crosses_a_second_hop_through_a_moved_tree(tmp_path):
+def test_transitive_inheritance_crosses_a_second_hop_through_a_moved_tree(tmp_path):
     """`bravo` keeps its taxonomy somewhere other than `docs/taxonomy`.
 
     Resolving a sibling's *store* is what let `alpha` reach it at all; rebuilding
     that store from its root then broke the hop past it, because `FsTreeStore`
     falls back to `root.parent.parent` for the node root — correct only for the
     `docs/<component>` shape this resolution exists to stop assuming. `bravo`
-    got a node root above its own repo, so its `extends: charlie` resolved
+    got a node root above its own repo, so its link to charlie resolved
     against the wrong graph and `charlie` vanished from `alpha`'s view.
     """
     a, b, c = transitive_taxonomy(tmp_path)
@@ -298,18 +297,13 @@ def test_transitive_extends_crosses_a_second_hop_through_a_moved_tree(tmp_path):
         "id: bravo\ntaxonomy:\n  path: ledger\n"
         "parents:\n- id: charlie\n  inherit: [taxonomy]\n"
     )
-    # This rewrite replaces the whole node config, and `extends` now lives in it
-    # rather than in a file inside the tree, so bravo's hop to charlie has to be
-    # re-declared. The `path: ledger` above is what the test is really about;
-    # losing the hop silently would make it assert a weaker thing.
-    declare_taxonomy_extends(b, "extends:\n  - charlie\n")
 
     st = FsTaxonomyStore.open(a)
     assert {(str(term.full_id), term.origin) for term in st.list_all()} == {
         ("bravo.taxonomy/shared", "bravo"),
         ("charlie.taxonomy/deep", "charlie"),
-        ("charlie.taxonomy/shared", "charlie"),
     }
+    assert str(st.get_view("shared").overrides) == "charlie.taxonomy/shared"
     assert st.check() == []
     assert st._validation_resources("deep") == [
         c / "docs/taxonomy/deep/tcw-taxonomy.yaml",
@@ -317,28 +311,34 @@ def test_transitive_extends_crosses_a_second_hop_through_a_moved_tree(tmp_path):
     ]
 
 
-def test_resolution_unique_extended(tmp_path):
+def test_resolution_unique_inherited(tmp_path):
     cons, _ = consumer_with_shared(tmp_path)
     st = FsTaxonomyStore.open(cons)
-    assert st.get_view("Argument").origin == "shared"          # bare, one extend
+    assert st.get_view("Argument").origin == "shared"          # bare, one parent
 
 
 def test_resolution_local_wins_bare(tmp_path):
     cons, _ = consumer_with_shared(tmp_path, local_dup=True)
     st = FsTaxonomyStore.open(cons)
-    assert st.get_view("Argument").origin == "local"           # local shadows extend
+    assert st.get_view("Argument").origin == "local"           # local overrides parent
 
 
-def test_resolution_ambiguous_errors(tmp_path):
+def test_two_unrelated_parents_at_one_path_use_the_later_one_and_warn(tmp_path):
+    """TCW 4.0 replaces the ambiguity error (TCW-112 Design 2.5): of two
+    declarers neither of which inherits from the other, the view takes the
+    later one in the load order, whole, and `check` warns about the other.
+    A full identifier still names the earlier one's own object."""
     a = node(tmp_path, "a"); write_term(a, "Term", name="A")
     b = node(tmp_path, "b"); write_term(b, "Term", name="B")
     cons = node(tmp_path, "consumer")
     connect_sources(cons, a, b)
-    declare_taxonomy_extends(cons, "extends:\n  - a\n  - b\n")
     st = FsTaxonomyStore.open(cons)
-    with pytest.raises(AmbiguousRef, match=r"<project>\.taxonomy/Term$"):
-        st.get_view("Term")
-    assert st.get_inherited("a", "Term").origin == "a"                 # qualified is unambiguous
+    term = st.get_view("Term")
+    assert (term.owner, term.name, term.overrides) == ("b", "B", None)
+    [warning] = [str(f) for f in st.check()]
+    assert warning.startswith("warning: .tcw/tcw-config.yaml: taxonomy Term: "
+                              "'a' and 'b' each have an object at this path"), warning
+    assert st.get_term_detail("a.taxonomy/Term").term.name == "A"
 
 
 def test_get_term_detail_of_inherited_term(tmp_path):
@@ -549,52 +549,21 @@ def test_check_reports_a_3x_relatesto_naming_tcw_migrate(tmp_path):
     b = node(tmp_path, "b"); write_term(b, "Term")
     cons = node(tmp_path, "consumer")
     connect_sources(cons, a, b)
-    declare_taxonomy_extends(cons, "extends:\n  - a\n  - b\n")
     write_term(cons, "host", relates_to=["Term"])
     problems = [str(f) for f in FsTaxonomyStore.open(cons).check()]
     assert any("relatesTo 'Term' is a TCW 3.x reference" in p and "tcw migrate" in p
                for p in problems), problems
 
 
-def test_check_duplicate_project_id(tmp_path):
+def test_a_parent_not_on_this_machine_stops_the_view_not_the_open(tmp_path):
+    """TCW 4.0 replaces the unknown-`extends` refusal: opening reads no other
+    project (TCW-112 Design 1.4), and building the view raises
+    `InheritedUnavailable` (Design 1.3)."""
     cons = node(tmp_path, "consumer")
-    other = node(tmp_path, "other")
-    connect_sources(cons, other)
-    declare_taxonomy_extends(cons, "extends:\n  - other\n  - other\n")
-    with pytest.raises(ValueError, match="duplicate project IDs"):
-        FsTaxonomyStore.open(cons)
-
-
-def test_check_alias_collides_with_local_top_level(tmp_path):
-    cons, _ = consumer_with_shared(tmp_path, alias="shared")
-    write_term(cons, "shared", name="Shared (local)")
-    problems = [str(f) for f in FsTaxonomyStore.open(cons).check()]
-    assert any("collides" in p for p in problems)
-
-
-def test_check_cycle(tmp_path):
-    a = node(tmp_path, "a")
-    b = node(tmp_path, "b")
-    # `a` names `b` as a parent and `b` lists `a`: `b` extending its
-    # descendant `a` is refused (TCW-108 Design 3.6), so the cycle is never
-    # built and that refusal is what opening `a` reports.
-    write_project_config(a, "id: a\nparents:\n- id: b\n  inherit: [taxonomy]\n")
-    write_manifest(a, {"b": "../b"})
-    write_project_config(b, "id: b\nchildren:\n- a\n")
-    write_manifest(b, {"a": "../a"})
-    declare_taxonomy_extends(a, "extends:\n  - b\n")
-    declare_taxonomy_extends(b, "extends:\n  - a\n")
-    with pytest.raises(ValueError, match="'a' is in taxonomy.extends, but 'b' does "
-                                         "not inherit its taxonomy from it"):
-        FsTaxonomyStore.open(a).check()
-
-
-def test_check_unknown_extends_project(tmp_path):
-    cons = node(tmp_path, "consumer")
-    declare_taxonomy_extends(cons, "extends:\n  - ghost\n")
-    with pytest.raises(ValueError, match="'ghost' is in taxonomy.extends, but "
-                                         "'consumer' does not inherit"):
-        FsTaxonomyStore.open(cons)
+    write_project_config(cons, "id: consumer\nparents:\n- ghost\n")
+    st = FsTaxonomyStore.open(cons)
+    with pytest.raises(InheritedUnavailable, match="'ghost', which is not on this machine"):
+        st.list_all()
 
 
 # ── CLI smoke (bare-path sugar) ─────────────────────────────────────────────
@@ -692,8 +661,8 @@ def test_cli_list_is_depth_first_preorder_at_three_levels(tmp_path, monkeypatch,
 
 
 def test_cli_list_never_splices_an_inherited_tree_into_the_local_one(tmp_path, monkeypatch, capsys):
-    """Each `extends` alias is a separate store with its own slug namespace, so
-    an inherited tree groups after the local one rather than sorting into it."""
+    """An inherited tree is listed after the project's own objects rather than
+    sorted into them, and stays whole under its own root."""
     from tcw.cli import main
     cons, shared = consumer_with_shared(tmp_path)
     write_term(shared, "Argument/nested", name="Nested")
@@ -717,78 +686,27 @@ def test_cli_list_reports_an_unknown_kind_as_written(tmp_path, monkeypatch, caps
     assert term["kind"] == "Mystery"
 
 
-# ── extends (federation) write path ───────────────────────────────────────────
+# ── the removed extends commands ────────────────────────────────────────────
 
-def test_extends_add_writes_map_and_resolves(tmp_path):
-    base = node(tmp_path, "base")
-    write_term(base, "widget", name="Widget")
-    consumer = node(tmp_path, "consumer")
-    connect_sources(consumer, base)
-    FsTaxonomyStore.open(consumer).extends_add("base")
-    st = FsTaxonomyStore.open(consumer)            # reopen to load the new federation
-    assert "base.taxonomy/widget" in {str(t.full_id) for t in st.list_all()}
-    assert st.get_inherited("base", "widget").name == "Widget"
-
-
-def test_extends_add_refuses(tmp_path):
-    base = node(tmp_path, "base")
-    consumer = node(tmp_path, "consumer")
-    connect_sources(consumer, base)
-    FsTaxonomyStore.open(consumer).extends_add("base")
-    st = FsTaxonomyStore.open(consumer)
-    with pytest.raises(TcwError):               # duplicate alias
-        st.extends_add("base")
-    with pytest.raises(TcwError):               # missing target repo
-        st.extends_add("nope")
-    with pytest.raises(TcwError):               # self-reference
-        st.extends_add("consumer")
-
-
-def test_extends_remove(tmp_path):
-    base = node(tmp_path, "base")
-    consumer = node(tmp_path, "consumer")
-    connect_sources(consumer, base)
-    FsTaxonomyStore.open(consumer).extends_add("base")
-    st = FsTaxonomyStore.open(consumer)
-    st.extends_remove("base")
-    assert "base" not in (FsTaxonomyStore.open(consumer).config.get("extends") or [])
-    with pytest.raises(TcwError):               # absent alias
-        FsTaxonomyStore.open(consumer).extends_remove("base")
-
-
-def test_cli_extends_add_and_rm(tmp_path, monkeypatch, capsys):
-    from tcw.cli import main
-    base = node(tmp_path, "base")
-    consumer = node(tmp_path, "consumer")
-    connect_sources(consumer, base)
-    monkeypatch.chdir(consumer)
-    assert main(["taxonomy", "extends", "add", "base"]) == 0
-    capsys.readouterr()
-    assert not (consumer / "docs/taxonomy/config.yaml").exists()
-    import yaml as _yaml
-    _cfg = _yaml.safe_load((consumer / ".tcw/tcw-config.yaml").read_text())
-    assert _cfg["taxonomy"]["extends"] == ["base"]
-    assert main(["taxonomy", "extends", "add", "base"]) == 3
-    assert "already exists" in capsys.readouterr().err
-    assert main(["taxonomy", "extends", "rm", "base"]) == 0
-
-
-def test_cli_extends_is_not_treated_as_a_term_path(tmp_path, monkeypatch, capsys):
+def test_cli_extends_is_a_usage_error_not_a_term_path(tmp_path, monkeypatch, capsys):
+    """TCW 4.0 removes `tcw taxonomy extends add|rm` (TCW-112 Design 1.5):
+    naming it is a usage error, never a lookup of a term called `extends`."""
     from tcw.cli import main
     root = node(tmp_path, "repo")
     monkeypatch.chdir(root)
-    # "extends" must dispatch to the subcommand, not the `taxonomy <path>` show-sugar
-    assert main(["taxonomy", "extends", "rm", "ghost"]) == 4   # absent alias → handled error, not "no such term"
+    with pytest.raises(SystemExit) as stop:
+        main(["taxonomy", "extends", "rm", "ghost"])
+    assert stop.value.code == 2
     assert "no such term" not in capsys.readouterr().err
 
 
-# ── the extended store is resolved, not composed ─────────────────────────────
+# ── the inherited store is resolved, not composed ────────────────────────────
 
-def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
+def test_a_parent_that_moved_its_tree_can_still_be_inherited(tmp_path):
     """`taxonomy.path` is exactly what `tcw init --taxonomy-path` writes.
 
-    The extended project's store used to be composed as `docs/taxonomy` under
-    its root, so a project that had moved its tree became unextendable and the
+    The inherited project's store used to be composed as `docs/taxonomy` under
+    its root, so a project that had moved its tree could not be inherited and the
     error blamed a path nobody had written. Resolution is component-generic, so
     this is the taxonomy half of a fix whose capabilities half is already
     covered — and the half that would go unnoticed if the two ever diverged.
@@ -812,87 +730,79 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
         "id: consumer\nparents:\n- base\n"
     )
     write_manifest(cons, {"base": "../base"})
-    declare_taxonomy_extends(cons, "extends:\n  - base\n")
 
     st = FsTaxonomyStore.open(cons)
     assert {str(term.full_id) for term in st.list_all()} == {"base.taxonomy/argument"}
-    assert st.get_inherited("base", "argument").name == "Argument"
+    assert st.get_view("argument").name == "Argument"
     assert st.get_view("argument").origin == "base"
 
 
-# ── extends lives in the node config, not in the store ──────────────────────
+# ── the removed extends key ──────────────────────────────────────────────────
 
-def test_extends_is_read_from_the_node_config_with_no_store_file(tmp_path):
-    """Spec criterion 1. The declaration is `taxonomy.extends` in
-    `tcw-config.yaml`; nothing is written inside the store at all."""
+def test_inheritance_needs_no_key_and_no_store_file(tmp_path):
+    """A `parents:` link alone makes the project inherit; nothing is written
+    in the store or under `taxonomy` (TCW-112 Design 1.1)."""
     shared = node(tmp_path, "shared")
     write_term(shared, "Argument", name="Argument")
     cons = node(tmp_path, "consumer")
     connect_sources(cons, shared)
-    import yaml
-    cfg = config_file(cons)
-    raw = yaml.safe_load(cfg.read_text())
-    raw["taxonomy"] = {"extends": ["shared"]}
-    write_config_file(cfg, yaml.safe_dump(raw, sort_keys=False))
 
+    import yaml
+    assert "taxonomy" not in yaml.safe_load(config_file(cons).read_text())
     assert not (cons / "docs" / "taxonomy" / "config.yaml").exists()
     st = FsTaxonomyStore.open(cons)
     assert {(str(term.full_id), term.origin) for term in st.list_all()} == {
         ("shared.taxonomy/Argument", "shared")}
 
 
+def test_extends_in_another_projects_config_is_not_read(tmp_path):
+    """Only the active project's own `taxonomy.extends` is refused; in a
+    parent's file the key is not read, and what the parent passes down comes
+    from its links alone (TCW-112 Design 1.5). The key is written on purpose."""
+    shared = node(tmp_path, "shared")
+    write_term(shared, "Argument", name="Argument")
+    set_component_key(shared, "taxonomy", "extends", ["elsewhere"])
+    cons = node(tmp_path, "consumer")
+    connect_sources(cons, shared)
+
+    st = FsTaxonomyStore.open(cons)
+    assert {str(term.full_id) for term in st.list_all()} == {"shared.taxonomy/Argument"}
+
+
 def test_a_non_mapping_taxonomy_section_is_no_configuration_not_a_crash(tmp_path):
     """`resolve_store` normalizes a present-but-not-a-mapping section to {};
-    reading `extends` in the constructor has to agree, or `taxonomy: docs/tax`
+    reading the section in the constructor has to agree, or `taxonomy: docs/tax`
     becomes an AttributeError on a path resolve_store answers calmly."""
     root = node(tmp_path, "scalar")
-    declare_taxonomy_extends(root, "id: scalar\ntaxonomy: docs/taxonomy\n")
+    write_project_config(root, "id: scalar\ntaxonomy: docs/taxonomy\n")
     write_term(root, "local", name="Local")
     assert [t.slug for t in FsTaxonomyStore.open(root).list_all()] == ["local"]
 
 
-def test_extends_add_names_the_config_file_not_a_store_path(tmp_path, capsys):
-    """Spec criterion 8. The old line hard-coded `docs/taxonomy/config.yaml`,
-    which was wrong whenever `taxonomy.path` pointed elsewhere. Since TCW-73 the
-    command prints nothing and names the file it wrote on stderr."""
-    from tcw.cli import main
-    shared = node(tmp_path, "shared")
-    write_term(shared, "Argument")
-    cons = node(tmp_path, "consumer")
-    connect_sources(cons, shared)
-    (cons / "ledger").mkdir()
-    set_component_key(cons, "taxonomy", "path", "ledger")
-
-    cwd = os.getcwd()
-    os.chdir(cons)
-    try:
-        assert main(["taxonomy", "extends", "add", "shared"]) == 0
-    finally:
-        os.chdir(cwd)
-    out = capsys.readouterr()
-    assert out.out == ""
-    assert out.err.splitlines() == ["wrote .tcw/tcw-config.yaml"]
-
-
-@pytest.mark.parametrize("declared,expected", [
-    ("extends:\n  shared: ../shared\n", "legacy extends map is unsupported"),
-    ("extends: shared\n", "extends must be a list of project IDs"),
-    ("extends:\n  - Not An Id\n", "project id"),
-    ("extends:\n  - shared\n  - shared\n", "duplicate project IDs"),
+@pytest.mark.parametrize("declared", [
+    "extends:\n  shared: ../shared\n",
+    "extends: shared\n",
+    "extends:\n  - Not An Id\n",
+    "extends:\n  - shared\n  - shared\n",
+    "extends: []\n",
 ])
-def test_every_extends_refusal_names_the_key_path(tmp_path, declared, expected):
-    """Spec criterion 7 — all four refusal paths, including the project-id one,
-    which used to raise without naming where the id came from."""
+def test_the_removed_extends_key_is_refused_whatever_it_holds(tmp_path, declared):
+    """TCW 4.0 removes `taxonomy.extends` (TCW-112 Design 1.5): in the
+    project's own config any value of it is one refusal, naming the file and
+    the fix. The key is written here on purpose."""
+    import yaml
     shared = node(tmp_path, "shared")
     cons = node(tmp_path, "consumer")
     connect_sources(cons, shared)
-    declare_taxonomy_extends(cons, declared)
-    with pytest.raises(ValueError) as excinfo:
+    set_component_key(cons, "taxonomy", "extends", yaml.safe_load(declared)["extends"])
+    with pytest.raises(StoreDeclarationError) as excinfo:
         FsTaxonomyStore.open(cons).list_all()
     message = str(excinfo.value)
-    assert expected.lower() in message.lower()
-    assert "taxonomy.extends" in message
-    assert "tcw-config.yaml" in message
+    assert message.startswith(f"{config_file(cons)}: "), message
+    assert message.endswith(
+        "'taxonomy.extends' was removed in TCW 4.0: a project inherits its "
+        "taxonomy from its parents; name each project it inherits from under "
+        "'parents:' with an 'inherit' that includes taxonomy, and delete this key"), message
 
 
 def test_a_config_yaml_in_a_term_folder_is_still_not_an_attachment(tmp_path):
@@ -920,8 +830,9 @@ def test_two_projects_sharing_one_tree_inherit_independently(tmp_path):
     """Spec criterion 10 — Goal 2, stated as a check.
 
     `extends` used to live in a file inside the tree, so a tree shared by two
-    projects forced both into the same ancestors. It is now a property of the
-    project: same folder, different inheritance.
+    projects forced both into the same ancestors. Inheritance is a property of
+    the project, through its `parents:` links: same folder, different
+    inheritance.
     """
     left_src = node(tmp_path, "left-source")
     write_term(left_src, "LeftTerm", name="Left Term")
@@ -935,7 +846,6 @@ def test_two_projects_sharing_one_tree_inherit_independently(tmp_path):
         n = node(tmp_path, name)
         connect_sources(n, source)
         set_component_key(n, "taxonomy", "path", os.path.relpath(shared_tree, n))
-        declare_taxonomy_extends(n, f"extends:\n  - {source.name}\n")
 
     left_origins = {t.origin for t in FsTaxonomyStore.open(tmp_path / "left").list_all()}
     right_origins = {t.origin for t in FsTaxonomyStore.open(tmp_path / "right").list_all()}
@@ -949,10 +859,10 @@ def test_a_shared_tree_may_now_be_composed_with_itself(tmp_path):
 
     When `extends` lived in the shared file it was *both* projects' declaration,
     so `alpha` extending `bravo` made `bravo` extend itself and the whole read
-    failed on the self-extend guard. Separate declarations remove that
-    collision: the shared terms now resolve once locally and once under
-    `bravo/`. Each namespace is honest about where it came from, so this is
-    allowed — but it is new, and the migration guide says so.
+    failed on the self-extend guard. Since TCW 4.0 an object of alpha's own at
+    the same path as one it inherits is an override of it (TCW-112 Design
+    2.1), so the shared tree's `common` appears once, as alpha's, overriding
+    bravo's.
     """
     shared_tree = tmp_path / "shared-tree"
     shared_tree.mkdir()
@@ -965,23 +875,23 @@ def test_a_shared_tree_may_now_be_composed_with_itself(tmp_path):
     connect_sources(alpha, bravo)
     for n in (alpha, bravo):
         set_component_key(n, "taxonomy", "path", os.path.relpath(shared_tree, n))
-    declare_taxonomy_extends(alpha, "extends:\n  - bravo\n")
 
     st = FsTaxonomyStore.open(alpha)
     assert {(str(term.full_id), term.origin) for term in st.list_all()} == {
         ("alpha.taxonomy/common", "local"),
-        ("bravo.taxonomy/common", "bravo"),
     }
+    assert str(st.get_view("common").overrides) == "bravo.taxonomy/common"
 
 
 def test_a_leftover_store_config_is_reported_and_left_alone(tmp_path):
     """The well-formed half.
 
-    An un-migrated project keeps its old file. Nothing reads it, so there is no
-    inheritance; `check` names it and the fix, because a project that lost its
-    inherited entries this way used to get no hint of why; and nothing deletes
-    it, because TCW does not remove a file it no longer reads. The full set of
-    cases is in `tests/test_legacy_store_config.py`.
+    An un-migrated project keeps its old file. Nothing reads it: what the
+    project inherits comes from its `parents:` links alone. `check` names it
+    and the fix, because a project that lost its inherited entries this way
+    used to get no hint of why; and nothing deletes it, because TCW does not
+    remove a file it no longer reads. The full set of cases is in
+    `tests/test_legacy_store_config.py`.
     """
     shared = node(tmp_path, "shared")
     write_term(shared, "Argument")
@@ -992,13 +902,13 @@ def test_a_leftover_store_config_is_reported_and_left_alone(tmp_path):
     stale.write_text(original)
 
     st = FsTaxonomyStore.open(cons)
-    assert st.list_all() == []
+    assert {str(t.full_id) for t in st.list_all()} == {"shared.taxonomy/Argument"}
     problems = [str(f) for f in st.check()]
     assert len(problems) == 1, problems
-    for part in ("docs/taxonomy/config.yaml: ", "no longer read", "taxonomy.extends",
-                 "tcw-config.yaml", "then delete the file",
-                 "if already migrated, just delete it"):
+    for part in ("docs/taxonomy/config.yaml: ", "no longer read since TCW 2.5.0",
+                 "parents: in .tcw/tcw-config.yaml", "delete this file"):
         assert part in problems[0], problems
+    assert "extends" not in problems[0], problems
     assert stale.read_text() == original
 
 
@@ -1024,27 +934,6 @@ def test_a_malformed_leftover_store_config_is_still_reported(tmp_path):
                     and "no longer read" not in p.message]
     assert len(parse_errors) == 1, problems
     assert any("checks skipped" in n for n in notes), notes
-
-
-def test_writing_extends_refuses_a_non_mapping_section_rather_than_replacing_it(tmp_path):
-    """Reading normalizes `taxonomy: docs/taxonomy` to "no configuration".
-    Writing must not quietly replace it: that is someone reaching for
-    `taxonomy: {path: docs/taxonomy}`, and overwriting it destroys what they
-    typed on an unrelated command."""
-    shared = node(tmp_path, "shared")
-    cons = node(tmp_path, "consumer")
-    connect_sources(cons, shared)
-    cfg = config_file(cons)
-    import yaml as _yaml
-    raw = _yaml.safe_load(cfg.read_text())
-    raw["taxonomy"] = "docs/taxonomy"
-    original = _yaml.safe_dump(raw, sort_keys=False)
-    write_config_file(cfg, original)
-
-    with pytest.raises(TcwError) as excinfo:
-        FsTaxonomyStore.open(cons).extends_add("shared")
-    assert "taxonomy must be a mapping" in str(excinfo.value)
-    assert cfg.read_text() == original       # nothing written
 
 
 @pytest.mark.parametrize("slug", ["A B", "a/b", "Memo", "a--b", "a-", "a_b"])

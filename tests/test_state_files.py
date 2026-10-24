@@ -5,7 +5,6 @@ the TCW that wrote it (TCW-111 Design 1; AC 1, 2, 3 and 8), in a project
 from __future__ import annotations
 
 import json
-import re
 from datetime import date
 
 import pytest
@@ -48,8 +47,9 @@ def test_each_add_writes_its_state_file_with_the_version_first(tcw, demo):
     cap = store(demo, "capabilities") / "cli" / "x"
     assert sorted(p.name for p in cap.iterdir()) == ["description.md", CAPABILITY_STATE]
     assert first_line(cap / CAPABILITY_STATE) == f"tcw-version: {__version__}"
-    assert re.fullmatch(r"cap-[0-9a-f]{6}",
-                        yaml.safe_load((cap / CAPABILITY_STATE).read_text())["id"])
+    # TCW-112 Design 5: a capability's ID is its folder's name; no opaque
+    # `id` is written.
+    assert "id" not in yaml.safe_load((cap / CAPABILITY_STATE).read_text())
 
     assert tcw(["work", "new", "Add login"], demo).code == 0
     folder = store(demo, "work") / f"{TODAY}-add-login"
@@ -69,7 +69,7 @@ def test_the_printed_version_is_the_one_written(tcw, demo):
 # -- AC 2 -------------------------------------------------------------------------
 
 def test_edits_keep_the_version_line(tcw, demo, monkeypatch):
-    cap = obj(demo, "capabilities", "cli/x", id="cap-aaaaaa", name="X", Status="Missing")
+    cap = obj(demo, "capabilities", "cli/x", name="X", Status="Missing")
     work = item(demo, f"{TODAY}-x")
     for path in (cap / CAPABILITY_STATE, work / ITEM_STATE):
         path.write_text(path.read_text().replace(f"tcw-version: {__version__}",
@@ -87,10 +87,10 @@ def test_edits_keep_the_version_line(tcw, demo, monkeypatch):
 
 @pytest.mark.parametrize("row", sorted(VERSION_ROWS))
 def test_a_capability_whose_version_cannot_be_read(tcw, demo, row):
-    obj(demo, "capabilities", "cli/w", id="cap-bbbbbb", name="W", Status="Missing")
-    cap = obj(demo, "capabilities", "cli/x", id="cap-aaaaaa", name="X", Status="Missing")
+    obj(demo, "capabilities", "cli/w", name="W", Status="Missing")
+    cap = obj(demo, "capabilities", "cli/x", name="X", Status="Missing")
     path = cap / CAPABILITY_STATE
-    path.write_text(VERSION_ROWS[row] + "id: cap-aaaaaa\nStatus: Missing\n")
+    path.write_text(VERSION_ROWS[row] + "name: X\nStatus: Missing\n")
     before = path.read_bytes()
 
     checked = tcw(["validate"], demo)

@@ -18,14 +18,15 @@ import pytest
 
 from tcw.cli import build_parser
 
-# Design 2's 3.0 column, less `config show`, which TCW-72 adds with its own row.
+# Design 2's 3.0 column, less `config show`, which TCW-72 adds with its own row,
+# and less the four `extends` commands, which TCW 4.0 removes (TCW-112 Design 1).
 SURFACE = {
     "init", "provision", "validate", "serve", "projects list", "config show",
     "taxonomy list", "taxonomy add", "taxonomy show", "taxonomy path", "taxonomy rm",
-    "taxonomy search", "taxonomy extends add", "taxonomy extends rm",
+    "taxonomy search",
     "capabilities list", "capabilities show", "capabilities path", "capabilities add",
     "capabilities set", "capabilities reset", "capabilities rm", "capabilities search",
-    "capabilities extends add", "capabilities extends rm", "capabilities drift",
+    "capabilities drift",
     "work new", "work list", "work show", "work path", "work edit", "work advance",
     "work discard", "work comment", "work rename", "work stage prompt",
     "work procedure", "work lifecycle", "work docs", "work tags list", "work tags add",
@@ -38,6 +39,9 @@ REMOVED = {
     "work procedure prompt", "work inbox", "work tracker", "work start", "work submit",
     "work rework", "work complete", "work drop", "work delete", "work tombstone",
     "work scaffold", "work reconcile", "work delegate", "work escalate",
+    # TCW 4.0: a project inherits from its parents (TCW-112 Design 1).
+    "taxonomy extends", "taxonomy extends add", "taxonomy extends rm",
+    "capabilities extends", "capabilities extends add", "capabilities extends rm",
     *(f"work stage {s}" for s in ("request", "spec", "plan", "implement", "review",
                                   "qa")),
 }
@@ -67,7 +71,7 @@ def leaves(commands):
 
 
 def test_the_surface_is_exactly_the_3_0_column(leaves):
-    assert len(SURFACE) == 43
+    assert len(SURFACE) == 39
     assert set(leaves) == SURFACE
 
 
@@ -157,4 +161,4 @@ def test_the_walk_sees_the_whole_tree(commands):
     """Guards the walk: if it stopped descending, the tests above would pass by
     seeing nothing rather than by finding nothing."""
     names = {name for name, *_ in commands}
-    assert {"work", "work tags", "taxonomy extends", "work tags add"} <= names
+    assert {"work", "work tags", "work stage", "work tags add"} <= names

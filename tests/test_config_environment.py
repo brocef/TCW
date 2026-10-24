@@ -237,7 +237,7 @@ def test_ac28_a_variable_naming_a_project_read_for_itself(tmp_path, on, run):
     document = yaml.safe_load(config_file(lib).read_text())
     document["parents"] = ["app"]
     write_config_file(config_file(lib), yaml.safe_dump(document))
-    write_cap(app, "cli", id="cap-cli00001", Status="Supported")
+    write_cap(app, "cli", Status="Supported")
     (app / "docs" / "capabilities" / "cli" / "description.md").write_text(
         f"See [this](tcw://{item}).\n")
     ran = tcw(app, "validate", env={**on, "TCW_WORK_TAGS__LIB": "[a]"})

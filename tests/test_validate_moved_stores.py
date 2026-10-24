@@ -36,7 +36,7 @@ def cap(store: Path, path: str, **meta) -> None:
     d = store / path
     d.mkdir(parents=True, exist_ok=True)
     write_state(d / CAPABILITY_STATE, yaml.safe_dump(
-        {"id": "cap-" + path.replace("/", "-"), "name": path, **meta}))
+        {"name": path, **meta}))
     (d / "description.md").write_text("")
 
 
@@ -126,7 +126,6 @@ def test_a_missing_taxonomy_path_is_listed_not_raised(tmp_path):
 
 @pytest.mark.parametrize("config", [
     {},                                             # nothing configured, no folders
-    {"taxonomy": {"extends": []}},                  # extends only
 ])
 def test_a_node_without_tree_stores_reports_nothing_new(tmp_path, config):
     root = repo(tmp_path / "node")
@@ -182,12 +181,15 @@ def test_nothing_is_said_unchecked_when_no_capability_names_a_subject(tmp_path):
     assert FsCapabilitiesStore.open(root).check() == []
 
 
+@pytest.mark.parametrize("extends", [[], ["ghost"]])
 @pytest.mark.parametrize("component", ["taxonomy", "capabilities"])
-def test_a_broken_extends_without_a_local_tree_is_reported(tmp_path, component):
+def test_an_extends_key_without_a_local_tree_is_reported(tmp_path, component, extends):
+    """TCW-112 Design 1.5: `<component>.extends` was removed, so even an empty
+    one, in a project with no folder for that tree, is reported as an error."""
     root = repo(tmp_path / "node")
-    set_component_key(root, component, "extends", ["ghost"])
+    set_component_key(root, component, "extends", extends)
     lines = check_lines(validate(root), component, root)
-    assert any("ghost" in p for p in lines), lines
+    assert any(f"'{component}.extends' was removed in TCW 4.0" in p for p in lines), lines
 
 
 def test_a_work_only_node_reports_nothing_new(tmp_path):

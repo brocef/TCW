@@ -32,9 +32,8 @@ from tcw.validate import validate
 WHERE = "work.repository"
 
 
-from nodeconfig import declare_extends, set_component_key
+from nodeconfig import set_component_key
 from tests.projectfiles import config_file, write_config, write_config_file, write_manifest
-from tests.statefiles import write_state, TAXONOMY_STATE
 
 
 def _repo(path: Path) -> Path:
@@ -1523,104 +1522,16 @@ def test_a_federation_error_is_not_reported_as_unprovisioned(tmp_path):
         "repository": {"url": "https://example.invalid/ledger.git"},
     }
     write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
-    # A store that is right here, and whose own config is wrong.
-    declare_extends(node, "capabilities",
-        "extends:\n  nope: ../somewhere\n")               # the legacy map form
+    # A store that is right here, and whose own config is wrong: it still
+    # holds the key TCW 4.0 removed, written here on purpose.
+    set_component_key(node, "capabilities", "extends", ["nope"])
 
     with pytest.raises(ValueError) as excinfo:
         FsCapabilitiesStore.open(node)
     message = str(excinfo.value)
-    assert "legacy extends map is unsupported" in message
+    assert "'capabilities.extends' was removed in TCW 4.0" in message
     assert "tcw provision" not in message
     assert not isinstance(excinfo.value, StoreNotProvisioned)
-
-
-# ── `extends` is written to the node's config, in the node's repository ──────
-
-def _federation_pair(tmp_path: Path, *, taxonomy_path: str | None) -> tuple[Path, Path]:
-    """`(consumer, source)`, connected, with the consumer's tree wherever the
-    caller says. `taxonomy_path` has **no default**: where the tree lives is the
-    axis this pair exists to vary, and a default would decide it silently.
-
-    The tests extend `source`'s taxonomy, and an `extends` may only name a
-    parent that passes that axis, so `source` is the consumer's parent passing
-    taxonomy (not its child), placed by the consumer's manifest."""
-    source = _repo(tmp_path / "source")
-    (source / "docs" / "taxonomy" / "argument").mkdir(parents=True)
-    write_state(source / "docs" / "taxonomy" / "argument" / TAXONOMY_STATE, "name: Argument\n")
-    (source / "docs" / "taxonomy" / "argument" / "description.md").write_text("")
-    write_config(source, "id: source\n")
-
-    consumer = _repo(tmp_path / "consumer")
-    config = "id: consumer\nparents:\n- id: source\n  inherit: [taxonomy]\n"
-    if taxonomy_path is not None:
-        config += f"taxonomy:\n  path: {taxonomy_path}\n"
-    write_config(consumer, config)
-    write_manifest(consumer, {"source": "../source"})
-    if taxonomy_path is None:
-        (consumer / "docs" / "taxonomy").mkdir(parents=True)
-    return consumer, source
-
-
-def _porcelain(repo_root: Path) -> str:
-    return subprocess.run(["git", "-C", str(repo_root), "status", "--porcelain"],
-                          capture_output=True, text=True, check=True).stdout.strip()
-
-
-def test_extends_add_writes_the_key_and_no_file_inside_the_store(tmp_path):
-    """Spec criterion 3. Other keys keep their parsed values — not their bytes:
-    the sentinel is re-rendered, as `tcw work tags add` has always re-rendered it."""
-    consumer, _ = _federation_pair(tmp_path, taxonomy_path=None)
-    _write_config(consumer, tags=["demo"])
-
-    FsTaxonomyStore.open(consumer).extends_add("source")
-
-    config = yaml.safe_load((consumer / ".tcw/tcw-config.yaml").read_text())
-    assert config["taxonomy"]["extends"] == ["source"]
-    assert config["id"] == "consumer"
-    assert config["work"]["tags"] == ["demo"]
-    # The location is in the manifest since TCW-107; the configuration names
-    # only the ID.
-    assert config["parents"] == [{"id": "source", "inherit": ["taxonomy"]}]
-    assert yaml.safe_load((consumer / ".tcw/tcw-manifest.yaml").read_text())[
-        "projects"] == {"source": "../source"}
-    assert not (consumer / "docs" / "taxonomy" / "config.yaml").exists()
-
-    FsTaxonomyStore.open(consumer).extends_remove("source")
-    config = yaml.safe_load((consumer / ".tcw/tcw-config.yaml").read_text())
-    # The whole section goes, not just the key: this node configured nothing
-    # else under `taxonomy`, so removing the last `extends` must leave the file
-    # as it was rather than growing an empty `taxonomy: {}`. Asserting only
-    # `"extends" not in ...` passes either way and pins nothing.
-    assert "taxonomy" not in config
-
-
-def test_extends_add_writes_the_nodes_config_and_touches_neither_repository(tmp_path):
-    """`tcw-config.yaml` belongs to the node; the tree can be in a different
-    repository. Since TCW-73 neither is staged: the node's config is written
-    and both indexes stay as they were."""
-    store_repo = _repo(tmp_path / "store-repo")
-    (store_repo / "taxonomy").mkdir(parents=True)
-    consumer, _ = _federation_pair(
-        tmp_path, taxonomy_path=os.path.relpath(store_repo / "taxonomy", tmp_path / "consumer"))
-
-    assert fs.git_root(consumer) != fs.git_root(store_repo / "taxonomy")
-
-    FsTaxonomyStore.open(consumer).extends_add("source")
-
-    staged = subprocess.run(["git", "-C", str(consumer), "diff", "--cached", "--name-only"],
-                            capture_output=True, text=True, check=True).stdout.split()
-    assert staged == []
-    assert _porcelain(store_repo) == ""
-
-    # `taxonomy.path` shares the section `extends` is written into, and losing it
-    # would point the store back at a `docs/taxonomy` that is not there — the
-    # user's tree appears to vanish on an unrelated command. Spec criterion 3
-    # names this key, and the sibling-key half of that criterion is asserted in
-    # the test above, whose fixture deliberately has no `taxonomy.path` at all.
-    config = yaml.safe_load((consumer / ".tcw/tcw-config.yaml").read_text())
-    assert config["taxonomy"]["path"] == "../store-repo/taxonomy"
-    assert config["taxonomy"]["extends"] == ["source"]
 
 
 # ── a leftover pre-2.5.0 config file in a provisioned tree ───────────────────
@@ -1667,12 +1578,14 @@ def test_an_unprovisioned_declared_tree_now_fails_validate(tmp_path):
 
 # ── A store that fails to open is not "no node here" ─────────────────────────
 # spec: 2026-09-21-let-a-broken-extends-reach-the-user-instead-of-find-node-answering-no-node-here
+# Since TCW 4.0 a project inherits from its parents, and the `extends` key is
+# refused (TCW-112 Design 1); both failures below still reach the user.
 
-def _broken_extends(tmp_path: Path, component: str, extends: str) -> Path:
+def _node(tmp_path: Path, component: str, extra: str) -> Path:
     node = _repo(tmp_path / "node")
     init([component], node, "node")
     config = config_file(node)
-    write_config_file(config, config.read_text() + f"{component}:\n  extends: [{extends}]\n")
+    write_config_file(config, config.read_text() + extra)
     return node
 
 
@@ -1684,19 +1597,23 @@ def _assert_reports_not_no_node(err: str, component: str, *expected: str) -> Non
 
 
 @pytest.mark.parametrize("component", ["taxonomy", "capabilities"])
-def test_an_unreachable_extends_reaches_the_user(tmp_path, monkeypatch, capsys, component):
-    node = _broken_extends(tmp_path, component, "ghost")
+def test_a_parent_not_on_this_machine_reaches_the_user(tmp_path, monkeypatch, capsys,
+                                                       component):
+    node = _node(tmp_path, component, "parents:\n- ghost\n")
     monkeypatch.chdir(node)
-    assert main([component, "list"]) == 1
-    _assert_reports_not_no_node(capsys.readouterr().err, component, "ghost")
+    assert main([component, "list"]) == 7
+    _assert_reports_not_no_node(capsys.readouterr().err, component, "ghost",
+                                "not on this machine")
 
 
 @pytest.mark.parametrize("component", ["taxonomy", "capabilities"])
-def test_a_store_extending_itself_reaches_the_user(tmp_path, monkeypatch, capsys, component):
-    node = _broken_extends(tmp_path, component, "node")
+def test_the_removed_extends_key_reaches_the_user(tmp_path, monkeypatch, capsys,
+                                                  component):
+    node = _node(tmp_path, component, f"{component}:\n  extends: [node]\n")
     monkeypatch.chdir(node)
     assert main([component, "list"]) == 1
-    _assert_reports_not_no_node(capsys.readouterr().err, component, "cannot extend itself")
+    _assert_reports_not_no_node(capsys.readouterr().err, component,
+                                f"'{component}.extends' was removed in TCW 4.0")
 
 
 def test_a_node_without_a_work_store_still_says_so(tmp_path, monkeypatch, capsys):

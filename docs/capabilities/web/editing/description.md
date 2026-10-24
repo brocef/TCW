@@ -14,8 +14,17 @@ that is not on this machine. In Jira mode I adopt
 inbox tickets as items, which runs the request stage's `post` hooks as
 `tcw work tickets adopt` does.
 
-I create and edit taxonomy entries and capabilities. An inherited entry has no
-edit control: it is changed in the project that keeps it.
+I create and edit taxonomy entries and capabilities. My project's own
+override of an inherited one is editable like any other of its own, and the
+page says what it overrides. An entry that belongs to another project has no
+edit control: it is changed in the project that keeps it. Editing a
+capability's body changes only the capability's own description: the editor
+starts from that description, not from the body shown on the page, and says,
+when they differ, that the body shown also holds attached documents or an
+inherited description, which the edit leaves unchanged. Clearing the field
+leaves the capability with an empty description of its own, so the page falls
+back to the inherited one. When inherited content cannot be read, the request
+is answered with `503 Service Unavailable`.
 
 Every save carries the revision the page loaded, so a save over a change made
 elsewhere is refused and the page offers to load the current version. A save

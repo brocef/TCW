@@ -1,13 +1,15 @@
-"""Declaring a component's `extends` in the node's `tcw-config.yaml`.
+"""Writing a component's key into the node's `tcw-config.yaml`.
 
-`extends` used to live in a file inside the store — `config.yaml` for taxonomy,
-`.config.yaml` for capabilities — and a fixture declared inheritance by writing
-that file. It now lives at `<component>.extends` in the node config, beside
-`path` and `repository`, so a fixture has to merge a key into a file that
-usually already holds `id` and `projects`.
+`set_component_key` merges `<component>.<key>` (`path`, `repository`, ...)
+into a file that usually already holds `id` and `parents`, keeping the rest.
 
 One helper rather than a read-modify-write repeated at twenty sites: a fixture
 rewritten by hand that many times is where a silently-passing test comes from.
+
+`declare_extends` writes `<component>.extends`, which TCW 4.0 removed: a
+project inherits taxonomy and capabilities from its parents (TCW-112 Design
+1.5). It survives only for a test that writes the removed key on purpose, to
+check that it is refused or ignored; never use it to set up inheritance.
 
 **Nothing here defaults an axis the code branches on.** Both the component and
 the declaration are explicit arguments, because a helper's default is always
@@ -35,11 +37,10 @@ def set_component_key(project_root: Path, component: str, key: str, value) -> No
 
 
 def declare_extends(project_root: Path, component: str, text: str) -> None:
-    """Declare `extends` from the YAML a fixture used to write into the store file.
+    """Write the removed `<component>.extends` key from `extends:`-rooted YAML.
 
-    Takes the same `extends:`-rooted text those fixtures already pass, so a
-    deliberately wrong shape — a legacy alias map, a duplicate id, an
-    unregistered project — still reaches the code under test unchanged.
+    Only for a test whose subject is that key: TCW 4.0 refuses it in the
+    project's own file and ignores it in another project's file.
     """
     parsed = yaml.safe_load(text) or {}
     set_component_key(project_root, component, "extends", parsed.get("extends"))

@@ -14,7 +14,6 @@ def test_an_unreachable_jira_exits_5_after_the_unreviewed_lines(
     FsCapabilitiesStore.open(base).add("auth/login", status="Supported")
     init(["capabilities"], jira_project.root, "tcw")
     connect(jira_project.root, base, "parent", inherit=["capabilities"])
-    FsCapabilitiesStore.open(jira_project.root).extends_add("base")
     jira_project.fake.unreachable()
     monkeypatch.chdir(jira_project.root)
     assert main(["capabilities", "drift"]) == 5

@@ -3,10 +3,10 @@
 stdout carries each command's product and nothing else (TCW-73 Design 1):
 `add` prints the new capability's full identifier, `list` and `search` one
 full identifier per line (`<project>.capabilities/<path>`, TCW-110 Design 4),
-`show` the record, `path` the store folder; `set`, `reset`, `rm` and
-`extends add|rm` print nothing. Every file a write changed is named on stderr.
-A failure is raised for the top-level handler to print and turn into its exit
-code.
+`show` the record, `path` the store folder; `set`, `reset` and `rm` print
+nothing. Every file a write changed is named on stderr, and so is each warning
+about the project's view (TCW-112 Design 3.2). A failure is raised for the
+top-level handler to print and turn into its exit code.
 """
 
 import argparse
@@ -14,10 +14,10 @@ import sys
 
 from tcw import exit as codes
 from tcw.cli_help import command, group
-from tcw.errors import BackendError, UsageError
-from tcw.ids import identity, parent_text
+from tcw.errors import BackendError, InheritedUnavailable, UsageError
+from tcw.ids import identity, inherited_keys, parent_text
 from tcw.locate import find_tree, find_tree_writable
-from tcw.output import changed, left_out, print_json
+from tcw.output import changed, left_out, own_only, print_json, say
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import CAP_STATUSES, Capability
 from tcw.store.fs import FsCapabilitiesStore, find_component_project
@@ -38,13 +38,14 @@ def _store() -> FsCapabilitiesStore:
 
 
 def _record(cap: Capability) -> dict:
-    # `parent` after `owner` (TCW-111 Design 3.1): its text, or null.
+    # `parent` after `owner` (TCW-111 Design 3.1): its text, or null; then
+    # `overrides`, or `partial` (TCW-112 choice 7).
     return {**identity(cap.full_id), "parent": parent_text(cap.parent),
-            "name": cap.name, "status": cap.status}
+            **inherited_keys(cap), "name": cap.name, "status": cap.status}
 
 
 def _detail(cap: Capability) -> dict:
-    return {**_record(cap), "id": cap.id, "fields": dict(cap.fields), "body": cap.body}
+    return {**_record(cap), "fields": dict(cap.fields), "body": cap.body}
 
 
 def _fmt(v) -> str:
@@ -60,29 +61,53 @@ def _print_caps(caps: list[Capability], as_json: bool) -> int:
     return codes.OK
 
 
+def _warn_view(st: FsCapabilitiesStore, caps: list[Capability]) -> None:
+    """Design 2.5's warning for each id-path listed, on standard error,
+    before the list (TCW-112 Design 3.2)."""
+    for warning in st.view_warnings({c.path for c in caps}):
+        say(f"warning: {warning}")
+
+
 def _list(args: argparse.Namespace) -> int:
     st = _store()
-    _print_caps(st.list_all(status=args.status, namespace=args.namespace,
-                            local_only=args.local), args.json)
+    try:
+        caps = st.list_all(status=args.status, namespace=args.namespace,
+                           local_only=args.local)
+        _warn_view(st, caps)
+    except InheritedUnavailable as error:
+        # The project's own capabilities are listed without the view, each
+        # its own declaration alone (TCW-112 Design 3.4).
+        if not args.local:
+            raise
+        own_only(error, st.project_id)
+        caps = [c for c in st.own_declarations()
+                if (not args.status or c.status == args.status)
+                and (not args.namespace or c.path.split("/")[0] == args.namespace)]
+    _print_caps(caps, args.json)
     return left_out(st.unreadable_files())
 
 
 def _search(args: argparse.Namespace) -> int:
     st = _store()
-    _print_caps(st.search(args.query), args.json)
+    caps = st.search(args.query)
+    _warn_view(st, caps)
+    _print_caps(caps, args.json)
     return left_out(st.unreadable_files())
 
 
 def _show(args: argparse.Namespace) -> int:
-    cap = find_tree(_store(), args.id)
+    st = _store()
+    cap = find_tree(st, args.id)
+    if cap.partial and st.view_error is not None:
+        own_only(st.view_error, st.project_id)
     if args.json:
         print_json("capability", _detail(cap))
         return codes.OK
     lines = [f"full-id: {cap.full_id}", f"owner: {cap.owner}",
              *([f"parent: {cap.parent}"] if cap.parent is not None else []),
+             *([f"overrides: {cap.overrides}"] if cap.overrides is not None else []),
+             *(["partial: inherited content could not be read"] if cap.partial else []),
              f"name: {cap.name}"]
-    if cap.id:
-        lines.append(f"id: {cap.id}")
     lines += [f"{k}: {_fmt(v)}" for k, v in cap.fields.items()]
     body = cap.body.strip()
     if body:
@@ -116,14 +141,17 @@ def _warn_folder(st: FsCapabilitiesStore, cap: Capability) -> None:
 def _fields(args: argparse.Namespace, *, alone: bool = False) -> dict:
     """`--status` and each `--field K=V`, one field per use. A key given twice,
     `--status` together with `--field Status=`, or a `--field` with no `=` is
-    a usage error; the value is kept whole, as the record file writes it."""
+    a usage error; the value is kept whole, as the record file writes it, and
+    an empty one is None, which clears the field."""
     fields: dict = {}
     pairs = [("Status", args.status)] if args.status else []
     for kv in args.field or []:
         if "=" not in kv:
             raise UsageError(f"--field takes K=V, got '{kv}'")
         k, v = kv.split("=", 1)
-        pairs.append((k.strip(), v.strip()))
+        # An empty value is the clear value (TCW-112 plan Step 8): written
+        # as `null`, which removes an inherited value too.
+        pairs.append((k.strip(), v.strip() or None))
     for k, v in pairs:
         if k in fields:
             raise UsageError(f"field '{k}' given more than once")
@@ -136,7 +164,12 @@ def _fields(args: argparse.Namespace, *, alone: bool = False) -> dict:
 def _set(args: argparse.Namespace) -> int:
     fields = _fields(args, alone=args.parent is not None)
     st = _store()
-    cap = st.set(find_tree_writable(st, args.id).full_id, fields, parent=args.parent)
+    # What is refused is decided once, by `override_target` (TCW-112 choice
+    # 9); the store's `set` resolves the same input the same way, since the
+    # project's own full identifier of an object not yet written is not
+    # input it accepts (Design 3.1).
+    find_tree_writable(st, args.id, removing=False)
+    cap = st.set(args.id, fields, parent=args.parent)
     changed(st.changed)
     if args.parent is not None:
         _warn_folder(st, cap)
@@ -145,9 +178,9 @@ def _set(args: argparse.Namespace) -> int:
 
 def _reset(args: argparse.Namespace) -> int:
     st = _store()
-    target = find_tree_writable(st, args.id).full_id
+    find_tree_writable(st, args.id, removing=False)
     try:
-        st.reset(target)
+        st.reset(args.id)
     finally:
         # A removal that stops partway has still deleted files; name them.
         changed(st.changed)
@@ -156,27 +189,25 @@ def _reset(args: argparse.Namespace) -> int:
 
 def _rm(args: argparse.Namespace) -> int:
     st = _store()
-    target = find_tree_writable(st, args.id).full_id
+    target = find_tree_writable(st, args.id, removing=True)
     try:
         st.remove(target)
     finally:
         # A removal that stops partway has still deleted files; name them.
         changed(st.changed)
+    _now_shows(st, target)
     return codes.OK
 
 
-def _extends_add(args: argparse.Namespace) -> int:
-    st = _store()
-    st.extends_add(args.project_id)
-    changed(st.changed)
-    return codes.OK
-
-
-def _extends_rm(args: argparse.Namespace) -> int:
-    st = _store()
-    st.extends_remove(args.project_id)
-    changed(st.changed)
-    return codes.OK
+def _now_shows(st, target) -> None:
+    """After an override is removed, what its id-path shows (TCW-112 Design
+    4.4), on standard error; nothing when the view cannot be built."""
+    try:
+        now = st.get_view(target.id_path)
+    except (InheritedUnavailable, BackendError):
+        return
+    if now is not None:
+        say(f"{target.id_path} now shows {now.full_id}")
 
 
 def _drift(args: argparse.Namespace) -> int:
@@ -293,12 +324,14 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                              "capabilities set billing/refund --field Subject=invoice,payment"])
     pset.add_argument("id", metavar="path",
                       help="the capability to update: its full identifier or its path; "
-                           "an inherited one gains a local override")
+                           "for an inherited one, this project's own capability at the "
+                           "same path is written, holding only what is given")
     pset.add_argument("--status", choices=sorted(CAP_STATUSES),
                       help="the same as --field Status=<status>")
     pset.add_argument("--field", action="append", metavar="K=V",
                       help="set one metadata field; repeat for more fields "
-                           "(a list field such as Subject takes a,b,c)")
+                           "(a list field such as Subject takes a,b,c; an empty "
+                           "value clears the field)")
     pset.add_argument("--parent", help="the capability this one belongs under; its full "
                                        "identifier or its path here; an empty value "
                                        "clears it")
@@ -306,13 +339,16 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     prst = command(g, "reset", help="drop a local override, inheriting again",
                    prints="nothing", writes="removes the override, named on stderr",
-                   examples=["capabilities reset web/login"])
-    prst.add_argument("id", metavar="path", help="the inherited capability whose local "
-                                                 "override to drop: its full identifier "
-                                                 "or its path")
+                   examples=["capabilities reset web/login",
+                             "capabilities reset shared.capabilities/web/login"])
+    prst.add_argument("id", metavar="path", help="the overridden capability: its path, "
+                                                 "this project's full identifier, or the "
+                                                 "full identifier of the capability it "
+                                                 "overrides")
     prst.set_defaults(func=_reset)
 
-    prm = command(g, "rm", help="remove a local capability", prints="nothing",
+    prm = command(g, "rm", help="remove a local capability, an override included",
+                  prints="nothing",
                   writes="removes its files, each named on stderr",
                   examples=["capabilities rm billing/refund"])
     prm.add_argument("id", metavar="path", help="the local capability to remove: its "
@@ -326,19 +362,6 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pse.add_argument("--json", action="store_true",
                      help='print {"schema": 2, "capabilities": [...]}')
     pse.set_defaults(func=_search)
-
-    pe = group(g, "extends", help="inherit other projects' capabilities")
-    eg = pe.add_subparsers(dest="ecmd", required=True)
-    pea = command(eg, "add", help="inherit a connected project's capabilities",
-                  prints="nothing", writes=".tcw/tcw-config.yaml, named on stderr",
-                  examples=["capabilities extends add shared"])
-    pea.add_argument("project_id", help="registered project ID whose capabilities to inherit")
-    pea.set_defaults(func=_extends_add)
-    per = command(eg, "rm", help="stop inheriting a project's capabilities",
-                  prints="nothing", writes=".tcw/tcw-config.yaml, named on stderr",
-                  examples=["capabilities extends rm shared"])
-    per.add_argument("project_id", help="registered project ID to stop inheriting")
-    per.set_defaults(func=_extends_rm)
 
     pd = command(g, "drift", help="inherited capabilities never ruled on, and what "
                                   "completed work declared that the records do not show",

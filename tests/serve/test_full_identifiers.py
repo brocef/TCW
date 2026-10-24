@@ -56,7 +56,8 @@ def test_an_inherited_entry_is_read_only_named_by_its_full_identifier(served):
     answer = served.patch(f"/api/taxonomy/{quote(full_id, safe='')}",
                           {"revision": revision, "fields": {"name": "Mine"}})
     assert answer.status == 403, answer.body
-    assert answer.json["error"].startswith(f"{full_id} is inherited from 'core'")
+    assert answer.json["error"].startswith(f"{full_id} belongs to project 'core'; "
+                                           f"change it there")
 
 
 def test_ac8_a_web_edit_stores_the_full_identifier_of_a_reference(served):

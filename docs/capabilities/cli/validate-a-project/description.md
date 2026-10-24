@@ -33,7 +33,10 @@ There are three severities, and only one fails the run:
   order](tcw://C/cli/read-ancestors-in-one-load-order)); a problem in a tag
   list or Jira setting a parent passes down, or a value a parent's
   `.tcw/tcw-config.local.yaml` may not set, at that parent's file, since it is
-  that project's error and fails only its own run; a parent or blocker that names no item, an item whose
+  that project's error and fails only its own run; two parents that do not
+  inherit from each other with a taxonomy entry or capability at one path,
+  until this project has a complete one of its own there; a parent or blocker
+  that names no item, an item whose
   latest verdict round is invalid, or a stage ahead of its artifacts. The run
   still exits 0.
 - `unresolved` — something declared that cannot be checked from here: a project
@@ -110,3 +113,5 @@ other, among this project's three stores and those of every project it can
 locate, and a store location that loops back to a store already followed.
 
 `tcw validate` also reports a file or folder that does not belong in an object's folder, a folder with a reserved name, a TCW 3.x `meta.yaml` or `item.yaml`, a state file whose version this TCW cannot read, an `id:` that differs from its folder's name, a full identifier longer than 255 characters, and, as a warning, an object that sits in another object's folder that its `parent` does not name. It never checks the YAML files under an object's `resources/` folder, so a broken sample file there stops no other check.
+
+**Inherited taxonomy and capabilities.** A taxonomy entry or capability of this project's own that overrides nothing must be complete — a name, a description file that may be empty, and for a capability a `Status` — and one that is not is an error, so an override whose original was moved or removed is found. Each of the project's own objects is checked as the project sees it, combined with what it inherits. An `overrides` key in a state file, and a `taxonomy:` or `capabilities:` section of this project's own `.tcw/tcw-config.yaml` that still lists projects to inherit from, are errors saying what TCW 4.0 replaced them with. When inherited content cannot be read, the checks that need it are reported as could not be checked, and the others still run. TCW no longer checks override pointers, inheritance cycles or a project ID colliding with a top-level entry.

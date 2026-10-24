@@ -23,7 +23,7 @@ from typing import Callable, Iterable, NamedTuple, Protocol
 
 import yaml
 
-from tcw.errors import ProjectGraphError, Unreachable
+from tcw.errors import InheritedUnavailable, ProjectGraphError, Unreachable
 from tcw.ids import FullId, IdError, parse_stored
 from tcw.locate import FOUND, MISSING as MISSING_OBJECT, UNRESOLVED
 from tcw.store.base import RefError
@@ -66,12 +66,11 @@ class _Answer:
 
 
 ABSENT = _Answer("ABSENT")
-# For a removal: nothing local is left at the path; a local capability is still
-# there; or the path names a capability inherited from an extended ledger, which
-# no local removal can ever satisfy.
+# For a removal: the owner has no object of its own left at the path, or it
+# still has one (TCW-112 Design 7.1). A full identifier never names an
+# inherited copy, so there is no third answer.
 REMOVED = _Answer("REMOVED")
 STILL_LOCAL = _Answer("STILL_LOCAL")
-INHERITED = _Answer("INHERITED")
 
 MISSING = "Missing"
 
@@ -179,9 +178,6 @@ def _capability_problem(kind: str, path: str, reader: RecordsReader,
             return f"{path}: {answer.reason}"
         if isinstance(answer, Unchecked):
             return _unchecked(path, answer)
-        if answer is INHERITED:
-            return (f"{path}: declared removed, but it is inherited from an "
-                    f"extended ledger, and only a local capability can be removed")
         if answer is STILL_LOCAL and finished:
             return (f"{path}: declared removed but still in the ledger (delete "
                     f"it with `tcw capabilities rm`)")
@@ -338,12 +334,9 @@ def drift_problems(layout: Layout, items: Iterable[Item],
 
 
 class Route(NamedTuple):
-    """Which ledger answers for a declared capability, and how to read it.
-    `inherited` is true when `store` is the item's project's own ledger and
-    the capability is read through its `extends`."""
+    """Which ledger answers for a declared capability: its owner's."""
     full_id: FullId
     store: FsCapabilitiesStore
-    inherited: bool = False
 
 
 def route_capability_path(path: str, *, own: "FsCapabilitiesStore | None",
@@ -353,12 +346,12 @@ def route_capability_path(path: str, *, own: "FsCapabilitiesStore | None",
     for it, or say why none can (TCW-110 Design 6.2).
 
     The one place this rule lives. The entry is a full identifier, and its
-    project is the ledger's: `own` (the item's project's ledger, None when it
-    keeps none) for the item's own project and for a project `own` extends,
-    read through `own`'s view; any other project's own ledger, found through
-    the command's `locator`. A 3.x or malformed entry, and a project TCW
-    cannot locate, are `Invalid`; a project not on this machine, or one that
-    keeps no ledger, `Unchecked`.
+    project is the ledger's (TCW-112 Design 7.1): `own` (the item's project's
+    ledger, None when it keeps none) for the item's own project; any other
+    project's own ledger, found through the command's `locator`, whether or
+    not the item's project inherits from it. A 3.x or malformed entry, and a
+    project TCW cannot locate, are `Invalid`; a project not on this machine,
+    or one that keeps no ledger, `Unchecked`.
 
     Uses only the locator and the stores it is handed, so a non-filesystem
     store could answer every question it asks."""
@@ -366,12 +359,12 @@ def route_capability_path(path: str, *, own: "FsCapabilitiesStore | None",
         full_id = parse_stored(path, "capabilities")
     except IdError as error:
         return Invalid(str(error))
-    if full_id.project == project_id or (own is not None and full_id.project in own.extends):
+    if full_id.project == project_id:
         if own is None:
             return Unchecked(f"this project ('{project_id}') keeps no capabilities "
                              f"ledger; name the ledger's project in the entry "
                              f"(<project>.capabilities/{full_id.id_path})")
-        return Route(full_id, own, full_id.project != project_id)
+        return Route(full_id, own)
     try:
         store = locator.owner_store(full_id.project, "capabilities", project_root)
     except Unreachable as error:
@@ -385,7 +378,9 @@ def route_capability_path(path: str, *, own: "FsCapabilitiesStore | None",
     return Route(full_id, store)
 
 
-_READ_ERRORS = (RefError, ValueError, yaml.YAMLError)
+# An entry whose owner's view cannot be built here is unchecked, like one
+# that cannot be read (TCW-112 Design 7.1).
+_READ_ERRORS = (RefError, ValueError, yaml.YAMLError, InheritedUnavailable)
 
 
 class _LedgerReader:
@@ -410,27 +405,26 @@ class _LedgerReader:
             return route
         full_id = route.full_id
         try:
-            found = route.store.get_inherited(full_id.project, full_id.id_path) \
-                if route.inherited else route.store.get_local(full_id.id_path)
+            # The owner's own object, as its owner sees it, with its combined
+            # Status; ABSENT when the owner has none of its own there, even
+            # where it inherits one (TCW-112 Design 7.1).
+            found = route.store.get_local(full_id.id_path)
         except _READ_ERRORS as error:
             return Unchecked(str(error))
         return ABSENT if found is None else Present(found.status)
 
     def removal(self, path: str):
-        # After a local capability is removed its path may fall through to an
-        # inherited one, and that still counts as removed: only a local hit is
-        # STILL_LOCAL. A capability of an extended ledger can never be removed
-        # locally at all.
+        # After a capability is removed its path may still show an inherited
+        # one, and that counts as removed: only the owner's own object left
+        # there is STILL_LOCAL. Existence alone, so no view is needed.
         route = self._route(path)
         if not isinstance(route, Route):
             return route
-        if route.inherited:
-            return INHERITED
         try:
-            local = route.store.get_local(route.full_id.id_path)
+            own = route.store.has_own(route.full_id.id_path)
         except _READ_ERRORS as error:
             return Unchecked(str(error))
-        return REMOVED if local is None else STILL_LOCAL
+        return STILL_LOCAL if own else REMOVED
 
     def term(self, term: str):
         try:
@@ -440,7 +434,7 @@ class _LedgerReader:
         if full_id.project == self.project_id and self.taxonomy is None:
             return Unchecked(f"project '{self.project_id}' keeps no taxonomy")
         try:
-            found = self.locator.read(full_id, named_by=self.project_root)
+            found = self.locator.exists(full_id, named_by=self.project_root)
         except _READ_ERRORS as error:
             return Unchecked(str(error))
         if found.kind == FOUND:

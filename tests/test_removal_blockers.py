@@ -41,7 +41,7 @@ def test_a_term_with_a_3x_folder_below_it_names_tcw_migrate(tcw, demo):
 
 
 def test_a_capability_with_a_3x_folder_below_it_names_tcw_migrate(tcw, demo):
-    cap = obj(demo, "capabilities", "cli/x", id="cap-aaaaaa", name="X", Status="Missing")
+    cap = obj(demo, "capabilities", "cli/x", name="X", Status="Missing")
     (cap / "old").mkdir()
     (cap / "old" / "item.yaml").write_text("title: Old\n")
     before = tree_hash(demo)
@@ -55,8 +55,8 @@ def test_a_capability_with_a_3x_folder_below_it_names_tcw_migrate(tcw, demo):
 
 @pytest.mark.parametrize("below", [".drafts/y", "resources/sample"])
 def test_a_capability_with_an_object_below_it_anywhere(tcw, demo, below):
-    cap = obj(demo, "capabilities", "cli/x", id="cap-aaaaaa", name="X", Status="Missing")
-    write_state(cap / below / "tcw-capability.yaml", "id: cap-bbbbbb\nname: Y\n")
+    cap = obj(demo, "capabilities", "cli/x", name="X", Status="Missing")
+    write_state(cap / below / "tcw-capability.yaml", "name: Y\n")
     before = tree_hash(demo)
     removed = tcw(["capabilities", "rm", "cli/x"], demo)
     assert removed.code == 3, removed
@@ -74,7 +74,7 @@ def test_with_nothing_below_both_removals_succeed(tcw, demo):
     term = obj(demo, "taxonomy", "invoice", name="Invoice")
     (term / "resources").mkdir()
     (term / "resources" / "diagram.png").write_bytes(b"png")
-    cap = obj(demo, "capabilities", "cli/x", id="cap-aaaaaa", name="X", Status="Missing")
+    cap = obj(demo, "capabilities", "cli/x", name="X", Status="Missing")
     (cap / "resources" / "notes").mkdir(parents=True)
     (cap / "resources" / "notes" / "a.md").write_text("a")
     assert tcw(["taxonomy", "rm", "invoice"], demo).code == 0

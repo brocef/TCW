@@ -183,7 +183,15 @@ export interface TTicket {
     description: string | null
 }
 
-export interface TaxonomyItem extends JsonRecord {
+/** What a taxonomy or capability record says of the object it overrides
+ * (TCW-112 Design 3.3, 3.4): the full identifier of the next object in its
+ * chain, or null; or, read from its own declaration alone, `partial`. */
+interface TOverrides {
+    overrides?: string | null
+    partial?: boolean
+}
+
+export interface TaxonomyItem extends JsonRecord, TOverrides {
     /** `<project>.taxonomy/<slug>` (TCW-110 Design 4.5). */
     "full-id": string
     owner: string
@@ -196,7 +204,7 @@ export interface TaxonomyItem extends JsonRecord {
     modified?: string
 }
 
-export interface CapabilityItem extends JsonRecord {
+export interface CapabilityItem extends JsonRecord, TOverrides {
     /** `<project>.capabilities/<path>` (TCW-110 Design 4.5). */
     "full-id": string
     owner: string
@@ -217,6 +225,10 @@ export interface TaxonomyDetail {
 export interface CapabilityDetail {
     capability: CapabilityItem
     coreRevision: string
+    /** The owner's own declared description, trimmed, or null when it
+     * declares none: what the editor edits, never the combined `body`
+     * (TCW-112 Design 4.5). */
+    declaredDescription?: string | null
 }
 
 export interface ApiResult<T = JsonRecord> {

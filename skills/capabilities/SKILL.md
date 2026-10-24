@@ -23,10 +23,10 @@ repository, fetched here by `tcw provision` — so never compose a store path fr
 the project root; ask `tcw capabilities path`. A command needing a declared but
 missing ledger fails, names where it lives, and tells you to run
 `tcw provision`; running `tcw init` instead would create a second, empty ledger
-beside the real one. Inheritance is unaffected: `extends` resolves against your
-project, not against wherever the tree sits.
+beside the real one. Inheritance is unaffected: it comes from your project's
+parent links, not from wherever the tree sits.
 
-Each capability is a **path-addressed folder** (`<path>/` = `meta.yaml` + `description.md`) carrying an opaque stable `id`. Address a capability by its path (e.g. `auth/login`), never a `#heading`. Capabilities may carry `Subject` (a **multi-valued** loose taxonomy pointer — a list of slugs) and `Feature` (a strong pointer to a taxonomy feature). The taxonomy axis is **REQUIRED SUB-SKILL: Use the `taxonomy` skill** when a relevant Feature is missing or unclear. The work axis is **REQUIRED SUB-SKILL: Use the `work` skill**.
+Each capability is a **path-addressed folder** (`<path>/` = `meta.yaml` + `description.md`); its path is its only identity, and it carries no separate `id`. Address a capability by its path (e.g. `auth/login`), never a `#heading`. Capabilities may carry `Subject` (a **multi-valued** loose taxonomy pointer — a list of slugs) and `Feature` (a strong pointer to a taxonomy feature). The taxonomy axis is **REQUIRED SUB-SKILL: Use the `taxonomy` skill** when a relevant Feature is missing or unclear. The work axis is **REQUIRED SUB-SKILL: Use the `work` skill**.
 
 > **Web editing:** Capabilities can also be created and edited through the local `tcw serve` web app; check failures are surfaced in the UI.
 
@@ -65,7 +65,7 @@ so the ledger describes the product the moment the code does:
 
 - **New capability:** `tcw capabilities add <namespace/path> "<Capability name>" --status Supported`, with its description on stdin. **Every `tcw capabilities add` names its status**, because `add` without `--status` writes a `Missing` record, which the records check refuses for a declared `new` path. Use the status the capability really has: `Supported`, or `Partial` with the gap described.
 - **Changed capability:** edit its description and fields (`tcw capabilities set <path> --field K=V`, `--status <S>`).
-- **Removed capability:** `tcw capabilities rm <path>`. `rm` deletes one local capability and refuses — deleting nothing — an inherited one, one with capabilities nested under it, and one another capability still references through `Superseded by`, `Blocked by`, `Roles` or `When`; the message names what to repoint or remove first. A behavior folded into another capability is removed, not marked `Omitted` (that means "we deliberately don't have this").
+- **Removed capability:** `tcw capabilities rm <path>`. `rm` deletes one of the project's own capabilities, an override included (it then says what the path shows), and refuses — deleting nothing — an inherited one, one with capabilities nested under it, and one another capability still references through `Superseded by`, `Blocked by`, `Roles` or `When`; the message names what to repoint or remove first. A behavior folded into another capability is removed, not marked `Omitted` (that means "we deliberately don't have this").
 
 **No flipping at completion.** Nothing changes the records later. The move out
 of implement checks the declaration against the ledger — every `new` and
@@ -85,13 +85,13 @@ and change it **inside the child's folder**, with the path after the id:
 `tcw capabilities add <path> "<Name>" --status Supported`, `set` or `rm`. On such a
 project a path with no child id is refused, since nothing can check it; so is a
 child not on this machine, one with no ledger, or one whose ledger is not
-provisioned. On a project that does keep a ledger, a first segment naming a
-project it `extends` keeps its inherited meaning, and one that names both a
-child and a namespace the ledger already shows is refused as ambiguous.
+provisioned. An entry naming another project, a parent included, is checked
+against that project's own capability as that project sees it, never against
+an override of it in this project.
 
 ## Contradiction-detection (at the moment of change)
 
-Before recording or altering a capability, check it against the standing ledger: `tcw capabilities search <term>` / `tcw capabilities show <path>` for an existing capability the change would contradict (a new capability that conflicts with a `Supported` one; a status that disagrees with reality). Run `tcw validate` (non-zero ⇒ structural problems to fix first). An override whose project is "not declared in capabilities.extends" means that project is missing from that key. Whether two capabilities _semantically_ contradict is judgment — surface candidates to the human; never silently overwrite.
+Before recording or altering a capability, check it against the standing ledger: `tcw capabilities search <term>` / `tcw capabilities show <path>` for an existing capability the change would contradict (a new capability that conflicts with a `Supported` one; a status that disagrees with reality). Run `tcw validate` (non-zero ⇒ structural problems to fix first). A capability reported as incomplete because it "overrides nothing" usually overrode one that was moved or removed. Whether two capabilities _semantically_ contradict is judgment — surface candidates to the human; never silently overwrite.
 
 When a capability describes behavior around a registered taxonomy feature, set
 `Feature=<feature-ref>` in addition to any useful `Subject=<taxonomy-ref>`.
@@ -111,23 +111,19 @@ from the capability.
 
 A capability's `description.md` body may also cross-reference other objects in
 prose with `[text](tcw://C/<path>)` links (or `T`/`W`, and a `<project-id>/`-prefixed
-namespace for federated objects) — additive to the structured `Subject`/`Feature`
+namespace for inherited objects) — additive to the structured `Subject`/`Feature`
 pointers, not a replacement. `tcw validate` resolves these across the project
 and the `tcw serve` viewer makes them clickable.
 
-## Federation (inherit another project's capabilities)
+## Inheritance (capabilities from parent projects)
 
-A project may inherit another registered project's capabilities — a parent, a
-child, or an `upstream` it reads without being named back.
-`tcw capabilities extends add <project-id>` inherits one and
-`tcw capabilities extends rm <project-id>` stops; the configure skill's
-reference on projects explains the declaration. Inherited capabilities use
-`<project-id>/<path>` and remain read-only in structure.
-
-Address an inherited capability by any path `show` accepts, including
-`tcw capabilities set <project-id>/auth/login --status Supported`; the local
-override is written for you. The project ID must be explicitly listed in this
-axis's `extends`.
+A project inherits the capabilities of every parent whose `inherit` includes
+`capabilities`, through every level: a parent's own parents are inherited too,
+without being listed. The parent links are configured under `parents:` in
+`.tcw/tcw-config.yaml`, which the configure skill's reference on projects
+explains; there is no capabilities command for it. An inherited capability is
+read by its path like one of the project's own, and its full identifier
+(`<project-id>.capabilities/<path>`) names the project it belongs to.
 
 **Capabilities stay inside their own store.** A path is joined onto the store
 root, so a symlink planted inside the store would otherwise carry the write out
@@ -135,16 +131,33 @@ of it. Every lookup, listing, write target and validation resolves first and
 refuses a path landing outside — including the files inside a capability
 folder, so one whose `meta.yaml`, `description.md` or a listed attachment is a
 symlink out is not read. Such a capability does not resolve, does not appear in
-`list`, and cannot be written to. `extends` is the supported way to reference
-another project's capabilities.
+`list`, and cannot be written to. Inheriting from a parent project is the
+supported way to reference another project's capabilities.
 
-- **override metadata** — `set` materializes a local delta whose `overrides`
-  pointer uses `<project-id>/<id>`; a YAML null clears an inherited field;
-- **compose the body** — a `description.md` in that override folder replaces the upstream body; `prependedDocs`/`appendedDocs` (bounded lists in `meta.yaml`) wrap it (e.g. a mobile app appending "…or take a photo with the camera"). The override body is a _delta_: an empty one means "no delta", so **clearing an override's body re-inherits the upstream body** rather than blanking it (that fallback is what makes append-only overrides work). To say "we deliberately don't have this", use `Status: Omitted`, not an empty body.
+**Overriding an inherited capability.** An override is the project's own
+capability at the same path as the inherited one, holding only the fields it
+changes. Nothing in its files points at the original: there is no `overrides:`
+key (`tcw validate` reports one as an error). The two are combined field by
+field:
 
-To **drop an override** and re-inherit the upstream entry verbatim, `tcw capabilities reset <path>` — it removes only the local override folder (never the upstream project), and refuses clearly when there is no override (a standalone local capability → delete it with `tcw capabilities rm`; a path that already inherits verbatim → nothing to drop) and when a capability is nested in the override's folder (exit 3, naming each: `rm` the local ones and `reset` the nested overrides first). Whole-override only; to revert a single inherited field, `set <path> --field K=<value>` instead.
+- **override metadata** — `tcw capabilities set <path> --status <S>` (or
+  `--field K=V`, or `--parent`) on an inherited capability writes the project's
+  own capability at that path, holding only the fields given; the inherited
+  capability's full identifier is accepted in place of the path. A YAML null
+  clears an inherited field. A list field (`Subject`, `prependedDocs`,
+  `appendedDocs`, …) is replaced whole, and an override that does not mention
+  one keeps its original's;
+- **compose the body** — a `description.md` in the override replaces the inherited description; `prependedDocs`/`appendedDocs` (bounded lists in `meta.yaml`) wrap it (e.g. a mobile app appending "…or take a photo with the camera"), and an override that does not list them keeps the original's. The override body is a _delta_: an empty one adds no text, so **clearing an override's body re-inherits the inherited description** rather than blanking it (that fallback is what makes append-only overrides work). To say "we deliberately don't have this", use `Status: Omitted`, not an empty body;
+- **not with `add`** — `add` at a path the project already inherits is refused, naming `tcw capabilities set`, since it would write a full copy.
 
-`tcw validate` checks override targets (dangling / ambiguous / must-be-inherited), the references an override sets (`Subject`, `Feature`, `Blocked by`, `Superseded by`, `Roles`, `When` — checked as a local capability's are), attachment lists, and federation cycles.
+The JSON records carry `overrides` (the full identifier of the capability
+overridden, or `null`), and `show` prints an `overrides:` line.
+
+To **drop an override** and re-inherit the original, `tcw capabilities reset <path>` (or the overridden capability's full identifier) — it removes only the project's own capability at that path (never the parent's), and refuses clearly when there is no override (a capability that overrides nothing → delete it with `tcw capabilities rm`; a path the project has nothing of its own at → nothing to drop), when a capability is nested in the override's folder (exit 3, naming each: `rm` the local ones and `reset` the nested overrides first), and while another of the project's own objects names the override by its full identifier (repoint it at the overridden capability's full identifier first). Whole-override only; to revert a single inherited field, `set <path> --field K=<value>` instead. `tcw capabilities rm <path>` also removes an override, and says what the path shows afterwards.
+
+`tcw validate` reports a capability that overrides nothing and is incomplete (it needs a name, a `Status` and a `description.md`, which may be empty), which is how an override whose original was moved or removed is caught; an `overrides` key; and, as a warning, two parents that do not inherit from each other with a capability at one path (the one that comes later in the project's load order, the order in which TCW reads its parents, is used whole, until the project gives that path a complete capability of its own). It checks the references an override sets (`Subject`, `Feature`, `Blocked by`, `Superseded by`, `Roles`, `When` — checked as a local capability's are) and attachment lists.
+
+**When a parent is not on this machine.** `tcw capabilities list --local` and `show` of one of the project's own capabilities still work: each JSON record read that way has `"partial": true` and no `overrides` key, since what it overrides is not known. The commands that need inherited capabilities (`list` without `--local`, `search`, `add`, `set` of an inherited capability, `reset`, `drift`) stop with exit code 7.
 
 ## Product-layer wording from another project
 
@@ -167,12 +180,13 @@ To seed a new capabilities ledger from an existing codebase, use the `setup` ski
 | declare a change (spec)          | `capabilities.yaml` in the folder `tcw work path <slug>` prints: `new:`, `changed:`, `removed:`, `taxonomy:`                       |
 | add a capability (implement)     | `tcw capabilities add <ns/path> "<Name>" --status Supported`, description on stdin                                                |
 | change status or fields          | `tcw capabilities set <path> --status <S>` · `--field K=V` (local or inherited)                                                    |
-| change an inherited entry        | `tcw capabilities set <project-id>/<path> --status <S>`                                                                           |
-| delete a local capability        | `tcw capabilities rm <path>` — refuses inherited, nested-under, or still-referenced; list it under `removed:` in the item's `capabilities.yaml` |
-| drop an override                 | `tcw capabilities reset <path>` — remove the local override, re-inherit upstream (refuses if none)                                |
+| change an inherited entry        | `tcw capabilities set <path> --status <S>` — writes the project's own capability at that path, holding only the fields given      |
+| delete a local capability        | `tcw capabilities rm <path>` — an override included; refuses another project's, nested-under, or still-referenced; list it under `removed:` in the item's `capabilities.yaml` |
+| drop an override                 | `tcw capabilities reset <path>` (or the overridden capability's full identifier) — re-inherit the original (refuses if none, or while the project's own references name the override) |
 | associate a feature              | `tcw capabilities set <path> --field "Feature=<feature-ref>"`                                                                     |
 | link taxonomy (multi-valued)     | `tcw capabilities set <path> --field "Subject=term-a,term-b"`                                                                     |
-| inherit another project          | `tcw capabilities extends add <project-id>` · `extends rm <project-id>`                                                          |
+| inherit another project          | name it under `parents:` with an `inherit` that includes `capabilities` (the configure skill's projects reference); no capabilities command |
+| read without a parent present    | `tcw capabilities list --local` · `show <own path>` — records marked `"partial": true`; commands needing inherited capabilities exit 7 |
 | list only local (not inherited)  | `tcw capabilities list --local`                                                                                                   |
 | check the ledger                 | `tcw validate` (the whole project: YAML, `tcw://` links, every axis's checks)                                                     |
 | find drift                       | `tcw capabilities drift` — inherited capabilities never ruled on, and what completed items declared that the records do not show  |

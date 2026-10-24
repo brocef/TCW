@@ -8,7 +8,13 @@ import {
 import { vi } from "vitest"
 import { MemoryRouter, useLocation, useNavigate } from "react-router"
 import { ThemeProvider } from "../theme"
-import { fakeFetch, project, workDetail, workItem } from "../test-fixtures"
+import {
+    capability,
+    fakeFetch,
+    project,
+    workDetail,
+    workItem,
+} from "../test-fixtures"
 import type { TProject } from "../model/types"
 import { App } from "./app"
 
@@ -610,4 +616,72 @@ describe("tags a parent that is not here may set", () => {
             screen.getByText((text) => text.endsWith(`read: ${why}`))
         ).toBeInTheDocument()
     })
+})
+
+// -- the capability editor edits the declared description (TCW-112 AC 44) ----
+
+function serveCapability(declaredDescription: string | null, body: string) {
+    const record = capability("x", {
+        name: "X",
+        status: "Supported",
+        fields: { Status: "Supported" },
+        body,
+        overrides: "core.capabilities/x",
+    })
+    const detail = {
+        capability: record,
+        coreRevision: "r1",
+        declaredDescription,
+    }
+    return serve({}, [
+        [/^GET \/api\/capabilities\/x$/, 200, detail],
+        [/^PATCH \/api\/capabilities\/x$/, 200, detail],
+        ["/api/capabilities$", 200, [record]],
+    ])
+}
+
+async function openEditor() {
+    renderApp("/capabilities/x")
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }))
+    return screen.getByPlaceholderText("Write Markdown...")
+}
+
+function patches(fetch: ReturnType<typeof serve>) {
+    return fetch.calls.filter((call) => call.method === "PATCH")
+}
+
+test("the body field holds the declared description, with a note, and a field-only save sends no body", async () => {
+    const fetch = serveCapability("Mine.", "Attached.\n\nMine.")
+    expect(await openEditor()).toHaveValue("Mine.")
+    expect(
+        screen.getByText(
+            /also holds attached documents or an inherited description/
+        )
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(patches(fetch)).toHaveLength(1))
+    expect(patches(fetch)[0].body).not.toHaveProperty("body")
+})
+
+test("a detail declaring no description opens an empty body field", async () => {
+    serveCapability(null, "Core body")
+    expect(await openEditor()).toHaveValue("")
+})
+
+test("a save after editing the body sends the field's text as body", async () => {
+    const fetch = serveCapability("Mine.", "Mine.")
+    fireEvent.change(await openEditor(), { target: { value: "Changed." } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(patches(fetch)).toHaveLength(1))
+    expect(patches(fetch)[0].body).toMatchObject({ body: "Changed." })
+})
+
+test("a detail whose body is its declared description shows no note", async () => {
+    serveCapability("Mine.", "Mine.")
+    await openEditor()
+    expect(
+        screen.queryByText(
+            /also holds attached documents or an inherited description/
+        )
+    ).toBeNull()
 })

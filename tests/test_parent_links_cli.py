@@ -462,7 +462,7 @@ def test_ac32_personal_children_do_not_change_a_gate(tmp_path):
     b = link(make_project(tmp_path, "b"), parents=["ws"])
     init(["capabilities"], ws)
     init(["capabilities"], b)
-    write_cap(b, "x", id="cap-x00001", Status="Supported")
+    write_cap(b, "x", Status="Supported")
     personal_children(ws, ["b"])
     folder = write_item(ws, "2026-10-01-a", {"title": "a", "stage": "implement"})
     (folder / "implement").mkdir()
@@ -528,7 +528,7 @@ def test_ac26_a_planning_workspace_in_two_repositories(tmp_path):
     assert tcw(alone, "work", "list").code == 0
 
 
-# -- AC 19 and Design 3.6: `extends` held to the parent links ---------------------------
+# -- AC 19 and Design 3.6: inheritance follows the parent links alone ---------------------
 
 
 def extends(root: Path, axis: str, *ids: str) -> None:
@@ -545,12 +545,11 @@ def tree(tmp_path, name, *, parents=None, children=None, axes=("taxonomy",)):
     return link(root, parents=parents, children=children)
 
 
-def test_ac19_an_extended_parent_not_here_stops_with_exit_7(tmp_path):
+def test_ac19_an_inherited_parent_not_here_stops_with_exit_7(tmp_path):
     app = tree(tmp_path, "app", parents=["core"], axes=("taxonomy", "capabilities"))
-    extends(app, "taxonomy", "core")
     from tests.test_capabilities_rm import write_cap
-    write_cap(app, "cli", id="cap-cli00001", Status="Supported")
-    write_cap(app, "cli/x", id="cap-x000001", Status="Supported")
+    write_cap(app, "cli", Status="Supported")
+    write_cap(app, "cli/x", Status="Supported")
     (app / "docs" / "capabilities" / "cli" / "x" / "description.md").write_text(
         "See [this](tcw://app.capabilities/cli).\n")
     listed = tcw(app, "taxonomy", "list")
@@ -563,39 +562,41 @@ def test_ac19_an_extended_parent_not_here_stops_with_exit_7(tmp_path):
     [finding] = unresolved(lines)
     assert "'core'" in finding
     assert "could not check what it passes down to 'app'" in finding
-    # TCW-109 Design 3.5, 3.6: the parent passes `config` too, and `app` sets
-    # no `work.tags`, so the configuration's suffix follows the taxonomy's.
+    # TCW-112: the parent passes every axis, so `app`'s capabilities are
+    # inherited from it as well as its taxonomy. TCW-109 Design 3.5, 3.6: it
+    # passes `config` too, and `app` sets no `work.tags`, so the
+    # configuration's suffix comes last.
     assert finding.endswith("; could not check the taxonomy inherited from it; could "
+                            "not check the capabilities inherited from it; could "
                             "not check the configuration inherited from it"), finding
 
 
 @pytest.mark.parametrize("axis", ["taxonomy", "capabilities"])
-@pytest.mark.parametrize("shape", ["outside", "behind-none", "descendant"])
-def test_ac19_an_extends_the_links_do_not_pass_is_refused(tmp_path, axis, shape):
+@pytest.mark.parametrize("shape", ["outside", "behind-none", "descendant", "parent"])
+def test_ac19_an_extends_key_is_refused_whatever_it_names(tmp_path, axis, shape):
+    """TCW-112 Design 1.5: `<axis>.extends` in the active project's own file
+    is refused by every command of that axis and reported by `tcw validate`,
+    whether or not what it names is a parent passing the axis."""
     if shape == "descendant":
         app = tree(tmp_path, "ws", children=["kid"], axes=(axis,))
         tree(tmp_path, "kid", parents=["ws"], axes=(axis,))
         named = "kid"
     else:
-        app = tree(tmp_path, "app", axes=(axis,),
-                   parents=[{"id": "core", "inherit": "none"}] if shape == "behind-none"
-                   else None)
-        tree(tmp_path, "core" if shape == "behind-none" else "other", axes=(axis,))
-        named = "core" if shape == "behind-none" else "other"
+        parents = {"behind-none": [{"id": "core", "inherit": "none"}],
+                   "parent": ["core"]}.get(shape)
+        app = tree(tmp_path, "app", axes=(axis,), parents=parents)
+        named = "other" if shape == "outside" else "core"
+        tree(tmp_path, named, axes=(axis,),
+             children=["app"] if shape == "parent" else None)
     extends(app, axis, named)
-    project = app.name
-    words = f"'{named}' is in {axis}.extends, but '{project}' does not inherit its {axis} " \
-            f"from it: name it under 'parents:'"
+    words = (f"'{axis}.extends' was removed in TCW 4.0: a project inherits its {axis} "
+             f"from its parents; name each project it inherits from under 'parents:' "
+             f"with an 'inherit' that includes {axis}, and delete this key")
     listed = tcw(app, axis, "list")
     assert listed.code == 1 and words in listed.err, listed
     ran, lines = findings(app)
     assert ran.code == 1 and any(line.startswith("error:") and words in line
                                  for line in lines), lines
-    extends(app, axis)
-    before = config_file(app).read_bytes()
-    added = tcw(app, axis, "extends", "add", named)
-    assert added.code == 2 and words in added.err, added
-    assert config_file(app).read_bytes() == before
 
 
 @pytest.mark.parametrize("state", ["missing", "unreadable"])
@@ -603,7 +604,6 @@ def test_ac19_when_what_lies_above_is_unknown(tmp_path, state):
     app = tree(tmp_path, "app", parents=["lib"])
     if state == "unreadable":
         proj(tmp_path / "lib", "lib", parents="top")
-    extends(app, "taxonomy", "core")
     listed = tcw(app, "taxonomy", "list")
     assert listed.code == 7, listed
     lead = ("from project 'lib', which is not on this machine:" if state == "missing"
@@ -621,20 +621,19 @@ def test_ac19_when_what_lies_above_is_unknown(tmp_path, state):
     # no `work.tags`, so the configuration's suffix follows the taxonomy's.
     assert finding.endswith("; could not check the taxonomy inherited from it; could "
                             "not check the configuration inherited from it"), finding
-    extends(app, "taxonomy")
-    before = config_file(app).read_bytes()
-    added = tcw(app, "taxonomy", "extends", "add", "core")
+    # TCW-112 Design 3.5: `add` must know whether the path is inherited, so it
+    # stops too, and writes nothing.
+    added = tcw(app, "taxonomy", "add", "t")
     assert added.code == 7, added
-    assert config_file(app).read_bytes() == before
+    assert not (app / "docs" / "taxonomy" / "t").exists()
 
 
-def test_ac9_a_siblings_extends_is_read_from_its_own_load_order(tmp_path):
+def test_ac9_a_siblings_inheritance_is_read_from_its_own_load_order(tmp_path):
     from tcw.store.project import FsProjectRegistry
     tree(tmp_path, "ws", children=["a", "b"])
     a = tree(tmp_path, "a", parents=["ws"])
     b = tree(tmp_path, "b", parents=["ws", "bp"])
-    tree(tmp_path, "bp")
-    extends(b, "taxonomy", "bp")
+    tree(tmp_path, "bp", children=["b"])
     added = tcw(b, "taxonomy", "add", "t")
     assert added.code == 0, added
     shown = tcw(a, "taxonomy", "show", "b.taxonomy/t")

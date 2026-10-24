@@ -11,7 +11,7 @@ commands do is in the guides for [work](work.md),
 ## How commands are named
 
 A command is written `tcw <noun> [<child noun>] <verb>`: `tcw work new`,
-`tcw work tags add`, `tcw capabilities extends rm`, `tcw config show`. Four
+`tcw work tags add`, `tcw work stage prompt`, `tcw config show`. Four
 commands act on the whole project and are verbs on their own: `tcw init`,
 `tcw provision`, `tcw validate` and `tcw serve`.
 

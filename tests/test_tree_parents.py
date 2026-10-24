@@ -17,8 +17,8 @@ from tests.statefiles import CAPABILITY_STATE, TAXONOMY_STATE, read_state
 @pytest.fixture
 def demo(tmp_path):
     root = project(tmp_path, work={})
-    obj(root, "capabilities", "cli/x", id="cap-aaaaaa", name="X", Status="Missing")
-    obj(root, "capabilities", "cli/y", id="cap-bbbbbb", name="Y", Status="Missing")
+    obj(root, "capabilities", "cli/x", name="X", Status="Missing")
+    obj(root, "capabilities", "cli/y", name="Y", Status="Missing")
     return root
 
 
@@ -70,7 +70,12 @@ def test_set_parent_and_clear_it(tcw, demo):
     assert tcw(["capabilities", "set", "cli/w", "--parent", "cli/x"], demo).code == 0
     assert state(demo, "capabilities", "cli/w")["parent"] == "demo.capabilities/cli/x"
     assert tcw(["capabilities", "set", "cli/w", "--parent", ""], demo).code == 0
-    assert "parent" not in state(demo, "capabilities", "cli/w")
+    # TCW-112 Design 4.2: a cleared field is written as an explicit null on
+    # every object of the project's own, which for one that overrides
+    # nothing means the same as no key.
+    assert state(demo, "capabilities", "cli/w")["parent"] is None
+    shown = tcw(["capabilities", "show", "cli/w", "--json"], demo)
+    assert json.loads(shown.out)["capability"].get("parent") is None
 
 
 # -- AC 13 ------------------------------------------------------------------------
@@ -81,7 +86,7 @@ def test_set_parent_and_clear_it(tcw, demo):
     ("demo.capabilities/cli/v", "parent names the object itself"),
 ])
 def test_a_bad_capability_parent_is_an_error(tcw, demo, parent, words):
-    obj(demo, "capabilities", "cli/v", id="cap-cccccc", name="V", Status="Missing",
+    obj(demo, "capabilities", "cli/v", name="V", Status="Missing",
         parent=parent)
     checked = tcw(["validate"], demo)
     assert checked.code == 1
@@ -90,9 +95,9 @@ def test_a_bad_capability_parent_is_an_error(tcw, demo, parent, words):
 
 
 def test_a_loop_of_parents_is_an_error_at_each(tcw, demo):
-    obj(demo, "capabilities", "a", id="cap-dddddd", name="A", Status="Missing",
+    obj(demo, "capabilities", "a", name="A", Status="Missing",
         parent="demo.capabilities/b")
-    obj(demo, "capabilities", "b", id="cap-eeeeee", name="B", Status="Missing",
+    obj(demo, "capabilities", "b", name="B", Status="Missing",
         parent="demo.capabilities/a")
     checked = tcw(["validate"], demo)
     assert checked.code == 1
@@ -150,22 +155,20 @@ def test_a_term_whose_parent_is_another_projects_is_made_at_the_root(tcw, pair):
 
 # -- choice 3 ---------------------------------------------------------------------
 
-def test_the_parent_of_an_inherited_capability_is_refused_whole(tcw, tmp_path):
-    """The capability is inherited, so the only place to write its parent
-    would be an override folder, which TCW-112 replaces (Design 3.4)."""
+def test_the_parent_of_an_inherited_capability_is_written_into_the_override(tcw, tmp_path):
+    """TCW-112 Design 4.2 replaces TCW-111's interim refusal: `parent` is a
+    field of the override like any other, so it is written into the child's
+    own object at the same path, and `base` is left alone."""
     from tests.test_capabilities_rm import federated, write_cap
     base, child = federated(tmp_path)
-    write_cap(child, "cli/x", id="cap-own001", Status="Supported")
-    before = snapshot(child, base)
-    refused = tcw(["capabilities", "set", "base.capabilities/auth/login", "--parent",
-                   "cli/x", "--status", "Omitted"], child)
-    assert refused.code == 3, refused
-    assert "the parent of base.capabilities/auth/login is set in project 'base'" \
-        in refused.err
-    assert snapshot(child, base) == before
-    # Without --parent the same command writes the override, as today.
-    assert tcw(["capabilities", "set", "base.capabilities/auth/login",
-                "--status", "Omitted"], child).code == 0
+    write_cap(child, "cli/x", Status="Supported")
+    before = snapshot(base)
+    found = tcw(["capabilities", "set", "base.capabilities/auth/login", "--parent",
+                 "cli/x", "--status", "Omitted"], child)
+    assert found.code == 0, found
+    written = state(child, "capabilities", "auth/login")
+    assert written == {"parent": "child.capabilities/cli/x", "Status": "Omitted"}
+    assert snapshot(base) == before
 
 
 # -- AC 12 for the tree stores ----------------------------------------------------

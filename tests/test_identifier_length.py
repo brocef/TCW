@@ -108,7 +108,7 @@ def test_a_project_id_of_231_characters_leaves_no_room(tcw, tmp_path):
 
 def test_a_capability_folder_of_256_characters_is_reported_and_still_listed(tcw, demo):
     path = cap_path(256)
-    obj(demo, "capabilities", path, id="cap-aaaaaa", name="Long", Status="Missing")
+    obj(demo, "capabilities", path, name="Long", Status="Missing")
     checked = tcw(["validate"], demo)
     assert checked.code == 1
     assert findings(checked) == [
@@ -131,8 +131,7 @@ def test_a_nested_item_of_256_characters_is_reported_and_still_listed(tcw, demo)
 
 
 def test_the_same_layouts_at_255_characters_pass(tcw, demo):
-    obj(demo, "capabilities", cap_path(255),
-        id="cap-aaaaaa", name="Long", Status="Missing")
+    obj(demo, "capabilities", cap_path(255), name="Long", Status="Missing")
     path = nested_parent(255)
     item(demo, path.split("/")[0])
     item(demo, path, parent=f"demo.work/{path.split('/')[0]}")

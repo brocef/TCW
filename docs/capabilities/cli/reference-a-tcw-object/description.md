@@ -3,6 +3,10 @@ reference a taxonomy entry, capability or work item by its full identifier,
 never shortened. A link may name an object in any project TCW can locate,
 not only one this project inherits from. A folder is named by a folder address,
 `tcw://<project>.path/<folder>` or `tcw://<project>.<namespace>.path/<folder>`.
+A full identifier names its owner's own object as its owner sees it, combined
+with what the owner inherits, so a link to `core.capabilities/cli/x` reaches
+`core`'s capability, never a project's override of it; an object a project only
+inherits is not found under that project's identifier.
 `tcw validate` checks that every link resolves: an object that is not there
 is an error, and a project that is named but not on this machine is reported
 as could not be checked. A link in a TCW 3.x form (`tcw://C/…`, `tcw://W/…`,

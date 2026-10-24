@@ -37,8 +37,8 @@ PERSONAL = REFERENCES / "personal.md"
 # chooses: a stage, a procedure or a project ID.
 KEY_PATHS = (
     "id", "user.name",
-    "taxonomy.path", "taxonomy.repository", "taxonomy.extends",
-    "capabilities.path", "capabilities.repository", "capabilities.extends",
+    "taxonomy.path", "taxonomy.repository",
+    "capabilities.path", "capabilities.repository",
     "work.path", "work.repository", "work.backend", "work.tags",
     "work.documentation", "work.procedures.*",
     *(f"work.stages.*.{key}" for key in ("enabled", "status", "prompt", "pre", "post")),
@@ -58,7 +58,7 @@ LABELS = ("Shared", "Overridable", "Personal only")
 
 
 def test_the_key_path_list_has_no_repeats():
-    assert len(KEY_PATHS) == len(set(KEY_PATHS)) == 57
+    assert len(KEY_PATHS) == len(set(KEY_PATHS)) == 55
 
 
 # ── criterion 6: the router and its references ───────────────────────────────

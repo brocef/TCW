@@ -82,8 +82,7 @@ def test_capabilities_rm_stopped_partway(tmp_path, monkeypatch, capsys):
     root = project(tmp_path)
     d = root / "docs" / "capabilities" / "pay"
     d.mkdir()
-    write_state(d / CAPABILITY_STATE, yaml.safe_dump({"id": "cap-pay001", "name": "Pay",
-                                                 "Status": "Supported"}))
+    write_state(d / CAPABILITY_STATE, yaml.safe_dump({"name": "Pay", "Status": "Supported"}))
     (d / "description.md").write_text("")
     kid = locked(d / "files")
     monkeypatch.chdir(root)
@@ -101,17 +100,15 @@ def test_capabilities_reset_stopped_partway(tmp_path, monkeypatch, capsys):
     write_config(base, "id: base\n")
     d = base / "docs" / "capabilities" / "login"
     d.mkdir()
-    write_state(d / CAPABILITY_STATE, yaml.safe_dump({"id": "cap-aaa111", "name": "Login",
-                                                 "Status": "Supported"}))
+    write_state(d / CAPABILITY_STATE, yaml.safe_dump({"name": "Login", "Status": "Supported"}))
     (d / "description.md").write_text("")
     child = tmp_path / "child"
     child.mkdir()
     init(["taxonomy", "capabilities"], child, "child")
-    # `child` extends `base`, so `base` is its parent passing capabilities.
+    # `base` is `child`'s parent passing capabilities.
     write_config(child,
         "id: child\nparents:\n- id: base\n  inherit: [capabilities]\n")
     write_manifest(child, {"base": "../solo"})
-    FsCapabilitiesStore.open(child).extends_add("base")
     FsCapabilitiesStore.open(child).set("login", {"Status": "Missing"})
     override = child / "docs" / "capabilities" / "login"
     assert (override / CAPABILITY_STATE).is_file()

@@ -6,7 +6,7 @@ import pytest
 
 from tcw.store.fs import FsCapabilitiesStore, FsProjectRegistry
 from tcw.work.gates import (
-    ABSENT, INHERITED, REMOVED, STILL_LOCAL, Declared, Invalid, Present, Route,
+    ABSENT, REMOVED, STILL_LOCAL, Declared, Invalid, Present, Route,
     Unchecked, completion_gate, drift_problems, parse_declarations, project_reader,
     records_gate, records_problems, route_capability_path,
 )
@@ -79,7 +79,6 @@ def test_a_malformed_file_fails_the_gate_and_the_mid_work_check(layout, text):
     ("new: [x/y]\n", FakeReader({"x/y": Present("Missing")})),
     ("changed: [x/y]\n", FakeReader()),
     ("removed: [x/y]\n", FakeReader(removals={"x/y": STILL_LOCAL})),
-    ("removed: [x/y]\n", FakeReader(removals={"x/y": INHERITED})),
     ("taxonomy:\n  new: [term]\n", FakeReader()),
     ("taxonomy:\n  changed: [term]\n", FakeReader()),
     ("taxonomy:\n  removed: [term]\n", FakeReader(terms={"term": Present()})),
@@ -101,10 +100,11 @@ def test_records_gate_passes_when_everything_is_in_the_records(layout):
 
 
 def test_the_mid_work_check_reports_only_what_is_wrong_already(layout):
-    declare(layout, "new: [not-yet]\nremoved: [inherited, still-here]\n")
-    reader = FakeReader(removals={"inherited": INHERITED, "still-here": STILL_LOCAL})
+    declare(layout, "new: [not-yet]\nremoved: [unchecked, still-here]\n")
+    reader = FakeReader(removals={"unchecked": Unchecked("no ledger"),
+                                  "still-here": STILL_LOCAL})
     problems = records_problems(layout, SLUG, reader, finished=False)
-    assert len(problems) == 1 and "inherited" in problems[0]
+    assert len(problems) == 1 and "no ledger" in problems[0]
     assert len(records_gate(layout, SLUG, reader)) == 3
 
 
@@ -228,7 +228,7 @@ def production_reader(root):
 
 def test_the_production_reader_reports_a_local_status(tmp_path):
     root = repo(tmp_path, "solo")
-    write_cap(root, "x/y", id="cap-xy0001", Status="Missing")
+    write_cap(root, "x/y", Status="Missing")
     reader = production_reader(root)
     assert reader.capability("solo.capabilities/x/y") == Present("Missing")
     assert reader.capability("solo.capabilities/x/z") == ABSENT
@@ -237,7 +237,7 @@ def test_the_production_reader_reports_a_local_status(tmp_path):
 
 def test_the_production_reader_answers_removals(tmp_path):
     root = repo(tmp_path, "solo")
-    write_cap(root, "x/y", id="cap-xy0001", Status="Supported")
+    write_cap(root, "x/y", Status="Supported")
     reader = production_reader(root)
     assert reader.removal("solo.capabilities/x/y") == STILL_LOCAL
     assert reader.removal("solo.capabilities/x/gone") == REMOVED
@@ -279,7 +279,7 @@ def app_and_server(tmp_path):
     server = make_project(tmp_path, "server")
     init(["capabilities"], app)
     init(["capabilities"], server)
-    write_cap(server, "x", id="cap-x00001", Status="Supported")
+    write_cap(server, "x", Status="Supported")
     connect_projects(app, "children", "server")
     connect_projects(server, "parent", "app")
     return app, server
@@ -317,29 +317,75 @@ def test_a_project_with_no_ledger_says_to_name_the_ledgers_project(tmp_path):
 
 
 @pytest.fixture
-def app_extending_core(tmp_path):
-    from tests.test_capabilities_rm import federated
-    base, child = federated(tmp_path)          # `child` extends `base`'s auth/login
-    write_cap(child, "ov/login", overrides="cap-aaa111", Status="Partial")
-    return base, child
+def app_overriding_core(tmp_path):
+    """TCW-112 AC 31: `core`'s `cli/x` is `Missing`; `app` inherits it and
+    has its own `cli/x` at the same path, holding only `Status: Supported`."""
+    from tests.test_capabilities_rm import connect
+    core = repo(tmp_path, "core")
+    write_cap(core, "cli/x", Status="Missing", body="Core body")
+    app = repo(tmp_path, "app")
+    connect(app, core)
+    write_cap(app, "cli/x", complete=False, Status="Supported")
+    return core, app
 
 
-def test_ac23_an_extended_owner_routes_to_this_projects_own_ledger(app_extending_core):
+def test_ac31_every_entry_routes_to_its_owners_own_ledger(app_overriding_core):
+    """TCW-112 Design 7.1: whether or not `app` inherits from `core`."""
     from tcw.ids import FullId
     from tcw.locate import Locator
-    _, child = app_extending_core
-    own = FsCapabilitiesStore.open(child)
-    route = route_capability_path("base.capabilities/auth/login", own=own,
-                                  project_id="child", locator=Locator.of(child),
-                                  project_root=child)
-    assert route == Route(FullId("base", "capabilities", "auth/login"), own, True)
+    _, app = app_overriding_core
+    own = FsCapabilitiesStore.open(app)
+    route = route_capability_path("core.capabilities/cli/x", own=own,
+                                  project_id="app", locator=Locator.of(app),
+                                  project_root=app)
+    assert route.full_id == FullId("core", "capabilities", "cli/x")
+    assert route.store.project_id == "core" and route.store is not own
 
 
-def test_ac23_the_gate_reads_this_projects_override(app_extending_core):
-    _, child = app_extending_core
-    reader = production_reader(child)
-    assert reader.capability("base.capabilities/auth/login") == Present("Partial")
-    assert reader.removal("base.capabilities/auth/login") == INHERITED
+def test_ac31_the_gate_reads_each_owners_own_object(app_overriding_core, layout):
+    _, app = app_overriding_core
+    reader = production_reader(app)
+    assert reader.capability("app.capabilities/cli/x") == Present("Supported")
+    assert reader.capability("core.capabilities/cli/x") == Present("Missing")
+    declare(layout, "changed: [app.capabilities/cli/x]\n")
+    assert records_gate(layout, SLUG, reader) == []
+    declare(layout, "new: [core.capabilities/cli/x]\n")
+    [problem] = records_gate(layout, SLUG, reader)
+    assert "still Missing" in problem
+
+
+def test_ac31_a_removed_override_passes_though_the_original_exists(app_overriding_core,
+                                                                   layout):
+    _, app = app_overriding_core
+    FsCapabilitiesStore.open(app).reset("cli/x")
+    reader = production_reader(app)
+    assert reader.removal("app.capabilities/cli/x") == REMOVED
+    assert reader.capability("app.capabilities/cli/x") == ABSENT
+    declare(layout, "removed: [app.capabilities/cli/x]\n")
+    assert records_gate(layout, SLUG, reader) == []
+
+
+def test_ac31_an_owner_not_on_this_machine_is_not_checked_never_absent(
+        app_overriding_core, layout):
+    import shutil
+    core, app = app_overriding_core
+    shutil.rmtree(core)
+    reader = production_reader(app)
+    assert isinstance(reader.capability("core.capabilities/cli/x"), Unchecked)
+    declare(layout, "changed: [core.capabilities/cli/x]\n")
+    [problem] = records_gate(layout, SLUG, reader)
+    assert "could not be checked" in problem and "not in the ledger" not in problem
+
+
+def test_ac31_an_own_override_whose_parent_is_missing_is_not_checked(
+        app_overriding_core):
+    """Its combined Status needs `core` (Design 7.1): unchecked, not absent."""
+    import shutil
+    core, app = app_overriding_core
+    shutil.rmtree(core)
+    assert isinstance(production_reader(app).capability("app.capabilities/cli/x"),
+                      Unchecked)
+    assert production_reader(app).removal("app.capabilities/cli/x") == STILL_LOCAL
 
 
 def test_a_term_of_a_project_not_extended_is_read_from_its_own_taxonomy(tmp_path):

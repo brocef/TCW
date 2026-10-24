@@ -55,8 +55,8 @@ def demo(tmp_path) -> Path:
         entry(root, "taxonomy", "term", kind="Vocabulary")
     entry(demo, "taxonomy", "pay-feature", kind="Feature",
           vocabulary=[fid("demo", "taxonomy", "term")])
-    entry(demo, "capabilities", "cli/x", id="cap-x", Status="Supported")
-    entry(demo, "capabilities", "roles/admin", id="cap-admin", Status="Supported")
+    entry(demo, "capabilities", "cli/x", Status="Supported")
+    entry(demo, "capabilities", "roles/admin", Status="Supported")
     connect_projects(demo, "parent", "core", inherit="none")
     return demo
 

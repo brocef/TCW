@@ -59,8 +59,6 @@ def known_keys() -> dict[KeyPath, str]:
         table[(component,)] = MAPPING
         table[(component, "path")] = TEXT
         repository((component,))
-        # TCW-112 takes these two out when it removes the keys.
-        table[(component, "extends")] = LIST
     work = ("work",)
     table[work] = MAPPING
     table[(*work, "path")] = TEXT

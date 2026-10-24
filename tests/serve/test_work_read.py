@@ -375,5 +375,7 @@ def test_ac32_undecided_jira_settings_stop_the_work_routes(tmp_path, serve_proje
     app = _with_parents(fs_project(tmp_path, "app", config={}), ["core"],
                         jira_mode(jira={"project": "APP"}))
     answer = serve_project(app).get("/api/work")
-    assert answer.status == 500
+    # 503, as every `InheritedUnavailable` an API request raises is
+    # answered (TCW-112 Design 4.5).
+    assert (answer.status, answer.json["code"]) == (503, "inherited-unavailable")
     assert "(work.jira)" in answer.json["error"]

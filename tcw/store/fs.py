@@ -11,6 +11,7 @@ into a tree-store core in Phase 4 (don't pre-abstract —
 # don't raise at class-definition time on Python 3.11–3.13. See tcw/store/base.py.
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import os
 import re
@@ -26,14 +27,16 @@ from pathlib import Path
 
 import yaml
 
-from tcw.errors import (BackendError, NotFound, Refused, StateFileProblem, TcwError,
+from tcw.errors import (BackendError, InheritedUnavailable, NotFound, Refused,
+                        StateFileProblem, TcwError,
                         Unreachable, UsageError)
 from tcw.findings import Finding
 from tcw.ids import (SCHEME, FolderAddress, FullId, IdError, MalformedId, id_path_problem,
                      length_problem, parse_address, parse_stored, sort_input)
 from tcw.object_folders import (EXTRA, LEGACY, MISPLACED, RESERVED, RESOURCES, STATE_FILES,
                                 Walk, disagreement, exact_child, exact_path, folder_parent,
-                                id_problem, is_object, is_reserved, length_problems,
+                                id_path_refused, id_problem, is_object, is_reserved,
+                                length_problems,
                                 object_paths, read_state, removal_blockers, shape_problems,
                                 state_text, walk)
 from tcw.output import shown as _shown
@@ -41,8 +44,9 @@ from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
 from tcw.store.base import (
     CAP_FIELDS, CAP_LIFECYCLES, MIGRATION_GUIDE, CAP_PRIORITIES, CAP_STATUSES,
     RETIRED_CAP_FIELDS, RETIRED_PROJECTS_KEY, retired_key_problem,
-    TAXONOMY_EDITABLE_FIELDS, _UNSET, AmbiguousRef, Capability, CapabilitiesStore,
-    CapabilityDetail, NotASlug, is_slug, slugify, StaleRevision,
+    TAXONOMY_EDITABLE_FIELDS, _UNSET, Capability, CapabilitiesStore,
+    CapabilityDetail, Combined, Declaration, NotASlug, clash_warning, combine,
+    is_slug, missing_parts, slugify, StaleRevision,
     parse_repository_declaration, ProvisionResult, RepositoryDeclaration,
     StoreDeclarationError, StoreLocationUnusable, StoreNotProvisioned,
     StoreProvisioner, TaxonomyStore, Term, TermDetail,
@@ -99,7 +103,7 @@ class WorkLocation:
     @classmethod
     def _open_at(cls, raw_root: Path, project_root: Path, config_path: Path, *,
                  external: bool, must_exist: bool = True, declaration=None,
-                 _walk=None) -> "WorkLocation":
+                 active_root=None) -> "WorkLocation":
         if not raw_root.is_dir():
             raise StoreLocationUnusable(
                 f"{config_path}: work.path is not a directory: {raw_root}")
@@ -380,8 +384,8 @@ def find_component_project(component: str, start: Path | None = None) -> Path | 
         raise
     except StoreLocationUnusable:
         # The one failure that means "there is no store at this location" — the
-        # ladder's own definition (see `resolve_store`). Anything else, a broken
-        # `extends` or a malformed `<component>.path`, is a project that is here and
+        # ladder's own definition (see `resolve_store`). Anything else, a removed
+        # key or a malformed `<component>.path`, is a project that is here and
         # wrong, and "run `tcw init`" is the wrong advice for it.
         return None
     # A work store that opened is a work store; a tree store's `open` validates
@@ -401,9 +405,8 @@ def tree_store_present(project_root: Path, component: str) -> bool:
     `(project_root / "docs" / component).is_dir()`, which is true of neither a moved
     store nor one kept in another repository — so capabilities never checked
     Subject or Feature against a moved taxonomy. Deliberately not "open it and
-    see", which `tcw validate` uses: `extends` alone is not a location, and a
-    project that only inherits a taxonomy should not have its capability checks
-    fail on that inheritance. It resolves no location: presence is read from
+    see", which `tcw validate` uses: a project that only inherits a taxonomy
+    should not have its capability checks fail on that inheritance. It resolves no location: presence is read from
     the configuration's keys (TCW-110 Design 7.5).
     """
     if store_location(project_root, component, None).is_dir():
@@ -770,230 +773,6 @@ def load_config(path: Path) -> dict:
     return without_version(data)
 
 
-def _extends_ids(config: dict, label: str) -> list[str]:
-    """The declared `extends` list, or a `ValueError` naming what is wrong.
-
-    `label` is how a refusal addresses the declaration. It is the key path —
-    `<path>/tcw-config.yaml: taxonomy.extends` — not just the file, because one
-    project config can hold both `taxonomy.extends` and `capabilities.extends` and
-    naming only the file leaves the reader to guess which one is meant.
-
-    All four refusals carry it, including the project-id one: `validate_project_id`
-    raises a perfectly good message about the id and knows nothing about where
-    the id was read from, which sent people hunting for a key nothing named.
-    """
-    value = config.get("extends") or []
-    if isinstance(value, dict):
-        raise ValueError(
-            f"{label}: legacy extends map is unsupported; replace it with "
-            "a list of registered project IDs"
-        )
-    if not isinstance(value, list) or any(not isinstance(v, str) for v in value):
-        raise ValueError(f"{label}: extends must be a list of project IDs")
-    ids = []
-    for v in value:
-        try:
-            ids.append(validate_project_id(v))
-        except ValueError as error:
-            raise ValueError(f"{label}: {error}") from None
-    if len(ids) != len(set(ids)):
-        raise ValueError(f"{label}: extends contains duplicate project IDs")
-    return ids
-
-
-class _FederationWalk:
-    """State threaded down an `extends` walk.
-
-    Two things with different lifetimes, which is why they cannot be one set.
-    `seen` is the projects on *this* path, copied at every descent, and is what
-    detects a cycle: a project is a back edge only relative to the route that
-    reached it. `built` is shared by the whole walk and is what stops a diamond
-    from rebuilding the same subtree once per route — `seen` alone terminated a
-    cycle and memoised nothing, so a graph where two extended projects reach a
-    common ancestor cost 2^depth store constructions.
-
-    **Only a subtree that truncated nothing is cached.** A store built with a
-    cycle truncated in it is correct for the path that built it and wrong for any
-    other, since a back edge is a property of the route. A cycle-free subtree is
-    path-independent, so it can be reused anywhere — and that is the common case,
-    which is the one the cost was in.
-    """
-
-    __slots__ = ("seen", "built", "active_root")
-
-    def __init__(self, seen: "frozenset[Path]" = frozenset(),
-                 built: "dict | None" = None, active_root: Path | None = None):
-        self.seen = seen
-        self.built = {} if built is None else built
-        # The root of the project the command acts on, whose `Locator` every
-        # store opened on this walk uses (TCW-110 Design 6.1): None until a
-        # store sets it, so the first store's own project is the active one.
-        self.active_root = active_root
-
-    def descend(self, project_root: Path) -> "_FederationWalk":
-        """The walk as seen one project further down. Shares `built`."""
-        return _FederationWalk(self.seen | {project_root}, self.built, self.active_root)
-
-
-class _FederationCycles:
-    """Mixin for the two tree stores: the cycles anywhere below this one.
-
-    A cycle is recorded by the store that closes it — the deepest one built —
-    so a caller checking the store at the top of the chain finds nothing on
-    itself. Gathering the whole tree is what makes `check()` report a cycle
-    from wherever it is run.
-    """
-
-    def _federation_cycles(self) -> list[str]:
-        cached = getattr(self, "_cycles_cache", None)
-        if cached is not None:
-            return cached
-        found: list[str] = list(getattr(self, "extends_cycles", []))
-        for store in getattr(self, "extends", {}).values():
-            for project_id in store._federation_cycles():
-                if project_id not in found:
-                    found.append(project_id)
-        # Memoised because the `extends` tree is fixed once construction
-        # returns, and because the walk asks this of every store it builds to
-        # decide whether the subtree may be cached — recomputing it there would
-        # trade one quadratic for another.
-        self._cycles_cache = found
-        return found
-
-
-class _NotInherited(ValueError):
-    """Design 3.6's refusal of an `extends` ID the project does not inherit
-    that axis from."""
-
-
-def _extends_target(registry, axis: str, owner_root: Path, owner_id: str,
-                    extends_id: str) -> "Project":
-    """The project an `extends` ID of the project at `owner_root` names,
-    held to the parent links until TCW-112 (Design 3.6, 6.3): it must pass
-    `axis` to that project. A passing project not available here raises
-    `InheritedUnavailable` (exit 7), as does any ID while some passing
-    project is not available, since what lies above is then unknown; any
-    other ID raises `_NotInherited`. `registry` is the command's one, and the
-    load order is the store's own project's, which may lie outside the
-    active project's family (Design 3.6's "whose links decide")."""
-    active = owner_id in ("", registry.current.id) and \
-        _same_folder_or_equal(owner_root, registry.project_root)
-    order = registry.load_order() if active else \
-        registry.load_order(owner_id, root=owner_root)
-    owner = order.ids[-1]
-    passes = registry.passing_in(order, axis) - {owner}
-    absent = {*order.missing, *order.unreadable}
-    if extends_id in passes:
-        if extends_id in absent:
-            raise registry.inherited_unavailable(order, axis, extends_id)
-        return registry.order_project(extends_id)
-    blocked = next((pid for pid in order.ids if pid in passes and pid in absent), None)
-    if blocked is not None:
-        raise registry.inherited_unavailable(order, axis, blocked)
-    raise _NotInherited(
-        f"'{extends_id}' is in {axis}.extends, but '{owner}' does not inherit its "
-        f"{axis} from it: name it under 'parents:' with an 'inherit' that includes "
-        f"{axis}")
-
-
-def _same_folder_or_equal(a: Path, b: Path) -> bool:
-    try:
-        return Path(a).resolve() == Path(b).resolve()
-    except OSError:
-        return False
-
-
-def _extended_component_stores(
-    project_root: Path, config: dict, label: str, component: str,
-    walk: "_FederationWalk | None" = None, owner_id: str = "",
-) -> "tuple[dict[str, object], list[str]]":
-    """Each extended project's component store, by project id, and the ids whose
-    edge closed a cycle.
-
-    `walk` carries the state of the whole `extends` walk — see
-    `_FederationWalk`. Its `seen` half is the *projects* already on this path,
-    and it is checked before the store is opened, which it has to be: resolving a
-    sibling's store now opens it, and opening a tree store resolves its own
-    `extends`, so a cycle would recur infinitely instead of being reported.
-    Project identity is known before any store is touched, which is what makes
-    the guard possible at all — and a cycle in `extends` is a cycle among
-    projects, so this is also the
-    honest place to detect one.
-    """
-    from tcw.locate import Locator
-    ids = _extends_ids(config, label)
-    active_root = (walk.active_root if walk is not None and walk.active_root is not None
-                   else project_root)
-    registry = Locator.of(active_root).registry if ids else None
-    if registry is not None:
-        registry.require_valid()
-    walk = (walk or _FederationWalk()).descend(project_root.resolve())
-    stores: dict[str, object] = {}
-    cyclic: list[str] = []
-    for project_id in ids:
-        # Identity first: extending yourself is wrong whatever the store does,
-        # and asking the store about it would make a config error depend on
-        # whether a tree happens to be provisioned.
-        if owner_id and project_id == owner_id:
-            raise ValueError(f"a {component} store cannot extend itself")
-        try:
-            project = _extends_target(registry, component, project_root, owner_id,
-                                      project_id)
-        except _NotInherited as refused:
-            # `label` already ends in `<component>.extends`.
-            raise ValueError(f"{label}: {refused}") from None
-        if Path(project.locator).resolve() == project_root.resolve():
-            raise ValueError(f"a {component} store cannot extend itself")
-        if Path(project.locator).resolve() in walk.seen:
-            # The back edge of a federation cycle. Truncated here so the walk
-            # terminates, and *named*, because a truncated tree cannot show a
-            # cycle to anyone looking at it afterwards — which is why `check()`
-            # used to report nothing at all.
-            cyclic.append(project_id)
-            continue
-        # The extended project's *configured* store, not `docs/<component>` under
-        # its root. Composing that path skipped the whole resolution ladder, so a
-        # sibling that had moved its tree with `<component>.path` could not be
-        # extended from, and one whose tree was declared but unprovisioned read
-        # as having no tree at all — the confusion the ladder exists to end.
-        # Failures are re-worded for a reader standing in a *different* project than
-        # the one that failed.
-        cache_key = (component, Path(project.locator).resolve())
-        if (cached := walk.built.get(cache_key)) is not None:
-            # Built already, somewhere else on this walk, with nothing truncated
-            # in it — see `_FederationWalk`. This is what makes a diamond cost
-            # one construction of the shared subtree instead of one per route.
-            stores[project_id] = cached
-            continue
-        try:
-            # The store itself, not its root. Rebuilding it from the root is
-            # what broke the hop past a moved tree — `FsTreeStore` falls back to
-            # `root.parent.parent` for `project_root`, correct only for the
-            # `docs/<component>` shape this resolution exists to stop assuming.
-            store = STORE_CLASSES[component].open(
-                Path(project.locator), _walk=walk)
-        except StoreNotProvisioned as error:
-            raise ValueError(f"project '{project_id}': {error}") from None
-        except StoreDeclarationError as error:
-            raise ValueError(f"project '{project_id}': {error}") from None
-        except ValueError as error:
-            # The sibling's own error, quoted. Rewriting every `ValueError` as
-            # "has no <component> component" sent readers to create a store that
-            # already existed — a legacy `extends` map, a failed `require_valid`
-            # and a self-extend all arrived here wearing that message.
-            raise ValueError(f"project '{project_id}': {error}") from None
-        # Rule 4 of the ladder validates nothing for a bare default, so a project
-        # with no tree at all resolves to a path that is simply not there. That
-        # is the honest answer for the project's *own* store and the wrong one to
-        # federate from.
-        if not store.root.is_dir():
-            raise ValueError(f"project '{project_id}' has no {component} component")
-        if not store._federation_cycles():
-            walk.built[cache_key] = store
-        stores[project_id] = store
-    return stores, cyclic
-
-
 # ── Revision tokens & atomic writes (FS-adapter private details) ─────────────
 
 def _revision(content: str) -> str:
@@ -1242,8 +1021,8 @@ class FsTreeStore:
     can report a leftover copy).
     """
     COMPONENT: str
-    #: The filename this component once kept its own `extends` in, before it
-    #: moved to the project's `tcw-config.yaml`. Nothing reads or writes the file
+    #: The filename this component once kept the projects it inherited from
+    #: in, before TCW 2.5.0. Nothing reads or writes the file
     #: any more. The name survives on the class so `_legacy_config_problems`
     #: reports a copy left at the store root, and so the store's shape check
     #: leaves that copy to it rather than reporting it a second time.
@@ -1253,14 +1032,14 @@ class FsTreeStore:
     STATE_FILE: str
 
     def __init__(self, root: Path, *, project_root: Path | None = None,
-                 store_git_root: Path | None = None):
+                 store_git_root: Path | None = None, active_root: Path | None = None):
         self.root = root                       # docs/<component>/, or wherever configured
         # Two roots, because they answer different questions and diverge the
         # moment a store leaves its project's repository — the same split the
         # work store has carried since `work.path` existed.
         #
-        # `project_root` is the *project*: whose config this is, and what federation
-        # resolves `extends` against. `store_git_root` is the repository a write
+        # `project_root` is the *project*: whose config this is, and whose
+        # parent links decide what it inherits. `store_git_root` is the repository a write
         # here has to land in. They are the same directory for a store sitting
         # in its own project, and are not for a configured or provisioned one.
         self.project_root = project_root or root.parent.parent
@@ -1288,18 +1067,30 @@ class FsTreeStore:
         project_id = self._config().get("id")
         self.project_id = project_id if isinstance(project_id, str) else ""
         # The project the command acts on: this store's own unless it was
-        # opened for another, as an inherited store or an owner's store read
-        # by `Locator.read` is (see `_walk_for`).
-        self._active_root = self.project_root
-
-    def _walk_for(self, walk: "_FederationWalk | None") -> "_FederationWalk":
-        """The walk this store resolves its `extends` on, carrying the active
-        project's root, which this store adopts."""
-        if walk is not None and walk.active_root is not None:
-            self._active_root = walk.active_root
-            return walk
-        return _FederationWalk(*((walk.seen, walk.built) if walk else ()),
-                               active_root=self._active_root)
+        # opened for another (`active_root`), as a source of the active
+        # project's view or an owner's store read by `Locator.read` is. Such a
+        # store is "another project's" (TCW-112 choice 4): its file's
+        # `extends` is not read, and its own view is built only if asked for.
+        self._active_root = active_root or self.project_root
+        self._as_other = active_root is not None
+        # The view (TCW-112 Design 1.4): built on first use, once per store,
+        # and forgotten when this store writes.
+        self._view_cache: _View | None = None
+        self._decl_cache: dict | None = None
+        # What a listing of the view left out because a source's object at
+        # that path cannot be read (Design 1.3), by file, with its message.
+        self._view_unreadable: dict[Path, str] = {}
+        # Why the view could not be built, when a reader fell back to this
+        # project's own declarations (Design 3.4): the `InheritedUnavailable`.
+        self.view_error: InheritedUnavailable | None = None
+        if not self._as_other and "extends" in self.config:
+            # Design 1.5: refused in the active project's own file only, as
+            # a configuration line to fix.
+            raise StoreDeclarationError(
+                f"{self._config_path()}: '{self.COMPONENT}.extends' was removed in "
+                f"TCW 4.0: a project inherits its {self.COMPONENT} from its parents; "
+                f"name each project it inherits from under 'parents:' with an "
+                f"'inherit' that includes {self.COMPONENT}, and delete this key")
 
     @property
     def locator(self):
@@ -1309,19 +1100,16 @@ class FsTreeStore:
         from tcw.locate import Locator
         return Locator.of(self._active_root)
 
-    def owner_of(self, origin: str) -> str:
-        """The ID of the project that holds an entry resolved through
-        `origin`: this store's own project for `"local"`, else the `extends`
-        ID it came through."""
-        return self.project_id if origin == "local" else origin
-
     def _stored_ref(self, value, namespace: str, store=None):
         """What a reference stored in this project's records names (TCW-110
-        Design 5.2, 6): a `tcw.locate.Outcome`. `store` is the store of
-        `namespace` already open for this project (this one for its own
-        namespace), read directly for its own and its inherited entries;
-        every other owner is read through the command's `Locator`. A value
-        in a 3.x form or none at all is an `error` outcome naming why."""
+        Design 5.2, 6): a `tcw.locate.Outcome`. Whether it names an object
+        is asked of the owner's own store alone (TCW-112 Design 3.1, second
+        consequence), so a project missing above the owner never makes it
+        "could not check"; the object itself, for a check of its kind, is
+        read as its owner sees it, and is None when that cannot be read
+        here. `store` is the store of `namespace` already open for this
+        project (this one for its own namespace). A value in a 3.x form or
+        none at all is an `error` outcome naming why."""
         from tcw.locate import ERROR, FOUND, MISSING, Outcome
         try:
             full_id = parse_stored(value, namespace)
@@ -1329,28 +1117,34 @@ class FsTreeStore:
             return Outcome(ERROR, message=str(error))
         if store is None and namespace == self.COMPONENT:
             store = self
-        if store is not None:
-            if full_id.project == store.project_id:
-                hit = store.get_local(full_id.id_path)
-                return Outcome(FOUND, hit) if hit else Outcome(MISSING)
-            if full_id.project in store._inherited():
-                hit = store.get_inherited(full_id.project, full_id.id_path)
-                return Outcome(FOUND, hit) if hit else Outcome(MISSING)
         try:
-            return self.locator.read(full_id, named_by=self.project_root)
+            if store is not None and full_id.project == store.project_id:
+                if not store.has_own(full_id.id_path):
+                    return Outcome(MISSING)
+                owner = store
+            else:
+                outcome = self.locator.exists(full_id, named_by=self.project_root)
+                if outcome.kind != FOUND or namespace == "work":
+                    return outcome
+                owner = self.locator.owner_store(full_id.project, namespace,
+                                                 self.project_root)
+            try:
+                return Outcome(FOUND, owner.get_local(full_id.id_path))
+            except InheritedUnavailable:
+                return Outcome(FOUND, None)
         except (ValueError, OSError, TcwError) as error:
             return Outcome(ERROR, message=str(error))
 
-    def _local_ref(self, value) -> "Term | Capability | None":
-        """This store's own entry that a stored reference of its namespace
-        names, or None for any other value: what a removal compares against,
-        never looking another project up."""
+    def _local_ref(self, value) -> str | None:
+        """The id-path of this store's own object that a stored reference of
+        its namespace names, or None for any other value: what a removal
+        compares against, never looking another project up."""
         try:
             full_id = parse_stored(value, self.COMPONENT)
         except IdError:
             return None
-        return self.get_local(full_id.id_path) if full_id.project == self.project_id \
-            else None
+        return full_id.id_path if full_id.project == self.project_id \
+            and self.has_own(full_id.id_path) else None
 
     def find_parent(self, text) -> "Term | Capability":
         """The object a `--parent` names, read as command input is (TCW-110
@@ -1362,19 +1156,31 @@ class FsTreeStore:
     def folder_disagreement(self, obj) -> str | None:
         """Design 3.2's warning for a local object of this store whose folder
         sits in another object's folder that its `parent` does not name, or
-        None (TCW-111 row m)."""
+        None (TCW-111 row m). A `parent` naming the object at the folder
+        parent's id-path in a project that passes the axis to this one
+        agrees with the folder: the folder parent is its override (TCW-112
+        Design 6.7)."""
         id_path = getattr(obj, "slug", None) or obj.path
         above = folder_parent(self.root, self.COMPONENT, id_path)
+        parent = obj.parent
+        if above is not None and isinstance(parent, FullId) \
+                and parent.id_path == above and parent.project != self.project_id \
+                and parent.project in self._source_ids():
+            return None
         return disagreement(obj.full_id, None if above is None else
                             FullId(self.project_id, self.COMPONENT, above), obj.parent)
 
-    def _parent_findings(self, objects, selected: str | None = None) -> list[Finding]:
+    def _parent_findings(self, objects, selected: str | None = None,
+                         declared: dict | None = None) -> list[Finding]:
         """Rows l and m of TCW-111 Design 2.6 for this store's own `objects`:
         a `parent` that is malformed, of another namespace, names the object
         itself or nothing, or forms a loop among this project's own objects,
         is an error; one in a project not on this machine is `unresolved`;
         a folder parent that `parent` does not name is a warning. With
-        `selected`, only that object's are kept."""
+        `selected`, only that object's are kept. `declared` holds, by
+        id-path, the `parent` each object's own declaration sets, when it
+        differs from the object as the project sees it: only a reference the
+        project declares is checked here (TCW-112 Design 6.2)."""
         out: list[Finding] = []
         own: dict[str, str] = {}
         for obj in objects:
@@ -1386,6 +1192,8 @@ class FsTreeStore:
                 own[id_path] = parent.id_path
             if not keep:
                 continue
+            if declared is not None:
+                parent = declared.get(id_path)
             if parent is not None:
                 if isinstance(parent, FullId) and parent == obj.full_id:
                     out.append(Finding("error", where, "parent names the object itself"))
@@ -1403,7 +1211,7 @@ class FsTreeStore:
             # chain, never the whole store, which may hold a broken file.
             if id_path not in own and selected is not None:
                 try:
-                    obj = self.get_local(id_path)
+                    obj = self.declaration(id_path)
                 except (TcwError, OSError, ValueError, yaml.YAMLError):
                     obj = None
                 parent = getattr(obj, "parent", None)
@@ -1433,31 +1241,21 @@ class FsTreeStore:
         from tcw.locate import find_tree
         try:
             return find_tree(self, str(text))
-        except AmbiguousRef:            # before NotFound, its base class
-            raise UsageError(f"{label} ref '{text}' is ambiguous") from None
         except NotFound:
             raise _DanglingRef(f"{label} ref '{text}' does not resolve") from None
 
     @classmethod
-    def open(cls, project_root: Path, _walk: "_FederationWalk | None" = None,
-             locator=None):
+    def open(cls, project_root: Path, locator=None):
         """Resolve this project's store for this component. The ladder is
         `resolve_store`, shared with the work store.
 
         `locator` is the command's `Locator` when the store opened is not the
         active project's own (TCW-110 Design 6.1): the store then looks
-        projects up on that one registry. None means it is the active one.
-
-        `_walk` is private and carries the federation walk's state: the projects
-        already on this path, so `extends` can resolve a sibling's store without
-        a cycle becoming infinite recursion, and the stores already built
-        anywhere on the walk, so a shared subtree is built once. Callers outside
-        federation never pass it.
+        projects up on that one registry, and is another project's store
+        (TCW-112 choice 4). None means it is the active one.
         """
-        if locator is not None and (_walk is None or _walk.active_root is None):
-            _walk = _FederationWalk(*((_walk.seen, _walk.built) if _walk else ()),
-                                    active_root=locator.root)
-        return resolve_store(cls, project_root, _walk=_walk)
+        return resolve_store(cls, project_root,
+                             active_root=None if locator is None else locator.root)
 
     @classmethod
     def _local_root(cls, project_root: Path, configured: str | None, *,
@@ -1471,7 +1269,7 @@ class FsTreeStore:
     def _open_at(cls, raw_root: Path, project_root: Path, config_path: Path, *,
                  external: bool, must_exist: bool = True,
                  declaration: "RepositoryDeclaration | None" = None,
-                 _walk: "_FederationWalk | None" = None):
+                 active_root: Path | None = None):
         """Build the store at a candidate root, validating it only when
         something points at it.
 
@@ -1501,10 +1299,10 @@ class FsTreeStore:
                     f"{config_path}: {cls.COMPONENT}.path is not a directory: {raw_root}")
         root = raw_root.resolve() if raw_root.exists() else raw_root
         owner = (git_root(root) if external else project_root) or project_root
-        # The project stays the project — federation resolves `extends` against it —
-        # while writes follow the store into whatever repository holds it.
-        return cls(root, _walk=_walk, project_root=project_root,
-                   store_git_root=owner)
+        # The project stays the project — its parent links decide what it
+        # inherits — while writes follow the store into whatever repository holds it.
+        return cls(root, project_root=project_root, store_git_root=owner,
+                   active_root=active_root)
 
     # -- containment: a store id never names a file outside its own store --
     #
@@ -1566,12 +1364,10 @@ class FsTreeStore:
         return True
 
     def unreadable_files(self) -> dict[Path, str]:
-        """`unreadable`, with that of every store this one inherits from:
-        what a `list` of the whole view left out."""
-        found = dict(self.unreadable)
-        for store in self._inherited().values():
-            found.update(store.unreadable)
-        return found
+        """`unreadable`, with each source's object a listing of the view left
+        out because it is a member of an id-path's chain (TCW-112 Design
+        1.3): what a `list` left out."""
+        return {**self.unreadable, **self._view_unreadable}
 
     def _unreadable_findings(self) -> list[Finding]:
         """An error for each object of this store a listing left out (Design
@@ -1601,9 +1397,8 @@ class FsTreeStore:
 
     # -- the project's own `tcw-config.yaml` --
     #
-    # On `FsTreeStore` rather than on one component, because all three now write
-    # it: `work.tags`, `taxonomy.extends` and `capabilities.extends`. It is the
-    # project's file, not any store's, and the two roots vary independently.
+    # On `FsTreeStore` rather than on one component: it is the project's file,
+    # not any store's, and the two roots vary independently.
 
     def _config_path(self) -> Path:
         """The project sentinel's path. Not resolved — `FsTreeStore` keeps
@@ -1629,51 +1424,6 @@ class FsTreeStore:
         """
         section = self._config().get(self.COMPONENT)
         return section if isinstance(section, dict) else {}
-
-    def _persist_extends(self, extends: list[str]) -> None:
-        """Write this component's `extends` to the project config, and keep the
-        in-memory copy in step.
-
-        The in-memory update is why this is not just `_write_project_config`: a
-        second add/rm in the same process reads `self.config`, and term
-        *resolution* (`self.extends`) stays load-time only — reopen to use it.
-        An empty list removes the key rather than writing `extends: []`, which
-        is what the per-store file did.
-
-        The in-memory copy changes only once the write has succeeded, so a
-        refused write leaves this store agreeing with the file.
-        """
-        config = self._config()
-        section = config.get(self.COMPONENT)
-        if section is not None and not isinstance(section, dict):
-            # Reading normalizes this to "no configuration" (`_component_config`,
-            # matching `resolve_store`), and writing could do the same — but
-            # reading discards nothing, while writing would replace whatever the
-            # user typed with a mapping of our own. `taxonomy: docs/taxonomy` is
-            # someone reaching for `taxonomy: {path: docs/taxonomy}`, and telling
-            # them so costs less than silently deleting it.
-            raise Refused(
-                f"{self._config_path()}: {self.COMPONENT} must be a mapping, "
-                f"found {type(section).__name__}")
-        # `Remove` drops a section that is left holding nothing, so removing the
-        # last `extends` from a project that configured nothing else leaves the
-        # config as it was rather than growing an empty `taxonomy: {}`.
-        self._write_project_config([
-            config_edit.SetList(self.COMPONENT, "extends", tuple(extends)) if extends
-            else config_edit.Remove(self.COMPONENT, "extends")])
-        if extends:
-            self.config["extends"] = extends
-        else:
-            self.config.pop("extends", None)
-
-    def _extends_label(self) -> str:
-        """What a refusal about `extends` calls the thing it is refusing.
-
-        The key path, not just the file: one `tcw-config.yaml` can hold both
-        `taxonomy.extends` and `capabilities.extends`, and a message naming only
-        the file leaves the reader to guess which one is wrong.
-        """
-        return f"{self._config_path()}: {self.COMPONENT}.extends"
 
     def _write_project_config(self, edits: list) -> None:
         """Apply `edits` to the project sentinel and write it. Nothing is staged:
@@ -1721,10 +1471,12 @@ class FsTreeStore:
             raise
         self.changed += [("removed", p) for p in removed]
         self.changed += [("wrote", p) for p, _ in pairs]
+        self._forget()
 
     def _rm(self, path: Path) -> None:
         """Delete a folder entry from disk, whatever git knows of it, recording
         one `removed` line per file it held."""
+        self._forget()
         if path.is_symlink():
             path.unlink()
             self.changed.append(("removed", path))
@@ -1830,19 +1582,11 @@ class FsTreeStore:
                          tuple(f for f in found.files if own(f[0]) and f[1] == EXTRA),
                          found.resources)
         skip = {self.root / self.LEGACY_CONFIG_NAME} if self.LEGACY_CONFIG_NAME else set()
-        # Row n, for the objects themselves: a 3.x override folder names
-        # another project's capability, so its own path is no identifier.
-        named = [p for p in found.objects if (id_path is None or p == id_path)
-                 and not self._is_override(p)]
+        named = [p for p in found.objects if id_path is None or p == id_path]
         return shape_problems(found, self.root, self.COMPONENT, self.project_id,
                               where=self._where, skip=skip) + \
             length_problems(named, self.root, self.COMPONENT, self.project_id,
                             where=self._where)
-
-    def _is_override(self, id_path: str) -> bool:
-        """Whether the object at `id_path` is a 3.x override folder, which only
-        a capabilities store has."""
-        return False
 
     def _where(self, path: Path | str) -> str:
         """A finding's `where`: `path`, or an entry's slug joined onto the store
@@ -1853,20 +1597,19 @@ class FsTreeStore:
         except ValueError:
             return str(path)
 
-    def _store_finding(self, message: str) -> Finding:
-        """A problem with the store's federation, which `tcw-config.yaml`
-        configures."""
-        return Finding("error", self._where(self._config_path()), message)
+    def _store_finding(self, message: str, level: str = "error") -> Finding:
+        """A finding about what the project inherits, which its
+        `tcw-config.yaml` configures."""
+        return Finding(level, self._where(self._config_path()), message)
 
     def _legacy_config_problems(self) -> list[Finding]:
         """The pre-2.5.0 config file at this store's root, reported, or `[]`.
 
-        An upgraded project that never moved its `extends` out of this file
+        An upgraded project that never moved its inheritance out of this file
         silently lost every inherited entry, and nothing said why. So a copy at
-        the store root is a problem whatever it holds — even one that only
-        repeats `<component>.extends` misleads the next reader into thinking it
-        is read. Existence only: the file is never opened, so a corrupt copy
-        cannot make `check` raise, and it is never rewritten or deleted.
+        the store root is a problem whatever it holds. Existence only: the file
+        is never opened, so a corrupt copy cannot make `check` raise, and it is
+        never rewritten or deleted (TCW-112 Design 6.8).
 
         Only the root: a file of the same name inside a folder entry is an
         ordinary file of that entry.
@@ -1877,9 +1620,369 @@ class FsTreeStore:
         if not path.is_file():
             return []
         return [Finding("error", self._where(path),
-                        f"no longer read since TCW 2.5.0 — move any needed "
-                        f"extends into {self._extends_label()}, then delete the "
-                        f"file; if already migrated, just delete it")]
+                        "no longer read since TCW 2.5.0; a project inherits taxonomy "
+                        "and capabilities from its parents (parents: in "
+                        ".tcw/tcw-config.yaml); delete this file")]
+
+    # -- inheritance: the view (TCW-112 Design 1, 2) --
+    #
+    # The active project's objects at each id-path are combined over its
+    # sources by `combine` (`tcw/store/base.py`), which reads no file; what
+    # is read here is each source's own declarations, and the files their
+    # folders hold. Nothing is read from another project until a reader
+    # asks for something that needs it (Design 1.4).
+
+    def _forget(self) -> None:
+        """Drop what was read of this store, after a write changed it."""
+        self._view_cache = None
+        self._decl_cache = None
+
+    def _has_parent_links(self) -> bool:
+        """Whether this project's own file names any parent. A project with
+        none is its own only source (UC-1), so no registry is asked."""
+        return bool(self._config().get("parents"))
+
+    def _source_entries(self) -> list:
+        """`source_entries` of this store's project for its axis, gaps
+        included, ending with the project; just the project when it has no
+        parent links."""
+        if not self._has_parent_links():
+            return []
+        registry = self.locator.registry
+        if self._as_other:
+            return registry.source_entries(self.COMPONENT, self.project_id,
+                                           root=self.project_root)
+        return registry.source_entries(self.COMPONENT)
+
+    def _source_ids(self) -> set[str]:
+        """The IDs of the projects that pass this store's axis to its project,
+        whether or not each is here, read without opening any store."""
+        try:
+            return {entry.id for entry in self._source_entries()} - {self.project_id}
+        except (TcwError, ValueError):
+            return set()
+
+    def _source_stores(self) -> list[tuple[str, "FsTreeStore"]]:
+        """Each source of this store's project for its axis other than the
+        project itself (Design 1.1), in load order, with its store, opened
+        from its own committed configuration through the command's one
+        registry. A source with no store for the axis is left out (Design
+        1.2). Raises `InheritedUnavailable` when a source is not here, or its
+        links or its store cannot be read (Design 1.3)."""
+        entries = self._source_entries()
+        if not entries:
+            return []
+        registry = self.locator.registry
+        for entry in entries:
+            if entry.state != "here":
+                raise registry.unavailable(self.project_id, entry.id, self.COMPONENT,
+                                           missing=entry.state == "missing")
+        found = []
+        for entry in entries[:-1]:
+            try:
+                store = self.locator.store(entry.id, self.COMPONENT,
+                                           Path(entry.project.locator))
+            except ValueError as error:
+                # Not provisioned, declared wrongly, or any other reason its
+                # store cannot open (Design 1.3's third case).
+                raise registry.unavailable(self.project_id, entry.id, self.COMPONENT,
+                                           store_message=str(error)) from None
+            if store.root.is_dir():
+                found.append((entry.id, store))
+        return found
+
+    def own_paths(self) -> list[str]:
+        """The id-paths of this project's own objects (TCW-112 choice 1), in
+        name order. Reads no other project."""
+        return [p for p in object_paths(self.root, self.COMPONENT)
+                if self._entry_readable(self.root / p)]
+
+    def has_own(self, id_path: str) -> bool:
+        """Whether this project has an object of its own at `id_path`, every
+        folder spelled exactly as given (TCW-111 Design 2.5). Reads no other
+        project and no state file's contents."""
+        try:
+            id_path = _safe_store_id(id_path, "id-path")
+        except UsageError:
+            return False
+        d = self.root / id_path
+        # The cheap stat first, so a miss pays no `resolve()`; containment
+        # second; the spelling, read from the listings, third.
+        return d.is_dir() and self._entry_readable(d) \
+            and is_object(self.root, self.COMPONENT, id_path)
+
+    def _declared_description(self, d: Path) -> str | None:
+        """The object folder `d`'s declared description (Design 2.3): its
+        `description.md`, possibly empty, or None when it has none."""
+        desc = d / "description.md"
+        if desc.is_file() and self._within_store(desc):
+            return desc.read_text(encoding="utf-8")
+        return None
+
+    def _declarations(self) -> dict[str, "Declaration | None"]:
+        """This project's own declarations, by id-path (Design 2.2, 2.3):
+        each state file without `tcw-version`, and the declared description.
+        None for an object whose state file's version cannot be read, which
+        is recorded in `unreadable` (TCW-111 Design 1.5): the object exists,
+        and its contents are not read. Reads no other project."""
+        if self._decl_cache is None:
+            found: dict[str, Declaration | None] = {}
+            for id_path in self.own_paths():
+                d = self.root / id_path
+                try:
+                    meta = self._state(d)
+                except StateFileProblem as problem:
+                    self.unreadable[problem.path] = problem.problem
+                    found[id_path] = None
+                    continue
+                found[id_path] = Declaration(meta, self._declared_description(d))
+            self._decl_cache = found
+        return self._decl_cache
+
+    def _declaration_at(self, id_path: str) -> tuple[bool, "Declaration | None"]:
+        """Whether this project has an object of its own at `id_path`, and its
+        declaration (None when its version cannot be read, recorded as in
+        `_declarations`), reading that one object only, unless every
+        declaration is already read. So one object's read is not stopped by
+        a sibling whose file is malformed."""
+        if self._decl_cache is not None:
+            return id_path in self._decl_cache, self._decl_cache.get(id_path)
+        if not self.has_own(id_path):
+            return False, None
+        d = self.root / id_path
+        try:
+            meta = self._state(d)
+        except StateFileProblem as problem:
+            self.unreadable[problem.path] = problem.problem
+            return True, None
+        return True, Declaration(meta, self._declared_description(d))
+
+    def _own_declaration(self, id_path: str) -> "Declaration | None":
+        """One own object's declaration, read alone. Raises `StateFileProblem`
+        for a version this TCW cannot read."""
+        d = self.root / id_path
+        return Declaration(self._state(d), self._declared_description(d))
+
+    def _view(self) -> "_View":
+        """This project's view of its axis, built once (Design 1.4). Raises
+        `InheritedUnavailable` when it cannot be built (Design 1.3)."""
+        if self._view_cache is None:
+            self._view_cache = _View(self, self._source_stores())
+        return self._view_cache
+
+    def _combined(self, id_path: str) -> "Combined | None":
+        """The combined object at `id_path` in the view, or None. Raises the
+        version problem of a chain member whose object cannot be read
+        (Design 1.3)."""
+        view = self._view()
+        found = view.combined(id_path)
+        if found is not None and found.unreadable is not None:
+            raise view.unreadable_problem(id_path, found.unreadable)
+        return found
+
+    def get_view(self, id_path: str):
+        """The object at `id_path` in this project's view (Design 3.1 form
+        d), named by its chain's first member, or None."""
+        if id_path_refused(id_path):
+            return None
+        found = self._combined(id_path)
+        return None if found is None else self._record(id_path, found, self._view().stores)
+
+    def get_local(self, id_path: str):
+        """This project's own object at `id_path` as this project sees it,
+        combined over its sources (Design 3.1, second row), or None when it
+        has no object of its own there."""
+        if not self.has_own(id_path):
+            return None
+        return self.get_view(id_path)
+
+    def declaration(self, id_path: str):
+        """This project's own object at `id_path` read from its own
+        declaration alone, marked `partial` (Design 3.4), or None. Reads no
+        other project."""
+        if not self.has_own(id_path):
+            return None
+        alone = combine([(self.project_id, self._own_declaration(id_path))],
+                        lambda a, b: False, axis=self.COMPONENT)
+        return self._record(id_path, alone, {self.project_id: self}, partial=True)
+
+    def chain(self, id_path: str) -> list[FullId]:
+        """Design 2.1's chain at `id_path`, nearest first, as full
+        identifiers; empty when nothing has an object there."""
+        if id_path_refused(id_path):
+            return []
+        found = self._combined(id_path)
+        return [] if found is None else \
+            [FullId(pid, self.COMPONENT, id_path) for pid in found.chain]
+
+    def inherited_at(self, id_path: str) -> FullId | None:
+        """Design 2.7: the full identifier of the inherited object at
+        `id_path`, the first member of the path's chain that is not this
+        project, computed over its sources without its own object; or None."""
+        if id_path_refused(id_path):
+            return None
+        view = self._view()
+        found = view.combined(id_path, without=self.project_id)
+        if found is None:
+            return None
+        if found.unreadable is not None:
+            raise view.unreadable_problem(id_path, found.unreadable)
+        return FullId(found.owner, self.COMPONENT, id_path)
+
+    def view_warnings(self, id_paths=None) -> list[str]:
+        """Design 2.5's warnings for `id_paths`, or for the whole view, ordered
+        by id-path, then by the unused project's place in the load order."""
+        view = self._view()
+        out = []
+        for id_path in sorted(view.paths() if id_paths is None else set(id_paths)):
+            found = view.combined(id_path)
+            for unused in (found.unused if found is not None else ()):
+                if unused.warned:
+                    out.append(clash_warning(self.COMPONENT, id_path, unused.project,
+                                             unused.winner, self.project_id))
+        return out
+
+    def _listing(self, local_only: bool) -> list:
+        """The view's objects, each id-path once, or with `local_only` the
+        ones this project owns (Design 3.2). An id-path whose chain holds an
+        object that cannot be read is left out and recorded (Design 1.3);
+        with `local_only`, this project's own object there is given as its
+        own declaration, marked partial."""
+        view = self._view()
+        self._view_unreadable = {}
+        decls = self._declarations()
+        if local_only:
+            paths = [p for p in decls if decls[p] is not None]
+        else:
+            paths = view.paths()
+        out = []
+        for id_path in paths:
+            found = view.combined(id_path)
+            if found.unreadable is not None:
+                problem = view.unreadable_problem(id_path, found.unreadable)
+                self._view_unreadable[problem.path] = problem.problem
+                if local_only:
+                    out.append(self.declaration(id_path))
+                continue
+            out.append(self._record(id_path, found, view.stores))
+        return out
+
+    def own_declarations(self) -> list:
+        """Each of this project's own objects read from its own declaration
+        alone, marked partial (Design 3.4): what `list --local` shows when
+        the view cannot be built. Objects whose state file cannot be read are
+        left out and recorded, as a listing leaves them."""
+        decls = self._declarations()
+        return [self.declaration(p) for p in decls if decls[p] is not None]
+
+    def own_or_partial(self, id_path: str):
+        """This project's own object at `id_path` as it sees it, or, when the
+        view cannot be built, its own declaration alone, with `view_error`
+        set (Design 3.4). None when it has no object there."""
+        if not self.has_own(id_path):
+            return None
+        try:
+            return self.get_local(id_path)
+        except InheritedUnavailable as error:
+            self.view_error = error
+            return self.declaration(id_path)
+
+    def _target_parts(self, target) -> tuple["FullId | None", str]:
+        """`(full identifier or None, id-path)` for a target given as a full
+        identifier, or text sorted as command input is (TCW-110 Design 3.1)."""
+        if isinstance(target, str):
+            found = sort_input(target, self.COMPONENT)
+            if found.form == "d":
+                return None, found.id_path
+            target = found.full_id
+        return target, target.id_path
+
+    def _found(self, target: "FullId | str"):
+        """The object an operation naming one existing object reads: a full
+        identifier names its owner's own object as its owner sees it (Design
+        3.1), and an id-path the object in this project's view."""
+        full_id, id_path = self._target_parts(target)
+        if full_id is None:
+            return self.get_view(id_path)
+        return self._as_seen_here(self._owner_store(full_id.project).get_local(id_path))
+
+    def _as_seen_here(self, obj):
+        """`obj`, read from its owner's store, with `origin` said from this
+        store's side: "local" only when this project owns it."""
+        if obj is None or obj.origin != "local" or obj.owner == self.project_id:
+            return obj
+        return dataclasses.replace(obj, origin=obj.owner)
+
+    def _owner_store(self, project_id: str) -> "FsTreeStore":
+        """The store of this axis of project `project_id`: this one for its
+        own project, else the owner's, found through the command's
+        `Locator`."""
+        if project_id == self.project_id:
+            return self
+        locator = self.locator
+        return locator.owner_store(project_id, self.COMPONENT, locator.root)
+
+    def _no_such(self, target) -> str:
+        noun = "term" if self.COMPONENT == "taxonomy" else "capability"
+        return f"no such {noun}: {target}"
+
+    def removal_target(self, target: "FullId | str") -> FullId:
+        """The full identifier of this project's own object that `rm` removes
+        for `target` (TCW-112 choice 9). Another project's full identifier
+        is refused before anything is read; this project's own one where it
+        has no object, and an id-path nothing has an object at, are not
+        found; an id-path the view shows as another project's is refused. An
+        id-path this project has no object at when the view cannot be built
+        is not found, since `rm` only removes this project's own objects
+        (Design 4.4)."""
+        full_id, id_path = self._target_parts(target)
+        if full_id is not None and full_id.project != self.project_id:
+            raise Refused(f"cannot remove {full_id}: it belongs to project "
+                          f"'{full_id.project}'; change it in '{full_id.project}'")
+        if self.has_own(id_path):
+            return FullId(self.project_id, self.COMPONENT, id_path)
+        if full_id is not None:
+            raise NotFound(self._no_such(target))
+        try:
+            hit = self.get_view(id_path)
+        except InheritedUnavailable:
+            hit = None
+        if hit is None:
+            raise NotFound(self._no_such(target))
+        raise Refused(f"cannot remove {hit.full_id}: it belongs to project "
+                      f"'{hit.owner}'; change it in '{hit.owner}'")
+
+    def _chain_texts(self, store: "FsTreeStore", id_path: str) -> list[str]:
+        """Every chain member's state file and description at `id_path`, as
+        `store` sees the path: what a revision token covers, so an edit to
+        any member makes a held token stale."""
+        view = store._view()
+        found = store._combined(id_path)
+        texts: list[str] = []
+        for pid in (found.chain if found is not None else ()):
+            member = view.stores[pid]
+            texts += member._entry_texts(member.root / id_path)
+        return texts
+
+    def _write_meta(self, d: Path, meta: dict, *,
+                    removed: tuple[Path, ...] = ()) -> None:
+        """Write an entry's state file alone, rolling back what this call
+        created.
+
+        Owns the `mkdir` so it can prove whether the directory is its own: a
+        write making a *fresh* override is the path where a refused write
+        would otherwise leave an empty folder behind, and an update of an
+        existing object is the path where removing the folder would take
+        files this call never wrote.
+        """
+        owned = _mkdir_owned(d)
+        self._write_files(
+            [(d / self.STATE_FILE, state_text(d / self.STATE_FILE, meta))],
+            owned_dir=d if owned else None, removed=removed)
+
+    def _object_modified(self, d: Path, fields: dict) -> str:
+        """When an object folder's files last changed."""
+        return _modified_timestamp([d / self.STATE_FILE, d / "description.md"])
 
     def _load_entry(self, d: Path) -> tuple[dict, str, list[str]]:
         """Read a folder entry → (meta mapping, description text, attachment names).
@@ -1918,6 +2021,128 @@ class FsTreeStore:
             [(d / self.STATE_FILE, state_text(d / self.STATE_FILE, meta)),
              (d / "description.md", description)],
             owned_dir=d if owned else None)
+
+
+class _View:
+    """One project's view of one axis (TCW-112 Design 2): its sources in
+    load order, ending with the project, and each id-path combined by
+    `combine` on first use from the members' own declarations there. Every
+    member's declarations are read only when every id-path is asked for."""
+
+    def __init__(self, store: "FsTreeStore", sources: list):
+        self.store = store
+        self.members = [*sources, (store.project_id, store)]
+        self.stores = dict(self.members)
+        self.order = [pid for pid, _ in self.members]
+        self._combined: dict = {}
+        self._passed_to: dict[str, set[str]] = {}
+
+    def paths(self) -> list[str]:
+        """Every id-path any member has an object at, in name order."""
+        return sorted({p for _, st in self.members for p in st._declarations()})
+
+    def passes(self, a: str, b: str) -> bool:
+        """Whether project `a` passes the axis to project `b` (TCW-112 choice
+        3): `a` is one of `b`'s sources and not `b`."""
+        if b == self.store.project_id:
+            return a != b and a in self.stores
+        if b not in self._passed_to:
+            member = self.stores[b]
+            self._passed_to[b] = {entry.id for entry in member._source_entries()} - {b}
+        return a in self._passed_to[b]
+
+    def combined(self, id_path: str, *, without: str | None = None) -> Combined | None:
+        """The object at `id_path` combined over the members that declare it,
+        leaving out `without`'s declaration, or None."""
+        key = (id_path, without)
+        if key not in self._combined:
+            declarers, unreadable = [], set()
+            for pid in self.order:
+                if pid == without:
+                    continue
+                present, declaration = self.stores[pid]._declaration_at(id_path)
+                if not present:
+                    continue
+                if declaration is None:
+                    unreadable.add(pid)
+                    declaration = Declaration({})
+                declarers.append((pid, declaration))
+            self._combined[key] = combine(declarers, self.passes,
+                                          axis=self.store.COMPONENT,
+                                          unreadable=frozenset(unreadable))
+        return self._combined[key]
+
+    def unreadable_problem(self, id_path: str, project_id: str) -> StateFileProblem:
+        """The version problem of `project_id`'s object at `id_path`."""
+        member = self.stores[project_id]
+        path = member.root / id_path / member.STATE_FILE
+        return StateFileProblem(path, member.unreadable.get(path, "cannot be read"))
+
+
+#: Design 6.4's message for a TCW 3.x override pointer.
+_OVERRIDES_REMOVED = ("'overrides' was removed in TCW 4.0: an override is an object at "
+                      "the same path as the object it overrides; run 'tcw migrate' in "
+                      "this project, or move this folder to that path and delete the key")
+
+
+def _not_inherited(full_id: FullId, project_id: str) -> str:
+    """Design 4.2's refusal of another project's object outside the chain."""
+    return (f"{full_id} belongs to project '{full_id.project}', and '{project_id}' does "
+            f"not inherit it, so it cannot be overridden here; change it in "
+            f"'{full_id.project}'")
+
+
+def _incomplete(full_id: FullId, declaration: Declaration, axis: str) -> str | None:
+    """Design 6.1's error for an object that overrides nothing and lacks a
+    part of a complete one, naming each part, or None."""
+    missing = ["description.md" if part == "description" else part
+               for part in missing_parts(declaration, axis)]
+    if not missing:
+        return None
+    named = missing[0] if len(missing) == 1 else \
+        f"{', '.join(missing[:-1])} or {missing[-1]}"
+    return (f"{full_id} is incomplete: it overrides nothing, and has no {named}; if it "
+            f"overrode an object that moved or was removed, complete it or remove it")
+
+
+def _view_or_error(store: FsTreeStore) -> tuple["_View | None", "InheritedUnavailable | None"]:
+    """The store's view, or None and why it could not be built: what
+    `check` runs on (TCW-112 Design 6.5)."""
+    try:
+        return store._view(), None
+    except InheritedUnavailable as error:
+        return None, error
+
+
+def _selected(store: FsTreeStore, identifier: str, view):
+    """`(id-path, object, own)` for a check scoped to `identifier`: the
+    project's own object read alone when it has one (a version this TCW
+    cannot read raises `StateFileProblem`), else the view's, which needs the
+    view."""
+    if store.has_own(identifier):
+        store._own_declaration(identifier)
+        return identifier, True, True
+    if view is None:
+        raise store.view_error
+    return identifier, store.get_view(identifier), False
+
+
+def _combined_or_problem(store: FsTreeStore, view, id_path: str,
+                         problems: list[Finding]) -> Combined | None:
+    """The combined object at one of the store's own id-paths, for `check`;
+    None when the view could not be built, or when a member of the path's
+    chain cannot be read, which adds Design 1.3's `unresolved` finding (the
+    project's own unreadable object is reported at its file instead)."""
+    if view is None:
+        return None
+    found = view.combined(id_path)
+    if found is None or found.unreadable is None:
+        return found
+    if found.unreadable != store.project_id:
+        problem = view.unreadable_problem(id_path, found.unreadable)
+        problems.append(store._store_finding(
+            f"could not check {store.COMPONENT} {id_path}: {problem}", "unresolved"))
+    return None
 
 
 # ── FsTaxonomyStore ─────────────────────────────────────────────────────────
@@ -1973,71 +2198,48 @@ def _wrong_kind_ref(ref: str, kind: str) -> str:
     return f"vocabulary ref '{ref}' points to {kind}, expected Vocabulary"
 
 
-class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
+class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
     """`TaxonomyStore` over nested dirs under `docs/taxonomy/` (Phase 2 B.3).
 
-    A term's slug is its directory path under the taxonomy root. `extends`
-    aliases (local-path repo roots) are realized as nested stores.
+    A term's slug is its directory path under the taxonomy root. What the
+    project inherits comes from its parent links, each id-path's term
+    combined over its sources (TCW-112 Design 1, 2).
     """
     COMPONENT = "taxonomy"
     LEGACY_CONFIG_NAME = "config.yaml"
     STATE_FILE = STATE_FILES["taxonomy"]
 
-    def __init__(self, root: Path, *,
-                 _walk: "_FederationWalk | None" = None,
-                 project_root: Path | None = None, store_git_root: Path | None = None):
-        super().__init__(root, project_root=project_root, store_git_root=store_git_root)
-        self.extends: dict[str, "FsTaxonomyStore"] = {}
-        # Reused, never rebuilt: the resolution below already constructed each
-        # store with the right project root and the right walk state. There is no
-        # second filter on the results — the `_seen` set that used to be one was
-        # dead once recursion moved into `_extended_component_stores`, since the
-        # only case it could refuse is a self-extend the identity check there
-        # already refuses by project id.
-        self.extends, self.extends_cycles = _extended_component_stores(
-            self.project_root, self.config, self._extends_label(), "taxonomy",
-            walk=self._walk_for(_walk), owner_id=self.project_id,
-        )
-
     # -- reads --
 
-    def _term(self, slug: str, origin: str = "local") -> Term:
-        d = self.root / slug
-        meta, description, attachments = self._load_entry(d)
+    def _record(self, slug: str, found: Combined, stores: dict, *,
+                partial: bool = False) -> Term:
+        """The term `found` combines at `slug`, read from the members'
+        folders in `stores` (Design 2.2-2.4)."""
+        fields = found.fields
+        folders = [stores[pid].root / slug for pid in found.chain]
+        # A term's attachments are its nearest member's that holds any
+        # (Design 2.3): the list is replaced whole.
+        attachments: list[str] = []
+        for pid, d in zip(found.chain, folders):
+            attachments = stores[pid]._resource_files(d)
+            if attachments:
+                break
         return Term(
             slug=slug,
-            name=meta.get("name") or slug.rsplit("/", 1)[-1].replace("-", " ").title(),
-            description=description,
-            kind=_normalize_taxonomy_kind(meta.get("kind")),
-            relates_to=list(meta.get("relatesTo") or []),
-            vocabulary=list(meta.get("vocabulary") or []),
+            name=fields.get("name") or slug.rsplit("/", 1)[-1].replace("-", " ").title(),
+            description=found.description or "",
+            kind=_normalize_taxonomy_kind(fields.get("kind")),
+            relates_to=list(fields.get("relatesTo") or []),
+            vocabulary=list(fields.get("vocabulary") or []),
             attachments=attachments,
-            origin=origin,
-            modified=_modified_timestamp(
-                [d / self.STATE_FILE, d / "description.md"]
-            ),
-            owner=self.owner_of(origin),
-            parent=_stored_parent(meta.get("parent"), "taxonomy"),
+            origin="local" if found.owner == self.project_id else found.owner,
+            modified=max((self._object_modified(d, {}) for d in folders), default=""),
+            owner=found.owner,
+            parent=_stored_parent(fields.get("parent"), "taxonomy"),
+            overrides=None if partial or found.overrides is None
+            else FullId(found.overrides, "taxonomy", slug),
+            partial=partial,
         )
-
-    def get_local(self, slug: str) -> Term | None:
-        """This store's own project's entry at the id-path `slug`, every
-        folder spelled exactly as given, or None."""
-        # A ref is joined onto the store root, so it is bounded input like any
-        # other store id: one that escapes (`../capabilities/thing`) resolves to
-        # nothing rather than raising — `get()` is documented to return None for
-        # a ref that resolves to nothing, and `check()` catches only AmbiguousRef,
-        # so a raise here would crash `check` on a taxonomy that already holds one.
-        try:
-            slug = _safe_store_id(slug, "term ref")
-        except UsageError:
-            return None
-        d = self.root / slug
-        # Order matters: the cheap stat first, so a miss pays no `resolve()`;
-        # containment second; the spelling, read from the listings, third;
-        # the read (`_term`) only after all three.
-        return self._term(slug) if d.is_dir() and self._entry_readable(d) \
-            and is_object(self.root, "taxonomy", slug) else None
 
     def _local_slugs(self) -> list[str]:
         # The walk is the one listing of a store's objects (TCW-111 Design
@@ -2048,79 +2250,8 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         return [p for p in object_paths(self.root, "taxonomy")
                 if self._entry_readable(self.root / p) and self._listable(self.root / p)]
 
-    def _inherited_stores(self) -> dict[str, "FsTaxonomyStore"]:
-        """Every inherited taxonomy keyed by its owning project ID.
-
-        ``self.extends`` remains the direct declarations used by writes and cycle
-        checks.  Reads flatten their nested stores so a source keeps the same
-        canonical namespace regardless of the route that reaches it.
-        """
-        stores: dict[str, FsTaxonomyStore] = {}
-        for project_id, store in self.extends.items():
-            stores.setdefault(project_id, store)
-            for inherited_id, inherited_store in store._inherited_stores().items():
-                stores.setdefault(inherited_id, inherited_store)
-        return stores
-
     def list_all(self, local_only: bool = False) -> list[Term]:
-        terms = [self._term(s) for s in self._local_slugs()]
-        if not local_only:
-            for project_id, store in self._inherited_stores().items():
-                terms += [
-                    self._term_via(store, slug, project_id)
-                    for slug in store._local_slugs()
-                ]
-        return terms
-
-    @staticmethod
-    def _term_via(store: "FsTaxonomyStore", slug: str, alias: str) -> Term:
-        return store._term(slug, origin=alias)
-
-
-    def get_view(self, slug: str) -> Term | None:
-        """An id-path read as the active project sees it (TCW-110 Design 3.1
-        form d): the local entry first, else the one inherited entry at that
-        path. `AmbiguousRef` when two inherited projects both hold it."""
-        ref = slug
-        inherited_stores = self._inherited_stores()
-        local = self.get_local(ref)                    # bare-wins-local (B.6.2)
-        if local is not None:
-            return local
-        matches = [
-            (project_id, term)
-            for project_id, store in inherited_stores.items()
-            if (term := store.get_local(ref)) is not None
-        ]
-        if len(matches) == 1:
-            project_id = matches[0][0]
-            return self._term_via(inherited_stores[project_id], ref, project_id)
-        if len(matches) > 1:
-            raise AmbiguousRef(ref, "taxonomy")
-        return None
-
-    def get_inherited(self, alias: str, slug: str) -> Term | None:
-        """The entry at id-path `slug` in project `alias`, one this store
-        inherits from, as this project sees it, or None."""
-        st = self._inherited_stores().get(alias)
-        return self._term_via(st, slug, alias) if st and st.get_local(slug) else None
-
-    def _inherited(self) -> dict[str, "FsTaxonomyStore"]:
-        """The projects whose entries this store reads as its own, by ID."""
-        return self._inherited_stores()
-
-    def _found(self, target: "FullId | str") -> Term | None:
-        """The entry an operation naming one existing object acts on: a full
-        identifier of this project's own entry or of one it inherits, or text
-        sorted as command input is (TCW-110 Design 3.1), an id-path read by
-        `get_view`. Another project's entry is not this store's to act on."""
-        if isinstance(target, str):
-            found = sort_input(target, "taxonomy")
-            if found.form == "d":
-                return self.get_view(found.id_path)
-            target = found.full_id
-        if target.project == self.project_id:
-            return self.get_local(target.id_path)
-        return self.get_inherited(target.project, target.id_path)
+        return self._listing(local_only)
 
     def search(self, query: str) -> list[Term]:
         q = query.lower()
@@ -2130,7 +2261,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
     # -- writes --
 
     def add(self, name: str, slug: str | None = None, parent: str | None = None,
-            description: str = "", kind: str = "Vocabulary",
+            description: str = "", kind: str | None = None,
             vocabulary: list[str] | None = None) -> Term:
         leaf = _safe_store_id(slug or slugify(name), "slug")
         # After `_safe_store_id`, so a slug that would leave the store is still
@@ -2144,13 +2275,23 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         parent_term = self.find_parent(parent) if parent else None
         inside = (parent_term.slug if parent_term is not None
                   and parent_term.owner == self.project_id else None)
+        if parent_term is not None and inside is None:
+            # A parent this project only sees through its view: when the path
+            # inside it is inherited, the new term is that path's override,
+            # and the folders between are made as organising folders (TCW-112
+            # Design 4.1).
+            nested = f"{parent_term.slug}/{leaf}"
+            if self.get_view(parent_term.slug) is not None \
+                    and self.get_view(parent_term.slug).full_id == parent_term.full_id \
+                    and self.inherited_at(nested) is not None:
+                inside = parent_term.slug
         full = f"{inside}/{leaf}" if inside else leaf
         _check_id_path(full, "slug")
         _check_reserved(full, "taxonomy", "slug")
         _check_length(self.project_id, "taxonomy", full)
-        kind = _normalize_taxonomy_kind(kind)
-        if kind not in TAXONOMY_KINDS:
-            raise UsageError(f"invalid taxonomy kind '{kind}' "
+        given_kind = None if kind is None else _normalize_taxonomy_kind(kind)
+        if given_kind is not None and given_kind not in TAXONOMY_KINDS:
+            raise UsageError(f"invalid taxonomy kind '{given_kind}' "
                              f"(choose: {', '.join(sorted(TAXONOMY_KINDS))})")
         d = self.root / full
         # Before `d.exists()` and before the first mkdir: one guard covers a
@@ -2160,6 +2301,11 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             raise UsageError(f"parent term does not exist: {parent or full}")
         if d.exists() or d.is_symlink():   # a dangling/looping link reads absent
             raise Refused(f"term already exists: {full}")
+        inherited = self.inherited_at(full)
+        if inherited is not None:
+            return self._add_override(full, inherited, name, parent_term, description,
+                                      given_kind, vocabulary)
+        kind = given_kind or "Vocabulary"
         # Fail closed on refs *before* the first mkdir: a rejected write must
         # leave no partial folder behind. The same rules `check` applies, so a
         # term that `add` accepted never fails the very next `check`.
@@ -2171,21 +2317,45 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         if vocabulary:
             meta["vocabulary"] = [self._resolve_vocab_ref(r) for r in vocabulary]
         self._write_entry(d, meta, description)
-        return self._term(full)
+        return self.get_local(full)
+
+    def _add_override(self, full: str, inherited: FullId, name: str, parent_term,
+                      description: str, kind: str | None,
+                      vocabulary: list[str] | None) -> Term:
+        """`add` at a path this project inherits (TCW-112 Design 4.1): a term
+        holding only what differs from the inherited one as this project sees
+        it, and never `relatesTo`, which would clear the inherited list."""
+        base = self.get_view(full)
+        meta: dict = {}
+        if name != base.name:
+            meta["name"] = name
+        if kind is not None and kind != base.kind:
+            meta["kind"] = kind
+        if vocabulary:
+            meta["vocabulary"] = [self._resolve_vocab_ref(r) for r in vocabulary]
+        if parent_term is not None and str(parent_term.full_id) != str(base.parent):
+            meta["parent"] = str(parent_term.full_id)
+        has_text = bool(description.strip())
+        if not meta and not has_text:
+            raise Refused(
+                f"cannot add '{full}': '{self.project_id}' already inherits {inherited} "
+                f"there, and nothing given differs from it; give a description on "
+                f"standard input, --vocab, or a different name or kind")
+        # The combined term's checks run before anything is written.
+        if meta.get("kind", base.kind) == "Feature" \
+                and not meta.get("vocabulary", base.vocabulary):
+            raise UsageError("Feature requires at least one vocabulary ref")
+        d = self.root / full
+        if has_text:
+            self._write_entry(d, meta, description)
+        else:
+            self._write_meta(d, meta)
+        return self.get_local(full)
 
     def remove(self, ref: "FullId | str") -> None:
-        term = self._found(ref)
-        # The exact listed spelling only, as `FsCapabilitiesStore.remove`: on a
-        # case-insensitive disk `ADMIN` resolves to the `admin` folder but echoes
-        # the spelling back as the slug, and git would not find that path.
-        if term is not None and term.origin == "local" and term.slug not in self._local_slugs():
-            term = None
-        if term is None:
-            raise NotFound(f"no such term: {ref}")
-        if term.origin != "local":
-            raise Refused(f"cannot remove inherited term '{term.full_id}' "
-                             f"(edit it at its source)")
-        d = self.root / term.slug
+        target = self.removal_target(ref)
+        slug = target.id_path
+        d = self.root / slug
         # Refused, never cascaded, and decided from the disk (TCW-73 Design
         # 8.2): a nested object is a folder under this one holding a state
         # file of any store, or a 3.x file (TCW-111 Design 2.5). Everything
@@ -2193,17 +2363,19 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         # on its own, files git has never seen — goes with it. The search is
         # the folder's own, not the walk's, which skips hidden folders and
         # `resources/` that the removal deletes all the same.
-        _blocked_removal(d, self.root, "taxonomy", term.slug)
-        referrers = self._referrers(d) + self._capability_referrers(d, term.slug)
+        _blocked_removal(d, self.root, "taxonomy", slug)
+        referrers = self._referrers(d) + self._capability_referrers(d, slug)
         if referrers:
-            raise Refused(f"cannot remove '{term.slug}': still referenced by "
+            raise Refused(f"cannot remove '{slug}': still referenced by "
                              f"{', '.join(referrers)} (repoint or clear those first)")
         self._rm(d)
 
     def _capability_referrers(self, target: Path, slug: str) -> list[str]:
-        """`capability <path> (Subject|Feature)` for every local capability whose
-        reference resolves to the term folder `target` or a folder inside it —
-        what `tcw validate` would report dangling once it is gone.
+        """`capability <path> (Subject|Feature)` for every capability of this
+        project whose own declaration names the term folder `target` or a
+        folder inside it — what `tcw validate` would report dangling once it
+        is gone (TCW-112 Design 7.3). An override is one of the project's own
+        capabilities, and only what it declares is read.
 
         The project's capabilities store is found by the normal resolution. None
         here: nothing to ask. One that cannot be opened or read refuses the
@@ -2211,83 +2383,50 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         """
         try:
             caps = FsCapabilitiesStore.open(
-                self.project_root, _walk=_FederationWalk(active_root=self._active_root))
+                self.project_root, locator=self.locator if self._as_other else None)
             if not caps.root.is_dir():
                 return []
-            local = caps.list_all(local_only=True)
-            # An override's references become the composed capability's own, so
-            # a term one names is as named as one a local capability names.
-            overrides = caps._override_fields()
+            declared = [(path, decl.fields) for path, decl in caps._declarations().items()
+                        if decl is not None]
         except (ValueError, TcwError, yaml.YAMLError) as e:
             raise Refused(f"cannot remove '{slug}': the capabilities that might "
                              f"name it cannot be read: {e}") from None
-        referrers = ([(f"capability {cap.path}", cap.fields) for cap in local]
-                     + [(f"capability override {path}", fields)
-                        for path, fields in overrides])
         out = []
-        for label, fields in referrers:
+        for path, fields in declared:
             named = set()
             for field, ref in FsCapabilitiesStore._term_refs(fields):
                 hit = self._local_ref(ref)
-                if (hit is not None and hit.origin == "local"
-                        and _in_folder(self.root / hit.slug, target, self.root)):
+                if hit is not None and _in_folder(self.root / hit, target, self.root):
                     named.add(field)
-            out += [f"{label} ({field})"
+            out += [f"capability {path} ({field})"
                     for field in ("Subject", "Feature") if field in named]
         return out
 
     def _referrers(self, target: Path) -> list[str]:
-        """`<term> (<field>)` for every other local term whose `relatesTo` or
-        `vocabulary` resolves to the local term folder `target` or a folder
-        inside it — exactly the refs `check` would report dangling once it is
-        gone. Compared by folder
-        identity, not spelling, so `admin/permission` never matches a top-level
-        `permission`."""
+        """`<term> (<field>)` for every other term of this project whose own
+        declaration's `relatesTo` or `vocabulary` names the term folder
+        `target` or a folder inside it — exactly the refs `check` would report
+        dangling once it is gone. Compared by folder identity, not spelling,
+        so `admin/permission` never matches a top-level `permission`."""
         out = []
-        for term in self.list_all(local_only=True):
-            if _in_folder(self.root / term.slug, target, self.root):
+        for slug, decl in self._declarations().items():
+            if decl is None or _in_folder(self.root / slug, target, self.root):
                 continue
-            # `vocabulary` only on a Feature, the one kind `check` reads it on.
-            vocabulary = term.vocabulary if term.kind == "Feature" else []
-            for field, refs in (("relatesTo", term.relates_to),
+            fields = decl.fields
+            # `vocabulary` only on a Feature, the one kind `check` reads it on;
+            # an override that declares no kind may be one.
+            declared_kind = fields.get("kind")
+            vocabulary = fields.get("vocabulary") or [] \
+                if declared_kind is None or \
+                _normalize_taxonomy_kind(declared_kind) == "Feature" else []
+            for field, refs in (("relatesTo", fields.get("relatesTo") or []),
                                 ("vocabulary", vocabulary)):
                 for ref in refs:
                     hit = self._local_ref(ref)
-                    if (hit is not None and hit.origin == "local"
-                            and _in_folder(self.root / hit.slug, target, self.root)):
-                        out.append(f"{term.slug} ({field})")
+                    if hit is not None and _in_folder(self.root / hit, target, self.root):
+                        out.append(f"{slug} ({field})")
                         break
         return out
-
-    def extends_add(self, project_id: str) -> None:
-        try:
-            project_id = validate_project_id(project_id)
-        except ValueError as e:
-            raise UsageError(str(e)) from None             # a malformed name (Design 4)
-        extends = _extends_ids(self.config, self._extends_label())
-        if project_id in extends:
-            raise Refused(f"extends project already exists: {project_id}")
-        if project_id == self.project_id:
-            raise Refused("a taxonomy cannot extend itself")
-        registry = self.locator.registry.require_valid()
-        try:
-            # Design 3.6: an ancestor passing taxonomy; exit 7 when what lies
-            # above is not known, and nothing written.
-            project = _extends_target(registry, "taxonomy", self.project_root,
-                                      self.project_id, project_id)
-        except _NotInherited as refused:
-            raise UsageError(str(refused)) from None
-        if not (Path(project.locator) / "docs" / "taxonomy").is_dir():
-            raise UsageError(f"project '{project_id}' has no docs/taxonomy/")
-        extends.append(project_id)
-        self._persist_extends(extends)
-
-    def extends_remove(self, project_id: str) -> None:
-        extends = _extends_ids(self.config, self._extends_label())
-        if project_id not in extends:
-            raise NotFound(f"no such extends project: {project_id}")
-        extends.remove(project_id)
-        self._persist_extends(extends)
 
     # -- validation --
 
@@ -2296,13 +2435,14 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         """Resolve one stored taxonomy ref (TCW-110 Design 5.2): `(term,
         problem)`, `problem` None when it names an entry (and, with
         `expect_vocabulary`, a Vocabulary one), else `(level, message)` as
-        `check` reports it."""
+        `check` reports it. The term is None when it exists but cannot be
+        read as its owner sees it here, and its kind is then not checked."""
         from tcw.locate import FOUND
         outcome = self._stored_ref(ref, "taxonomy")
         if outcome.kind != FOUND:
             return None, _ref_finding(label, ref, outcome)
         term = outcome.value
-        if expect_vocabulary and term.kind != "Vocabulary":
+        if expect_vocabulary and term is not None and term.kind != "Vocabulary":
             return term, ("error", _wrong_kind_ref(ref, term.kind))
         return term, None
 
@@ -2342,108 +2482,137 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         # A full listing first, so what is reported about state files that
         # cannot be read never depends on what was called before.
         self.unreadable.clear()
-        top_level = {s.split("/")[0] for s in self._local_slugs()}
-        for project_id in self._federation_cycles():
-            problems.append(self._store_finding(
-                f"extends '{project_id}': cycle in taxonomy federation"))
-        for project_id in self._inherited_stores():
-            if project_id in top_level:
-                problems.append(self._store_finding(
-                    f"project ID '{project_id}' collides with local top-level term"))
+        self._forget()
         if identifier is None:
             # About the store, not any one term — left out of a scoped check,
             # which is how `tcw serve` validates the object it just wrote.
             problems += self._legacy_config_problems()
-
+        view, self.view_error = _view_or_error(self)
+        # Every own declaration only for the whole store: a scoped check
+        # reads its one object, so a malformed sibling never stops it.
+        decls = self._declarations() if identifier is None else {}
         if identifier is not None:
             try:
-                selected = self.get_view(identifier)
+                slug, selected, own = _selected(self, identifier, view)
             except StateFileProblem as problem:
                 return [Finding("error", self._where(problem.path), problem.problem)]
             if selected is None:
                 return [Finding("error", self._where(self.root),
                                 f"no such term: {identifier}")]
-            terms = [selected]
+            slugs = [slug] if own else []
+            problems += self._shape_findings(slug) if own else []
+            if not own:
+                problems += self._term_findings(selected, None)
         else:
-            terms = self.list_all(local_only=True)
+            slugs = [p for p in decls if decls[p] is not None]
             problems += self._unreadable_findings()
-        if identifier is None:
             problems += self._shape_findings()
-        elif selected.origin == "local":
-            problems += self._shape_findings(selected.slug)
-        for term in terms:
-            def found(message: str) -> None:
-                problems.append(Finding("error", self._where(term.slug), message))
-            if (problem := _bad_name(term.slug)):
-                found(problem)
-            if term.origin == "local" and (problem := id_problem(
-                    self._state(self.root / term.slug), term.slug)):
-                problems.append(Finding("error", self._where(
-                    self.root / term.slug / self.STATE_FILE), problem))
-            if term.kind not in TAXONOMY_KINDS:
-                found(f"unknown kind '{term.kind}'")
-            def report(problem) -> None:
-                if problem:
-                    problems.append(Finding(problem[0], self._where(term.slug), problem[1]))
-            for ref in term.relates_to:
-                report(self._ref_problem(ref, "relatesTo")[1])
-            if term.kind == "Feature":
-                if not term.vocabulary:
-                    found("Feature requires at least one vocabulary ref")
-                for ref in term.vocabulary:
-                    report(self._ref_problem(ref, "vocabulary", expect_vocabulary=True)[1])
+        records = []
+        declared_parents = {}
+        for slug in slugs:
+            decl = decls.get(slug) if identifier is None else self._own_declaration(slug)
+            found = _combined_or_problem(self, view, slug, problems)
+            term = self._record(slug, found, view.stores) if found is not None \
+                else self.declaration(slug)
+            records.append(term)
+            declared_parents[slug] = _stored_parent(decl.fields.get("parent"), "taxonomy")
+            where = self._where(slug)
+            state = self._where(self.root / slug / self.STATE_FILE)
+            if (problem := _bad_name(slug)):
+                problems.append(Finding("error", where, problem))
+            if (problem := id_problem(decl.fields, slug)):
+                problems.append(Finding("error", state, problem))
+            if "overrides" in decl.fields:
+                problems.append(Finding("error", state, _OVERRIDES_REMOVED))
+            if found is not None and len(found.chain) == 1:
+                if (problem := _incomplete(term.full_id, decl, "taxonomy")):
+                    problems.append(Finding("error", state, problem))
+            problems += self._term_findings(term if found is not None else None, decl)
         problems += self._parent_findings(
-            [t for t in terms if t.origin == "local"],
-            None if identifier is None else selected.slug)
+            records, None if identifier is None else slugs[0] if slugs else None,
+            declared=declared_parents)
+        if identifier is None and view is not None:
+            problems += [self._store_finding(w, "warning") for w in self.view_warnings()]
+        return problems
+
+    def _term_findings(self, term: "Term | None", decl: "Declaration | None") -> list[Finding]:
+        """The checks of one term (TCW-112 Design 6.2): its kind and a
+        Feature's vocabulary on the term as the project sees it, when that
+        could be read; the references only its own declaration sets."""
+        problems: list[Finding] = []
+        slug = term.slug if term is not None else None
+        fields = decl.fields if decl is not None else None
+
+        def found(where_slug: str, message: str) -> None:
+            problems.append(Finding("error", self._where(where_slug), message))
+
+        def report(where_slug: str, problem) -> None:
+            if problem:
+                problems.append(Finding(problem[0], self._where(where_slug), problem[1]))
+        if term is not None:
+            if term.kind not in TAXONOMY_KINDS:
+                found(slug, f"unknown kind '{term.kind}'")
+            if term.kind == "Feature" and not term.vocabulary:
+                found(slug, "Feature requires at least one vocabulary ref")
+        if fields is None:
+            # An inherited term selected by a scoped check: its references
+            # are its owner's to check.
+            return problems
+        where_slug = slug or ""
+        for ref in fields.get("relatesTo") or []:
+            report(where_slug, self._ref_problem(ref, "relatesTo")[1])
+        kind = term.kind if term is not None else \
+            _normalize_taxonomy_kind(fields.get("kind"))
+        if term is None and kind not in TAXONOMY_KINDS and fields.get("kind") is not None:
+            found(where_slug, f"unknown kind '{kind}'")
+        if kind == "Feature":
+            for ref in fields.get("vocabulary") or []:
+                report(where_slug, self._ref_problem(ref, "vocabulary",
+                                                     expect_vocabulary=True)[1])
         return problems
 
     def _validation_resources(self, identifier: str) -> list[Path]:
-        """Filesystem resources bounded to one taxonomy object."""
+        """Filesystem resources bounded to one taxonomy object: every chain
+        member's files at its id-path."""
         try:
             identifier = _safe_store_id(identifier, "taxonomy target")
         except UsageError:
             return []
-        local_folder = self.root / identifier
-        if local_folder.is_dir() and self._within_store(local_folder):
-            owner, folder = self, local_folder
-        else:
-            term = self.get_view(identifier)
-            if term is None:
-                return []
-            owner = (
-                self if term.origin == "local"
-                else self._inherited_stores()[term.origin]
-            )
-            folder = owner.root / term.slug
-        # Asked of the *owning* store: an inherited term's files are bounded by
-        # its own root, not this one.
-        return [path for path in (folder / self.STATE_FILE, folder / "description.md")
+        try:
+            view = self._view()
+            found = view.combined(identifier)
+            members = [view.stores[pid] for pid in found.chain] if found else []
+        except (InheritedUnavailable, StateFileProblem, yaml.YAMLError):
+            # Its files are still this object's to scan, a malformed one
+            # above all: the scan is what reports it.
+            members = [self] if self.has_own(identifier) else []
+        # Asked of each *owning* store: an inherited term's files are bounded
+        # by its own root, not this one.
+        return [path for owner in members
+                for path in (owner.root / identifier / self.STATE_FILE,
+                             owner.root / identifier / "description.md")
                 if path.is_file() and owner._within_store(path)]
 
     # -- revision-bearing detail + update --
 
     def get_term_detail(self, ref: "FullId | str") -> "TermDetail" | None:
+        full_id, slug = self._target_parts(ref)
+        store = self if full_id is None else self._owner_store(full_id.project)
         term = self._found(ref)
         if term is None:
             return None
-        # Inherited terms' files live under the source store's root, not ours.
-        owner = (
-            self if term.origin == "local"
-            else self._inherited_stores()[term.origin]
-        )
-        d = owner.root / term.slug
-        meta_text, desc_text = owner._entry_texts(d)
-        return TermDetail(term=term, core_revision=_revision_multi(meta_text, desc_text))
+        return TermDetail(term=term,
+                          core_revision=_revision_multi(*self._chain_texts(store, slug)))
 
     def update_term(self, ref: "FullId | str", *,
                     name=_UNSET, description=_UNSET, relates_to=_UNSET,
                     vocabulary=_UNSET, kind=_UNSET,
                     core_revision: str | None = None) -> "TermDetail":
-        # Resolve the term (must be local)
+        # The project's own term only, an override included (TCW-112 choice 6).
         term = self._found(ref)
         if term is None:
             raise NotFound(f"no such term: {ref}")
-        if term.origin != "local":
+        if term.owner != self.project_id:
             raise Refused(f"cannot update inherited term '{term.full_id}' "
                              f"(edit it at its source)")
         d = self.root / term.slug
@@ -2466,10 +2635,10 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                     f"stale revision for term '{ref}' "
                     f"(expected {core_revision}, got {detail.core_revision})")
 
-        # Read current state
-        meta, desc_text = self._state(d), ""
-        if (d / "description.md").is_file() and self._within_store(d / "description.md"):
-            desc_text = (d / "description.md").read_text(encoding="utf-8")
+        # Read the project's own declaration
+        meta = self._state(d)
+        declared = self._declared_description(d)
+        desc_text = declared or ""
 
         # Apply changes
         if "name" in provided:
@@ -2492,11 +2661,18 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                                  f"(choose: {', '.join(sorted(TAXONOMY_KINDS))})")
             meta["kind"] = new_kind if provided["kind"] is not None else "Vocabulary"
 
-        # A Feature names at least one Vocabulary entry; when this edit makes
-        # the entry a Feature and keeps its vocabulary, the kept values are
-        # checked as stored.
-        if meta.get("kind", "Vocabulary") == "Feature":
-            vocs = meta.get("vocabulary", [])
+        # A Feature names at least one Vocabulary entry. Checked on the term as
+        # the project will see it, its own new declaration combined over its
+        # sources (TCW-112 choice 6); when this edit keeps the vocabulary, the
+        # kept values are checked as stored.
+        combined = self._view().combined(term.slug, without=self.project_id)
+        inherited = combined.fields if combined is not None else {}
+        merged = {**inherited, **{k: v for k, v in meta.items() if v is not None}}
+        for k, v in meta.items():
+            if v is None:
+                merged.pop(k, None)
+        if _normalize_taxonomy_kind(merged.get("kind")) == "Feature":
+            vocs = merged.get("vocabulary") or []
             if not vocs:
                 raise UsageError("Feature requires at least one vocabulary ref")
             if "vocabulary" not in provided:
@@ -2505,8 +2681,12 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                     if problem:
                         raise UsageError(problem[1])
 
-        # Write atomically
-        self._write_entry(d, meta, desc_text)
+        # Write atomically; an override that never declared a description
+        # gains one only when this edit gives it.
+        if declared is None and "description" not in provided:
+            self._write_meta(d, meta)
+        else:
+            self._write_entry(d, meta, desc_text)
 
         # Return fresh detail
         return _require_detail(self.get_term_detail(ref), "term", ref)
@@ -2520,6 +2700,8 @@ _REF_FIELDS = ("Subject", "Feature", "Superseded by", "Blocked by", "Roles", "Wh
 _NO_TAXONOMY = object()
 
 # Meta keys that are structural (not part of the locked CAP_FIELDS vocabulary).
+# `id` and `overrides` are TCW 3.x keys that `check` reports (TCW-112 Design
+# 5.3, 6.4); kept here so that neither is ever read as a field.
 _CAP_STRUCTURAL = {"id", "name", "overrides", "prependedDocs", "appendedDocs", "parent"}
 
 
@@ -2533,11 +2715,6 @@ def heading_slug(text: str) -> str:
     return re.sub(r"\s+", "-", s)
 
 
-def _mint_cap_id() -> str:
-    """A fresh opaque, immutable capability id (`cap-` + 6 hex). Not path-derived."""
-    return "cap-" + uuid.uuid4().hex[:6]
-
-
 def _as_list(v) -> list[str]:
     """Normalize a scalar / list / comma-string meta value to a list of strings."""
     if v is None:
@@ -2547,40 +2724,26 @@ def _as_list(v) -> list[str]:
     return [s.strip() for s in str(v).split(",") if s.strip()]
 
 
-class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
+class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
     """`CapabilitiesStore` over folder-per-capability entries under
-    `docs/capabilities/`, optionally federated via `extends`.
+    `docs/capabilities/`, inherited and combined as the taxonomy is (TCW-112
+    Design 1, 2).
 
-    A capability is a folder with `tcw-capability.yaml` (`id` + `name` + the locked
+    A capability is a folder with `tcw-capability.yaml` (`name` + the locked
     metadata vocabulary) and `description.md` (the body). A directory is a
     capability iff it holds that state file; dirs without one are pure grouping
-    parents. Mirrors `FsTaxonomyStore` on the shared tree-store core.
+    parents. Its path is its only identity (TCW-112 Design 5). Mirrors
+    `FsTaxonomyStore` on the shared tree-store core.
     """
     COMPONENT = "capabilities"
     LEGACY_CONFIG_NAME = ".config.yaml"
     STATE_FILE = STATE_FILES["capabilities"]
 
-    def __init__(self, root: Path, *,
-                 _walk: "_FederationWalk | None" = None,
-                 project_root: Path | None = None, store_git_root: Path | None = None):
-        super().__init__(root, project_root=project_root, store_git_root=store_git_root)
-        self.extends: dict[str, "FsCapabilitiesStore"] = {}
-        # Reused, never rebuilt: the resolution below already constructed each
-        # store with the right project root and the right walk state. There is no
-        # second filter on the results — the `_seen` set that used to be one was
-        # dead once recursion moved into `_extended_component_stores`, since the
-        # only case it could refuse is a self-extend the identity check there
-        # already refuses by project id.
-        self.extends, self.extends_cycles = _extended_component_stores(
-            self.project_root, self.config, self._extends_label(), "capabilities",
-            walk=self._walk_for(_walk), owner_id=self.project_id,
-        )
-
     # -- resolution --
 
     def _is_capability(self, d: Path) -> bool:
         """Whether the folder `d` is an object of this store, by the walk's
-        rule (TCW-111 Design 2.5): a capability or an override."""
+        rule (TCW-111 Design 2.5)."""
         try:
             rel = d.relative_to(self.root).as_posix()
         except ValueError:
@@ -2588,170 +2751,70 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         return is_object(self.root, "capabilities", rel)
 
     def _object_dirs(self) -> list[str]:
-        """The id-path of every object the walk finds (capabilities and
-        overrides), minus those whose state file is reached through a
-        symbolic link out of the store or whose version cannot be read."""
+        """The id-path of every object the walk finds, minus those whose state
+        file is reached through a symbolic link out of the store or whose
+        version cannot be read."""
         return [p for p in object_paths(self.root, "capabilities")
                 if self._entry_readable(self.root / p) and self._listable(self.root / p)]
 
-    def _is_override(self, id_path: str) -> bool:
-        try:
-            return bool(self._state(self.root / id_path).get("overrides"))
-        except TcwError:
-            return False
-
-    def _local_paths(self) -> list[str]:
-        """Standalone local capabilities — state-file folders WITHOUT an `overrides`
-        pointer (those are deltas, not caps; see `_override_index`)."""
-        return [p for p in self._object_dirs()
-                if not self._state(self.root / p).get("overrides")]
-
-    def _override_fields(self) -> list[tuple[str, dict]]:
-        """`(path, fields)` for every local override: the fields it sets on the
-        capability it overrides — its meta minus the structural keys and minus
-        `null`, which clears an inherited field and so references nothing.
-
-        The one definition of an override's references, read by `check` and by
-        the taxonomy's refusal to remove a term something still names; an
-        override's `Subject` becomes the composed capability's (`_apply_override`),
-        so leaving it out of either lets a reference dangle unreported."""
-        out = []
-        for p in self._object_dirs():
-            meta = self._state(self.root / p)
-            if meta.get("overrides"):
-                out.append((p, self._set_fields(meta)))
-        return out
-
-    @staticmethod
-    def _set_fields(meta: dict) -> dict:
-        """The fields an override's meta sets (see `_override_fields`)."""
-        return {k: v for k, v in meta.items()
-                if k not in _CAP_STRUCTURAL and v is not None}
-
-    def _override_index(self) -> dict[str, tuple[Path, dict]]:
-        """`overrides` target string → (override folder, override meta)."""
-        idx: dict[str, tuple[Path, dict]] = {}
-        for p in self._object_dirs():
-            meta = self._state(self.root / p)
-            target = meta.get("overrides")
-            if target:
-                idx[str(target)] = (self.root / p, meta)
-        return idx
-
-    def _compose_body(self, d: Path, meta: dict, raw_desc: str) -> str:
-        """Effective body = prependedDocs + description + appendedDocs (bounded lists)."""
+    def _compose_body(self, path: str, found: Combined, stores: dict) -> str:
+        """The combined body (TCW-112 Design 2.3): the attached documents of
+        `prependedDocs`, the description, then those of `appendedDocs`, each
+        list's entries read from the `resources/` of the member that declared
+        the list."""
         parts = []
-        # `_in_resources` on each document: these are read by name from meta,
-        # so they never pass through `_load_entry`'s listing. Only a document
-        # in the capability's own `resources/` is read (TCW-111 Design 2.2);
-        # `check` reports one listed anywhere else.
-        for fn in _as_list(meta.get("prependedDocs")):
-            f = d / fn
-            if self._in_resources(d, fn) and f.is_file():
-                parts.append(f.read_text(encoding="utf-8").strip())
-        if raw_desc.strip():
-            parts.append(raw_desc.strip())
-        for fn in _as_list(meta.get("appendedDocs")):
-            f = d / fn
-            if self._in_resources(d, fn) and f.is_file():
-                parts.append(f.read_text(encoding="utf-8").strip())
+
+        def documents(key: str) -> list[str]:
+            pid = found.declared_by.get(key)
+            if pid is None:
+                return []
+            owner = stores[pid]
+            d = owner.root / path
+            # `_in_resources` on each document: these are read by name from
+            # the state file, so they never pass through a listing. Only a
+            # document in that member's own `resources/` is read (TCW-111
+            # Design 2.2); `check` reports one listed anywhere else.
+            return [(d / fn).read_text(encoding="utf-8").strip()
+                    for fn in _as_list(found.fields.get(key))
+                    if owner._in_resources(d, fn) and (d / fn).is_file()]
+        parts += documents("prependedDocs")
+        if found.description and found.description.strip():
+            parts.append(found.description.strip())
+        parts += documents("appendedDocs")
         return "\n\n".join(parts)
 
-    def _capability(self, path: str, origin: str = "local") -> Capability:
-        d = self.root / path
-        meta, description, _attachments = self._load_entry(d)
-        fields = {k: v for k, v in meta.items() if k not in _CAP_STRUCTURAL}
+    def _object_modified(self, d: Path, fields: dict) -> str:
+        return _modified_timestamp(_capability_resources(d, fields))
+
+    def _record(self, path: str, found: Combined, stores: dict, *,
+                partial: bool = False) -> Capability:
+        """The capability `found` combines at `path` (Design 2.2-2.4)."""
+        fields = {k: v for k, v in found.fields.items() if k not in _CAP_STRUCTURAL}
         if "Subject" in fields:
             fields["Subject"] = _as_list(fields["Subject"])
+        modified = []
+        for pid in found.chain:
+            member = stores[pid]
+            declaration = member._declarations().get(path)
+            modified.append(member._object_modified(
+                member.root / path, declaration.fields if declaration else {}))
         return Capability(
             path=path,
-            name=meta.get("name") or path.rsplit("/", 1)[-1].replace("-", " ").title(),
-            id=str(meta.get("id") or ""),
+            name=found.fields.get("name") or path.rsplit("/", 1)[-1].replace("-", " ").title(),
             fields=fields,
-            body=self._compose_body(d, meta, description),
-            origin=origin,
-            modified=_modified_timestamp(_capability_resources(d, meta)),
-            owner=self.owner_of(origin),
-            parent=_stored_parent(meta.get("parent"), "capabilities"),
+            body=self._compose_body(path, found, stores),
+            origin="local" if found.owner == self.project_id else found.owner,
+            modified=max(modified, default=""),
+            owner=found.owner,
+            parent=_stored_parent(found.fields.get("parent"), "capabilities"),
+            overrides=None if partial or found.overrides is None
+            else FullId(found.overrides, "capabilities", path),
+            partial=partial,
         )
-
-    def _apply_override(self, base: Capability, alias: str,
-                        ov_index: dict[str, tuple[Path, dict]]) -> Capability:
-        """Merge a local override (if any) onto an inherited capability `base`.
-
-        Override matches by upstream id (bare `<id>` or `<alias>/<id>`). Fields
-        partial-merge (YAML null clears); body = child.prepend + (child
-        description.md if present else upstream raw description.md) + child.append.
-        """
-        ov = ov_index.get(base.id) or ov_index.get(f"{alias}/{base.id}")
-        if ov is None:
-            return base                                   # inherited verbatim
-        d, meta = ov
-        merged = dict(base.fields)
-        for k, v in meta.items():
-            if k in _CAP_STRUCTURAL:
-                continue
-            if v is None:
-                merged.pop(k, None)                       # null clears inherited field
-            else:
-                merged[k] = _as_list(v) if k == "Subject" else v
-        up_store = self.extends[alias]
-        up_desc = up_store.root / base.path / "description.md"
-        upstream_raw = (up_desc.read_text(encoding="utf-8")
-                        if up_desc.exists() and up_store._within_store(up_desc) else "")
-        child_desc = d / "description.md"
-        child_raw = (child_desc.read_text(encoding="utf-8")
-                     if child_desc.exists() and self._within_store(child_desc) else "")
-        mid = child_raw if child_raw.strip() else upstream_raw
-        return Capability(
-            path=base.path,
-            name=meta.get("name") or base.name,
-            id=base.id,
-            fields=merged,
-            body=self._compose_body(d, meta, mid),
-            origin=alias,
-            owner=self.owner_of(alias),
-            modified=max(
-                filter(
-                    None,
-                    [
-                        base.modified,
-                        _modified_timestamp(_capability_resources(d, meta)),
-                    ],
-                ),
-                default="",
-            ),
-        )
-
-    def get_local(self, path: str) -> Capability | None:
-        """This store's own project's capability at the id-path `path`, every
-        folder spelled exactly as given, or None."""
-        d = self.root / path
-        # Reordered rather than extended: the old one-expression form called
-        # `load_yaml` inside the condition, so a containment test appended to
-        # the end would parse a state file outside the store before rejecting it.
-        # The stat stays first so a miss pays no `resolve()`.
-        if not (path and self._is_capability(d) and self._entry_readable(d)):
-            return None
-        return None if self._state(d).get("overrides") else self._capability(path)
-
-    def get_by_id(self, cap_id: str) -> Capability | None:
-        """Resolve an opaque id to its local capability (keyed lookup)."""
-        for p in self._local_paths():
-            c = self._capability(p)
-            if c.id and c.id == cap_id:
-                return c
-        return None
 
     def list_all(self, status=None, namespace=None, local_only=False) -> list[Capability]:
-        caps = [self._capability(p) for p in self._local_paths()]
-        if not local_only:
-            ov_index = self._override_index()
-            for alias, st in self.extends.items():
-                caps += [self._apply_override(st._capability(p, origin=alias), alias, ov_index)
-                         for p in st._local_paths()]
         out = []
-        for c in caps:
+        for c in self._listing(local_only):
             if status and c.status != status:
                 continue
             if namespace and c.path.split("/")[0] != namespace:
@@ -2759,69 +2822,19 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             out.append(c)
         return out
 
-
-    def get_view(self, path: str) -> Capability | None:
-        """An id-path read as the active project sees it (TCW-110 Design 3.1
-        form d): the local capability first, else the one inherited at that
-        path, its local override applied. `AmbiguousRef` when two extended
-        projects both hold it."""
-        identifier = path
-        local = self.get_local(identifier)               # bare-wins-local
-        if local is not None:
-            return local
-        matches = [(a, c) for a, st in self.extends.items()
-                   if (c := st.get_local(identifier)) is not None]
-        if len(matches) == 1:
-            a = matches[0][0]
-            return self._apply_override(self.extends[a]._capability(identifier, origin=a),
-                                        a, self._override_index())
-        if len(matches) > 1:
-            raise AmbiguousRef(identifier, "capabilities")
-        return None
-
-    def get_inherited(self, alias: str, path: str) -> Capability | None:
-        """The capability at id-path `path` in project `alias`, one this store
-        extends, as this project sees it (its local override applied), or
-        None."""
-        st = self.extends.get(alias)
-        if not (st and st.get_local(path)):
-            return None
-        return self._apply_override(st._capability(path, origin=alias),
-                                    alias, self._override_index())
-
-    def _inherited(self) -> dict[str, "FsCapabilitiesStore"]:
-        """The projects whose capabilities this store reads as its own, by ID."""
-        return self.extends
-
-    def _found(self, target: "FullId | str") -> Capability | None:
-        """The capability an operation naming one existing object acts on: a
-        full identifier of this project's own capability or of one it
-        extends, or text sorted as command input is (TCW-110 Design 3.1), an
-        id-path read by `get_view`."""
-        if isinstance(target, str):
-            found = sort_input(target, "capabilities")
-            if found.form == "d":
-                return self.get_view(found.id_path)
-            target = found.full_id
-        if target.project == self.project_id:
-            return self.get_local(target.id_path)
-        return self.get_inherited(target.project, target.id_path)
-
-    def _status_is_local(self, cap: Capability) -> bool:
-        """True iff `cap`'s Status is a local decision, not an inherited default.
-        A local capability always is; an inherited one only if a local override
-        matches its upstream id (exactly as `_apply_override` keys) AND that
-        override sets `Status` (an override editing only a body/field re-inherits
-        the master's Status — `tcw/store/fs.py` `_apply_override`)."""
-        if cap.origin == "local":
-            return True
-        ov = self._override_index()
-        hit = ov.get(cap.id) or ov.get(f"{cap.origin}/{cap.id}")
-        return hit is not None and "Status" in hit[1]
-
     def unreviewed_inherited(self) -> list[Capability]:
-        return [c for c in self.list_all()
-                if c.origin != "local" and not self._status_is_local(c)]
+        """Inherited capabilities never ruled on here (TCW-112 Design 7.2):
+        the view's capabilities this project has no object of its own at,
+        and its own overrides whose own declaration sets no `Status`."""
+        decls = self._declarations()
+        out = []
+        for cap in self.list_all():
+            if cap.owner != self.project_id:
+                out.append(cap)
+            elif cap.overrides is not None and decls.get(cap.path) is not None \
+                    and "Status" not in decls[cap.path].fields:
+                out.append(cap)
+        return out
 
     def search(self, query: str) -> list[Capability]:
         q = query.lower()
@@ -2829,6 +2842,34 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 if q in c.name.lower() or q in c.body.lower()]
 
     # -- writes --
+
+    def override_target(self, target: "FullId | str") -> FullId:
+        """The full identifier of this project's own capability that `set`
+        and `reset` write for `target` (TCW-112 choice 9), deciding in this
+        order: this project's own full identifier, where it has an object;
+        another project that is not one of its sources, refused before
+        anything is read; an id-path this project has an object at, read
+        from nothing else; otherwise the view, in which another project's
+        full identifier must be a member of the id-path's chain."""
+        full_id, path = self._target_parts(target)
+        own = FullId(self.project_id, "capabilities", path)
+        if full_id is not None and full_id.project == self.project_id:
+            if self.has_own(path):
+                return own
+            raise NotFound(self._no_such(target))
+        if full_id is not None:
+            if full_id.project not in self._source_ids():
+                raise Refused(_not_inherited(full_id, self.project_id))
+        elif self.has_own(path):
+            return own
+        chain = self.chain(path)
+        if full_id is not None:
+            if full_id not in chain:
+                raise Refused(_not_inherited(full_id, self.project_id))
+            return own
+        if not chain:
+            raise NotFound(self._no_such(target))
+        return own
 
     def add(self, identifier, name=None, status="Missing", body="",
             fields=None, parent=None) -> Capability:
@@ -2847,47 +2888,42 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             raise NotFound(f"no such capability: {path}")
         if d.exists() or d.is_symlink():   # a dangling/looping link reads absent
             raise Refused(f"capability already exists: {path}")
+        # `add` writes a complete object, so at an inherited path it would be
+        # a full copy, which nothing reports once the original moves (TCW-112
+        # Design 4.1): `set` writes only what it is given.
+        inherited = self.inherited_at(path)
+        if inherited is not None:
+            raise Refused(f"cannot add '{path}': '{self.project_id}' already inherits "
+                          f"{inherited} there; to change it, override it with tcw "
+                          f"capabilities set {path} --field <name>=<value>")
         # After the cheap string and stat refusals, because this one may open a
         # taxonomy store — and before `_write_entry`, which is the point: a create
         # carrying a field the store would reject must leave nothing behind.
         norm = self._validate_fields(fields or {})
         display = name or path.rsplit("/", 1)[-1].replace("-", " ").title()
-        meta = {"id": _mint_cap_id(), "name": display, "Status": status}
+        meta = {"name": display, "Status": status}
         if parent_id is not None:
             meta["parent"] = parent_id
         # Field values win over the `status` parameter — what create-then-set
         # did. A None clears, rather than being skipped: there *is* something to
-        # clear, the Status seeded a line above, and `_merge_meta` pops the key
-        # on a local entry. Skipping it would keep a Status the caller asked to
-        # remove, which create-then-set did not.
+        # clear, the Status seeded a line above. A new capability overrides
+        # nothing, so the key is dropped rather than written as null.
         for k, v in norm.items():
             if v is None:
                 meta.pop(k, None)
             else:
                 meta[k] = v
         self._write_entry(d, meta, body)
-        return self._capability(path)
+        return self.get_local(path)
 
     def remove(self, identifier: "FullId | str") -> None:
-        cap = self._found(identifier)
-        # The exact listed spelling only. `get` resolves `routes/`, `./routes`,
-        # or `Routes` on a case-insensitive disk, to the `routes` folder but
-        # echoes the spelling back as the path, so everything below that works
-        # from the path would be working from the wrong one.
-        if cap is not None and cap.origin == "local" and cap.path not in self._local_paths():
-            cap = None
-        if cap is None:
-            raise NotFound(f"no such capability: {identifier}")
-        if cap.origin != "local":
-            raise Refused(f"cannot remove inherited capability '{cap.full_id}' "
-                             f"(edit it at its source; to drop a local override use "
-                             f"`tcw capabilities reset`)")
-        d = self.root / cap.path
+        target = self.removal_target(identifier)
+        d = self.root / target.id_path
         # Refused, never cascaded: `_rm` deletes the whole folder.
-        _blocked_removal(d, self.root, "capabilities", cap.path)
+        _blocked_removal(d, self.root, "capabilities", target.id_path)
         referrers = self._referrers(d)
         if referrers:
-            raise Refused(f"cannot remove '{cap.path}': still referenced by "
+            raise Refused(f"cannot remove '{target.id_path}': still referenced by "
                              f"{', '.join(referrers)} (repoint or clear those fields first)")
         self._rm(d)
 
@@ -2900,8 +2936,8 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         return [where for where, _ in removal_blockers(d, self.root)]
 
     def _referrers(self, target: Path) -> list[str]:
-        """`<folder> (<field>)` for every other local capability or override whose
-        reference fields resolve to the local capability folder `target`.
+        """`<folder> (<field>)` for every other capability of this project
+        whose own reference fields name the capability folder `target`.
 
         Each field is read as `check` reads it (`_ref_problems`,
         `_check_globals`): a full identifier of this project's own capability
@@ -2916,7 +2952,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             refs = [str(s).strip().lstrip("!") for s in toks if str(s).strip()]
             return [r for r in refs
                     if (hit := self._local_ref(r)) is not None
-                    and hit.path.startswith(f"{ns}/")]
+                    and hit.startswith(f"{ns}/")]
 
         def same(a: Path) -> bool:
             return _same_folder(a, target)
@@ -2928,40 +2964,61 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 continue
             meta = self._state(folder)
             for field in ("Superseded by", "Blocked by", "Roles", "When"):
-                if field not in meta:
+                if field not in meta or meta[field] is None:
                     continue
                 for ref in tokens(field, meta[field]):
                     hit = self._local_ref(ref)
-                    if hit is not None and hit.origin == "local" and same(self.root / hit.path):
+                    if hit is not None and same(self.root / hit):
                         out.append(f"{p} ({field})")
                         break
         return out
 
+    def _naming(self, full_id: FullId) -> list[str]:
+        """`<full id> (<field>)` for every other own object of this project
+        whose own declaration names `full_id` by its full identifier: in a
+        capability's reference fields or `parent` (TCW-112 Design 4.3)."""
+        named = str(full_id)
+        out = []
+        for path, decl in self._declarations().items():
+            if decl is None or path == full_id.id_path:
+                continue
+            for field in ("Superseded by", "Blocked by", "Roles", "When", "parent"):
+                raw = decl.fields.get(field)
+                if raw is None:
+                    continue
+                toks = raw if isinstance(raw, list) else str(raw).split(",")
+                if any(str(t).strip().lstrip("!") == named for t in toks):
+                    out.append(f"{FullId(self.project_id, self.COMPONENT, path)} "
+                               f"({field})")
+        return out
+
     def reset(self, identifier: "FullId | str") -> None:
-        cap = self._found(identifier)                  # federated; may raise AmbiguousRef
-        if cap is None:
-            raise NotFound(f"no such capability: {identifier}")
-        # A standalone local capability is not an override — `remove` deletes it.
-        if cap.origin == "local":
+        target = self.override_target(identifier)
+        path = target.id_path
+        inherited = self.inherited_at(path)
+        # A capability that overrides nothing is not an override — `remove`
+        # deletes it.
+        if self.has_own(path) and inherited is None:
             raise Refused(f"'{identifier}' is a local capability, not an override "
                              f"(use `tcw capabilities rm` to delete it)")
-        # Find the override by the same upstream-id keys `_write_target` writes,
-        # so we drop whatever folder `set` materialized (bare or alias-qualified).
-        ov_index = self._override_index()
-        ov = ov_index.get(cap.id) or ov_index.get(f"{cap.origin}/{cap.id}")
-        if ov is None:
+        if not self.has_own(path):
             raise Refused(f"no local override at '{identifier}' to reset "
-                             f"(it inherits '{cap.full_id}' verbatim)")
+                             f"(it inherits '{inherited}' verbatim)")
+        d = self.root / path
         # Refused, as `remove` refuses, when anything is nested under the
-        # override: `_rm` would delete it with the folder. A nested folder may
-        # itself be an override, which only `reset` drops.
-        nested = self._nested_entries(ov[0])
+        # override: `_rm` would delete it with the folder.
+        nested = self._nested_entries(d)
         if nested:
             raise Refused(f"cannot reset '{identifier}': nested under its override: "
                           f"{', '.join(nested)} (delete a local capability with "
                           f"`tcw capabilities rm` and drop an override with "
                           f"`tcw capabilities reset` first)")
-        self._rm(ov[0])                                # remove only the local override folder
+        # The override's full identifier stops existing once it is removed.
+        naming = self._naming(target)
+        if naming:
+            raise Refused(f"cannot reset '{identifier}': {target} is still named by "
+                          f"{', '.join(naming)}; repoint each at {inherited} first")
+        self._rm(d)
 
     def _validate_fields(self, fields: dict) -> dict:
         out = {}
@@ -3070,127 +3127,59 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 raise _RefInputProblem(f"{key} → ambiguous {noun} '{text}'") from None
             raise _RefInputProblem(f"{key} → {error}") from None
 
-    def _write_meta(self, d: Path, meta: dict, *,
-                    removed: tuple[Path, ...] = ()) -> None:
-        """Write an entry's meta, rolling back what this call created.
-
-        Owns the `mkdir` so it can prove whether the directory is its own:
-        `set` materializing a *fresh* override is the path where a refused write
-        would otherwise leave an empty folder behind, and an update of an
-        existing capability is the path where removing the folder would take
-        files this call never wrote.
-        """
-        owned = _mkdir_owned(d)
-        self._write_files(
-            [(d / self.STATE_FILE, state_text(d / self.STATE_FILE, meta))],
-            owned_dir=d if owned else None, removed=removed)
-
-    def _write_target(self, identifier: "FullId | str") -> tuple[Path, dict, bool]:
-        """Resolve a write to `(folder, meta, is_override)`.
-
-        A local capability writes to its own folder. An *inherited* one writes to
-        a local override — the existing one for its upstream id if there is any
-        (wherever the author put it), else a fresh delta mirroring the upstream
-        path. Materializing the override here is what lets `set` accept every path
-        `show` accepts; the placement is an FS detail (another store would record
-        the same delta keyed by the upstream id its own way).
-        """
-        cap = self._found(identifier)                  # federated; may raise AmbiguousRef
-        if cap is None:
-            raise NotFound(f"no such capability: {identifier}")
-        if cap.origin == "local":
-            d = self.root / cap.path
-            return d, self._state(d), False
-        ov_index = self._override_index()
-        ov = ov_index.get(cap.id) or ov_index.get(f"{cap.origin}/{cap.id}")
-        if ov is not None:
-            return ov[0], ov[1], True                  # update in place
-        d = self.root / cap.path                       # mirror the upstream path
-        if self._is_capability(d):
-            # Taken — by a local capability, or by another alias's override of
-            # the same path. Qualify by origin rather than refusing: `show`
-            # accepts this ref, so `set` has to as well.
-            d = self.root / cap.origin / cap.path
-        if self._is_capability(d):
-            raise Refused(
-                f"cannot override '{cap.full_id}': both '{cap.path}' and "
-                f"'{cap.origin}/{cap.path}' are already taken")
-        # The mirror is the one write not downstream of a guarded lookup: a local
-        # symlink shadowing the first segment of the upstream path would have it
-        # create the folder and its state file outside the store.
+    def _write_target(self, target: FullId) -> tuple[Path, dict]:
+        """`(folder, state)` for a write to this project's own capability at
+        `target`'s id-path (TCW-112 Design 4.2): its own object in place, or
+        a new state file at the same id-path, holding nothing yet, written
+        into an organising folder already there. Another store would record
+        the same declaration at the same path its own way."""
+        d = self.root / target.id_path
+        if self.has_own(target.id_path):
+            return d, self._state(d)
+        # The one write not downstream of a guarded lookup: a local symlink
+        # shadowing a segment of the path would have it create the folder
+        # and its state file outside the store.
         if not self._within_store(d):
-            raise NotFound(f"no such capability: {identifier}")
-        return d, {"overrides": f"{cap.origin}/{cap.id}"}, True
+            raise NotFound(f"no such capability: {target.id_path}")
+        return d, {}
 
-    def _merge_meta(self, meta: dict, norm: dict, is_override: bool) -> dict:
-        """Merge validated fields into an entry's meta.
-
-        On an override a None writes an explicit YAML null — `_apply_override`
-        reads that as *clear the inherited field*, where popping the key would
-        mean *re-inherit it*. On a local entry None pops, as it always has.
-        """
-        for k, v in norm.items():
-            if v is None and not is_override:
-                meta.pop(k, None)
-            else:
-                meta[k] = v
+    @staticmethod
+    def _merge_meta(meta: dict, norm: dict) -> dict:
+        """Merge validated fields into an own object's state. A None writes
+        an explicit null on every own object (TCW-112 Design 4.2): over an
+        inherited value it removes it, and over none it means what an absent
+        key means, so `set` needs no view to know which it is."""
+        meta.update(norm)
         return meta
+
+    def _reread(self, path: str) -> Capability:
+        """The capability at `path` as the project sees it after a write, or
+        its own declaration when the view cannot be built (Design 3.4)."""
+        try:
+            return self.get_view(path)
+        except InheritedUnavailable as error:
+            self.view_error = error
+            return self.declaration(path)
+        except StateFileProblem:
+            # A source's object at this path cannot be read (Design 1.3):
+            # the write is this project's own and stands (AC 39).
+            return self.declaration(path)
 
     def set(self, identifier: "FullId | str", fields: dict,
             parent: str | None = None) -> Capability:
         norm = self._validate_fields(fields)           # validate before touching disk
+        target = self.override_target(identifier)
         if parent is not None:
-            # Before `_write_target`, which would make an override folder for
-            # an inherited one: none of this command is written (Design 3.4).
-            cap = self._found(identifier)
-            if cap is None:
-                raise NotFound(f"no such capability: {identifier}")
-            if cap.origin != "local":
-                raise Refused(f"the parent of {cap.full_id} is set in project "
-                              f"'{cap.owner}'")
-            parent = str(self.find_parent(parent).full_id) if parent.strip() else ""
-        d, meta, is_override = self._write_target(identifier)
-        if parent == "":
-            meta.pop("parent", None)
-        elif parent is not None:
-            meta["parent"] = parent
-        # `_write_meta` owns the mkdir and the rollback: `_write_target` can
-        # materialize a fresh override directory, and a refused write must not
-        # leave an empty one behind.
-        self._write_meta(d, self._merge_meta(meta, norm, is_override))
-        return self._found(identifier)                 # the composed (post-merge) entry
-
-    # -- federation config --
-
-    def extends_add(self, project_id: str) -> None:
-        try:
-            project_id = validate_project_id(project_id)
-        except ValueError as e:
-            raise UsageError(str(e)) from None             # a malformed name (Design 4)
-        extends = _extends_ids(self.config, self._extends_label())
-        if project_id in extends:
-            raise Refused(f"extends project already exists: {project_id}")
-        if project_id == self.project_id:
-            raise Refused("a capabilities store cannot extend itself")
-        registry = self.locator.registry.require_valid()
-        try:
-            # Design 3.6: an ancestor passing capabilities; exit 7 when what lies
-            # above is not known, and nothing written.
-            project = _extends_target(registry, "capabilities", self.project_root,
-                                      self.project_id, project_id)
-        except _NotInherited as refused:
-            raise UsageError(str(refused)) from None
-        if not (Path(project.locator) / "docs" / "capabilities").is_dir():
-            raise UsageError(f"project '{project_id}' has no docs/capabilities/")
-        extends.append(project_id)
-        self._persist_extends(extends)
-
-    def extends_remove(self, project_id: str) -> None:
-        extends = _extends_ids(self.config, self._extends_label())
-        if project_id not in extends:
-            raise NotFound(f"no such extends project: {project_id}")
-        extends.remove(project_id)
-        self._persist_extends(extends)
+            # A parent is a field like any other (TCW-112 Design 2.2), so an
+            # override may set it; `''` clears it, as a cleared field does.
+            norm["parent"] = str(self.find_parent(parent).full_id) \
+                if parent.strip() else None
+        d, meta = self._write_target(target)
+        # `_write_meta` owns the mkdir and the rollback: a fresh override's
+        # folder is made here, and a refused write must not leave an empty
+        # one behind.
+        self._write_meta(d, self._merge_meta(meta, norm))
+        return self._reread(target.id_path)
 
     # -- validation --
 
@@ -3206,7 +3195,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         # A taxonomy that is present and cannot open raises: that is a broken
         # configuration, not "this project has no taxonomy".
         return (FsTaxonomyStore.open(
-                    self.project_root, _walk=_FederationWalk(active_root=self._active_root))
+                    self.project_root, locator=self.locator if self._as_other else None)
                 if tree_store_present(self.project_root, "taxonomy") else None)
 
     def check(self, taxonomy=None, identifier: str | None = None) -> list[Finding]:
@@ -3219,6 +3208,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         unchecked = ""
         # A full listing first, as `FsTaxonomyStore.check` does.
         self.unreadable.clear()
+        self._forget()
         if taxonomy is None:
             try:
                 taxonomy = self._taxonomy()
@@ -3229,174 +3219,152 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 # capability checked here names a Subject or Feature: otherwise
                 # nothing went unchecked, and every save would carry the line.
                 unchecked = f"Subject and Feature not checked: {e}"
-        top_level = {s.split("/")[0] for s in self._local_paths()}
-        for project_id in self._federation_cycles():
-            problems.append(self._store_finding(
-                f"extends '{project_id}': cycle in capability federation"))
-        for project_id in self.extends:
-            if project_id in top_level:
-                problems.append(self._store_finding(
-                    f"project ID '{project_id}' collides with local top-level capability"))
         if identifier is None:
             problems += self._legacy_config_problems()     # see FsTaxonomyStore.check
-
-        try:
-            selected = self.get_view(identifier) if identifier is not None else None
-        except StateFileProblem as problem:
-            return [Finding("error", self._where(problem.path), problem.problem)]
-        if identifier is not None and selected is None:
-            return [Finding("error", self._where(self.root),
-                            f"no such capability: {identifier}")]
-        if selected is not None:
-            seen_ids: dict[str, str] = {}
-            for path in self._local_paths():
-                if path == selected.path:
-                    continue
-                try:
-                    candidate_id = str(self._state(self.root / path).get("id") or "")
-                except (yaml.YAMLError, StateFileProblem):
-                    continue
-                if candidate_id:
-                    seen_ids[candidate_id] = path
-            caps = [selected]
-        else:
-            seen_ids = {}
-            caps = self.list_all(local_only=True)
-            problems += self._unreadable_findings()
-        if identifier is None:
-            problems += self._shape_findings()
-        elif selected.origin == "local":
-            problems += self._shape_findings(selected.path)
-        for cap in caps:
-            where = self._where(cap.path)
-
-            def found(message: str) -> None:
-                problems.append(Finding("error", where, message))
-            if (bad := _bad_name(cap.path)):
-                found(bad)
-            f = cap.fields
-            if not cap.id:
-                found("missing id")
-            elif cap.id in seen_ids:
-                found(f"duplicate id '{cap.id}' (also {seen_ids[cap.id]})")
+        view, self.view_error = _view_or_error(self)
+        # Every own declaration only for the whole store: a scoped check
+        # reads its one object, so a malformed sibling never stops it.
+        decls = self._declarations() if identifier is None else {}
+        if identifier is not None:
+            try:
+                path, selected, own = _selected(self, identifier, view)
+            except StateFileProblem as problem:
+                return [Finding("error", self._where(problem.path), problem.problem)]
+            if selected is None:
+                return [Finding("error", self._where(self.root),
+                                f"no such capability: {identifier}")]
+            paths = [path] if own else []
+            if own:
+                problems += self._shape_findings(path)
             else:
-                seen_ids[cap.id] = cap.path
-            for key in f:
-                if key in RETIRED_CAP_FIELDS:
-                    found(f"field '{key}' was retired in TCW 3.0 — see "
-                          f"{MIGRATION_GUIDE}")
-                elif key not in CAP_FIELDS:
-                    found(f"unknown field '{key}'")
-            status = f.get("Status")
-            if status is None:
-                found("missing Status")
-            elif status not in CAP_STATUSES:
-                found(f"invalid Status '{status}'")
-            if "Priority" in f and f["Priority"] not in CAP_PRIORITIES:
-                found(f"invalid Priority '{f['Priority']}'")
-            if "Lifecycle" in f and f["Lifecycle"] not in CAP_LIFECYCLES:
-                found(f"invalid Lifecycle '{f['Lifecycle']}'")
+                # An inherited capability: what the project sees is checked;
+                # its references are its owner's to check.
+                problems += self._field_findings(path, selected.fields, combined=True)
+        else:
+            paths = [p for p in decls if decls[p] is not None]
+            problems += self._unreadable_findings()
+            problems += self._shape_findings()
+        records = []
+        declared_parents = {}
+        for path in paths:
+            decl = decls.get(path) if identifier is None else self._own_declaration(path)
+            found = _combined_or_problem(self, view, path, problems)
+            cap = self._record(path, found, view.stores) if found is not None \
+                else self.declaration(path)
+            records.append(cap)
+            declared_parents[path] = _stored_parent(decl.fields.get("parent"),
+                                                    "capabilities")
+            where = self._where(path)
+            state = self._where(self.root / path / self.STATE_FILE)
+
+            def error(message: str, at: str = where) -> None:
+                problems.append(Finding("error", at, message))
+            if (bad := _bad_name(path)):
+                error(bad)
+            if (problem := id_problem(decl.fields, path)):
+                error(problem, state)
+            if "overrides" in decl.fields:
+                error(_OVERRIDES_REMOVED, state)
+            if found is not None and len(found.chain) == 1:
+                if (problem := _incomplete(cap.full_id, decl, "capabilities")):
+                    error(problem, state)
+            # The fields as the project sees them when that could be read;
+            # otherwise only the values its own file holds (Design 6.5).
+            own_fields = {k: v for k, v in decl.fields.items()
+                          if k not in _CAP_STRUCTURAL}
+            problems += self._field_findings(
+                path, cap.fields if found is not None else own_fields,
+                combined=found is not None)
+            # The references this project's own declaration sets (Design 6.2).
+            declared = {k: v for k, v in own_fields.items() if v is not None}
+            if "Subject" in declared:
+                declared["Subject"] = _as_list(declared["Subject"])
+            for level, problem in self._ref_problems(declared, taxonomy):
+                problems.append(Finding(level, where, problem))
+            if unchecked and (declared.get("Subject") or declared.get("Feature")):
+                error(unchecked)
+                unchecked = ""
+            d = self.root / path
+            listed = _as_list(decl.fields.get("prependedDocs")) + \
+                _as_list(decl.fields.get("appendedDocs"))
+            for fn in listed:
+                if not self._in_resources(d, str(fn)):
+                    error(f"'{fn}' is not in {RESOURCES}/")
+                elif not (d / fn).is_file():
+                    error(f"missing attachment '{fn}'")
+            # A loose document the lists do not name is the shape check's row
+            # a, which reports any loose file, `.md` or not.
+        problems += self._parent_findings(
+            records, None if identifier is None else paths[0] if paths else None,
+            declared=declared_parents)
+        if identifier is None and view is not None:
+            problems += [self._store_finding(w, "warning") for w in self.view_warnings()]
+        return problems
+
+    def _field_findings(self, path: str, f: dict, *, combined: bool) -> list[Finding]:
+        """The checks of a capability's fields (TCW-112 Design 6.2): unknown
+        and retired fields and invalid values, and, on the fields as the
+        project sees them (`combined`), the fields one value requires. Each
+        is at the state file, which holds the fields (AC 16)."""
+        where = self._where(self.root / path / self.STATE_FILE)
+        out: list[Finding] = []
+
+        def found(message: str) -> None:
+            out.append(Finding("error", where, message))
+        for key in f:
+            if key in RETIRED_CAP_FIELDS:
+                found(f"field '{key}' was retired in TCW 3.0 — see "
+                      f"{MIGRATION_GUIDE}")
+            elif key not in CAP_FIELDS:
+                found(f"unknown field '{key}'")
+        status = f.get("Status")
+        # `null` only clears a value, so it is never an invalid one.
+        if status is not None and status not in CAP_STATUSES:
+            found(f"invalid Status '{status}'")
+        if f.get("Priority") is not None and f["Priority"] not in CAP_PRIORITIES:
+            found(f"invalid Priority '{f['Priority']}'")
+        if f.get("Lifecycle") is not None and f["Lifecycle"] not in CAP_LIFECYCLES:
+            found(f"invalid Lifecycle '{f['Lifecycle']}'")
+        if combined:
             if status == "Partial" and "Gaps" not in f:
                 found("Partial requires Gaps")
             if status == "Blocked" and "Blocked by" not in f:
                 found("Blocked requires Blocked by")
-            for level, problem in self._ref_problems(f, taxonomy):
-                problems.append(Finding(level, where, problem))
-            if unchecked and (f.get("Subject") or f.get("Feature")):
-                found(unchecked)
-                unchecked = ""
-
-        problems += self._parent_findings(
-            [c for c in caps if c.origin == "local"],
-            None if selected is None else selected.path)
-
-        # Override + attachment validation (every meta dir, incl. override folders).
-        meta_dirs = self._object_dirs()
-        if selected is not None:
-            meta_dirs = [selected.path]
-        for p in meta_dirs:
-            d = self.root / p
-            # `is_dir` because an inherited capability's path is upstream's, and
-            # a local folder of that name exists only when its override sits there.
-            if not d.is_dir() or not self._entry_readable(d):
-                continue          # `selected` bypasses the _object_dirs filter
-            meta = self._state(d)
-
-            def found(message: str) -> None:
-                problems.append(Finding("error", self._where(p), message))
-            listed = _as_list(meta.get("prependedDocs")) + _as_list(meta.get("appendedDocs"))
-            for fn in listed:
-                if not self._in_resources(d, str(fn)):
-                    found(f"'{fn}' is not in {RESOURCES}/")
-                elif not (d / fn).is_file():
-                    found(f"missing attachment '{fn}'")
-            # A loose document the lists do not name is the shape check's row
-            # a, which reports any loose file, `.md` or not.
-            target = meta.get("overrides")
-            if target and (e := self._override_problem(str(target))):
-                found(e)
-            if target and selected is None:
-                # The references it sets, checked as a local capability's are:
-                # they become the composed capability's own. A selected
-                # capability's composed fields, override included, were checked
-                # above; checking them here too reported each problem twice.
-                fields = self._set_fields(meta)
-                for level, problem in self._ref_problems(fields, taxonomy):
-                    problems.append(Finding(level, self._where(p), problem))
-                if unchecked and (fields.get("Subject") or fields.get("Feature")):
-                    found(unchecked)
-                    unchecked = ""
-        return problems
+        return out
 
     def _validation_resources(self, identifier: str) -> list[Path]:
-        """Filesystem resources bounded to one capability object."""
+        """Filesystem resources bounded to one capability object: every chain
+        member's state file, description and listed attachments at its
+        id-path."""
         try:
             identifier = _safe_store_id(identifier, "capability target")
         except UsageError:
             return []
-        local_folder = self.root / identifier
-        if (local_folder / self.STATE_FILE).is_file() and self._entry_readable(local_folder):
-            owner, folder = self, local_folder
-        else:
-            cap = self.get_view(identifier)
-            if cap is None:
-                return []
-            owner = self if cap.origin == "local" else self.extends[cap.origin]
-            folder = owner.root / cap.path
         try:
-            meta = owner._state(folder)
-        except (yaml.YAMLError, StateFileProblem):
-            meta = {}
-        names = [self.STATE_FILE, "description.md", *_as_list(meta.get("prependedDocs")),
-                 *_as_list(meta.get("appendedDocs"))]
-        # `validate()` parses and reads whatever comes back, so a listed
-        # attachment that is a symlink out of the store would be read there —
-        # the folder guard above cannot see it. Asked of the *owning* store,
-        # because an inherited folder is bounded by its own root, not this one.
-        return [folder / name for name in names
-                if (folder / name).is_file() and owner._within_store(folder / name)]
-
-    def _override_problem(self, target: str) -> str | None:
-        """Validate an `overrides: <target>` pointer (dangling / ambiguous / local)."""
-        if "/" in target:                                 # alias-qualified <alias>/<id>
-            alias, _, cid = target.partition("/")
-            st = self.extends.get(alias)
-            if st is None:
-                # On the store being checked, an alias missing here is always
-                # one `<component>.extends` does not declare: a declared alias
-                # that cannot be resolved fails the open, and a cycle's back
-                # edge is recorded on the deepest store, never this one.
-                return (f"overrides → unknown alias '{alias}' "
-                        f"(not declared in {self._extends_label()})")
-            return None if st.get_by_id(cid) else f"overrides → dangling id '{target}'"
-        if self.get_by_id(target):
-            return f"overrides → '{target}' targets a local capability (must be inherited)"
-        hits = [a for a, st in self.extends.items() if st.get_by_id(target)]
-        if not hits:
-            return f"overrides → dangling id '{target}'"
-        if len(hits) > 1:
-            return f"overrides → ambiguous id '{target}' (in {', '.join(hits)})"
-        return None
+            view = self._view()
+            found = view.combined(identifier)
+            members = [view.stores[pid] for pid in found.chain] if found else []
+        except (InheritedUnavailable, StateFileProblem, yaml.YAMLError):
+            # Its files are still this object's to scan, a malformed one
+            # above all: the scan is what reports it.
+            members = [self] if self.has_own(identifier) else []
+        out = []
+        for owner in members:
+            folder = owner.root / identifier
+            try:
+                meta = owner._state(folder)
+            except (yaml.YAMLError, StateFileProblem):
+                meta = {}
+            names = [self.STATE_FILE, "description.md",
+                     *_as_list(meta.get("prependedDocs")),
+                     *_as_list(meta.get("appendedDocs"))]
+            # `validate()` parses and reads whatever comes back, so a listed
+            # attachment that is a symlink out of the store would be read
+            # there. Asked of the *owning* store, because an inherited folder
+            # is bounded by its own root, not this one.
+            out += [folder / name for name in names
+                    if (folder / name).is_file() and owner._within_store(folder / name)]
+        return out
 
     def _ref_problems(self, f: dict, taxonomy) -> list[tuple[str, str]]:
         """Every cross-object ref problem in `f`, as `(level, message)` worded
@@ -3482,7 +3450,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         target, problem = self._term_problem(feature, taxonomy)
         if problem:
             return [(problem[0], f"Feature → {problem[1]}")]
-        if target.kind != "Feature":
+        if target is not None and target.kind != "Feature":
             return [("error", f"Feature → ref '{feature}' points to "
                               f"{target.kind}, expected Feature")]
         return []
@@ -3490,19 +3458,20 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     # -- revision-bearing detail + update --
 
     def get_capability_detail(self, identifier: "FullId | str") -> "CapabilityDetail" | None:
+        full_id, path = self._target_parts(identifier)
+        store = self if full_id is None else self._owner_store(full_id.project)
         cap = self._found(identifier)
         if cap is None:
             return None
-        owner = self if cap.origin == "local" else self.extends[cap.origin]
-        texts = self._entry_texts(owner.root / cap.path)
-        if cap.origin != "local":
-            # The local override's files are part of what the caller sees, so
-            # they are part of the revision — else two edits to the same
-            # override hash identically and a stale write sails through.
-            ov_index = self._override_index()
-            ov = ov_index.get(cap.id) or ov_index.get(f"{cap.origin}/{cap.id}")
-            texts += self._entry_texts(ov[0]) if ov else ["", ""]
-        return CapabilityDetail(capability=cap, core_revision=_revision_multi(*texts))
+        owner = store if cap.owner == store.project_id else store._view().stores[cap.owner]
+        declared = owner._declared_description(owner.root / path)
+        # Every chain member's files are part of what the caller sees, so they
+        # are part of the revision — else two edits to the same override hash
+        # identically and a stale write sails through.
+        return CapabilityDetail(
+            capability=cap,
+            core_revision=_revision_multi(*self._chain_texts(store, path)),
+            declared_description=None if declared is None else declared.strip())
 
     def update_capability(self, identifier: "FullId | str", *, body=_UNSET, fields=_UNSET,
                           core_revision: str | None = None) -> "CapabilityDetail":
@@ -3514,32 +3483,20 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             if detail and detail.core_revision != core_revision:
                 raise StaleRevision(f"stale revision for capability '{identifier}'")
 
-        d, meta, is_override = self._write_target(identifier)
-        desc = d / "description.md"
-        desc_text = desc.read_text(encoding="utf-8") if desc.exists() else ""
-        if body is not _UNSET:
-            desc_text = body if body is not None else ""
-        meta = self._merge_meta(meta, norm, is_override)
-
+        target = self.override_target(identifier)
+        d, meta = self._write_target(target)
+        meta = self._merge_meta(meta, norm)
         # No mkdir and no outer guard here any more: `_write_meta` and
         # `_write_entry` each own their directory and roll back what they
-        # created. Doing it here as well would double-delete — and, worse, the
-        # old guard had to key on the state file being absent precisely because it
-        # wrapped a callee that stages internally.
-        if is_override and not desc_text.strip():
-            # An override's description.md is a *body delta*, and an empty one
-            # means "no delta" — `_apply_override` falls back to the upstream
-            # body (which is what makes append-only overrides work). So clearing
-            # an override's body drops the delta and re-inherits, rather than
-            # leaving an empty file that silently means the same thing.
-            had_body = desc.exists() or desc.is_symlink()
-            desc.unlink(missing_ok=True)
-            self._write_meta(d, meta, removed=(desc,) if had_body else ())
-        elif body is _UNSET and not desc.exists():
-            self._write_meta(d, meta)          # pure delta — no empty body file
+        # created. A body given is the declared description, written as it is,
+        # an empty one included: it adds no text, so the body shown falls back
+        # to the next member's description (TCW-112 Design 2.3, choice 5).
+        # With no body given, an object with no description file gains none.
+        if body is not _UNSET:
+            self._write_entry(d, meta, body if body is not None else "")
         else:
-            self._write_entry(d, meta, desc_text)
-        return _require_detail(self.get_capability_detail(identifier),
+            self._write_meta(d, meta)
+        return _require_detail(self.get_capability_detail(target),
                                "capability", identifier)
 
 
@@ -3609,7 +3566,7 @@ def _is_store_layout(root: Path, component: str) -> bool:
 
     A **tree** store — taxonomy, capabilities — names nothing. `init` scaffolds
     it as a bare directory (see `init`'s plan loop), it holds no config file of its
-    own at all now that `extends` lives in the project's `tcw-config.yaml`, and the
+    own at all, and the
     only file reliably left behind is a `.gitkeep`, which is git's answer to
     empty directories and means nothing here. So "the directory is there" is the strongest honest answer, and it is
     shared by the work store: a declared tree store that clones
@@ -3729,7 +3686,7 @@ def store_location(project_root: Path, component: str, configured: str | None, *
     return base.joinpath(*found.parts)
 
 
-def resolve_store(store_cls, project_root: Path, _walk=None):
+def resolve_store(store_cls, project_root: Path, active_root: Path | None = None):
     """This project's store for `store_cls`'s component, in one ordered ladder.
 
     1. the local store (`<component>.path`, else `docs/<component>`) when it is
@@ -3779,11 +3736,9 @@ def resolve_store(store_cls, project_root: Path, _walk=None):
     locator = None
     if isinstance(configured, str) and configured.startswith(SCHEME):
         # The command's one `Locator` (TCW-110 Design 6.1): the active
-        # project's, which the walk carries for a store opened on its behalf.
+        # project's, for a store opened on its behalf.
         from tcw.locate import Locator
-        active = _walk.active_root if _walk is not None and _walk.active_root \
-            else project_root
-        locator = Locator.of(active)
+        locator = Locator.of(active_root or project_root)
     try:
         raw_root = store_cls._local_root(project_root, configured, locator=locator)
     except LocationProjectAbsent as absent:
@@ -3816,7 +3771,7 @@ def resolve_store(store_cls, project_root: Path, _walk=None):
             return store_cls._open_at(
                 raw_root, project_root, config_path,
                 external=configured is not None, must_exist=must_exist,
-                _walk=_walk)
+                active_root=active_root)
         except ValueError:
             # A valid local store keeps reads working even when an unused
             # declaration is malformed. When no local store can open, however,
@@ -3834,13 +3789,12 @@ def resolve_store(store_cls, project_root: Path, _walk=None):
         return store_cls._open_at(
             raw_root, project_root, config_path,
             external=configured is not None, must_exist=must_exist,
-            _walk=_walk)
+            active_root=active_root)
     except StoreLocationUnusable as unusable:
-        # Only this. A store that is *there* and fails to open — a federation
-        # error, a malformed `extends` — is a real error, and swallowing it here
+        # Only this. A store that is *there* and fails to open — a removed key
+        # in its project's file, say — is a real error, and swallowing it here
         # reported "not provisioned; run `tcw provision`", which then succeeded
-        # and left the store exactly as unopenable. `_extended_component_stores`
-        # raises for many more reasons than it used to, so the hole widened.
+        # and left the store exactly as unopenable.
         #
         # The reason is carried rather than discarded, but **only when the
         # configured path is actually there**. A path that does not exist,
@@ -3866,7 +3820,7 @@ def resolve_store(store_cls, project_root: Path, _walk=None):
             # consults nothing else.
             return store_cls._open_at(
                 local, project_root, config_path,
-                external=True, must_exist=True, _walk=_walk)
+                external=True, must_exist=True, active_root=active_root)
         except StoreLocationUnusable:
             # The project is here but holds no store at the declared path.
             # A location that did not work out, so the ladder carries on —
@@ -3878,7 +3832,7 @@ def resolve_store(store_cls, project_root: Path, _walk=None):
         return store_cls._open_at(
             provisioned_store_root(project_root, declaration), project_root, config_path,
             external=True, must_exist=True, declaration=declaration,
-            _walk=_walk)
+            active_root=active_root)
     except StoreLocationUnusable:
         pass                                                    # same rule
     raise StoreNotProvisioned(                                  # rule 3

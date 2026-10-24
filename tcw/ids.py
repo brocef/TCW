@@ -438,6 +438,18 @@ def parent_text(parent: "FullId | str | None") -> str | None:
     return None if parent is None else str(parent)
 
 
+def inherited_keys(obj) -> dict:
+    """The keys a taxonomy or capability record carries after `parent`
+    (TCW-112 Design 3.3, 3.4): `overrides`, the text of the full identifier
+    of the object it overrides or None; or, for a record read from its own
+    declaration alone, `partial: true` and no `overrides`, since whether it
+    overrides one is not known."""
+    if getattr(obj, "partial", False):
+        return {"partial": True}
+    overrides = getattr(obj, "overrides", None)
+    return {"overrides": None if overrides is None else str(overrides)}
+
+
 def identity(full_id: FullId) -> dict[str, str]:
     """The two keys every record carries (Design 4.3), built one way for the
     CLI and the web."""

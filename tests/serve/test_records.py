@@ -374,7 +374,7 @@ def test_accepted_reference_values(refusing):
 
 @pytest.fixture
 def inheriting(tmp_path, serve_project):
-    """`child` extends `base`'s taxonomy and capabilities, so `base` is its
+    """`child` inherits `base`'s taxonomy and capabilities: `base` is its
     parent passing both; `base` names nothing."""
     from tcw.store.fs import init
     from tests.work.projects import connect, git
@@ -388,8 +388,6 @@ def inheriting(tmp_path, serve_project):
     connect(roots["child"], roots["base"], "parent")
     FsTaxonomyStore.open(roots["base"]).add("Shared", slug="shared")
     FsCapabilitiesStore.open(roots["base"]).add("shared-cap", "Shared", status="Supported")
-    FsTaxonomyStore.open(roots["child"]).extends_add("base")
-    FsCapabilitiesStore.open(roots["child"]).extends_add("base")
     return serve_project(roots["child"])
 
 

@@ -1,7 +1,6 @@
 """Finding the owner of a full identifier (TCW-110 Design 6): two git
 repositories side by side, `app` naming `core` as a parent passing taxonomy
-and capabilities, which `core` does not list as a child, with no `extends`
-unless a test adds one."""
+and capabilities, which `core` does not list as a child."""
 
 from __future__ import annotations
 
@@ -16,7 +15,7 @@ from tcw.ids import FullId
 from tcw.locate import (ERROR, FOUND, MISSING, UNRESOLVED, Locator, outcome_of,
                         three_x_hint)
 from tcw.store import project as project_module
-from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
+from tcw.store.fs import FsTaxonomyStore, init
 from tcw.store.project import FsProjectRegistry, begin_command, end_command
 from tests.projectfiles import (config_file, connect_projects, write_config_file,
                                 write_manifest)
@@ -40,7 +39,7 @@ def pair(tmp_path):
     for root in (app, core):
         init(["taxonomy", "capabilities"], root)
     _entry(core, "taxonomy", "term")
-    _entry(core, "capabilities", "cli/x", id="cap-x", Status="Supported")
+    _entry(core, "capabilities", "cli/x", Status="Supported")
     connect_projects(app, "parent", "core", inherit=["taxonomy", "capabilities"])
     return app.resolve(), core.resolve()
 
@@ -145,23 +144,26 @@ def test_read_of_an_unknown_owner_is_an_error(pair):
 
 def test_read_of_the_active_projects_own_entry(pair):
     app, _ = pair
-    _entry(app, "capabilities", "web", id="cap-w", Status="Missing")
+    _entry(app, "capabilities", "web", Status="Missing")
     found = Locator.of(app).read(FullId("app", "capabilities", "web"), app)
     assert found.kind == FOUND and found.value.status == "Missing"
 
 
-def test_read_through_extends_is_the_active_projects_view(pair):
-    """Design 6.2: with `app` extending `core`, a capability is read as `app`
-    sees it, its local override applied; without, as `core` holds it."""
+def test_read_of_an_inherited_full_identifier_is_the_owners_object(pair):
+    """TCW-112 Design 3.1: a full identifier names its owner's object as the
+    owner sees it, even when `app` inherits it and overrides it; `app`'s
+    override is named by `app`'s own full identifier."""
     app, _ = pair
     target = FullId("core", "capabilities", "cli/x")
     assert Locator.of(app).read(target, app).value.status == "Supported"
-    FsCapabilitiesStore.open(app).extends_add("core")
-    _entry(app, "capabilities", "ov/x", overrides="cap-x", Status="Omitted")
-    assert Locator.of(app).read(target, app).value.status == "Omitted"
-    FsTaxonomyStore.open(app).extends_add("core")
+    folder = app / "docs" / "capabilities" / "cli" / "x"
+    folder.mkdir(parents=True)
+    write_state(folder / STATE_OF["capabilities"], "Status: Omitted\n")
+    assert Locator.of(app).read(target, app).value.status == "Supported"
+    override = Locator.of(app).read(FullId("app", "capabilities", "cli/x"), app)
+    assert override.kind == FOUND and override.value.status == "Omitted"
     term = Locator.of(app).read(FullId("core", "taxonomy", "term"), app)
-    assert term.kind == FOUND and term.value.origin == "core"
+    assert term.kind == FOUND and str(term.value.full_id) == "core.taxonomy/term"
 
 
 def test_read_never_reaches_what_the_owner_itself_inherits(pair, tmp_path):
@@ -170,8 +172,7 @@ def test_read_never_reaches_what_the_owner_itself_inherits(pair, tmp_path):
     init(["taxonomy"], base)
     _entry(base, "taxonomy", "deep")
     connect_projects(core, "parent", "base", inherit=["taxonomy"])
-    FsTaxonomyStore.open(core).extends_add("base")
-    assert FsTaxonomyStore.open(core).get_inherited("base", "deep") is not None
+    assert FsTaxonomyStore.open(core).get_view("deep") is not None
     assert Locator.of(app).read(FullId("core", "taxonomy", "deep"), app).kind == MISSING
 
 

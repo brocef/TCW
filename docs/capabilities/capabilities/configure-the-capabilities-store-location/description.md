@@ -18,9 +18,9 @@ machine is placed by an entry in `.tcw/tcw-manifest.local.yaml`. `tcw validate`
 fails when the tree is the same folder as another store, of this project or of
 any project it can locate, or when one lies inside the other.
 
-Inheritance is unaffected: `extends` still resolves against my project, not
-against wherever the tree happens to sit, so federating another project's
-capabilities works the same from either location.
+Inheritance is unaffected: it comes from my project's parent links
+(`parents:`), not from wherever the tree happens to sit, so inheriting a
+parent's capabilities works the same from either location.
 
 Nothing changes for a project that sets nothing. I can scaffold at a configured
 relative path with `tcw init --capabilities-path <path> capabilities`.

@@ -59,7 +59,7 @@ def test_the_taxonomy_check(tmp_path):
 
 def test_the_capabilities_check(tmp_path):
     [finding] = only_findings(FsCapabilitiesStore.open(broken(tmp_path)).check())
-    assert finding == Finding("error", "docs/capabilities/half", "Partial requires Gaps")
+    assert finding == Finding("error", "docs/capabilities/half/tcw-capability.yaml", "Partial requires Gaps")
 
 
 def test_the_registry_check(tmp_path):
@@ -75,7 +75,7 @@ def test_the_registry_check(tmp_path):
 def test_validate(tmp_path):
     findings = only_findings(validate(broken(tmp_path)))
     assert {f.where for f in findings} >= {"docs/taxonomy/search",
-                                          "docs/capabilities/half",
+                                          "docs/capabilities/half/tcw-capability.yaml",
                                           "docs/taxonomy/search/description.md"}
     assert all(RENDERED.fullmatch(str(f)) for f in findings), findings
 
@@ -92,5 +92,5 @@ def test_a_viewer_save_reports_its_findings_in_parts(tmp_path):
         thread.join(timeout=10)
     assert answer.status == HTTPStatus.CREATED
     assert answer.json["warnings"] == [{"severity": "error",
-                                        "where": "docs/capabilities/half",
+                                        "where": "docs/capabilities/half/tcw-capability.yaml",
                                         "message": "Partial requires Gaps"}]

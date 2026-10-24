@@ -14,7 +14,12 @@ viewer answers with its own status, not a CLI exit) and
 `StoreLocationUnusable` (a store-opening error, raised before any operation),
 `MalformedId` (a `UsageError` naming the identifier rule, TCW-110) and
 `_DanglingRef` and `_RefInputProblem` (`UsageError`s for a reference value
-given to a write that names nothing).
+given to a write that names nothing). `StoreDeclarationError` is a
+store-opening error too: a removed `extends` key (TCW-112 Design 1.5).
+`InheritedUnavailable` is exit 7 (TCW-112 Design 1.3); it is raised as built
+by `registry.unavailable` or kept as `view_error`, and a chain member's
+unreadable state file as built by `unreadable_problem`, so those three names
+are allowed as what the `raise` names.
 """
 
 import ast
@@ -25,8 +30,10 @@ import tcw
 FS = Path(tcw.__file__).resolve().parent / "store" / "fs.py"
 
 ALLOWED = {"NotFound", "UsageError", "Refused", "BackendError", "RefError",
-           "AmbiguousRef", "NotASlug", "StaleRevision", "StoreLocationUnusable",
-           "MalformedId", "_DanglingRef", "_RefInputProblem", "StateFileProblem"}
+           "NotASlug", "StaleRevision", "StoreLocationUnusable",
+           "MalformedId", "_DanglingRef", "_RefInputProblem", "StateFileProblem",
+           "StoreDeclarationError", "InheritedUnavailable", "unavailable",
+           "view_error", "unreadable_problem"}
 
 
 def _region(tree: ast.Module) -> list[ast.stmt]:

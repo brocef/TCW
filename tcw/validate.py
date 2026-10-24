@@ -113,8 +113,8 @@ def _tree_roots(project_root: Path, skip: "set[str] | frozenset[str]" = frozense
     is found here; testing for `docs/<c>` found neither.
 
     The rule `find_component_project` uses: a store that opens is here when its root is a
-    directory, and one that will not open is reported — which includes a broken
-    `extends` in a project with no tree of its own.
+    directory, and one that will not open is reported — which includes a
+    removed `extends` key in a project with no tree of its own.
     """
     roots: dict[str, Path | ValueError] = {}
     for comp in ("taxonomy", "capabilities"):
@@ -126,9 +126,9 @@ def _tree_roots(project_root: Path, skip: "set[str] | frozenset[str]" = frozense
             roots[comp] = e
             continue
         except InheritedUnavailable as e:
-            # The store opens what it extends as it opens (TCW-108 Design
-            # 6.3), so its own files cannot be read either; its check below
-            # meets the same error and says it could not be checked.
+            # Opening reads no other project (TCW-112 Design 1.1), so this
+            # is not expected; kept so that a store that ever does is
+            # reported by its check rather than stopping the run.
             roots[comp] = e
             continue
         if root.is_dir():
@@ -307,7 +307,10 @@ def _run_check(project_root: Path, comp: str, identifier: str | None = None,
     A project this store inherits from that is not available here (TCW-108
     Design 6.3) could not be checked: the error goes in `unavailable` when
     given, for `tcw validate` to add to that project's one finding (Design
-    6.5 row c), and is otherwise an `unresolved` finding of its own.
+    6.5 row c), and is otherwise an `unresolved` finding of its own. The
+    check itself still runs what needs no inherited content and leaves the
+    error on the store (TCW-112 Design 6.5); a store that is there and
+    cannot be opened is a finding of its own, naming that store's message.
     """
     store_cls = {"taxonomy": FsTaxonomyStore,
                  "capabilities": FsCapabilitiesStore}[comp]
@@ -319,6 +322,20 @@ def _run_check(project_root: Path, comp: str, identifier: str | None = None,
             problems = store.check(identifier=identifier)
         else:
             problems = store.check(identifier)
+        # The check ran without inherited content it could not read
+        # (TCW-112 Design 6.5): said once, at the project's own file.
+        missed = store.view_error
+        if missed is not None:
+            if missed.reason == "store":
+                problems.append(Finding(
+                    "unresolved", _config_file(project_root),
+                    f"could not check the {comp} inherited from '{missed.project}': "
+                    f"{missed.detail}"))
+            elif unavailable is not None:
+                unavailable.append(missed)
+            else:
+                problems.append(Finding("unresolved", _config_file(project_root),
+                                        f"{comp}: {missed}"))
     except ValueError as e:
         return [Finding("error", _config_file(project_root), f"{comp}: {e}")]
     except InheritedUnavailable as e:

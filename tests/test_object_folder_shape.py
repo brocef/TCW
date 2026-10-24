@@ -26,7 +26,7 @@ ROW_G = ("error: docs/taxonomy/tcw-taxonomy.yaml: the store's root is not an obj
 def demo(tmp_path):
     root = project(tmp_path, work={})
     obj(root, "taxonomy", "invoice", name="Invoice")
-    obj(root, "capabilities", "cli/x", id="cap-aaaaaa", name="X", Status="Missing")
+    obj(root, "capabilities", "cli/x", name="X", Status="Missing")
     return root
 
 
@@ -111,7 +111,7 @@ def test_attachments_are_the_resources_and_a_loose_file_is_reported(tcw, demo):
 
 
 def test_an_appended_document_in_resources_is_read(tcw, demo):
-    cap = obj(demo, "capabilities", "cli/cam", id="cap-cccccc", name="Cam",
+    cap = obj(demo, "capabilities", "cli/cam", name="Cam",
               Status="Missing", appendedDocs=["resources/camera.md"])
     (cap / "description.md").write_text("Body.")
     (cap / "resources").mkdir()
@@ -122,7 +122,7 @@ def test_an_appended_document_in_resources_is_read(tcw, demo):
 
 
 def test_an_appended_document_beside_the_state_file_is_not(tcw, demo):
-    cap = obj(demo, "capabilities", "cli/cam", id="cap-cccccc", name="Cam",
+    cap = obj(demo, "capabilities", "cli/cam", name="Cam",
               Status="Missing", appendedDocs=["camera.md"])
     (cap / "description.md").write_text("Body.")
     (cap / "camera.md").write_text("Camera notes.")
@@ -160,7 +160,7 @@ def test_yaml_in_resources_is_not_parsed_and_the_checks_still_run(tcw, demo):
     term = store(demo, "taxonomy") / "invoice"
     (term / "resources").mkdir()
     (term / "resources" / "sample.yaml").write_text("a: [unclosed\n")
-    obj(demo, "capabilities", "cli/ghost", id="cap-dddddd", name="Ghost",
+    obj(demo, "capabilities", "cli/ghost", name="Ghost",
         Status="Missing", appendedDocs=["resources/ghost.md"])
     code, found, checked = validate(tcw, demo)
     assert (code, found) == (1, [

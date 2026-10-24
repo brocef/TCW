@@ -200,6 +200,27 @@ function EditOrInherited({
     )
 }
 
+/** What an entry overrides, as `show` prints it (TCW-112 Design 4.5), or
+ * that its inherited content could not be read. */
+function OverridesLine({
+    record,
+}: {
+    record: { overrides?: string | null; partial?: boolean }
+}) {
+    if (record.partial)
+        return (
+            <Text as="div" className="item-meta" color="amber" size="2">
+                partial: inherited content could not be read
+            </Text>
+        )
+    if (!record.overrides) return null
+    return (
+        <Text as="div" className="item-meta" color="gray" size="2">
+            overrides <code>{record.overrides}</code>
+        </Text>
+    )
+}
+
 export function DetailView({
     axis,
     detail,
@@ -221,6 +242,7 @@ export function DetailView({
                         <Text className="item-meta" color="gray" size="2">
                             {term["full-id"]}
                         </Text>
+                        <OverridesLine record={term} />
                         <ModifiedAt value={term.modified} />
                     </div>
                     <Flex className="detail-actions" align="center" gap="2">
@@ -259,6 +281,7 @@ export function DetailView({
                     <Text className="item-meta" color="gray" size="2">
                         {capability["full-id"]}
                     </Text>
+                    <OverridesLine record={capability} />
                     <ModifiedAt value={capability.modified} />
                 </div>
                 <Flex className="detail-actions" align="center" gap="2">
@@ -352,6 +375,12 @@ export function EditorView({
                 )}
             </div>
             <div className="editor-section">Body</div>
+            {editor.mode === "core" && editor.bodyNote && (
+                <Text as="p" className="body-note" color="gray" size="2">
+                    The body shown on the page also holds attached documents or
+                    an inherited description, which this edit leaves unchanged.
+                </Text>
+            )}
             <MarkdownEditor
                 value={String(draft.body ?? "")}
                 onChange={(value) => setDraft("body", value)}

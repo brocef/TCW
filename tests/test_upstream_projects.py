@@ -3,7 +3,7 @@
 project-that-does-not-name-it-back).
 
 A 3.x upstream is written as what TCW 4.0 reads it as: a parent passing no
-axis (`{id: core, inherit: none}`), or passing the axes a test extends from
+axis (`{id: core, inherit: none}`), or passing the axes a test inherits from
 it. Every fixture writes each project's parents, children and manifest in
 full. None defaults a relation, a path or a repository entry: the relation is
 exactly the axis the code under test branches on."""
@@ -255,15 +255,17 @@ def _reader(path: Path, project_id: str, links: dict, where: dict) -> Path:
     return path
 
 
-# `core` as a parent passing both axes, which `_assert_reads_core` extends.
+# `core` as a parent passing both axes, which `_assert_reads_core` reads.
 _READ_CORE = {"id": "core", "inherit": ["taxonomy", "capabilities"]}
 
 
 def _assert_reads_core(app: Path, term_slug: str = "argument") -> None:
-    for command in (("taxonomy", "extends", "add", "core"),
-                    ("capabilities", "extends", "add", "core")):
-        out = _tcw(app, *command)
-        assert out.returncode == 0, (command, out.stderr)
+    listed = _tcw(app, "taxonomy", "list")
+    assert listed.returncode == 0, listed.stderr
+    assert f"core.taxonomy/{term_slug}" in listed.stdout.splitlines(), listed.stdout
+    listed = _tcw(app, "capabilities", "list")
+    assert listed.returncode == 0, listed.stderr
+    assert "core.capabilities/arguments/build-an-argument" in listed.stdout.splitlines()
     out = _tcw(app, "taxonomy", "show", f"core.taxonomy/{term_slug}")
     assert out.returncode == 0, out.stderr
     out = _tcw(app, "capabilities", "show", "core.capabilities/arguments/build-an-argument")
@@ -303,7 +305,6 @@ def test_the_override_variable_redirects_an_upstream_from_the_cli(tmp_path):
     app = _reader(tmp_path / "app", "app",
                   {"parents": [{"id": "core", "inherit": ["taxonomy"]}]},
                   {"core": "../core"})
-    assert _tcw(app, "taxonomy", "extends", "add", "core").returncode == 0
     env = {"TCW_PROJECT_CORE": str(tmp_path / "other-core")}
     assert _tcw(app, "taxonomy", "show", "core.taxonomy/premise", env=env).returncode == 0
     assert _tcw(app, "taxonomy", "show", "core.taxonomy/argument", env=env).returncode != 0
@@ -494,18 +495,18 @@ def _edit(node: Path, change) -> None:
 
 # ── the CLI's view of an absent upstream, and of what lies beyond one ────────
 
-def test_an_absent_upstream_is_a_warning_and_extends_says_unreachable(tmp_path):
+def test_an_absent_upstream_is_a_warning_and_a_listing_says_unreachable(tmp_path):
     app = _reader(tmp_path / "app", "app",
                   {"parents": [{"id": "core", "inherit": ["taxonomy"]}]},
                   {"core": "../core"})
     out = _tcw(app, "validate")
     assert out.returncode == 0, out.stdout + out.stderr
     assert "core" in out.stdout + out.stderr, out.stdout
-    added = _tcw(app, "taxonomy", "extends", "add", "core")
-    assert added.returncode == 7
+    listed = _tcw(app, "taxonomy", "list")
+    assert listed.returncode == 7
     # TCW-108 Design 6.3: a parent passing the axis, not on this machine.
-    assert "from project 'core', which is not on this machine" in added.stderr, \
-        added.stderr
+    assert "from project 'core', which is not on this machine" in listed.stderr, \
+        listed.stderr
 
 
 def test_a_project_beyond_an_upstream_cannot_be_named(tmp_path):

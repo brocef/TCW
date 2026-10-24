@@ -1,7 +1,7 @@
 ---
 name: configure
 description: Changes how a project that already uses TCW is configured. Use when a user wants to set up or change the stages a project uses, the text or commands bound to a stage, hook limits, procedures, the Jira backend, documentation entries that track which documents a change must update, where a store lives, connected projects, inherited taxonomy or capabilities, or their own personal configuration. Getting TCW working in the first place is the `setup` skill.
-when_to_use: Use when a working TCW project should behave differently — setting up or changing work.stages (enabled, status, prompt, pre, post), work.hooks, work.procedures, work.backend and work.jira, work.tags, work.documentation entries, a store's path or repository, projects, TCW_PROJECT_<ID>, taxonomy and capabilities extends, user.name, or a personal tcw-config.local.yaml. Also when a request says "set up" but names one of those areas.
+when_to_use: Use when a working TCW project should behave differently — setting up or changing work.stages (enabled, status, prompt, pre, post), work.hooks, work.procedures, work.backend and work.jira, work.tags, work.documentation entries, a store's path or repository, projects, TCW_PROJECT_<ID>, inherited taxonomy and capabilities, user.name, or a personal tcw-config.local.yaml. Also when a request says "set up" but names one of those areas.
 allowed-tools: Bash(tcw *), Read, Edit, Write, Grep, Glob
 metadata:
     author: Brian Cefali

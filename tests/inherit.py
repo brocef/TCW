@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, write_sentinel
+from tcw.store.fs import write_sentinel
 from tests.projectfiles import write_config, write_manifest
 from tests.statefiles import write_state, STATE_OF
 
@@ -36,13 +36,11 @@ def demo_inheriting_core(tmp_path: Path) -> Path:
     the term `shared` and the capability `cli/y`. Returns `demo`'s root."""
     core, demo = _repo(tmp_path, "core"), _repo(tmp_path, "demo")
     entry(core, "taxonomy", "shared")
-    entry(core, "capabilities", "cli/y", id="cap-y", Status="Supported")
+    entry(core, "capabilities", "cli/y", Status="Supported")
     entry(demo, "taxonomy", "term")
-    entry(demo, "capabilities", "cli/x", id="cap-x", Status="Missing")
+    entry(demo, "capabilities", "cli/x", Status="Missing")
     write_config(core, "id: core\nchildren:\n- demo\n")
     write_manifest(core, {"demo": "../demo"})
     write_config(demo, "id: demo\nparents:\n- core\n")
     write_manifest(demo, {"core": "../core"})
-    FsTaxonomyStore.open(demo).extends_add("core")
-    FsCapabilitiesStore.open(demo).extends_add("core")
     return demo

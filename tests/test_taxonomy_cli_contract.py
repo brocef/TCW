@@ -77,18 +77,6 @@ def test_rm_names_each_file_it_removed(project, run):
                                         "removed docs/taxonomy/widget/tcw-taxonomy.yaml"]
 
 
-def test_extends_add_prints_nothing_and_names_the_config(tmp_path, run):
-    base = make_project(tmp_path, "base")
-    init(["taxonomy"], base, "base")
-    project = make_project(tmp_path, "fx", config={})
-    init(["taxonomy"], project, "fx")
-    from tests.work.projects import connect
-    connect(project, base, "parent", inherit=["taxonomy"])
-    code, out, err = run(project, "taxonomy", "extends", "add", "base")
-    assert (code, out) == (0, ""), err
-    assert err.splitlines() == ["wrote .tcw/tcw-config.yaml"]
-
-
 def test_list_and_search_print_one_path_per_line(project, run):
     run(project, "taxonomy", "add", "Widget", stdin="small\n")
     run(project, "taxonomy", "add", "Gear", "--parent", "widget")
@@ -99,7 +87,8 @@ def test_list_and_search_print_one_path_per_line(project, run):
     assert data["schema"] == 2
     assert data["terms"][1] == {"full-id": "fx.taxonomy/widget/gear", "owner": "fx",
                                 "parent": "fx.taxonomy/widget",
-                                "name": "Gear", "kind": "Vocabulary"}
+                                "name": "Gear", "kind": "Vocabulary",
+                                "overrides": None}
     assert data["terms"][0]["parent"] is None
 
 
@@ -119,11 +108,13 @@ def test_removed_spellings(project, run, argv):
 
 
 @pytest.mark.parametrize("axis", ["taxonomy", "capabilities"])
-def test_extends_add_of_a_malformed_name_is_a_usage_error(tmp_path, run, axis):
-    """Review fix S3: a name that cannot be a project ID is a usage error (2),
-    not a failure (1)."""
+@pytest.mark.parametrize("verb", ["add", "rm"])
+def test_the_extends_commands_are_gone(tmp_path, run, axis, verb):
+    """TCW 4.0 removes `tcw <axis> extends add|rm`: a project inherits from its
+    parents (TCW-112 Design 1). Naming one is a usage error (2) that names
+    nothing it wrote."""
     project = make_project(tmp_path, "fx")
     init([axis], project, "fx")
-    code, out, err = run(project, axis, "extends", "add", "Bad ID!")
+    code, out, err = run(project, axis, "extends", verb, "base")
     assert (code, out) == (2, ""), err
-    assert err.startswith(f"tcw {axis} extends add: project ID must match"), err
+    assert "invalid choice: 'extends'" in err, err

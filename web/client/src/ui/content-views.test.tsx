@@ -136,6 +136,39 @@ test("an inherited entry has no edit control and names its project", () => {
     expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(1)
 })
 
+test("an entry that overrides another names it, and a partial one says so", () => {
+    render(
+        <ThemeProvider>
+            <ProjectIdContext.Provider value="p">
+                <DetailView
+                    axis="capabilities"
+                    detail={{
+                        capability: capability("x", {
+                            name: "X",
+                            overrides: "core.capabilities/x",
+                        }),
+                        coreRevision: "",
+                    }}
+                    onEdit={vi.fn()}
+                />
+                <DetailView
+                    axis="taxonomy"
+                    detail={{
+                        term: term("t", { name: "T", partial: true }),
+                        coreRevision: "",
+                    }}
+                    onEdit={vi.fn()}
+                />
+            </ProjectIdContext.Provider>
+        </ThemeProvider>
+    )
+    expect(screen.getByText("core.capabilities/x")).toBeInTheDocument()
+    expect(screen.getByText(/^overrides/)).toBeInTheDocument()
+    expect(
+        screen.getByText("partial: inherited content could not be read")
+    ).toBeInTheDocument()
+})
+
 test("a retired capability field is shown read-only and offered by no form", () => {
     render(
         <ThemeProvider>

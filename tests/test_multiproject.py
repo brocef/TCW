@@ -1,14 +1,10 @@
 import subprocess
 from pathlib import Path
 
-import yaml
-
 from tcw.store.fs import (
     FsCapabilitiesStore, FsTaxonomyStore, find_component_project, init,
 )
 
-
-from nodeconfig import declare_extends
 from tests.projectfiles import write_config, write_manifest
 
 
@@ -20,7 +16,7 @@ def _monorepo(tmp_path: Path) -> Path:
         root = tmp_path / name
         root.mkdir()
         init(["taxonomy", "capabilities"], root, name)
-    # project-b extends project-a's taxonomy, so project-a is project-b's
+    # project-b inherits project-a's taxonomy: project-a is project-b's
     # parent passing that axis.
     write_config(tmp_path / "project-b",
         "id: project-b\nparents:\n- {id: project-a, inherit: [taxonomy]}\n"
@@ -30,25 +26,19 @@ def _monorepo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _extend_b_onto_a(repo: Path) -> None:
-    declare_extends(repo / "project-b", "taxonomy",
-        yaml.safe_dump({"extends": ["project-a"]}))
-
-
-def test_extends_resolves_across_sibling_subfolders(tmp_path):
+def test_inheritance_resolves_across_sibling_subfolders(tmp_path):
     repo = _monorepo(tmp_path)
     FsTaxonomyStore.open(repo / "project-a").add("Account")
-    _extend_b_onto_a(repo)
     node = find_component_project("taxonomy", repo / "project-b")     # detection finds project-b
     assert node == (repo / "project-b").resolve()
-    term = FsTaxonomyStore.open(node).get_inherited("project-a", "account")
+    term = FsTaxonomyStore.open(node).get_view("account")
     assert term is not None and term.name == "Account"
+    assert str(term.full_id) == "project-a.taxonomy/account"
 
 
 def test_capabilities_check_resolves_sibling_taxonomy(tmp_path):
     repo = _monorepo(tmp_path)
     FsTaxonomyStore.open(repo / "project-a").add("Account")
-    _extend_b_onto_a(repo)
     caps = FsCapabilitiesStore.open(repo / "project-b")
     caps.add("orders", "Place an order")
     caps.set("orders", {"Subject": "project-a.taxonomy/account"})

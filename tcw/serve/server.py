@@ -24,7 +24,8 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, unquote, urlparse
 
-from tcw.errors import BackendError, NotFound, Refused, TcwError, Unreachable, UsageError
+from tcw.errors import (BackendError, InheritedUnavailable, NotFound, Refused, TcwError,
+                        Unreachable, UsageError)
 from tcw.serve.services import Services
 from tcw.store.base import MultipleMatch, StaleRevision
 
@@ -87,6 +88,11 @@ def error_answer(error: BaseException) -> tuple[int, dict[str, Any]]:
         return HTTPStatus.CONFLICT, {"error": message, "code": "refused"}
     if isinstance(error, Unreachable):
         return HTTPStatus.SERVICE_UNAVAILABLE, {"error": message, "code": "unreachable"}
+    if isinstance(error, InheritedUnavailable):
+        # A project the served one inherits from is not readable here
+        # (TCW-112 Design 4.5).
+        return HTTPStatus.SERVICE_UNAVAILABLE, {"error": message,
+                                                "code": "inherited-unavailable"}
     if isinstance(error, TcwError):
         return HTTPStatus.INTERNAL_SERVER_ERROR, {"error": message, "code": "error"}
     # Anything else, a bare ValueError included, is not an answer TCW gives

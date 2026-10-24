@@ -117,6 +117,7 @@ def test_list_and_search_print_one_path_per_line(thing, run):
     assert data["schema"] == 2
     assert data["capabilities"][0] == {"full-id": "fx.capabilities/ns/do-a-thing",
                                        "owner": "fx", "parent": None,
+                                       "overrides": None,
                                        "name": "Do A Thing", "status": "Missing"}
     shown = json.loads(run(thing, "capabilities", "show", "ns/do-a-thing", "--json")[1])
     assert shown["capability"]["fields"]["Status"] == "Missing"
@@ -154,10 +155,9 @@ def overridden(tmp_path, project, run):
     document["parents"] = [{"id": "up", "inherit": ["capabilities"]}]
     write_config_file(path, yaml.safe_dump(document))
     write_manifest(project, {"up": "../up"})
-    assert run(project, "capabilities", "extends", "add", "up")[0] == 0
     assert run(project, "capabilities", "set", "auth/login", "--status", "Missing")[0] == 0
     store = FsCapabilitiesStore.open(project)
-    [(folder, _)] = store._override_index().values()
+    folder = store.root / "auth" / "login"          # the override is at the same path
     nested = folder.relative_to(store.root).as_posix() + "/nested"
     assert run(project, "capabilities", "add", nested)[0] == 0
     return project, folder, store.root / nested

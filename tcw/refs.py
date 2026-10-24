@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from tcw.errors import ProjectGraphError, Unreachable
 from tcw.ids import (FolderAddress, IdError, is_3x_address, parse_address,
@@ -45,14 +44,6 @@ class ResolveResult:
     # Design 6.3's answer: `found`, `missing`, `unresolved` or `error`.
     outcome: str = FOUND
     folder: bool = False   # a folder address, checked for form and owner only
-
-
-def route_key(obj: Any, project_id: str) -> str:
-    """The web app's key for a term or capability (TCW-110 Design 4.5): its
-    id-path when the served project owns it, and its whole full identifier
-    for an inherited one. The client's `itemKey` gives the same answer."""
-    full_id = obj.full_id
-    return full_id.id_path if full_id.project == project_id else str(full_id)
 
 
 def _failed(outcome: Outcome, namespace: str | None = None) -> ResolveResult:
@@ -85,19 +76,23 @@ def resolve_address(project_root: Path | None, uri: str) -> ResolveResult:
             except (Unreachable, ProjectGraphError) as error:
                 return _failed(outcome_of(error), found.namespace)
             return ResolveResult(True, found.namespace, None, "", folder=True)
-        answer = locator.read(found, named_by=Path(project_root))
+        # Existence only, asked of the owner's own store (TCW-112 Design
+        # 3.1): an address is never "could not check" because a project
+        # above its owner is missing.
+        answer = locator.exists(found, named_by=Path(project_root))
         active = locator.project_id
+        if answer.kind != FOUND:
+            return _failed(answer, found.namespace)
+        if found.namespace == "work":
+            if found.project == active:
+                return ResolveResult(True, "work", found.id_path, "")
+            return ResolveResult(True, "work", str(found), "", project=found.project)
+        # An owner the active project inherits this axis from is shown here;
+        # any other is another project's (TCW-110 Design 4.5).
+        foreign = found.project != active and found.project not in {
+            entry.id for entry in locator.registry.source_entries(found.namespace)}
     except Exception as error:   # a store's own failure (TcwError, IO, YAML)
         return _failed(Outcome(ERROR, message=str(error)))
-    if answer.kind != FOUND:
-        return _failed(answer, found.namespace)
-    if found.namespace == "work":
-        if found.project == active:
-            return ResolveResult(True, "work", found.id_path, "")
-        return ResolveResult(True, "work", str(found), "", project=found.project)
-    obj = answer.value
-    # Read through this project's view (origin is the owner) or from the
-    # owner's own store (origin "local" there, the owner another project).
-    foreign = obj.origin == "local" and obj.owner != active
-    return ResolveResult(True, found.namespace, route_key(obj, active), "",
-                         project=obj.owner if foreign else "")
+    key = found.id_path if found.project == active else str(found)
+    return ResolveResult(True, found.namespace, key, "",
+                         project=found.project if foreign else "")

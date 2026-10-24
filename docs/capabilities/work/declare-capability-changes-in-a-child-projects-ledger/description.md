@@ -27,7 +27,9 @@ is known but not on this machine, one whose project keeps no ledger, and one
 naming my own project when it keeps no ledger. An entry naming a project TCW
 cannot find at all, or still written in a TCW 3.x form such as
 `server/authoring/add-a-claim`, is reported as wrong, the 3.x one as needing
-tcw migrate. When my project does keep a ledger and extends another project's,
-an entry naming that project is read through my own ledger's view of it,
-including my override of it, and declaring one of its capabilities removed is
-refused, since only a capability of my own ledger can be removed.
+tcw migrate. Every entry is checked against its owner's own capability as
+its owner sees it, whether or not my project inherits from that owner:
+`app.capabilities/cli/x` is my project's own capability, which exists once I
+override the inherited one with `tcw capabilities set`, and
+`core.capabilities/cli/x` is `core`'s, never my override of it. A `removed:`
+entry is satisfied when its owner has no capability of its own at that path.

@@ -142,10 +142,8 @@ later is shared unless it is added to the personal list.
 | `user.name` | Personal only | [`personal.md`](#username) |
 | `taxonomy.path` | Shared | [`stores.md`](stores.md#taxonomypath) |
 | `taxonomy.repository` | Shared | [`stores.md`](stores.md#taxonomyrepository) |
-| `taxonomy.extends` | Shared | [`projects.md`](projects.md#taxonomyextends) |
 | `capabilities.path` | Shared | [`stores.md`](stores.md#capabilitiespath) |
 | `capabilities.repository` | Shared | [`stores.md`](stores.md#capabilitiesrepository) |
-| `capabilities.extends` | Shared | [`projects.md`](projects.md#capabilitiesextends) |
 | `work.path` | Shared | [`work.md`](work.md#workpath) |
 | `work.repository` | Shared | [`work.md`](work.md#workrepository) |
 | `work.backend` | Shared | [`work.md`](work.md#workbackend) |

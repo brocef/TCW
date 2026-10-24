@@ -105,15 +105,14 @@ Shared: personal configuration cannot set it.
 
 Where the capabilities store comes from, in the block above.
 
-## The other per-component key: `extends`
+## What a project inherits is not a store key
 
-`taxonomy.extends` and `capabilities.extends` sit beside `path` and
-`repository`, and name the projects whose entries this project inherits. They
-are described in `projects.md`, with the connections they depend on, and are
-changed with `tcw taxonomy extends add <id>` and
-`tcw capabilities extends add <id>`, not by hand. Because `extends` belongs to
-the project rather than to the store, two projects whose `path` is the same
-folder may inherit differently.
+Which projects a project inherits taxonomy and capabilities from is not set
+beside `path` and `repository`: it comes from the project's parent links
+(`parents:` in `.tcw/tcw-config.yaml`), each parent passing the axes its
+`inherit` names, as `projects.md` describes. Because inheritance belongs to the
+project rather than to the store, two projects whose `path` is the same folder
+may inherit differently.
 
 ## After changing a store's location
 

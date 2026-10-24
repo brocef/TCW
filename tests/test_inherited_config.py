@@ -632,7 +632,9 @@ SUFFIX = "could not check the configuration inherited from it"
 
 
 def test_ac13_a_missing_parent_in_filesystem_mode(tmp_path):
-    app = made(tmp_path, "app", parents=["core"])
+    # `core` passes only the configuration: a missing parent passing taxonomy
+    # or capabilities would also stop `taxonomy list` (TCW-112, exit 7).
+    app = made(tmp_path, "app", parents=[{"id": "core", "inherit": ["config"]}])
     new = tcw(app, "work", "new", "x")
     assert new.code == 0, new
     item = new.out.strip()
@@ -686,7 +688,9 @@ def no_requests(monkeypatch):
 def test_ac14_a_missing_parent_in_jira_mode(tmp_path, run, no_requests):
     lib = made(tmp_path, "lib")
     lib_item = run(lib, "work", "new", "lib thing").out.strip()
-    app = made(tmp_path, "app", parents=["core", {"id": "lib", "inherit": "none"}],
+    # `core` passes only the configuration, so what stops below is the
+    # configuration's gap, not TCW-112's inherited taxonomy or capabilities.
+    app = made(tmp_path, "app", parents=[{"id": "core", "inherit": ["config"]}, {"id": "lib", "inherit": "none"}],
                work=jira_mode(jira={"project": "APP"}))
     listed = run(app, "work", "list")
     assert listed.code == 7 and "(work.jira)" in listed.err, listed
@@ -707,7 +711,9 @@ def test_ac14_a_missing_parent_in_jira_mode(tmp_path, run, no_requests):
 
 
 def test_ac14_capabilities_drift_in_filesystem_mode_is_not_stopped(tmp_path):
-    app = made(tmp_path, "app", parents=["core"])
+    """A missing parent passing only the configuration does not stop drift
+    in filesystem mode. One passing capabilities would (TCW-112, exit 7)."""
+    app = made(tmp_path, "app", parents=[{"id": "core", "inherit": ["config"]}])
     assert tcw(app, "capabilities", "drift").code == 0
 
 
@@ -716,10 +722,11 @@ def test_ac14_references_into_the_project_are_answered_from_its_folders(tmp_path
     from tests.statefiles import ITEM_STATE, read_state, write_state_data
     from tests.work.projects import write_item
     from tcw.store.fs import init
-    app = made(tmp_path, "app", parents=["core"], work=jira_mode(jira={"project": "APP"}))
+    app = made(tmp_path, "app", parents=[{"id": "core", "inherit": ["config"]}],
+               work=jira_mode(jira={"project": "APP"}))
     init(["capabilities"], app, "app")
     write_item(app, "APP-1-thing", {"ticket": "https://x.example.net/browse/APP-1"})
-    write_cap(app, "cli", id="cap-cli00001", Status="Supported")
+    write_cap(app, "cli", Status="Supported")
     (app / "docs" / "capabilities" / "cli" / "description.md").write_text(
         "See [this](tcw://app.work/APP-1-thing).\n")
     ran = tcw(app, "validate")

@@ -639,6 +639,7 @@ export function App() {
         let draft: Draft
         let ref: string
         let revision: string
+        let bodyNote = false
         if (axis === "taxonomy") {
             const payload = detail as TaxonomyDetail
             const term = payload.term
@@ -654,10 +655,15 @@ export function App() {
         } else {
             const payload = detail as CapabilityDetail
             const capability = payload.capability
+            // The declared description, not the combined body, which also
+            // holds attached documents or an inherited description: sending
+            // that back would write them into this one (TCW-112 Design 4.5).
+            const declared = payload.declaredDescription ?? ""
             draft = {
                 ...(capability.fields ?? {}),
-                body: capability.body ?? "",
+                body: declared,
             }
+            bodyNote = (capability.body ?? "") !== declared
             ref = itemKey("capabilities", capability, projectId)
             revision = payload.coreRevision
         }
@@ -668,6 +674,7 @@ export function App() {
             revision,
             draft,
             original: structuredClone(draft),
+            bodyNote,
         })
         setDirty(false)
         setErrors([])

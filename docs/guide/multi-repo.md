@@ -254,21 +254,24 @@ in the configuration guide shows one way: its prompt text asks the agent to
 pull the work store's repository too, before starting each stage, and its
 `post` hook commits an item's folder in whichever repository holds it.
 
-## Inheriting taxonomy and capabilities: `extends`
+## Inheriting taxonomy and capabilities: `parents:`
 
-A connection alone shares nothing but work items. A project inherits another's
-taxonomy or capabilities only when it says so, per axis:
+A project inherits taxonomy and capabilities from the parents it lists under
+`parents:` in its `.tcw/tcw-config.yaml`, each parent passing the axes its
+`inherit` names (`all` when it is left out):
 
 ```yaml
-taxonomy:
-    extends: [shared-core]
-capabilities:
-    extends: [shared-core]
+parents:
+    - id: shared-core
+      inherit: [taxonomy, capabilities]
 ```
 
-`tcw taxonomy extends add <id>` and `tcw capabilities extends add <id>` (and
-`rm`) change the list, checking first that the ID is a project connected to
-this one. Inherited terms and capabilities resolve as if they were local, and
-can be linked to as `tcw://<id>/T/<term>` or `tcw://<id>/C/<path>`. [Taxonomy and Capabilities](taxonomy-and-capabilities.md)
+A parent's own parents pass down too, through every level, without being
+listed. No command changes the list: edit the file, then run `tcw validate`.
+Inherited terms and capabilities are read by their paths as if they were
+local, and can be linked to by full identifier, as
+`tcw://shared-core.taxonomy/<term>` or `tcw://shared-core.capabilities/<path>`.
+To change one, a project puts its own term or capability at the same path,
+holding only what it changes. [Taxonomy and Capabilities](taxonomy-and-capabilities.md)
 describes what inheriting means for each, and how an inherited capability is
 reviewed.

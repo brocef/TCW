@@ -19,10 +19,11 @@ claimed full coverage while omitting them; adversarial review caught the claim.
 Since TCW-110 a stored reference is a full identifier (Design 5.1), so it can
 no longer be ambiguous: the ambiguous wordings are now the write path's, for
 an id-path given as input, and a stored value in a 3.x form is reported naming
-`tcw migrate` (Design 5.2).
+`tcw migrate` (Design 5.2). Since TCW-112 no id-path is ambiguous either
+(Design 3.6), so the four ambiguous-identifier rows are retired: an id-path
+two parents hold names the object the project's view shows there.
 """
 
-import hashlib
 import subprocess
 
 import pytest
@@ -49,8 +50,7 @@ def node(tmp_path, name="repo"):
 def write_cap(root, path, body="", **meta):
     d = root / "docs" / "capabilities" / path
     d.mkdir(parents=True, exist_ok=True)
-    m = {"id": "cap-" + hashlib.sha1(path.encode()).hexdigest()[:6],
-         "name": path.rsplit("/", 1)[-1].replace("-", " ").title()}
+    m = {"name": path.rsplit("/", 1)[-1].replace("-", " ").title()}
     m.update(meta)
     write_state(d / CAPABILITY_STATE, yaml.safe_dump(m, sort_keys=False, allow_unicode=True))
     (d / "description.md").write_text(body)
@@ -75,8 +75,8 @@ class Tax:
     def __init__(self, known=None):
         self.known = known or {}
 
-    def _inherited(self):
-        return {}
+    def has_own(self, slug):
+        return slug in self.known
 
     def get_local(self, slug):
         kind = self.known.get(slug)
@@ -348,15 +348,16 @@ def test_add_without_fields_is_unchanged(tmp_path):
     assert FsCapabilitiesStore.open(root).get_local("plain/thing") is not None
 
 
-# ── the four ambiguous-identifier variants ───────────────────────────────────
+# ── an id-path two parents hold is not ambiguous ─────────────────────────────
 #
-# These four resolve against the capability store itself, and capabilities are
-# path-addressed — so "ambiguous" here is not a leaf-slug clash. It means the
-# same path exists in more than one *extended* store, which is why this needs a
-# child federating two bases rather than a plain fixture.
+# These four resolve against the capability store itself. Before TCW 4.0 an
+# id-path held by two extended stores was refused as ambiguous; now the load
+# order decides every id-path (TCW-112 Design 3.6), so the write stores the
+# full identifier of the object the view shows there.
 
 def _two_bases(tmp_path):
-    """A child extending two projects that both hold the same capability path.
+    """A child inheriting from two projects that both hold the same capability
+    path.
 
     The child names both bases as parents passing their capabilities, and the
     bases name nothing.
@@ -371,24 +372,22 @@ def _two_bases(tmp_path):
     parents = "".join(f"- id: {b.name}\n  inherit: [capabilities]\n" for b in bases)
     write_config(child, f"id: child\nparents:\n{parents}")
     write_manifest(child, {b.name: f"../{b.name}" for b in bases})
-    for name in ("alpha", "beta"):
-        FsCapabilitiesStore.open(child).extends_add(name)
     return child
 
 
-@pytest.mark.parametrize("field,value,expected", [
-    ("Superseded by", "dup", "Superseded by \u2192 ambiguous identifier 'dup'"),
-    ("Blocked by", "dup", "Blocked by \u2192 ambiguous identifier 'dup'"),
-    ("Roles", "roles/dup", "Roles \u2192 ambiguous identifier 'roles/dup'"),
-    ("When", "conditions/dup", "When \u2192 ambiguous identifier 'conditions/dup'"),
+@pytest.mark.parametrize("field,value", [
+    ("Superseded by", "dup"),
+    ("Blocked by", "dup"),
+    ("Roles", "roles/dup"),
+    ("When", "conditions/dup"),
 ])
-def test_ambiguous_identifier_wording(tmp_path, field, value, expected):
-    """An id-path given to a write that two extended projects both hold."""
+def test_an_id_path_two_parents_hold_names_the_one_the_view_shows(tmp_path, field, value):
+    """An id-path given to a write that two parents both hold."""
     child = _two_bases(tmp_path)
     write_cap(child, "x", Status="Supported")
-    with pytest.raises(TcwError) as e:
-        FsCapabilitiesStore.open(child).set("x", {field: value})
-    assert expected in str(e.value)
+    shown = str(FsCapabilitiesStore.open(child).get_view(value).full_id)
+    cap = FsCapabilitiesStore.open(child).set("x", {field: value})
+    assert cap.fields[field] == shown
 
 
 # ── field values that are not strings ────────────────────────────────────────

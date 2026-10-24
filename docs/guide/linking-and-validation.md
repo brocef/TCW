@@ -13,8 +13,8 @@ tcw://[<project-id>/]<axis>/<ref>
 
 - `<axis>` is `T` (Taxonomy), `C` (Capabilities), or `W` (Work).
 - `<project-id>` (optional) locates the object in another project: for `W`, a
-  project this one is connected to; for `T` and `C`, a project listed by that
-  axis's `extends`. Absent means this project.
+  project this one is connected to; for `T` and `C`, a project this one
+  inherits that axis from through `parents:`. Absent means this project.
 - `<ref>` is the identifier within that axis: a taxonomy path, a capability
   path, or a work item's folder name.
 
@@ -131,11 +131,11 @@ rule.
 
 Before 2.5.0 a project listed the projects it inherits from in a file inside
 the tree: `config.yaml` at the root of the taxonomy, `.config.yaml` at the root
-of the capabilities ledger. That list lives in `tcw-config.yaml` from 2.5.0 on,
-and TCW does not read the old file. `tcw validate` reports one wherever the
-tree lives, once per tree, and names the key in `tcw-config.yaml` to move its
-list to.
+of the capabilities ledger. TCW does not read the old file: from TCW 4.0 a
+project inherits taxonomy and capabilities from its parents, listed under
+`parents:` in `.tcw/tcw-config.yaml`. `tcw validate` reports the old file
+wherever the tree lives, once per tree.
 
-The fix is to copy any `extends` you still need into `tcw-config.yaml` and
-delete the file. The report stays until the file is gone, even if you already
+The fix is to name under `parents:` any project the file listed that you still
+inherit from, and delete the file. The report stays until the file is gone, even if you already
 copied the list. TCW never edits or deletes it.

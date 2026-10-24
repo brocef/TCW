@@ -2,7 +2,8 @@
 thin glue over `tcw.locate` that never propagates a store exception to a
 caller scanning many links. Two git repositories side by side, `app` naming
 `core` as a parent passing capabilities, which `core` does not list as a
-child, with no `extends` unless a test adds one. The grammar itself is tested in `tests/test_ids.py`."""
+child, so `app` inherits `core`'s capabilities and not its taxonomy. The
+grammar itself is tested in `tests/test_ids.py`."""
 
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ import pytest
 from tcw import locate
 from tcw.locate import ERROR, MISSING, UNRESOLVED
 from tcw.refs import resolve_address
-from tcw.store.fs import FsCapabilitiesStore, init
+from tcw.store.fs import init
 from tests.inherit import entry
 from tests.projectfiles import connect_projects
 from tests.work.projects import make_project
@@ -28,9 +29,9 @@ def app(tmp_path) -> Path:
     for root in (app, core):
         init(["taxonomy", "capabilities"], root)
     entry(app, "taxonomy", "auth")
-    entry(app, "capabilities", "auth/login", id="cap-login", Status="Supported")
+    entry(app, "capabilities", "auth/login", Status="Supported")
     entry(core, "taxonomy", "term")
-    entry(core, "capabilities", "cli/y", id="cap-y", Status="Supported")
+    entry(core, "capabilities", "cli/y", Status="Supported")
     connect_projects(app, "parent", "core", inherit=["capabilities"])
     return app
 
@@ -70,7 +71,6 @@ def test_this_projects_own_object_is_keyed_by_its_id_path(app, uri, namespace, k
 
 
 def test_an_inherited_object_is_keyed_by_its_full_identifier(app):
-    FsCapabilitiesStore.open(app).extends_add("core")
     found = resolve_address(app, "tcw://core.capabilities/cli/y")
     assert (found.ok, found.key, found.project) == (True, "core.capabilities/cli/y", "")
 
@@ -141,13 +141,23 @@ def test_no_project_is_an_error(app):
 def test_a_store_failure_becomes_an_answer(app, monkeypatch, raised):
     def broken(*_args, **_kwargs):
         raise raised
-    monkeypatch.setattr(locate.Locator, "read", broken)
+    monkeypatch.setattr(locate.Locator, "exists", broken)
     found = resolve_address(app, "tcw://app.taxonomy/auth")
     assert (found.ok, found.outcome, found.reason) == (False, ERROR, str(raised))
 
 
-def test_an_unreadable_store_becomes_an_answer(app):
+def test_an_address_asks_only_whether_its_object_is_there(app):
+    """TCW-112 Design 3.1: whether an address names an object needs only its
+    owner's own store, and none of that object's contents, so a state file
+    that cannot be parsed is the YAML scan's to report, not the link's."""
     write_state(app / "docs" / "taxonomy" / "auth" / TAXONOMY_STATE, "name: [unclosed\n")
     found = resolve_address(app, "tcw://app.taxonomy/auth")
-    assert (found.ok, found.outcome) == (False, ERROR)
-    assert TAXONOMY_STATE in found.reason
+    assert (found.ok, found.key) == (True, "auth")
+
+
+def test_an_address_is_not_stopped_by_a_project_above_its_owner(app):
+    """TCW-112 Design 3.1: `core`'s object is there even when what `core`
+    would inherit cannot be read."""
+    connect_projects(app.parent / "core", "parent", "ghost")
+    found = resolve_address(app, "tcw://core.capabilities/cli/y")
+    assert (found.ok, found.key) == (True, "core.capabilities/cli/y")

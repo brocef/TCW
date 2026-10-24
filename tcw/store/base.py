@@ -29,20 +29,6 @@ class RefError(NotFound):
     """A reference could not be resolved cleanly."""
 
 
-class AmbiguousRef(UsageError, RefError):
-    """A bare reference matches more than one namespace — author must qualify.
-
-    Carries its own message: callers print `str(e)`, and the bare ref alone
-    ("x/thing") reads as noise rather than an explanation.
-    """
-
-    def __init__(self, ref: str, namespace: str):
-        self.ref = ref
-        super().__init__(f"ambiguous ref '{ref}': more than one project this one "
-                         f"inherits from holds it; name it by its full identifier, "
-                         f"<project>.{namespace}/{ref}")
-
-
 class StaleRevision(Exception):
     """A write was rejected because the provided revision token no longer matches.
 
@@ -794,10 +780,14 @@ class Term:
     """A taxonomy entry: a vocabulary term or feature addressed by its path.
 
     `slug` is the identity (path from the taxonomy root, e.g. `admin/permission`).
-    `owner` is the ID of the project whose store holds it, and `full_id` its
-    full identifier (TCW-110 Design 1.4). `origin` is `"local"` or the
-    `extends` ID the term was resolved through; it is the stores' own field,
-    never printed.
+    `owner` is the ID of the project that declares it, the first member of its
+    chain (TCW-112 Design 2.4), and `full_id` its full identifier (TCW-110
+    Design 1.4). `origin` is `"local"` when the owner is the project of the
+    store that read it, else the owner's ID; it is the stores' own field,
+    never printed. `overrides` is the full identifier of the object it
+    overrides, the chain's second member, or None. `partial` is True for a
+    record read from the owner's own declaration alone, without its inherited
+    content (TCW-112 Design 3.4), when whether it overrides one is not known.
     """
     slug: str
     name: str
@@ -813,6 +803,8 @@ class Term:
     # identifier, or the text as written when it is not one, which `check`
     # reports; None when the state file names no parent.
     parent: "FullId | str | None" = None
+    overrides: "FullId | None" = None
+    partial: bool = False
 
     @property
     def full_id(self) -> FullId:
@@ -820,38 +812,79 @@ class Term:
 
 
 class TaxonomyStore(ABC):
-    """The taxonomy axis: a forest of terms, optionally federated via `extends`.
+    """The taxonomy axis: a forest of terms, inherited from the projects that
+    pass it through the parent links (TCW-112 Design 1), each id-path's object
+    combined over them (Design 2).
 
     Errors, by the class `tcw` turns into its exit code (TCW-73 Design 4):
-    `NotFound` (4) when the entry or `extends` ID named does not exist;
+    `NotFound` (4) when the entry named does not exist;
     `UsageError` (2) when the input itself is wrong (a bad ID or path, a kind,
     Status or field outside the list, a reference that does not resolve or is
     ambiguous, a project nothing registers); `Refused` (3) when the input is
-    fine but the store's state forbids it (the name is taken, the entry is
-    inherited, has nested entries or is still referenced, the `extends` entry
-    already exists); `BackendError` (1) for a fault reading back what was
-    written. An adapter for another kind of store raises the same classes.
+    fine but the store's state forbids it (the name is taken, the entry
+    belongs to another project, has nested entries or is still referenced);
+    `BackendError` (1) for a fault reading back what was written;
+    `InheritedUnavailable` (7) when an operation needs inherited content that
+    cannot be read here (TCW-112 Design 3.5). An adapter for another kind of
+    store raises the same classes.
     """
 
     @abstractmethod
     def list_all(self, local_only: bool = False) -> list[Term]:
-        """All terms (local + inherited), each flagged by `origin`."""
+        """The project's view, each id-path once as its combined term (TCW-112
+        Design 3.2); with `local_only`, the terms the project owns, its
+        overrides included."""
+
+    @abstractmethod
+    def own_paths(self) -> list[str]:
+        """The id-paths of the project's own terms. Reads no other project."""
+
+    @abstractmethod
+    def has_own(self, slug: str) -> bool:
+        """Whether the project has a term of its own at `slug`, every folder
+        spelled exactly as given. Reads no other project."""
+
+    @abstractmethod
+    def declaration(self, slug: str) -> Term | None:
+        """The project's own term at `slug` read from its own declaration
+        alone, marked `partial` (TCW-112 Design 3.4), or None. Reads no other
+        project."""
 
     @abstractmethod
     def get_local(self, slug: str) -> Term | None:
-        """This store's own project's entry at the id-path `slug`, every
-        folder spelled exactly as given, or None."""
-
-    @abstractmethod
-    def get_inherited(self, owner: str, slug: str) -> Term | None:
-        """The entry at id-path `slug` in project `owner`, one this store
-        inherits from, as this project sees it, or None."""
+        """The project's own term at the id-path `slug` as the project sees
+        it, combined over its sources (TCW-112 Design 3.1), or None when the
+        project has no term of its own there."""
 
     @abstractmethod
     def get_view(self, slug: str) -> Term | None:
-        """An id-path read as the active project sees it (TCW-110 Design 3.1
-        form d): the local entry first, else the one inherited entry at that
-        path. Raises `AmbiguousRef` when two inherited projects both hold it."""
+        """The term at id-path `slug` in the project's view (TCW-112 Design
+        3.1 form d), named by its chain's first member, or None."""
+
+    @abstractmethod
+    def chain(self, slug: str) -> list[FullId]:
+        """Design 2.1's chain at `slug`, nearest first; empty when nothing
+        has a term there."""
+
+    @abstractmethod
+    def inherited_at(self, slug: str) -> FullId | None:
+        """Design 2.7: the full identifier of the inherited term at `slug`,
+        the first member of the path's chain that is not the project, or
+        None."""
+
+    @abstractmethod
+    def view_warnings(self, slugs=None) -> list[str]:
+        """Design 2.5's warnings for the given id-paths, or the whole view,
+        ordered by id-path and then by the unused project's place in the load
+        order."""
+
+    @abstractmethod
+    def removal_target(self, target: "FullId | str") -> FullId:
+        """The project's own full identifier `rm` removes for `target` (an
+        id-path or a full identifier). Another project's full identifier is
+        refused before anything is read; an id-path the view shows as another
+        project's is refused; nothing there is `NotFound` (TCW-112 Design
+        4.4)."""
 
     @abstractmethod
     def add(self, name: str, slug: str | None = None, parent: str | None = None,
@@ -880,14 +913,6 @@ class TaxonomyStore(ABC):
     @abstractmethod
     def check(self, identifier: str | None = None) -> "list[Finding]":
         """Validate the taxonomy, optionally limited to one object."""
-
-    @abstractmethod
-    def extends_add(self, project_id: str) -> None:
-        """Explicitly inherit the taxonomy of a connected project."""
-
-    @abstractmethod
-    def extends_remove(self, project_id: str) -> None:
-        """Drop an inherited project ID. Refuse if it isn't present."""
 
     @abstractmethod
     def get_term_detail(self, ref: "FullId | str") -> "TermDetail" | None:
@@ -929,9 +954,13 @@ class TermDetail:
 
 @dataclass
 class CapabilityDetail:
-    """A single capability entry with its core revision token."""
+    """A single capability entry with its core revision token, and the
+    declared description of its owner's own declaration (TCW-112 Design 4.5),
+    trimmed of leading and trailing white space as the combined body uses it,
+    or None when the owner declares none: what a web edit of the body edits."""
     capability: Capability
     core_revision: str = ""
+    declared_description: str | None = None
 
 
 # ── Capabilities (Phase 3) ───────────────────────────────────────────────────
@@ -981,19 +1010,14 @@ class Capability:
     """A single user-story capability, addressed by its folder path.
 
     `path` is the identity (path from the capabilities root, e.g.
-    `auth/providers/github`). `id` is an opaque, immutable stable id — the
-    durable key an override points at (a `tcw://` link names the full
-    identifier instead). `owner` is the
-    ID of the project whose store holds it, and `full_id` its full identifier
-    (TCW-110 Design 1.4). `origin` is `"local"` or the `extends` ID the
-    capability was resolved through; it is the stores' own field, never
-    printed.
+    `auth/providers/github`), and the only one: TCW 4.0 has no opaque `id`
+    (TCW-112 Design 5). `owner`, `full_id`, `origin`, `overrides` and
+    `partial` are as for `Term`.
     `fields` holds the locked metadata vocabulary (`CAP_FIELDS`); `Subject` may
     be a list of taxonomy slugs.
     """
     path: str
     name: str
-    id: str = ""
     fields: dict[str, Any] = field(default_factory=dict)
     body: str = ""
     origin: str = "local"
@@ -1001,6 +1025,8 @@ class Capability:
     owner: str = ""
     # As `Term.parent` (TCW-111 Design 3.1).
     parent: "FullId | str | None" = None
+    overrides: "FullId | None" = None
+    partial: bool = False
 
     @property
     def status(self) -> str | None:
@@ -1012,44 +1038,76 @@ class Capability:
 
 
 class CapabilitiesStore(ABC):
-    """The capabilities axis: a bounded tree of user-story entries, optionally
-    federated via `extends`.
+    """The capabilities axis: a bounded tree of user-story entries, inherited
+    and combined as the taxonomy is (TCW-112 Design 1, 2).
 
     Deliberately near-identical to `TaxonomyStore` — both are bounded trees of
     body + named-fields + named-attachments entries on the shared tree-store core.
 
     Errors, by the class `tcw` turns into its exit code (TCW-73 Design 4):
-    `NotFound` (4) when the entry or `extends` ID named does not exist;
+    `NotFound` (4) when the entry named does not exist;
     `UsageError` (2) when the input itself is wrong (a bad ID or path, a kind,
     Status or field outside the list, a reference that does not resolve or is
     ambiguous, a project nothing registers); `Refused` (3) when the input is
-    fine but the store's state forbids it (the name is taken, the entry is
-    inherited, has nested entries or is still referenced, the `extends` entry
-    already exists); `BackendError` (1) for a fault reading back what was
-    written. An adapter for another kind of store raises the same classes.
+    fine but the store's state forbids it (the name is taken or inherited,
+    the entry belongs to another project, has nested entries or is still
+    referenced); `BackendError` (1) for a fault reading back what was
+    written; `InheritedUnavailable` (7) as for `TaxonomyStore`. An adapter
+    for another kind of store raises the same classes.
     """
 
     @abstractmethod
     def list_all(self, status: str | None = None, namespace: str | None = None,
                  local_only: bool = False) -> list[Capability]:
-        """All capabilities (local + inherited), each flagged by `origin`."""
+        """The project's view, each id-path once as its combined capability;
+        with `local_only`, the capabilities the project owns, its overrides
+        included (TCW-112 Design 3.2)."""
+
+    @abstractmethod
+    def own_paths(self) -> list[str]:
+        """As `TaxonomyStore.own_paths`."""
+
+    @abstractmethod
+    def has_own(self, path: str) -> bool:
+        """As `TaxonomyStore.has_own`."""
+
+    @abstractmethod
+    def declaration(self, path: str) -> Capability | None:
+        """As `TaxonomyStore.declaration`."""
 
     @abstractmethod
     def get_local(self, path: str) -> Capability | None:
-        """This store's own project's capability at the id-path `path`, every
-        folder spelled exactly as given, or None."""
-
-    @abstractmethod
-    def get_inherited(self, owner: str, path: str) -> Capability | None:
-        """The capability at id-path `path` in project `owner`, one this store
-        extends, as this project sees it (its local override applied), or
-        None."""
+        """As `TaxonomyStore.get_local`."""
 
     @abstractmethod
     def get_view(self, path: str) -> Capability | None:
-        """An id-path read as the active project sees it (TCW-110 Design 3.1
-        form d): the local capability first, else the one inherited at that
-        path. Raises `AmbiguousRef` when two extended projects both hold it."""
+        """As `TaxonomyStore.get_view`."""
+
+    @abstractmethod
+    def chain(self, path: str) -> list[FullId]:
+        """As `TaxonomyStore.chain`."""
+
+    @abstractmethod
+    def inherited_at(self, path: str) -> FullId | None:
+        """As `TaxonomyStore.inherited_at`."""
+
+    @abstractmethod
+    def view_warnings(self, paths=None) -> list[str]:
+        """As `TaxonomyStore.view_warnings`."""
+
+    @abstractmethod
+    def removal_target(self, target: "FullId | str") -> FullId:
+        """As `TaxonomyStore.removal_target`."""
+
+    @abstractmethod
+    def override_target(self, target: "FullId | str") -> FullId:
+        """The project's own full identifier `set` and `reset` write for
+        `target` (TCW-112 choice 9): an id-path, the project's own full
+        identifier where it has an object, or the full identifier of any
+        object in that id-path's chain. A project that is not one of the
+        project's sources is refused before anything is read; another
+        project's object not in the chain is refused with Design 4.2's
+        message; nothing there is `NotFound`."""
 
     @abstractmethod
     def add(self, identifier: str, name: str | None = None, status: str = "Missing",
@@ -1062,38 +1120,39 @@ class CapabilitiesStore(ABC):
 
     @abstractmethod
     def remove(self, identifier: "FullId | str") -> None:
-        """Delete the local capability `identifier` names (a full identifier,
-        or text read as command input is, TCW-110 Design 3.1), writing nothing
-        when refused. Raise `AmbiguousRef` when an id-path matches multiple
-        extended stores, and `ValueError` when:
+        """Delete the project's own capability `identifier` names
+        (`removal_target`), an override included, writing nothing when
+        refused (TCW-112 Design 4.4). Raise `ValueError` when:
 
-        - nothing resolves;
-        - the capability is inherited, overridden locally or not (an override
-          is dropped with `reset`, never with `remove`);
-        - another capability or override is nested under its path;
-        - another local capability or override still references it through
+        - nothing resolves, or it belongs to another project;
+        - another capability is nested under its path;
+        - another of the project's capabilities still references it through
           `Superseded by`, `Blocked by`, `Roles` or `When`.
 
         Refusing rather than cascading is the contract: a delete never takes a
         second capability with it or leaves a reference pointing at nothing.
-        Never mutates an extended store."""
+        Never changes another project's store."""
 
     @abstractmethod
     def reset(self, identifier: "FullId | str") -> None:
-        """Drop the local override at `identifier`, re-inheriting the upstream
-        capability verbatim. Raise `ValueError` when there is no override (a
-        standalone local capability is not an override — the `remove` operation,
-        driven by `tcw capabilities rm`, deletes it; a bare
-        inherited path has nothing to drop), or `AmbiguousRef` when an id-path
-        matches multiple extended stores. Never mutates an extended store."""
+        """Remove the project's own capability at the id-path `identifier`
+        names (`override_target`) when it overrides one, so the path shows
+        the inherited capability again (TCW-112 Design 4.3). Raise
+        `ValueError` when it overrides nothing (`remove` deletes it), when
+        the project has none there, when anything is nested under it, or
+        while another of the project's own objects names it. Never changes
+        another project's store."""
 
     @abstractmethod
     def set(self, identifier: "FullId | str", fields: dict[str, Any],
             parent: str | None = None) -> Capability:
-        """Update/insert metadata fields on the capability at `identifier`;
-        return it. `parent`, when given, is command input naming a capability,
-        or `''` to clear it; it is refused for an inherited capability before
-        anything is written (TCW-111 Design 3.4). Keys must be in CAP_FIELDS; a Status value must be in
+        """Update/insert metadata fields on the project's own capability at
+        the id-path `identifier` names (`override_target`), writing a new one
+        holding only the fields given when the project only inherits it
+        (TCW-112 Design 4.2); return the capability as the project then sees
+        it. `parent`, when given, is command input naming a capability, or
+        `''` to clear it. A field given as None is written as an explicit
+        null. Keys must be in CAP_FIELDS; a Status value must be in
         CAP_STATUSES. `Subject` accepts a list (or a comma string). Other
         field-value semantics are `check`'s job (Spec 3)."""
 
@@ -1103,10 +1162,10 @@ class CapabilitiesStore(ABC):
 
     @abstractmethod
     def unreviewed_inherited(self) -> list["Capability"]:
-        """Inherited capabilities whose Status is the master's default — never
-        locally ruled on (no local override that sets Status). The 'unreviewed'
-        half of drift: distinguishes an echoed master default from a local
-        decision. Empty when nothing is federated."""
+        """Inherited capabilities never ruled on here: the project has no
+        object of its own at the id-path, or has one that sets no `Status`
+        (TCW-112 Design 7.2). The 'unreviewed' half of drift. Empty when
+        nothing is inherited."""
 
     @abstractmethod
     def check(self, taxonomy: "TaxonomyStore | None" = None,
@@ -1133,14 +1192,6 @@ class CapabilitiesStore(ABC):
 
         Returns the updated ``CapabilityDetail`` with a fresh revision.
         """
-
-    @abstractmethod
-    def extends_add(self, project_id: str) -> None:
-        """Explicitly inherit capabilities from a connected project."""
-
-    @abstractmethod
-    def extends_remove(self, project_id: str) -> None:
-        """Drop an inherited project ID. Refuse if it isn't present."""
 
 
 # ── Work (Phase 5) ───────────────────────────────────────────────────────────

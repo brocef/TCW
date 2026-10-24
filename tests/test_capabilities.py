@@ -1,4 +1,3 @@
-import hashlib
 import os
 import subprocess
 from pathlib import Path
@@ -6,12 +5,12 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tcw.store.base import AmbiguousRef, RefError, Term
+from tcw.store.base import RefError, Term
 from tcw.store.fs import FsCapabilitiesStore, heading_slug, write_sentinel
 from tcw.errors import TcwError
 from tests.fullids import fid
 from tests.projectfiles import write_config, write_manifest
-from tests.statefiles import write_state, CAPABILITY_STATE, TAXONOMY_STATE
+from tests.statefiles import read_state, write_state, CAPABILITY_STATE, TAXONOMY_STATE
 
 
 def node(tmp_path: Path, name: str = "repo") -> Path:
@@ -35,8 +34,7 @@ def write_cap(root: Path, path: str, body: str = "", **meta) -> None:
     """Write a folder-model capability node (tcw-capability.yaml + description.md)."""
     d = root / "docs" / "capabilities" / path
     d.mkdir(parents=True, exist_ok=True)
-    m = {"id": "cap-" + hashlib.sha1(path.encode()).hexdigest()[:6],
-         "name": path.rsplit("/", 1)[-1].replace("-", " ").title()}
+    m = {"name": path.rsplit("/", 1)[-1].replace("-", " ").title()}
     m.update(meta)
     write_state(d / CAPABILITY_STATE, yaml.safe_dump(m, sort_keys=False, allow_unicode=True))
     (d / "description.md").write_text(body)
@@ -60,8 +58,8 @@ class StubTax:
     def __init__(self, *known):
         self.known = set(known)
 
-    def _inherited(self):
-        return {}
+    def has_own(self, slug):
+        return self.get_local(slug) is not None
 
     def get_local(self, slug):
         return Term(slug, slug) if slug in self.known else None
@@ -107,13 +105,15 @@ def test_cli_path_outside_capabilities_node_prints_no_path(tmp_path, monkeypatch
 
 # ── add + collision ──────────────────────────────────────────────────────────
 
-def test_add_creates_folder_with_id(tmp_path):
+def test_add_creates_folder_without_an_id(tmp_path):
+    """TCW-112 Design 5: a capability's path is its only identity, so `add`
+    writes no `id` (AC 23)."""
     root = node(tmp_path)
     st = FsCapabilitiesStore.open(root)
     cap = st.add("routes/login", name="Sign in")
     assert cap.path == "routes/login"
-    assert cap.id.startswith("cap-")
-    assert (root / "docs/capabilities/routes/login/tcw-capability.yaml").is_file()
+    state = read_state(root / "docs/capabilities/routes/login/tcw-capability.yaml")
+    assert "id" not in state and state["name"] == "Sign in"
     assert (root / "docs/capabilities/routes/login/description.md").is_file()
     assert st.get_view("routes/login").status == "Missing"        # default status
 
@@ -133,14 +133,10 @@ def test_modified_timestamp_includes_declared_capability_docs(tmp_path):
     os.utime(folder / "description.md", (200, 200))
     os.utime(guide, (300, 300))
 
+    # Reopened: a store builds its view once (TCW-112 Design 1.4), and the
+    # files were changed by hand behind it.
+    st = FsCapabilitiesStore.open(root)
     assert st.get_view("routes/login").modified == "1970-01-01T00:05:00Z"
-
-
-def test_add_mints_unique_ids(tmp_path):
-    st = FsCapabilitiesStore.open(node(tmp_path))
-    a = st.add("a")
-    b = st.add("b")
-    assert a.id and b.id and a.id != b.id
 
 
 def test_add_refuses_duplicate(tmp_path):
@@ -286,25 +282,32 @@ def test_check_unresolved_role_slug(tmp_path):
     assert any("Roles" in p for p in map(str, FsCapabilitiesStore.open(root).check()))
 
 
-def test_check_missing_id(tmp_path):
+def test_check_accepts_a_capability_with_no_id(tmp_path):
+    """TCW-112 Design 5: there is no opaque `id`, so none is required."""
     root = node(tmp_path)
     d = root / "docs/capabilities/x"
     d.mkdir(parents=True)
     write_state(d / CAPABILITY_STATE, "name: X\nStatus: Supported\n")
     (d / "description.md").write_text("")
-    assert any("missing id" in p for p in map(str, FsCapabilitiesStore.open(root).check()))
+    assert FsCapabilitiesStore.open(root).check() == []
 
 
-def test_check_duplicate_id(tmp_path):
+def test_check_accepts_an_id_that_is_the_folders_name(tmp_path):
     root = node(tmp_path)
-    write_cap(root, "a", Status="Supported")
-    write_cap(root, "b", Status="Supported")
-    # Force a duplicate id on b.
-    mb = root / "docs/capabilities/b/tcw-capability.yaml"
-    m = yaml.safe_load(mb.read_text())
-    m["id"] = yaml.safe_load((root / "docs/capabilities/a/tcw-capability.yaml").read_text())["id"]
-    mb.write_text(yaml.safe_dump(m))
-    assert any("duplicate id" in p for p in map(str, FsCapabilitiesStore.open(root).check()))
+    write_cap(root, "x", id="x", Status="Supported")
+    assert FsCapabilitiesStore.open(root).check() == []
+
+
+def test_check_reports_an_opaque_id(tmp_path):
+    """TCW-112 Design 5: a 3.x `id: cap-…` is not the folder's name, and is
+    reported at the state file."""
+    root = node(tmp_path)
+    write_cap(root, "x", id="cap-abc123", Status="Supported")
+    problems = list(map(str, FsCapabilitiesStore.open(root).check()))
+    assert problems == [
+        "error: docs/capabilities/x/tcw-capability.yaml: id 'cap-abc123' is not its "
+        "folder's name, 'x'; an object's ID is its folder's name, so remove id or set "
+        "it to 'x'"], problems
 
 
 def test_check_with_taxonomy(tmp_path):
@@ -326,7 +329,6 @@ def test_cli_drift_flags_unreviewed_inherited(tmp_path, monkeypatch, capsys):
     write_cap(base, "auth/login", Status="Supported")
     child = node(tmp_path, "child")
     connect(base, child)
-    FsCapabilitiesStore.open(child).extends_add("base")
     monkeypatch.chdir(child)
     assert main(["capabilities", "drift"]) == 1
     out = capsys.readouterr().out
@@ -339,7 +341,6 @@ def test_cli_drift_clean_after_override(tmp_path, monkeypatch, capsys):
     write_cap(base, "auth/login", Status="Supported")
     child = node(tmp_path, "child")
     connect(base, child)
-    FsCapabilitiesStore.open(child).extends_add("base")
     FsCapabilitiesStore.open(child).set("auth/login", {"Status": "Omitted"})
     monkeypatch.chdir(child)
     assert main(["capabilities", "drift"]) == 0
@@ -573,7 +574,6 @@ def test_drift_does_not_affect_check(tmp_path):
     write_cap(base, "auth/login", Status="Supported")
     child = node(tmp_path, "child")
     connect(base, child)
-    FsCapabilitiesStore.open(child).extends_add("base")
     assert FsCapabilitiesStore.open(child).check() == []   # unreviewed ≠ structural fault
 
 
@@ -661,7 +661,6 @@ def test_cli_set_inherited_path(tmp_path, monkeypatch, capsys):
                                        name="Report content", status="Supported")
     child = node(tmp_path, "child")
     connect(base, child)
-    FsCapabilitiesStore.open(child).extends_add("base")
     monkeypatch.chdir(child)
     from tcw.cli import main
 
@@ -674,30 +673,33 @@ def test_cli_set_inherited_path(tmp_path, monkeypatch, capsys):
         "moderation/report-content").status == "Supported"
 
 
-def test_cli_set_ambiguous_ref_reports_ambiguity(tmp_path, monkeypatch, capsys):
+def test_cli_set_of_a_path_two_parents_hold_is_not_ambiguous(tmp_path, monkeypatch, capsys):
+    """TCW-112 Design 3.6: the load order decides the path, so `set` of it
+    overrides the capability the view shows; the other parent's is not in the
+    path's chain, and `set` of it is refused (Design 4.2)."""
     for name in ("one", "two"):
         FsCapabilitiesStore.open(node(tmp_path, name)).add("x/thing", name="Thing")
     child = node(tmp_path, "child")
-    st = FsCapabilitiesStore.open(child)
-    # `child` extends both, so each is a parent passing capabilities.
     write_config(child,
         "id: child\nparents:\n"
         "- id: one\n  inherit: [capabilities]\n"
         "- id: two\n  inherit: [capabilities]\n"
     )
     write_manifest(child, {"one": "../one", "two": "../two"})
-    st = FsCapabilitiesStore.open(child)
-    st.extends_add("one")
-    st.extends_add("two")
+    shown = FsCapabilitiesStore.open(child).get_view("x/thing").full_id
+    other = "two" if shown.project == "one" else "one"
     monkeypatch.chdir(child)
     from tcw.cli import main
 
-    assert main(["capabilities", "set", "x/thing", "--status", "Missing"]) == 2
-    err = capsys.readouterr().err
-    assert "ambiguous" in err and "x/thing" in err     # not a bare, unexplained path
-    assert main(["capabilities", "set", "one.capabilities/x/thing",
-                 "--status", "Missing"]) == 0
-
+    assert main(["capabilities", "set", "x/thing", "--status", "Supported"]) == 0
+    cap = FsCapabilitiesStore.open(child).get_view("x/thing")
+    assert (cap.owner, cap.status, cap.overrides) == ("child", "Supported", shown)
+    capsys.readouterr()
+    assert main(["capabilities", "set", f"{other}.capabilities/x/thing",
+                 "--status", "Missing"]) == 3
+    assert f"belongs to project '{other}', and 'child' does not inherit it" in \
+        capsys.readouterr().err
+    assert FsCapabilitiesStore.open(child).get_view("x/thing").status == "Supported"
 
 def test_the_capabilities_store_has_no_attachment_surface_to_regress(tmp_path):
     """Why spec criterion 12 has only a taxonomy half.

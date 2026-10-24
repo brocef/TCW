@@ -83,8 +83,8 @@ declared term: a `new` or `changed` one present, a `removed` one gone.
   that lands outside — and the same holds for the files *inside* an entry, so an
   entry whose `meta.yaml` or `description.md` is a symlink out is not read. Such
   an entry does not resolve, does not appear in `list`, and cannot be written
-  to; a stored ref of that shape reports as **dangling**. Federation (`extends`)
-  is the supported way to reference another project.
+  to; a stored ref of that shape reports as **dangling**. Inheriting from a
+  parent project (below) is the supported way to reference another project.
 - **Stop at the registry boundary.** A taxonomy Feature names the interaction
   area; it does not describe behavior, acceptance criteria, support status, or
   user stories. Put those details in capabilities.
@@ -96,24 +96,47 @@ declared term: a `new` or `changed` one present, a `removed` one gone.
   and a stream that stalls part-way is refused rather than stored truncated
   (`TCW_STDIN_TIMEOUT` sets the bound).
 - **Keep descriptions short** — one or two sentences of what the noun means here.
-- **Run `tcw validate` after edits** — it checks inherited project IDs,
-  taxonomy kinds, feature vocabulary refs, and every relatesTo / subject
-  reference (cycles, duplicate IDs, dangling/ambiguous refs).
+- **Run `tcw validate` after edits** — it checks taxonomy kinds, feature
+  vocabulary refs, every relatesTo / subject reference (dangling refs), and
+  that a term overriding nothing is complete (below).
 - **Cross-reference in prose with `tcw://` links** — a term description may link
   to another object with `[text](tcw://T/<slug>)` (or `C`/`W`, and an
   `<project-id>/`-prefixed namespace for inherited terms). `tcw validate` resolves
   those links across the project and the `tcw serve` viewer makes them clickable.
 
-## Inheritance (federation)
+## Inheritance
 
-A project may inherit another registered project's taxonomy — a parent, a
-child, or an `upstream` it reads without being named back.
-`tcw taxonomy extends add <project-id>` inherits one and
-`tcw taxonomy extends rm <project-id>` stops; the configure skill's reference
-on projects explains the declaration. The source project ID is the inherited
-namespace (`<project-id>/<slug>`). Inheritance is transitive: if A extends B and
-B extends C, A can resolve both `B/<slug>` and `C/<slug>` under the owning
-project IDs. A source reached through multiple paths appears once.
+A project inherits the taxonomy of every parent whose `inherit` includes
+`taxonomy`, through every level: a parent's own parents are inherited too,
+without being listed. The parent links are configured under `parents:` in
+`.tcw/tcw-config.yaml`, which the configure skill's reference on projects
+explains; there is no taxonomy command for it. An inherited term is read by its
+path like one of the project's own, and its full identifier
+(`<project-id>.taxonomy/<path>`) names the project it belongs to.
+
+**Overriding an inherited term.** To change an inherited term, the project puts
+its own term at the same path, holding only what it changes; nothing else marks
+it as an override. The two are combined field by field, and a list field
+(`relatesTo`, `vocabulary`) is replaced whole. `tcw taxonomy add` at an
+inherited path writes such an override, holding only what differs from the
+inherited term, and says on standard error what it overrides; it is refused
+when nothing given differs. `tcw taxonomy rm <path>` removes the override and
+says what the path shows afterwards. The JSON records carry `overrides` (the
+full identifier of the term overridden, or `null`), and `show` prints an
+`overrides:` line.
+
+A term that overrides nothing must be complete — a name and a `description.md`,
+which may be empty — or `tcw validate` reports it; that is how an override whose
+original was moved or removed is caught. When two parents that do not inherit
+from each other both have a term at one path, the one that comes later in the
+project's load order (the order in which TCW reads its parents) is used whole,
+with a warning; a complete term of the project's own at that path settles it.
+
+**When a parent is not on this machine.** `tcw taxonomy list --local` and
+`show` of one of the project's own terms still work: each JSON record read that
+way has `"partial": true` and no `overrides` key, since what it overrides is not
+known. The commands that need the inherited terms (`list` without `--local`,
+`search`, `add`, `show` of an inherited term) stop with exit code 7.
 
 ## Starting a taxonomy
 
@@ -129,6 +152,8 @@ To seed a new taxonomy from an existing codebase, use the `setup` skill.
 | link related terms              | edit `relatesTo` in the term's `meta.yaml`, then `tcw validate`                                                                                                         |
 | browse / read / find            | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>`                                                                                     |
 | locate the filesystem store     | `tcw taxonomy path` — prints only the absolute, resolved store folder                                                                                           |
-| inherit another project's terms | `tcw taxonomy extends add <project-id>` · `extends rm <project-id>`                                                                                                          |
+| inherit another project's terms | name it under `parents:` with an `inherit` that includes `taxonomy` (the configure skill's projects reference); no taxonomy command                                |
+| override an inherited term      | `tcw taxonomy add "<Name>" [--parent <path>]` at the inherited path — writes the project's own term there, holding only what differs; `tcw taxonomy rm <path>` removes it |
+| read without a parent present   | `tcw taxonomy list --local` · `show <own path>` — records marked `"partial": true`; commands needing inherited terms exit 7                                        |
 | validate                        | `tcw validate` (the whole project: YAML, `tcw://` links, every axis's checks)                                                     |
-| remove a local term             | `tcw taxonomy rm <path>` — refused while a term is nested under it, another local term names it in `relatesTo` or a feature's `vocabulary`, a local capability or a local override of an inherited one names it in `Subject` or `Feature` (or the capabilities cannot be read); fix those first. Every other file in its folder goes with it |
+| remove a local term             | `tcw taxonomy rm <path>` — refused while a term is nested under it, another local term names it in `relatesTo` or a feature's `vocabulary`, one of the project's own capabilities, an override included, names it in `Subject` or `Feature` (or the capabilities cannot be read); fix those first. Every other file in its folder goes with it |

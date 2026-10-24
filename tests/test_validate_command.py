@@ -152,7 +152,7 @@ def test_a_retired_capability_field_is_an_error(project, run):
     write_state(meta, meta.read_text() + "Planning doc: x\n")
     code, out, _ = run(project)
     [line] = about(out, "Planning doc")
-    assert line.startswith("error: docs/capabilities/ns/thing: ")
+    assert line.startswith("error: docs/capabilities/ns/thing/tcw-capability.yaml: ")
     assert "docs/migration-guide-2.8-to-3.0.0.md" in line and code == 1
 
 
