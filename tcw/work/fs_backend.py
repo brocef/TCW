@@ -35,12 +35,12 @@ from tcw.project_files import VERSION_KEY, version_problem
 from tcw.output import shown
 from tcw.store.base import normalize_tag
 from tcw.store.fs import _atomic_write_all, _umask, exact_child
-from tcw.work.backend import Comment, Query
+from tcw.work.backend import Comment, Query, nesting_parent
 from tcw.work.config import WorkConfig
 from tcw.work.layout import Layout
 from tcw.work.model import (
     DEFAULT_PRIORITY, FLOW, FOLDER_LIMIT, PRIORITIES, SIZES, TERMINAL, Changes,
-    Item, Slug, apply_changes, check_encodable, is_stage, stage as table_stage, start_stage,
+    UNSET, Item, Slug, _as_slug, apply_changes, check_encodable, is_stage, stage as table_stage, start_stage,
     title_words as make_title_words, validate_changes,
 )
 
@@ -343,12 +343,18 @@ class FsWorkBackend:
     # -- the interface ------------------------------------------------------
 
     def create(self, title: str, props: Changes, *, stage: str,
-               request: str | None) -> Item:
+               request: str | None, nest: bool = False) -> Item:
         if not isinstance(title, str) or not title.strip():
             raise UsageError("a title must not be empty")
         table_stage(stage)
         self._validate(replace(props, title=title), None)
-        folder = f"{self.today().isoformat()}-{make_title_words(title)}"
+        parent = (None if props.parent in (UNSET, None)
+                  else _as_slug(props.parent, self.project, "parent"))
+        under, note = nesting_parent(self, parent, nest)
+        if note:
+            self.report(note)
+        name = f"{self.today().isoformat()}-{make_title_words(title)}"
+        folder = f"{under}/{name}" if under else name
         path = self.work_path / folder
         if path.exists():
             raise Refused(f"{path} already exists; rename it, or choose another "
@@ -357,8 +363,9 @@ class FsWorkBackend:
         path.mkdir()
         self.report(f"created {shown(path)}/")
         try:
+            # The date of the last part: `folder` is the whole id-path.
             base = Item(slug=Slug(self.project, folder), title=title, stage=stage,
-                        created=date.fromisoformat(folder[:10]),
+                        created=date.fromisoformat(name[:10]),
                         priority=DEFAULT_PRIORITY, effort=None, complexity=None,
                         tags=(), assignee=None, parent=None, blocked_by=())
             item = apply_changes(base, props)

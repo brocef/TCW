@@ -31,7 +31,7 @@ from tcw.ids import IdError, id_part_problem, is_project_id, looks_full
 from tcw.output import shown
 from tcw.store.base import normalize_tag
 from tcw.store.fs import exact_child
-from tcw.work.backend import Comment, Query
+from tcw.work.backend import Comment, Query, nesting_parent
 from tcw.work.config import WorkConfig
 from tcw.object_folders import (UNMADE, id_problem, is_object, object_paths, shape_problems,
                                 walk)
@@ -758,7 +758,7 @@ class JiraBackend:
     # -- create (Design 4.1) -------------------------------------------------------
 
     def create(self, title: str, props: Changes, *, stage: str,
-               request: str | None) -> Item:
+               request: str | None, nest: bool = False) -> Item:
         if not isinstance(title, str) or not title.strip():
             raise UsageError("a title must not be empty")
         table_stage(stage)
@@ -771,10 +771,14 @@ class JiraBackend:
         meta = self.metadata()
         # 1. Resolve, reading only.
         self._check_priority(props)
-        issue_type, parent_key = meta.issue_type, None
+        issue_type, parent_key, under = meta.issue_type, None, None
         if props.parent not in (UNSET, None):
             parent_key, level, type_name = self._parent(props.parent)
             issue_type = self.child_issue_type(parent_key, level, type_name)
+            under, note = nesting_parent(
+                self, _as_slug(props.parent, self.project, "parent"), nest)
+            if note:
+                self.report(note)
         assignee = (self.account(props.assignee)
                     if props.assignee not in (UNSET, None) else None)
         blockers = _unique(self.ticket_key(b, "blocked-by") for b in props.add_blocked_by)
@@ -796,7 +800,8 @@ class JiraBackend:
         if not isinstance(key, str) or not KEY.fullmatch(key):
             raise BackendError("Jira's answer to the create request names no ticket key; "
                                "a ticket may have been created: look for it in Jira")
-        folder = f"{key}-{make_title_words(title)}"
+        name = f"{key}-{make_title_words(title)}"
+        folder = f"{under}/{name}" if under else name
         slug = Slug(self.project, folder)
         request_status = self.statuses[start_stage()]
         # 3. Check the route to the request status.

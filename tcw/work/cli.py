@@ -169,11 +169,12 @@ def creation_stage(backend: WorkBackend, stage: str | None) -> str:
 
 
 def new_item(backend: WorkBackend, title: str, changes: Changes, *,
-             stage: str | None, request: str | None):
-    """Create an item in this project, where `creation_stage` says. What
-    `new` and the web viewer both call."""
+             stage: str | None, request: str | None, nest: bool = False):
+    """Create an item in this project, where `creation_stage` says, and inside
+    its parent's folder when `nest` is true and the parent is an item of this
+    project. What `new` and the web viewer both call."""
     return backend.create(title, changes, stage=creation_stage(backend, stage),
-                          request=request)
+                          request=request, nest=nest)
 
 
 def blocks_target(slug: Slug, target: Slug, backend: WorkBackend, root: Path):
@@ -202,6 +203,9 @@ def _new(args) -> int:
         raise UsageError(f"--stage accepts only {inbox_stage()}")
     if args.assign_me:
         _alone(args, "--assign-me")
+    if args.nest and args.parent is None:
+        raise UsageError("--nest puts the item's folder inside its parent's; "
+                         "give the parent with --parent")
     if args.project:
         # Before the read of piped input, so a usage error never waits on it.
         if args.project == FsProjectRegistry.open(root).current.id:
@@ -241,7 +245,8 @@ def _new(args) -> int:
         add_blocked_by=tuple(args.blocked_by or ()))
     changes = _references(changes, backend, root)
     # A failure after creation carries the name; `tcw.cli.main` prints it.
-    item = new_item(backend, args.title, changes, stage=args.stage, request=request)
+    item = new_item(backend, args.title, changes, stage=args.stage, request=request,
+                    nest=args.nest)
     print(item.slug)
     return codes.OK
 
@@ -729,12 +734,16 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                        "stopped after creating a ticket)",
                 writes="the item, and in Jira mode its ticket",
                 examples=["new 'Refund a payment' --priority high < ask.md",
-                          "new 'Support SSO' --project platform --tag auth"])
+                          "new 'Support SSO' --project platform --tag auth",
+                          "new 'Part' --parent 2026-10-01-epic --nest"])
     p.add_argument("title", help="the item's title; the folder name is made from it")
     p.add_argument("--project", help="create it in this connected project instead")
     p.add_argument("--stage", help=f"{inbox_stage()}, to start it there (filesystem "
                                    f"mode only)")
     _properties(p, editing=False)
+    p.add_argument("--nest", action="store_true",
+                   help="put the new item's folder inside its parent's folder, when "
+                        "the parent is an item of this project")
     p.set_defaults(func=_new)
 
     p = command(cmds, "list", help="list items",

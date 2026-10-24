@@ -131,3 +131,62 @@ def test_a_nested_state_file_of_a_newer_tcw_is_read_from_jira(jira_project, tcw,
     checked = validate(jira_project)
     assert checked.code == 1
     assert "newer than this TCW" in checked.out and "must hold exactly" not in checked.out
+
+
+# -- AC 9 and 9a: creating a nested item --------------------------------------------
+
+def made_epic(jira_project, tcw):
+    epic = tcw(["new", "Epic"], jira_project.root)
+    assert epic.code == 0, epic.err
+    return epic.out.strip().split("/", 1)[1]
+
+
+def test_new_with_nest_makes_the_folder_inside_the_parents(jira_project, tcw):
+    epic = made_epic(jira_project, tcw)
+    made = tcw(["new", "Part", "--parent", epic, "--nest"], jira_project.root)
+    assert made.code == 0, made.err
+    assert made.out.strip() == f"tcw.work/{epic}/TCW-2-part"
+    assert (jira_project.work / epic / "TCW-2-part" / ITEM_STATE).is_file()
+    assert jira_project.fake.tickets["TCW-2"].custom[ITEM] == f"tcw.work/{epic}/TCW-2-part"
+    shown = tcw(["show", "TCW-2", "--json"], jira_project.root)
+    assert json.loads(shown.out)["item"]["full-id"] == f"tcw.work/{epic}/TCW-2-part"
+    flat = tcw(["new", "Flat", "--parent", epic], jira_project.root)
+    assert flat.out.strip() == "tcw.work/TCW-3-flat"
+
+
+def test_nest_without_a_parent_makes_no_request(jira_project, tcw):
+    jira_project.fake.log.clear()
+    refused = tcw(["new", "Part", "--nest"], jira_project.root)
+    assert refused.code == 2 and "--parent" in refused.err
+    assert jira_project.fake.log == []
+
+
+def test_a_failed_folder_write_is_finished_by_adopt_inside_the_parent(jira_project, tcw):
+    epic = made_epic(jira_project, tcw)
+    in_the_way = jira_project.work / epic / "TCW-2-part"
+    in_the_way.write_text("in the way")
+    made = tcw(["new", "Part", "--parent", epic, "--nest"], jira_project.root)
+    assert (made.code, made.out.strip()) == (1, "TCW-2")
+    assert "tcw work tickets adopt TCW-2" in made.err
+    in_the_way.unlink()
+    adopted = tcw(["tickets", "adopt", "TCW-2"], jira_project.root)
+    assert adopted.code == 0, adopted.err
+    assert (in_the_way / ITEM_STATE).is_file()
+
+
+def test_a_failed_item_edit_is_adopted_at_the_top(jira_project, monkeypatch, tcw):
+    from tcw.work.jira import client as jira
+    epic = made_epic(jira_project, tcw)
+    fake = jira_project.fake
+    original = fake._edit
+
+    def refused(*args, **kwargs):
+        raise jira._for_status(400, {}, "refused by the test", "/x")
+    monkeypatch.setattr(fake, "_edit", refused)
+    made = tcw(["new", "Part", "--parent", epic, "--nest"], jira_project.root)
+    assert (made.code, made.out.strip()) == (1, "TCW-2")
+    monkeypatch.setattr(fake, "_edit", original)
+    adopted = tcw(["tickets", "adopt", "TCW-2"], jira_project.root)
+    assert adopted.code == 0, adopted.err
+    assert (jira_project.work / "TCW-2-part" / ITEM_STATE).is_file()
+    assert not (jira_project.work / epic / "TCW-2-part").exists()

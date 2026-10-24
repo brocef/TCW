@@ -244,3 +244,17 @@ def test_only_its_own_item_folders_are_items(backend, tmp_path):
     assert not backend.is_item_folder("notes")
     assert not backend.is_item_folder("2026-10-02-no-item-file")
     assert not backend.is_item_folder("no-such-folder")
+
+
+def test_a_nested_create_puts_the_folder_under_the_parents(backend, tmp_path):
+    """`nest` with a parent of this backend (TCW-111 AC 9); without it the
+    folder is made at the top, as before."""
+    epic = new(backend, "Epic")
+    part = backend.create("Part", Changes(parent=epic.slug), stage="request",
+                          request=None, nest=True)
+    assert part.slug.folder.startswith(epic.slug.folder + "/")
+    assert (tmp_path / "work" / part.slug.folder).is_dir()
+    assert backend.read(part.slug.folder).parent == epic.slug
+    flat = backend.create("Flat", Changes(parent=epic.slug), stage="request",
+                          request=None)
+    assert "/" not in flat.slug.folder

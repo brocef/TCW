@@ -154,3 +154,61 @@ def test_a_targeted_check_of_an_epic_leaves_its_parts_out(demo):
     (epic / "loose.txt").write_text("the epic's own")
     found = check(EPIC)
     assert any("loose.txt" in f for f in found) and not any("notes.md" in f for f in found)
+
+
+# -- AC 9, creating ---------------------------------------------------------------
+# The real clock: the parents are dated 2000-01-01, so a part given its
+# parent's date instead of today's shows.
+
+OLD_EPIC = "2000-01-01-epic"
+
+
+def made(result):
+    assert result.code == 0, result.err
+    return result.out.strip()
+
+
+def test_new_with_a_parent_is_made_at_the_top_unless_nested(tcw, demo):
+    from datetime import date
+    today = date.today().isoformat()
+    item(demo, OLD_EPIC, title="Epic")
+    flat = made(tcw(["work", "new", "Flat", "--parent", OLD_EPIC], demo))
+    assert flat == f"demo.work/{today}-flat"
+    part = made(tcw(["work", "new", "Part", "--parent", OLD_EPIC, "--nest"], demo))
+    assert part == f"demo.work/{OLD_EPIC}/{today}-part"
+    assert (store(demo, "work") / OLD_EPIC / f"{today}-part" / "tcw-work-item.yaml").is_file()
+    assert listed(tcw, demo) == sorted([f"demo.work/{OLD_EPIC}", flat, part])
+    children = listed(tcw, demo, "--parent", OLD_EPIC)
+    assert children == sorted([flat, part])
+    shown = json.loads(tcw(["work", "show", part, "--json"], demo).out)["item"]
+    assert shown["created"] == today
+
+
+def test_a_nested_part_under_a_parent_in_an_organising_folder(tcw, demo):
+    from datetime import date
+    today = date.today().isoformat()
+    item(demo, f"2026/{OLD_EPIC}", title="Epic")
+    made_ = tcw(["work", "new", "Part", "--parent", f"2026/{OLD_EPIC}", "--nest"], demo)
+    assert "Traceback" not in made_.err
+    part = made(made_)
+    assert part == f"demo.work/2026/{OLD_EPIC}/{today}-part"
+    shown = json.loads(tcw(["work", "show", part, "--json"], demo).out)["item"]
+    assert shown["created"] == today
+
+
+def test_nest_without_a_parent_is_refused_making_nothing(tcw, demo):
+    refused = tcw(["work", "new", "Part", "--nest"], demo, stdin="asks\n")
+    assert refused.code == 2 and "--parent" in refused.err
+    assert [p for p in store(demo, "work").iterdir() if not p.name.startswith(".")] == []
+
+
+def test_nest_with_a_parent_of_another_project_is_made_at_the_top(tcw, tmp_path):
+    from datetime import date
+    from tests.work.projects import connect, make_project, write_item
+    here, other = make_project(tmp_path, "p"), make_project(tmp_path, "q")
+    connect(here, other, "parent")
+    write_item(other, OLD_EPIC, {"title": "Epic", "stage": "spec"})
+    result = tcw(["work", "new", "Part", "--parent", f"q.work/{OLD_EPIC}", "--nest"], here)
+    assert made(result) == f"p.work/{date.today().isoformat()}-part"
+    assert f"not nested: q.work/{OLD_EPIC} belongs to project 'q'" in result.err
+    assert not (other / "docs" / "work" / OLD_EPIC / f"{date.today().isoformat()}-part").exists()

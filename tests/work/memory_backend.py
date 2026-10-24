@@ -15,9 +15,9 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from tcw.errors import MovedWithoutNote, NotFound, Refused
-from tcw.work.backend import Comment, Query
+from tcw.work.backend import Comment, Query, nesting_parent
 from tcw.work.model import (
-    DEFAULT_PRIORITY, Changes, Item, Slug, apply_changes, title_words,
+    DEFAULT_PRIORITY, UNSET, Changes, Item, Slug, apply_changes, title_words,
 )
 
 _EPOCH = datetime(2026, 10, 1, tzinfo=timezone.utc)
@@ -75,10 +75,13 @@ class MemoryBackend:
     # -- the interface ------------------------------------------------------
 
     def create(self, title: str, props: Changes, *, stage: str,
-               request: str | None) -> Item:
+               request: str | None, nest: bool = False) -> Item:
         self.calls.append(("create", title, props, stage, request))
         self._counter += 1
-        folder = f"{self._counter}-{title_words(title)}"
+        parent = None if props.parent in (UNSET, None) else props.parent
+        under, _ = nesting_parent(self, parent, nest)
+        name = f"{self._counter}-{title_words(title)}"
+        folder = f"{under}/{name}" if under else name
         (self.work_root / folder).mkdir(parents=True)
         base = Item(slug=Slug(self.project, folder), title=title, stage=stage,
                     created=self.today, priority=DEFAULT_PRIORITY, effort=None,
