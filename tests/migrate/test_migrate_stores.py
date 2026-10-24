@@ -65,6 +65,8 @@ def test_each_state_file_is_renamed_with_only_the_listed_edits(migrated):
             assert new == V + "name: Do Y\nparent: app.capabilities/cli/x\nStatus: Supported\n"
         elif path == "cli/z":                       # C12
             assert new == V + rest + "name: Z\n"
+        elif path == "cli/x":                       # C13 (Step 7)
+            assert new == V + rest.replace("- camera.md", "- resources/camera.md")
         else:
             assert new == V + rest, path
         assert not (root / C / path / "meta.yaml").exists()
@@ -232,3 +234,68 @@ def test_in_a_4_0_project_a_bare_taxonomy_folder_stays_an_organising_one(tcw, tm
     assert files[f"{T}/domain/x/tcw-taxonomy.yaml"].decode() == \
         V + "name: X\nkind: Vocabulary\n"
     assert not any(rel.startswith(f"{T}/domain/") and rel.count("/") == 3 for rel in files)
+
+
+# ── C13: loose entries into resources/ (plan Step 7) ─────────────────────────
+
+def test_loose_entries_move_into_resources_with_their_bytes(migrated):
+    root, before, done = migrated
+    item = sorted(rel.split("/")[2] for rel in before if rel.startswith(W) and
+                  rel.endswith("/design.md"))[0]
+    moved = {f"{W}/{item}/design.md": f"{W}/{item}/resources/design.md",
+             f"{C}/cli/x/camera.md": f"{C}/cli/x/resources/camera.md"}
+    if item == "APP-1-a":
+        moved[f"{W}/APP-1-a/notes/one.md"] = f"{W}/APP-1-a/resources/notes/one.md"
+    for old, new in moved.items():
+        assert not (root / old).exists()
+        assert (root / new).read_bytes() == before[old]
+    assert f"move {W}/{item}/design.md -> {W}/{item}/resources/design.md: C13" in done.err
+    # Fixed folders and files stay where they are.
+    assert all((root / rel).exists() for rel in before
+               if rel.startswith(W) and ("/spec/" in rel or "/request/" in rel))
+
+
+def test_a_prepended_document_is_found_in_resources(migrated, tcw):
+    import json
+    root, _, done = migrated
+    text = read(root, f"{C}/cli/x/tcw-capability.yaml")
+    assert "prependedDocs:\n- resources/camera.md\n" in text
+    assert f"write {C}/cli/x/tcw-capability.yaml: C9, C10, C13" in done.err
+    shown = tcw(["capabilities", "show", "cli/x", "--json"], root)
+    assert shown.code == 0, shown.err
+    assert json.loads(shown.out)["capability"]["body"].startswith("The camera is on.")
+
+
+def test_exact_mentions_are_rewritten_and_shortened_ones_reported(tcw, tmp_path):
+    root = build_f_single(tmp_path / "app")
+    readme = (root / "README.md").read_bytes()
+    done = tcw(["migrate", "--no-jira"], root)
+    assert done.code == 0, done.err
+    spec = read(root, f"{W}/APP-2-b/spec/spec.md")
+    assert "The design is in docs/work/APP-1-a/resources/design.md, and" in spec
+    assert "Shortened, it is APP-1-…/design.md or APP-1-.../design.md." in spec
+    a3 = [line for line in done.err.splitlines() if line.startswith("  A3")]
+    assert a3 == [
+        f"  A3 {W}/APP-2-b/spec/spec.md:4: names APP-1-…/design.md, which moved to "
+        f"{W}/APP-1-a/resources/design.md; only the path in full is rewritten",
+        f"  A3 {W}/APP-2-b/spec/spec.md:4: names APP-1-.../design.md, which moved to "
+        f"{W}/APP-1-a/resources/design.md; only the path in full is rewritten"]
+    assert f"write {W}/APP-2-b/spec/spec.md: C13" in done.err
+    assert (root / "README.md").read_bytes() == readme
+
+
+def test_a_relative_link_beside_the_moved_file_is_rewritten(tcw, tmp_path):
+    app = make(tmp_path / "app", {
+        "tcw-config.yaml": "id: app\n",
+        f"{C}/x/meta.yaml": "id: cap-1a2b3c\nname: X\nStatus: Supported\n"
+                            "appendedDocs: [./notes.md, resources/kept.md]\n",
+        f"{C}/x/description.md": "See [the notes](notes.md) and [kept](resources/kept.md).\n",
+        f"{C}/x/notes.md": "Notes.\n",
+        f"{C}/x/resources/kept.md": "Kept.\n"})
+    done = tcw(["migrate"], app)
+    assert done.code == 0, done.err
+    assert read(app, f"{C}/x/description.md") == \
+        "See [the notes](resources/notes.md) and [kept](resources/kept.md).\n"
+    assert "appendedDocs: [resources/notes.md, resources/kept.md]\n" in \
+        read(app, f"{C}/x/tcw-capability.yaml")
+    assert read(app, f"{C}/x/resources/notes.md") == "Notes.\n"

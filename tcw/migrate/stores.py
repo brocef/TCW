@@ -15,6 +15,7 @@ object, and a file in it named like a state file is A2.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -23,8 +24,11 @@ from tcw.ids import FullId, id_part_problem, length_problem
 from tcw.migrate.config import first_difference
 from tcw.migrate.editors import convert_text
 from tcw.migrate.legacy import STATE_3X, objects_3x, parse_mapping_3x, store_folder_3x
+from tcw.migrate.loose import (TEXT_SUFFIXES, Loose, Mentions, docs_entry, loose_entries,
+                               move_of, relative_links)
 from tcw.migrate.model import ABSENT, Blocker, Delete, Report, Step, Write, digest, file_digest
 from tcw.config import dotted
+from tcw.reference_fields import Field
 from tcw.object_folders import (DESCRIPTION, RESOURCES, STATE_FILES, _skipped_in_object,
                                 is_reserved, walk)
 from tcw.project_files import VERSION_KEY, without_version
@@ -34,6 +38,10 @@ from tcw.store.config_edit import (ConfigEditRefused, RemoveTop, SetTop, intende
 NAMESPACES = ("taxonomy", "capabilities", "work")
 #: Names a file under `resources/` may not take without A2 (S111 Design 2.5).
 _STATE_LIKE = {*STATE_FILES.values(), *STATE_3X.values()}
+#: A capability's lists of attached documents, rewritten by C13 like a
+#: reference field, by position in the text.
+DOCS_FIELDS = (Field("capability", "prependedDocs", True, None),
+               Field("capability", "appendedDocs", True, None))
 
 
 @dataclass
@@ -153,8 +161,25 @@ def nesting_blockers(stores: list[Store]) -> list[Blocker]:
 # One object
 
 
+def _with_docs(data: dict, entries: list[str]) -> dict:
+    """`data` with each attached-document entry naming a moved entry made to
+    name it in `resources/`, as `rewrite_yaml` will write it."""
+    out = dict(data)
+    for row in DOCS_FIELDS:
+        value = out.get(row.name)
+        if isinstance(value, list):
+            out[row.name] = [docs_entry(v, entries) or v if isinstance(v, str) else v
+                             for v in value]
+        elif isinstance(value, str):
+            out[row.name] = ",".join(
+                piece.replace(piece.strip(), docs_entry(piece.strip(), entries))
+                if docs_entry(piece.strip(), entries) else piece
+                for piece in value.split(","))
+    return out
+
+
 def _plan_object(store: Store, id_path: str, kept: set[str], project: str,
-                 out: StorePlan) -> None:
+                 out: StorePlan, mentions: Mentions, entries: list[str]) -> None:
     ns = store.namespace
     folder = store.folder / id_path
     old_rel = f"{store.rel}/{id_path}/{STATE_3X[ns]}"
@@ -166,13 +191,19 @@ def _plan_object(store: Store, id_path: str, kept: set[str], project: str,
     except (OSError, UnicodeDecodeError) as error:
         out.blockers.append(Blocker("B14", old_rel, f"cannot be read: {error}", fix))
         return
-    data, problem = parse_mapping_3x(text, Path(old_rel)) if text is not None else ({}, None)
+    source = mentions.rewrite(text) if text is not None else None
+    data, problem = parse_mapping_3x(source, Path(old_rel)) if text is not None else ({}, None)
     if problem:
         out.blockers.append(Blocker("B14", old_rel, problem, fix))
         return
     data = data or {}
     name = id_path.rsplit("/", 1)[-1]
     edits, conversions = [], ["C9" if text is not None else "C11"]
+    if source is not None:
+        out.reports += mentions.shortened(source, new_rel)
+    docs = _with_docs(data, entries) if ns == "capabilities" else data
+    if source != text or docs != data:
+        conversions.append("C13")
     own_id = data.get("id")
     if ns == "capabilities" and isinstance(own_id, str) and own_id.startswith("cap-"):
         edits.append(RemoveTop("id"))
@@ -196,18 +227,23 @@ def _plan_object(store: Store, id_path: str, kept: set[str], project: str,
                                                      f"written, the name TCW 3 showed"))
     if text is None:
         out.reports.append(Report("D7", new_rel, "written where TCW 3 had no state file"))
-    expect = {VERSION_KEY: __version__, **intended(data, edits)}
+    expect = {VERSION_KEY: __version__,
+              **(_with_docs(intended(data, edits), entries) if ns == "capabilities"
+                 else intended(data, edits))}
     if four_text is not None:
         _both(store, old_rel, new_rel, text, four_text, expect, out)
     else:
         try:
-            new = convert_text(new_rel, text, edits, expect=expect).text
+            new = convert_text(new_rel, source, edits, fields=DOCS_FIELDS,
+                               replace=lambda row, value: docs_entry(value, entries),
+                               expect=expect).text
         except ConfigEditRefused as refused:
             out.blockers.append(Blocker("B12" if "anchor" in str(refused) else "B3",
                                         old_rel, str(refused), "edit the file by hand"))
             return
         reads = ((old_rel, digest(text)),) if text is not None else ()
-        out.steps.append(Write(new_rel, "C", ABSENT, new, tuple(dict.fromkeys(conversions)),
+        out.steps.append(Write(new_rel, "C", ABSENT, new,
+                               tuple(sorted(set(conversions), key=lambda c: int(c[1:]))),
                                reads))
         if text is not None:
             out.steps.append(Delete(old_rel, "C", digest(text), new_rel, digest(new), ("C9",)))
@@ -256,17 +292,66 @@ def _resources_reports(store: Store, kept: set[str]) -> list[Report]:
     return out
 
 
+def _text_writes(root: Path, planned, moved: list[Loose], mentions: Mentions,
+                 covered: set[str], out: StorePlan) -> None:
+    """C13's rewrites of every other Markdown and YAML file of the stores,
+    each at the place it has after phase B, and A3 for what is left."""
+    entries: dict[str, list[str]] = {}
+    for m in moved:
+        entries.setdefault(f"{m.store_rel}/{m.id_path}", []).append(m.entry)
+    converted = {f"{store.rel}/{p}" for store, convert, _ in planned for p in convert}
+    for store, _, _ in planned:
+        for dirpath, dirnames, filenames in os.walk(store.folder):
+            dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+            for name in sorted(filenames):
+                if name.startswith(".") or not name.endswith(TEXT_SUFFIXES):
+                    continue
+                path = Path(dirpath) / name
+                rel = f"{store.rel}/{path.relative_to(store.folder).as_posix()}"
+                if rel in covered:
+                    continue
+                try:
+                    text = read_text(path)
+                except (OSError, UnicodeDecodeError):
+                    continue
+                new = mentions.rewrite(text)
+                final = mentions.final_path(rel)
+                folder = rel.rpartition("/")[0]
+                if final == rel and folder in converted and name.endswith(".md"):
+                    new = relative_links(new, entries.get(folder, []))
+                out.reports += mentions.shortened(new, final)
+                if new != text:
+                    out.steps.append(Write(final, "C", digest(text), new, ("C13",)))
+
+
 def plan_stores(root: Path, mapping: dict, project: str, *,
                 three_x: bool = True) -> StorePlan:
-    """Every store's state files. `three_x`: the project's configuration is
-    still in 3.x form, so a bare taxonomy folder is a 3.x term."""
+    """Every store's state files and loose entries. `three_x`: the project's
+    configuration is still in 3.x form, so a bare taxonomy folder is a 3.x
+    term."""
     out = StorePlan()
     stores = stores_of(root, mapping)
     out.blockers += nesting_blockers(stores)
+    planned, moved = [], []
     for store in stores:
         convert, kept = objects(store, bare_terms=three_x)
         out.blockers += name_blockers(store, kept, project)
+        planned.append((store, convert, kept))
         for id_path in convert:
-            _plan_object(store, id_path, kept, project, out)
+            for entry in loose_entries(store.folder / id_path, store.namespace, id_path, kept):
+                # One already in `resources/` under that name is left where it
+                # is: a rename would replace it.
+                if not (store.folder / id_path / RESOURCES / entry).exists():
+                    moved.append(Loose(store.rel, id_path, entry))
+    mentions = Mentions(moved)
+    out.steps += [move_of(root, m) for m in moved]
+    covered = set()
+    for store, convert, kept in planned:
+        for id_path in convert:
+            entries = [m.entry for m in moved
+                       if m.store_rel == store.rel and m.id_path == id_path]
+            _plan_object(store, id_path, kept, project, out, mentions, entries)
+            covered.add(f"{store.rel}/{id_path}/{STATE_3X[store.namespace]}")
         out.reports += _resources_reports(store, kept)
+    _text_writes(root, planned, moved, mentions, covered, out)
     return out
