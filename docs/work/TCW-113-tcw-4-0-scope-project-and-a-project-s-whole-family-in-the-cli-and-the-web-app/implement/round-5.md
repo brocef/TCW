@@ -159,3 +159,8 @@ mobile` linked `shared` to `/capabilities/abc`, `desktop` to
 The full Python suite was not run by the implementing agent. This round
 changes no Python. The dispatching session runs the suite, as CI runs it,
 before the next review.
+
+The full suite as CI runs it, `.venv/bin/pytest -q -p no:cacheprovider`, run by
+the dispatching session at `a3cc6ce2` (2026-10-24) in two halves by folder:
+`2185 passed, 2 skipped` and `5111 passed, 111 skipped`. `pnpm test`
+`245 passed`; `tsc --noEmit`, `pnpm lint` and `pnpm check:build` clean.
