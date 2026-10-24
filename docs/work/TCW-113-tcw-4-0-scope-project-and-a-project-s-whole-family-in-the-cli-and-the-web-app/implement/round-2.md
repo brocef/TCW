@@ -95,3 +95,10 @@ tests/serve/test_other_project.py`, and `tests/work/test_scope_work.py`.
 
 The full Python suite was not run by the implementing agent; the
 dispatching session runs it, as CI runs it, before the next review.
+
+The full suite as CI runs it, `.venv/bin/pytest -q -p no:cacheprovider`, run by
+the dispatching session at `e0010a77` (2026-10-24) in two halves by folder:
+`2172 passed, 2 skipped` and `4879 passed, 111 skipped`. `pnpm test`
+`229 passed`; `tsc --noEmit`, `pnpm lint` and `pnpm check:build` clean. CI
+runs no formatting check, so the files `pnpm prettify:check` reports, which
+this round did not change, are not part of it.
