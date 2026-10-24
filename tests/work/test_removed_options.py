@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -153,7 +154,9 @@ def test_edit_with_blocks_naming_no_item_names_a_placeholder(tcw, app_core):
     app, _ = app_core
     result = tcw(["work", "edit", "Not.An/Item/..", "--blocks", f"core.work/{B}"], app)
     assert result.code == 2
-    assert result.err.rstrip().endswith("--blocked-by <this item's full id>")
+    assert result.err.rstrip().endswith("--blocked-by <full id>")
+    advised = result.err.rstrip().rsplit("instead: ", 1)[1]
+    shlex.split(advised)                # no quote left open when pasted
 
 
 def test_edit_with_blocks_in_a_project_not_on_this_machine(tcw, app_core):

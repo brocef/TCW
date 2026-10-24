@@ -208,7 +208,7 @@ def _blocks_removed(args) -> UsageError:
         owner = None
     if owner is not None:
         folder = f"tcw://{owner}.path/"
-        blocker = "<this item's full id>"
+        blocker = "<full id>"
         try:
             blocker = _quoted(_full_input(args.slug))
         except Exception:               # looking never changes the exit (2.2)
