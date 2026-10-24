@@ -47,6 +47,8 @@ ALLOWED = {
         "the YAML and link scans read every file, whatever object holds it",
     ("tcw/work/resolve.py", "_load_texts"):
         "the package's own prompt files",
+    ("tcw/rewrite.py", "_text_files"):
+        "every file's text, for links and mentions, not objects",
     ("tcw/work/fs_backend.py", "report_mentions"):
         "every file's text after a rename, for mentions, not objects",
     ("tcw/work/fs_backend.py", "create"):
