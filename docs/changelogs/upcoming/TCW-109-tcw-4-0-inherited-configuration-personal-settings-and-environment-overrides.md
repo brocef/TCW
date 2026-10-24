@@ -68,7 +68,14 @@
 - `tcw validate` adds `; could not check the configuration inherited from it`
   to the finding of each source that left a key undecided, warns at a
   parent's file about a problem in what it passes, and skips the checks an
-  undecided key would need. (TCW-109)
+  undecided key would need. Under an undecided `work.jira`, the keys a layer
+  after the last gap sets are still checked, apart from "required": an error
+  when the active project sets them, a warning at the parent's file when a
+  parent does. (TCW-109)
+- A problem the parser finds in an override variable's value starts with the
+  variable's name, as the ones found while reading it do. (TCW-109)
+- `parse_jira_config` checks a credential variable name that is given when
+  the other one is missing, beside the "required" problem. (TCW-109)
 - An ancestor, or a project read only for a lookup, whose shared file cannot
   be read at all is placed with no parents and its links unreadable, a gap,
   rather than a graph problem; its manifest entry is no longer also an error.

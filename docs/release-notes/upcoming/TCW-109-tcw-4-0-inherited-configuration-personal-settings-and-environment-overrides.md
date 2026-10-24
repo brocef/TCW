@@ -32,7 +32,8 @@ creating and moving a filesystem project's own items never needs one; applying
 or listing tags does, unless the child sets its own tags, and so does every
 command on a Jira-mode project whose Jira settings come from that parent.
 `tcw validate` never stops: it says the configuration inherited from that
-project could not be checked. `tcw config show` prints nothing and exits 7
+project could not be checked, and still checks the Jira settings the child, or
+a parent after the missing one, sets itself. `tcw config show` prints nothing and exits 7
 rather than show settings that are not the ones commands run with.
 
 A mistake in a parent's shared settings stops only the commands that read
@@ -51,8 +52,9 @@ between them:
 
 A list or a mapping is written as YAML. A variable naming a stage changes only
 what it names, and a more specific variable wins over a broader one. A
-variable that names no setting, or one only the team may set, stops commands
-in that project with exit 1, and `tcw validate` reports it. Your settings for
+variable that names no setting, or one only the team may set, or holds a
+value that setting cannot take, stops commands in any project with exit 1, and
+`tcw validate` reports it, starting with the variable's name. Your settings for
 a parent, from its personal file or a variable, reach its children through
 what it passes down. `TCW_NO_PERSONAL_CONFIG=1` turns the variables off along
 with the personal files. `tcw config show --origin` names the variable a value
