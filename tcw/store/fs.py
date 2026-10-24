@@ -50,7 +50,7 @@ from tcw.store.base import (
     is_slug, missing_parts, slugify, StaleRevision,
     parse_repository_declaration, ProvisionResult, RepositoryDeclaration,
     StoreDeclarationError, StoreLocationUnusable, StoreNotProvisioned,
-    StoreProvisioner, TaxonomyStore, Term, TermDetail,
+    StoreProvisioner, TaxonomyStore, Term, TermDetail, text_matches,
 )
 from tcw.store import config_edit
 from tcw.store.checkouts import (
@@ -2286,9 +2286,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         return self._listing(local_only)
 
     def search(self, query: str) -> list[Term]:
-        q = query.lower()
-        return [t for t in self.list_all()
-                if q in t.name.lower() or q in t.description.lower()]
+        return [t for t in self.list_all() if text_matches(t.name, t.description, query)]
 
     # -- writes --
 
@@ -2875,9 +2873,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         return out
 
     def search(self, query: str) -> list[Capability]:
-        q = query.lower()
-        return [c for c in self.list_all()
-                if q in c.name.lower() or q in c.body.lower()]
+        return [c for c in self.list_all() if text_matches(c.name, c.body, query)]
 
     # -- writes --
 

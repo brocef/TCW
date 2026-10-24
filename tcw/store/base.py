@@ -487,6 +487,120 @@ def combine(declarers, passes, *, axis: str, unreadable=frozenset()) -> Combined
     return Combined(tuple(chain), fields, description, declared_by, tuple(unused))
 
 
+# ---------------------------------------------------------------------------
+# The rows of a scope (TCW-113 Design 4.1-4.7, 4.10): one function any store
+# uses, given plain data, reading no file.
+
+
+@dataclass(frozen=True)
+class ScopeObject:
+    """One scope object at an id-path (Design 4.1): its full identifier, as
+    its owner sees it, and the object its record says it overrides."""
+    full_id: FullId
+    overrides: FullId | None = None
+
+
+@dataclass(frozen=True)
+class ProjectView:
+    """One covered project's answer at an id-path, for `statuses` (Design
+    4.6): the full identifier of its view object there (its chain's first
+    member's), or None; that object's combined Status; and whether the
+    project's own object there sets Status."""
+    project: str
+    view_object: FullId | None
+    status: str | None = None
+    sets_status: bool = False
+
+
+@dataclass(frozen=True)
+class ScopeRow:
+    """One row of a listing under `down` or `all` (Design 4.3): the object
+    shown, every object of its group, `statuses` (None for taxonomy), and
+    for each object of the group the scope objects that override it, in
+    their owners' scope order (Design 4.7)."""
+    shown: FullId
+    group: frozenset[FullId]
+    statuses: list[dict] | None
+    overridden_by: dict[FullId, list[FullId]]
+
+
+def scope_rows(id_path: str, *, order: list[str], own: list[ScopeObject],
+               v: ScopeObject | None, chain: list[FullId],
+               views: list[ProjectView] | None) -> list[ScopeRow]:
+    """The rows at `id_path` under `down` or `all`. `order` is the scope
+    order of project IDs; `own` the descendants' own objects at the id-path;
+    `v` is `V(X)` (`P`'s own object under `down`, its view object under
+    `all`), or None; `chain` the objects `P`'s view combined there, under
+    `all` only; `views` each covered project's `ProjectView` that is not
+    unavailable, in scope order, for capabilities, or None for taxonomy.
+
+    Groups (Design 4.2): an object joins the object it overrides when that
+    is a scope object, and `V(X)`'s group also holds its chain. A row shows
+    `V(X)` when its group holds it, else the group's one object that
+    overrides no other of the group (Design 4.3). Rows come in their shown
+    objects' owners' scope order."""
+    place = {pid: i for i, pid in enumerate(order)}
+    objects = ([v] if v is not None else []) + list(own)
+    nodes: dict[FullId, ScopeObject | None] = {o.full_id: o for o in objects}
+    if v is not None:
+        for member in chain:
+            nodes.setdefault(member, None)
+    parent = {node: node for node in nodes}
+
+    def root(node: FullId) -> FullId:
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    def join(a: FullId, b: FullId) -> None:
+        parent[root(a)] = root(b)
+
+    for o in objects:
+        if o.overrides is not None and o.overrides in nodes:
+            join(o.full_id, o.overrides)
+    if v is not None:
+        for member in chain:
+            join(member, v.full_id)
+    groups: dict[FullId, set[FullId]] = {}
+    for node in nodes:
+        groups.setdefault(root(node), set()).add(node)
+    rows = []
+    for members in groups.values():
+        if v is not None and v.full_id in members:
+            shown = v.full_id
+        else:
+            [shown] = [o.full_id for o in objects if o.full_id in members
+                       and (o.overrides is None or o.overrides not in members)]
+        overridden_by = {
+            member: sorted((o.full_id for o in objects if o.overrides == member),
+                           key=lambda f: place.get(f.project, len(place)))
+            for member in members}
+        statuses = None if views is None else [
+            {"project": view.project, "status": view.status,
+             "inherited": not view.sets_status}
+            for view in views if view.view_object in members]
+        rows.append(ScopeRow(shown, frozenset(members), statuses, overridden_by))
+    rows.sort(key=lambda row: place.get(row.shown.project, len(place)))
+    return rows
+
+
+def row_order(rows: list, order: list[str], shown=lambda row: row.shown) -> list:
+    """Design 4.4's order: by id-path, compared folder name by folder name,
+    then by the shown object's owner's place in scope order (`order`).
+    `shown` gives a row's full identifier."""
+    place = {pid: i for i, pid in enumerate(order)}
+    return sorted(rows, key=lambda row: (tuple(shown(row).parts),
+                                         place.get(shown(row).project, len(place))))
+
+
+def text_matches(name: str, body: str, query: str) -> bool:
+    """`search`'s one rule: the query, ignoring case, is part of the name or
+    of the body."""
+    q = query.lower()
+    return q in name.lower() or q in body.lower()
+
+
 _COMPLETE = {"capabilities": "a name, a Status and a description",
              "taxonomy": "a name and a description"}
 
