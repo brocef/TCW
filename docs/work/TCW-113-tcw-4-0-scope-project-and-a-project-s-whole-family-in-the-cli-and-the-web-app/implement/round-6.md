@@ -136,3 +136,8 @@ Each mutation was made, the tests run, and the code put back:
 
 The full Python suite was not run by the implementing agent. The
 dispatching session runs it, as CI runs it, before the next review.
+
+The full suite as CI runs it, `.venv/bin/pytest -q -p no:cacheprovider`, run by
+the dispatching session at `385b8d05` (2026-10-24) in two halves by folder:
+`2186 passed, 2 skipped` and `5112 passed, 111 skipped`. `pnpm test`
+`247 passed`; `tsc --noEmit`, `pnpm lint` and `pnpm check:build` clean.
