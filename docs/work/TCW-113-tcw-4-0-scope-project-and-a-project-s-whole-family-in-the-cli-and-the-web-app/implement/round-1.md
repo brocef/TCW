@@ -305,3 +305,12 @@ project as unavailable with the command that fetches it, and refused a write to
 - Everything the spec defers to TCW-117 (the guides, the skills beyond the
   `--local` passages, `docs/use-cases.md`, the migration guide).
 - The records gate dry run, which belongs to the dispatching session.
+
+## Added by the dispatching session
+
+Rebased onto `v4` at `93b17acb` (TCW-114 completed) with no conflicts, then
+landed in `v4`. The full suite as CI runs it, `.venv/bin/pytest -q -p
+no:cacheprovider`, run by the dispatching session on the rebased branch at
+`8dedb0ca` (2026-10-24) in two halves by folder: `2169 passed, 2 skipped` and
+`4879 passed, 111 skipped`. `pnpm test` `227 passed`; `tsc --noEmit`, `pnpm
+lint` and `pnpm check:build` clean.
