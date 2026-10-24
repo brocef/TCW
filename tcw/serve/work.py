@@ -20,16 +20,18 @@ from pathlib import Path
 from typing import Any, Callable
 
 from tcw.errors import BackendError, NotFound, TcwError, Unreachable
-from tcw.ids import identity, looks_full
+from tcw.ids import FullId, MalformedId, identity, looks_full, sort_input
 from tcw.serve import files as item_files
 from tcw.serve.records import checked
-from tcw.serve.server import Request, not_found, read_only, route, usage
+from tcw.serve.server import (Request, Written, creates, not_found, read_only, route,
+                              usage)
 from tcw.store.base import (
     CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES, StaleRevision, normalize_tag,
 )
 from tcw.validate import ValidationTarget
 from tcw.work.backend import Query
 from tcw.work.config import WorkConfig
+from tcw.work.jira.backend import KEY
 from tcw.work.layout import Layout
 from tcw.work.model import (
     PRIORITIES, SIZES, STAGES, UNSET, Changes, Item, Slug, inbox_stage, start_stage,
@@ -614,16 +616,35 @@ def options(request: Request):
     raise not_found(f"no suggestions for {field}")
 
 
+def written_item(request: Request) -> list[Written]:
+    """The `writes` of a route that changes the item its path names
+    (TCW-114 Design 1.4): a full identifier as written, so another
+    project's item is refused before any backend is opened; any other key
+    names an item of the served project, whose own it is, so it is not
+    looked up here; the handler finds it."""
+    from tcw.ownership import active_project_id
+    key = request.param(1)
+    try:
+        found = sort_input(key, "work", KEY)
+    except MalformedId:
+        return []                       # the handler's own lookup answers it
+    if found.form in ("a", "c"):
+        return [Written(found.full_id)]
+    return [Written(FullId(active_project_id(request.root), "work",
+                           found.id_path or found.key))]
+
+
 ONE = r"/([^/]+)"
 ROUTES = [
     route("GET", r"/api/project", project),
     route("GET", r"/api/work", board),
-    route("POST", r"/api/work", create),
+    route("POST", r"/api/work", create, writes=creates),
     route("GET", r"/api/work" + ONE, detail),
-    route("PATCH", r"/api/work" + ONE, edit),
-    route("POST", r"/api/work" + ONE + r"/comments", add_comment),
-    route("POST", r"/api/work" + ONE + r"/blocks", add_blocks),
+    route("PATCH", r"/api/work" + ONE, edit, writes=written_item),
+    route("POST", r"/api/work" + ONE + r"/comments", add_comment, writes=written_item),
+    # Removed in Step 7 of TCW-114's plan.
+    route("POST", r"/api/work" + ONE + r"/blocks", add_blocks, writes=written_item),
     route("GET", r"/api/tickets", tickets),
-    route("POST", r"/api/tickets" + ONE + r"/adopt", adopt),
+    route("POST", r"/api/tickets" + ONE + r"/adopt", adopt, writes=creates),
     route("GET", r"/api/options" + ONE, options),
 ]

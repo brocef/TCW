@@ -197,14 +197,46 @@ Handler = Callable[[Request], tuple[int, Any]]
 
 
 @dataclass(frozen=True)
+class Written:
+    """An existing object a write route changes, and the end its refusal
+    adds, when it has one (TCW-114 Design 1.4)."""
+
+    full_id: Any
+    hint: str | None = None
+
+
+@dataclass(frozen=True)
 class Route:
+    """`writes`, set for every route that changes anything, answers the
+    existing objects a request changes; the router passes each to the
+    ownership check before the handler runs, so a route's own code never
+    calls it (TCW-114 Design 1.4). A route that only creates answers `[]`.
+    None is a read."""
+
     method: str
     pattern: re.Pattern
     handler: Handler
+    writes: "Callable[[Request], list[Written]] | None" = None
 
 
-def route(method: str, pattern: str, handler: Handler) -> Route:
-    return Route(method, re.compile(pattern), handler)
+def route(method: str, pattern: str, handler: Handler, *,
+          writes: "Callable[[Request], list[Written]] | None" = None) -> Route:
+    return Route(method, re.compile(pattern), handler, writes)
+
+
+def creates(request: "Request") -> list[Written]:
+    """The `writes` of a route that changes no existing object."""
+    return []
+
+
+def check_writes(route_: Route, request: "Request") -> None:
+    """Refuse, 403, a request that would change another project's object."""
+    from tcw.ownership import check_owned
+    for written in route_.writes(request) if route_.writes else ():
+        try:
+            check_owned(written.full_id, request.root, hint=written.hint)
+        except Refused as refused:
+            raise read_only(str(refused)) from None
 
 
 def _routes() -> list[Route]:
@@ -316,6 +348,7 @@ class TcwHandler(BaseHTTPRequestHandler):
         if found is None:
             raise not_found(f"no API route {method} {path}")
         request = Request(method, path, query, body, self.server, found[1])
+        check_writes(found[0], request)
         status, value = found[0].handler(request)
         self._send_json(status, value)
 

@@ -375,11 +375,17 @@ def put_declaration(request: Request):
     return HTTPStatus.OK, saved(request, ctx, folder, {"revision": new})
 
 
+def written_item(request: Request):
+    """The item the route's path names, as the work routes answer it."""
+    from tcw.serve.work import written_item as item
+    return item(request)
+
+
 ITEM = r"/api/work/([^/]+)"
 ROUTES = [
     route("GET", ITEM + r"/files/(.+)", get_file),
-    route("PUT", ITEM + r"/files/(.+)", put_file),
-    route("POST", ITEM + r"/files", new_file),
+    route("PUT", ITEM + r"/files/(.+)", put_file, writes=written_item),
+    route("POST", ITEM + r"/files", new_file, writes=written_item),
     route("GET", ITEM + r"/declaration", get_declaration),
-    route("PUT", ITEM + r"/declaration", put_declaration),
+    route("PUT", ITEM + r"/declaration", put_declaration, writes=written_item),
 ]

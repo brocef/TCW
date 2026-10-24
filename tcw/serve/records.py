@@ -9,14 +9,14 @@ from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
 from http import HTTPStatus
-from typing import Any
+from typing import Any, Callable
 
 from tcw.errors import NotFound, TcwError
 from tcw.findings import Finding
-from tcw.ids import identity, inherited_keys, parent_text
+from tcw.ids import MalformedId, identity, inherited_keys, parent_text, sort_input
 from tcw.locate import find_tree
 from tcw.refs import resolve_address
-from tcw.serve.server import Request, not_found, read_only, route, usage
+from tcw.serve.server import (Request, Written, creates, not_found, route, usage)
 from tcw.store.base import Capability, Term
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
 from tcw.validate import ValidationTarget, validate
@@ -78,6 +78,13 @@ def _capabilities(request: Request) -> FsCapabilitiesStore:
     return FsCapabilitiesStore.open(request.root)
 
 
+def OVERRIDE_HINT(id_path: str) -> str:
+    """The end of the refusal of an inherited capability's edit: the page
+    edits only this project's own objects, and the CLI makes an override."""
+    return (f"; or override it in this project with `tcw capabilities set "
+            f"{id_path} --field <name>=<value>`")
+
+
 def _route_target(store: FsTaxonomyStore | FsCapabilitiesStore, key: str):
     """The entry a route key names, read as command input is (TCW-112 Design
     3.1): this project's id-path, or a full identifier, which names its
@@ -91,12 +98,31 @@ def _route_target(store: FsTaxonomyStore | FsCapabilitiesStore, key: str):
     return found
 
 
-def _owned(store, found, hint: str = "") -> None:
-    """Refuse a write to an object the served project does not own (TCW-112
-    Design 4.5): 403, as every refused write is."""
-    if found.owner != store.project_id:
-        raise read_only(f"{found.full_id} belongs to project '{found.owner}'; "
-                        f"change it there{hint}")
+def _written(open_store: Callable[[Request], Any], namespace: str,
+             hint: Callable[[str], str] | None = None):
+    """The `writes` of a route that edits the object its key names
+    (TCW-114 Design 1.4). A full identifier is answered as written, before
+    any store is read, so another project's object is refused whether or
+    not that project can be read (Design 1.1); an id-path is found in the
+    served project's view, where it may name an inherited object. `hint`
+    gives the refusal's end from the object's id-path, for an object of a
+    project the served one inherits from, which is the only kind it can
+    override."""
+    def writes(request: Request) -> list[Written]:
+        key = request.param(1)
+        try:
+            found = sort_input(key, namespace)
+        except MalformedId:
+            return []                   # the handler's own lookup answers it
+        store = open_store(request)
+        if found.form in ("a", "c"):
+            full_id = found.full_id
+        else:
+            full_id = find_tree(store, key).full_id
+        sources = {entry.id for entry in store.locator.registry.source_entries(namespace)}
+        end = hint(full_id.id_path) if hint and full_id.project in sources else None
+        return [Written(full_id, end)]
+    return writes
 
 
 # -- taxonomy ---------------------------------------------------------------------
@@ -158,7 +184,6 @@ def update_term(request: Request):
     changes["core_revision"] = request.field("revision")
     store = _taxonomy(request)
     found = _route_target(store, request.param(1))
-    _owned(store, found)
     with request.lock:
         detail = store.update_term(found.full_id, **changes)
     response = {"term": jsonable(detail.term), "coreRevision": detail.core_revision}
@@ -241,8 +266,6 @@ def update_capability(request: Request):
     changes["core_revision"] = request.field("revision")
     store = _capabilities(request)
     found = _route_target(store, request.param(1))
-    _owned(store, found, f"; or override it in this project with `tcw capabilities "
-                         f"set {found.path} --field <name>=<value>`")
     if fields:
         _subjects_are_vocabulary(request, fields)
     with request.lock:
@@ -296,11 +319,13 @@ ONE = r"/([^/]+)"
 ROUTES = [
     route("GET", r"/api/taxonomy", list_terms),
     route("GET", r"/api/taxonomy" + ONE, get_term),
-    route("POST", r"/api/taxonomy", create_term),
-    route("PATCH", r"/api/taxonomy" + ONE, update_term),
+    route("POST", r"/api/taxonomy", create_term, writes=creates),
+    route("PATCH", r"/api/taxonomy" + ONE, update_term,
+          writes=_written(_taxonomy, "taxonomy")),
     route("GET", r"/api/capabilities", list_capabilities),
     route("GET", r"/api/capabilities" + ONE, get_capability),
-    route("POST", r"/api/capabilities", create_capability),
-    route("PATCH", r"/api/capabilities" + ONE, update_capability),
+    route("POST", r"/api/capabilities", create_capability, writes=creates),
+    route("PATCH", r"/api/capabilities" + ONE, update_capability,
+          writes=_written(_capabilities, "capabilities", OVERRIDE_HINT)),
     route("POST", r"/api/resolve", resolve),
 ]

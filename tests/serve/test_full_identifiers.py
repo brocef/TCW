@@ -57,7 +57,7 @@ def test_an_inherited_entry_is_read_only_named_by_its_full_identifier(served):
                           {"revision": revision, "fields": {"name": "Mine"}})
     assert answer.status == 403, answer.body
     assert answer.json["error"].startswith(f"{full_id} belongs to project 'core'; "
-                                           f"change it there")
+                                           f"run the command there: tcw -C ")
 
 
 def test_ac8_a_web_edit_stores_the_full_identifier_of_a_reference(served):
