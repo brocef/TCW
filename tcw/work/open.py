@@ -24,12 +24,14 @@ from tcw.work.fs_backend import FsWorkBackend
 from tcw.work.model import Slug
 
 
-def work_path(project_root: Path) -> Path:
+def work_path(project_root: Path, active_root: Path | None = None) -> Path:
     """The project's work path, resolved as every store's location is
     (`work.path`, else `docs/work`, re-anchored in a linked worktree, else a
     declared repository's provisioned checkout). Raises `ValueError` when no
-    usable directory is found."""
-    return WorkLocation.open(Path(project_root)).root
+    usable directory is found. `active_root` is the active project's folder
+    when the project is another one, so the advice for a store not on this
+    machine runs in that project's folder (TCW-115 Design 7.2)."""
+    return WorkLocation.open(Path(project_root), active_root).root
 
 
 def _layered(project_root: Path, personal: bool, registry=None):
@@ -100,7 +102,10 @@ def project_facts(project_root: Path, *, personal: bool = True,
             project = registry.current.id
         else:
             project = FsProjectRegistry.open(root).current.id
-        path = work_path(root)
+        # A project read for itself is another project, and the command's
+        # registry was opened at the active project's folder.
+        path = work_path(root, None if personal or registry is None
+                         else registry.project_root)
     except ValueError as error:
         raise BackendError(str(error)) from None
     return ProjectFacts(layered, project, path, registry if personal else None)

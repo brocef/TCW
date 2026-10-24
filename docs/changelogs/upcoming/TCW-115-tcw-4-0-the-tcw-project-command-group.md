@@ -45,7 +45,10 @@
   projects pass's last line; `<id>` with `--component` is a usage error.
   (TCW-115)
 - `StoreNotProvisioned` names `tcw -C <root> project provision --component X`
-  when the store is another project's. (TCW-115)
+  when the store is another project's, the work store of a project read for
+  itself included: `WorkLocation.open` and `work_path` take `active_root`, and
+  `project_facts` passes the command's registry's folder for a project read
+  with `personal=False`. (TCW-115)
 - Every `git` call TCW makes (`fs._git`, `_git_lines`) drops git's location
   variables. The store clone runs `git clone --quiet -- <url>` and
   `git checkout --quiet <ref> --`. (TCW-115)

@@ -22,7 +22,7 @@ def test_each_project_validates(family, project_id):
 
 
 def test_shared_names_its_parent_and_children(family):
-    ran = family.run("shared", "projects", "list", "--json")
+    ran = family.run("shared", "project", "list", "--json")
     assert ran.code == 0, ran.err
     rows = {p["id"]: p for p in ran.json["projects"]}
     assert [p["id"] for p in ran.json["projects"]] == [

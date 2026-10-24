@@ -369,3 +369,24 @@ def test_show_warns_of_another_projects_unreadable_item(family):
                            "children may be incomplete: ")
     assert "2026-10-03-broken" in line
     assert warnings_about(ran, "desktop") == []
+
+
+def test_a_descendants_work_store_not_provisioned_here_is_fetched_in_its_folder(family):
+    # A child's work store declared in a repository and not on this machine
+    # makes the child unavailable, and the advice runs the provisioning in
+    # the child's folder: run in the active project, `tcw project provision
+    # --component work` would fetch the active project's own store (TCW-115
+    # Design 7.2).
+    import shutil
+    document = family.config("server")
+    document["work"] = {**document.get("work", {}), "path": "docs/work-elsewhere",
+                        "repository": {"url": "https://example.invalid/server-work.git",
+                                       "path": "docs/work"}}
+    family.write_config("server", document)
+    shutil.rmtree(family["server"] / "docs" / "work")
+    ran = family.run("shared", "work", "list", "--scope", "down", "--json")
+    assert ran.code == 0, ran.err
+    assert [i["full-id"] for i in ran.json["items"]] == [wid("shared"), wid("desktop")]
+    [warning] = warnings_about(ran, "server")
+    assert "has not been provisioned here" in warning, warning
+    assert f"tcw -C {family['server']} project provision --component work" in warning, warning

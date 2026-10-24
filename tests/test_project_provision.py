@@ -1094,10 +1094,18 @@ def test_ac38_another_projects_store(tmp_path):
     app = app_project(tmp_path, parents=["core"])
     from tcw.store.fs import init
     init(["taxonomy"], app)
-    shown = tcw(app, "taxonomy", "list")
+    # TCW-113 Design 4.9 makes the default scope, `own`, read `app`'s own
+    # declarations without its view (warning, exit 0); a scope that needs the
+    # view stops with exit 7. Both carry the command run in `core`'s folder.
+    # Decided by the implementing agent in implement round 3.
+    fetch = (f"tcw -C {core.resolve()} project provision --component taxonomy",
+             f"tcw -C {core} project provision --component taxonomy")
+    own = tcw(app, "taxonomy", "list")
+    assert own.code == 0, own
+    assert any(text in own.err for text in fetch), own.err
+    shown = tcw(app, "taxonomy", "list", "--scope", "up")
     assert shown.code == 7, shown
-    assert f"tcw -C {core.resolve()} project provision --component taxonomy" in shown.err \
-        or f"tcw -C {core} project provision --component taxonomy" in shown.err, shown.err
+    assert any(text in shown.err for text in fetch), shown.err
     there = tcw(core, "taxonomy", "list")
     assert "tcw project provision --component taxonomy" in there.err, there
     assert "tcw -C" not in there.err

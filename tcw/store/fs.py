@@ -95,8 +95,10 @@ class WorkLocation:
         self.root = root
 
     @classmethod
-    def open(cls, project_root: Path) -> "WorkLocation":
-        return resolve_store(cls, Path(project_root))
+    def open(cls, project_root: Path, active_root: Path | None = None) -> "WorkLocation":
+        """`active_root` is the active project's folder when this is another
+        project's work store, as `resolve_store` takes it."""
+        return resolve_store(cls, Path(project_root), active_root=active_root)
 
     @classmethod
     def _local_root(cls, project_root: Path, configured: str | None, *,
