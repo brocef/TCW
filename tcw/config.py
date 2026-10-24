@@ -924,14 +924,20 @@ def load_config(project_root: Path, *, personal: bool = True,
     undecided = fold.undecided(here, config.order_error is not None)
     for problem in parsed:
         key_path = tuple(problem.key_path)
-        if any(key_path[:len(u)] == u for u in undecided):
-            # No check of a value that is not known runs (Design 3.2).
+        if fold.unknown(key_path):
+            # No check of a value that is not known runs, "required" among
+            # them; a key decided after the gap is checked (Design 3.2).
             continue
         origin = _origin_for(key_path, origins, project)
+        found = Problem(origin.file, key_path, problem.message)
+        if origin.variable is not None:
+            # A variable has no file: its problem starts with its name
+            # (Design 7.2), as the ones found while reading it do.
+            found = Problem(None, (), f"{origin.variable}: {found.detail}")
         if origin.project not in (None, own_id) and origin.layer != "user":
-            fold.broke(key_path, origin, Problem(origin.file, key_path, problem.message))
+            fold.broke(key_path, origin, found)
             continue
-        config.problems.append(Problem(origin.file, key_path, problem.message, shown))
+        config.problems.append(Problem(found.file, found.key_path, found.message, shown))
     _withhold(config, fold, undecided, opened, own_id)
     return config
 
@@ -1093,6 +1099,8 @@ class _Fold:
         self.replaced: list[tuple[tuple, KeyPath]] = []
         self.gaps: list[tuple[int, Any]] = []
         self.broken: list[tuple[KeyPath, tuple, Problem]] = []
+        self.undecided_keys: set = set()
+        self.last_gap: tuple = (-1, 0)
 
     def merge(self, mapping: dict, origin: Origin) -> None:
         for path in _replacements(mapping):
@@ -1185,7 +1193,26 @@ class _Fold:
         candidates = [("work", "tags")]
         if self.jira_mode:
             candidates += list(jira_keys())
-        return {path for path in candidates if not self._decided_after(path, last)}
+        self.last_gap = last
+        self.undecided_keys = {path for path in candidates
+                               if not self._decided_after(path, last)}
+        return self.undecided_keys
+
+    def unknown(self, path: KeyPath) -> bool:
+        """Whether the value at `path` is not known: it lies under an
+        undecided key, and no layer after the last gap replaces it, or a key
+        above it, whole. A key that layer sets under an undecided mapping,
+        such as `work.jira.timeout` beside a `work.jira.site` a missing parent
+        may set, is decided (Design 3.2), and `undecided` must have run. A
+        key TCW does not know is decided when such a layer writes anything at
+        or under it: its problem is that it is there, which no gap can undo."""
+        from tcw.config_keys import known_keys
+        if not any(path[:len(u)] == u for u in self.undecided_keys):
+            return False
+        if self._decided_after(path, self.last_gap):
+            return False
+        return path in known_keys() or not any(
+            r > self.last_gap and p[:len(path)] == path for r, p in self.replaced)
 
     def gap_for(self, path: KeyPath):
         """The gap Design 3.3 names for `path`: the first after the last layer
@@ -1204,7 +1231,7 @@ class _Fold:
             key = "work.tags" if path[:2] == ("work", "tags") else "work.jira"
             if key == "work.jira" and not self.jira_mode:
                 continue
-            out.setdefault(key, []).append(problem)
+            out.setdefault(key, []).append((path, problem))
         return out
 
 
@@ -1233,11 +1260,15 @@ def _withhold(config: Config, fold: _Fold, undecided: set, registry, own_id) -> 
                     own_id, gap.id, "config", subject=f"configuration ({key})",
                     missing=gap.state == "missing"))
     broken = fold.standing()
-    for key, problems in broken.items():
+    for key, marks in broken.items():
         if key in config.withheld:
-            # Undecided as well: what reaches the key is not known, so it is
-            # handled as undecided, and no warning is given (Design 1.6).
+            # Undecided as well: the key stays undecided (Design 1.6). A
+            # problem whose own value is not known gives no warning; one at a
+            # key decided after the gap is still checked (Design 3.2).
+            config.inherited_problems += [problem for path, problem in marks
+                                          if not fold.unknown(path)]
             continue
+        problems = [problem for _, problem in marks]
         config.inherited_problems += problems
         config.withheld[key] = Withheld(lambda problems=problems: ConfigError(problems))
     if "work.tags" in config.withheld:

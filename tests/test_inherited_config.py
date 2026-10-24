@@ -949,3 +949,80 @@ def test_a_broken_key_that_is_also_undecided_is_undecided(tmp_path):
         config.require("work.tags")
     ran = tcw(app, "validate")
     assert ran.code == 0 and "warning:" not in ran.out, ran
+
+
+# -- the decided keys under an undecided `work.jira` (Design 3.2) ------------------------
+
+
+BAD_TIMEOUT = "work.jira.timeout: must be a positive number of seconds"
+BAD_EMAIL = "work.jira.credentials.email-env: must name an environment variable"
+
+
+def test_a_projects_own_decided_jira_keys_are_checked_behind_a_gap(tmp_path):
+    """`core` is missing, so `work.jira` is undecided; the keys `app` sets
+    itself are still checked, and the ones it leaves to `core` are not
+    "required"."""
+    app = made(tmp_path, "app", parents=["core"], work=jira_mode(jira={
+        "project": "APP", "timeout": "soon", "credentials": {"email-env": "bad name"}}))
+    found = problems(load_config(app))
+    assert [p for p in found if BAD_TIMEOUT in p] and [p for p in found if BAD_EMAIL in p], found
+    assert not [p for p in found if "required" in p], found
+    ran = tcw(app, "validate")
+    assert ran.code == 1, ran
+    errors = [line for line in lines_of(ran) if line.startswith("error:")]
+    assert len(errors) == 2, ran
+    assert any(BAD_TIMEOUT in line for line in errors), ran
+    assert any(BAD_EMAIL in line for line in errors), ran
+    assert "required" not in ran.out, ran
+
+
+def test_a_projects_own_bad_key_with_no_gap_is_reported_as_before(tmp_path):
+    app = made(tmp_path, "app", work=jira_mode(jira={
+        "project": "APP", "timeout": "soon", "credentials": {"email-env": "bad name"}}))
+    found = problems(load_config(app))
+    assert [p for p in found if BAD_TIMEOUT in p] and [p for p in found if BAD_EMAIL in p], found
+    assert [p for p in found if "work.jira.site: required" in p], found
+
+
+def test_an_ancestors_decided_jira_key_behind_a_gap_gives_a_warning(tmp_path):
+    """`lib` comes after the missing `core` in the load order, so the
+    `timeout` it passes is decided, and wrong: a warning at `lib`'s file, as
+    for any broken inherited key, while `work.jira` stays undecided (exit 7)
+    and the keys no one after `core` sets are not "required"."""
+    lib = made(tmp_path, "lib", work=jira_mode(jira={"timeout": "soon"}))
+    app = made(tmp_path, "app", parents=["core", "lib"],
+               work=jira_mode(jira={"project": "APP"}))
+    config = load_config(app)
+    assert config.sources == ("core", "lib", "app")
+    assert problems(config) == []
+    assert [str(p) for p in config.inherited_problems if BAD_TIMEOUT in str(p)], \
+        config.inherited_problems
+    with pytest.raises(InheritedUnavailable, match=r"\(work\.jira\)"):
+        config.require("work.jira")
+    ran = tcw(app, "validate")
+    assert ran.code == 0, ran
+    [warning] = [line for line in lines_of(ran) if line.startswith("warning:")]
+    assert BAD_TIMEOUT in warning and str(config_file(lib)) in warning, ran
+    assert "required" not in ran.out, ran
+
+
+def test_an_ancestors_jira_key_before_the_gap_stays_undecided(tmp_path):
+    """The same `timeout`, passed by `lib` before the missing `core`: what
+    reaches `app` is not known, so no warning (Design 1.6)."""
+    made(tmp_path, "lib", work=jira_mode(jira={"timeout": "soon"}))
+    app = made(tmp_path, "app", parents=["lib", "core"],
+               work=jira_mode(jira={"project": "APP"}))
+    config = load_config(app)
+    assert config.sources == ("lib", "core", "app")
+    assert problems(config) == [] and config.inherited_problems == []
+    ran = tcw(app, "validate")
+    assert ran.code == 0 and "warning:" not in ran.out, ran
+
+
+def test_an_unknown_jira_key_the_project_sets_is_reported_behind_a_gap(tmp_path):
+    app = made(tmp_path, "app", parents=["core"], work=jira_mode(jira={
+        "project": "APP", "bogus": {"a": 1}, "other": 3}))
+    found = problems(load_config(app))
+    assert len(found) == 2, found
+    assert all("unknown key" in p for p in found), found
+    assert {p.split(": ")[1] for p in found} == {"work.jira.bogus", "work.jira.other"}

@@ -127,13 +127,15 @@ def _credentials(raw: dict, where: KeyPath,
     if block is None:
         return None
     _unknown(block, CREDENTIAL_KEYS, path, problems)
-    if _missing(block, CREDENTIAL_KEYS, path, problems):
-        return None
+    missing = _missing(block, CREDENTIAL_KEYS, path, problems)
     names = []
     for key in CREDENTIAL_KEYS:
+        if key not in block:
+            continue
         value = block[key]
         # The value is never echoed: it may be a token pasted here by mistake.
-        # Every bad key is reported, not only the first.
+        # Every bad key is reported, not only the first, and a name given is
+        # checked though the other is missing (TCW-109 Design 3.2).
         if not isinstance(value, str) or not VARIABLE.match(value):
             problems.add((*path, key),
                          "must name an environment variable: capital letters, "
@@ -141,7 +143,7 @@ def _credentials(raw: dict, where: KeyPath,
                          "not shown)")
         else:
             names.append(value)
-    if len(names) != len(CREDENTIAL_KEYS):
+    if missing or len(names) != len(CREDENTIAL_KEYS):
         return None
     return names[0], names[1]
 
