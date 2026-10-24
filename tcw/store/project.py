@@ -24,7 +24,7 @@ from tcw.project_files import (LEGACY_PROJECT, LEGACY_SENTINEL, LOCAL_MANIFEST,
                                validate_project_id, version_problem)
 from tcw.store.manifest import ManifestEntry, parse_manifest
 from tcw.store.checkouts import normalized_url
-from tcw.store.links import parse_children, parse_parents, translate_projects
+from tcw.store.links import parse_children, parse_parents
 from tcw.store.yaml_source import UniqueKeyLoader as _UniqueKeyLoader, load as _load_named_yaml
 
 def override_variable(project_id: str) -> str:
@@ -876,37 +876,33 @@ class FsProjectRegistry(ProjectRegistry):
         problem. In another project a `parents:` problem leaves its links
         unknown instead; a descendant's `children:` problems, "named both as a
         parent and as a child" among them, stay graph problems, and an
-        ancestor's `children:` is read only as names."""
+        ancestor's `children:` is read only as names.
+
+        A `projects:` or `connected-projects` key (Design 3.5) is a graph
+        problem in the active project and in a descendant; in any other
+        project it leaves the links unknown, as a broken `parents:` does."""
         retired = retired_key_problem(raw)
-        if retired is not None and role in ("active", "descendant"):
-            self._problem(path, retired)
-        translated, problems = translate_projects(raw, path)
-        if retired is not None and role not in ("active", "descendant"):
-            # Design 3.5: in an ancestor's file, its parents are unknown.
-            problems = [retired]
-        if problems:
-            link_problems = list(problems)
-            links, children, child_problems = None, [], []
-        else:
-            links, found = parse_parents(translated.get("parents"), str(path))
-            link_problems = [f"{key}: {message}" for key, message in found]
-            children, found = parse_children(translated.get("children"), str(path),
-                                             own_id=project_id)
-            child_problems = [f"{key}: {message}" for key, message in found]
-            parent_ids = {link.id for link in links or []}
-            listed = translated.get("children")
-            child_problems += [
-                f"children[{listed.index(child_id)}]: '{child_id}' is named both as "
-                f"a parent and as a child" for child_id in children
-                if child_id in parent_ids]
+        if retired is not None:
+            if role in ("active", "descendant"):
+                self._problem(path, retired)
+            return None, f"{path}: {retired}", []
+        links, found = parse_parents(raw.get("parents"), str(path))
+        link_problems = [f"{key}: {message}" for key, message in found]
+        children, found = parse_children(raw.get("children"), str(path),
+                                         own_id=project_id)
+        child_problems = [f"{key}: {message}" for key, message in found]
+        parent_ids = {link.id for link in links or []}
+        listed = raw.get("children")
+        child_problems += [
+            f"children[{listed.index(child_id)}]: '{child_id}' is named both as "
+            f"a parent and as a child" for child_id in children
+            if child_id in parent_ids]
         if role in ("active", "descendant"):
             for problem in child_problems:
                 self._problem(path, problem)
         if not link_problems:
             return links or [], None, children
-        if role == "active" or (role == "descendant" and (problems or retired)):
-            # A `projects:` key in a descendant is a graph problem, as its
-            # `children:` problems are (Design 3.5).
+        if role == "active":
             for problem in link_problems:
                 self._problem(path, problem)
         return None, f"{path}: {link_problems[0]}", children

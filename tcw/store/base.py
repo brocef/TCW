@@ -684,18 +684,28 @@ CAP_FIELDS = {
 # work item's `capabilities.yaml`. A record still carrying one is a check error
 # naming the migration guide.
 RETIRED_CAP_FIELDS = {"Planning doc", "Tracker"}
-# The 2.x name of the `projects` key in `tcw-config.yaml` (TCW-73 Design 9.3):
-# a config error naming the migration guide, never read.
+# The 2.x name of the 3.x `projects` key in `tcw-config.yaml` (TCW-73 Design
+# 9.3): refused before every command, never read.
 RETIRED_PROJECTS_KEY = "connected-projects"
+# The keys that once named other projects, which TCW 4.0 refuses (TCW-108
+# Design 3.5): parent links are `parents:` and `children:`.
+REMOVED_LINK_KEYS = ("projects", RETIRED_PROJECTS_KEY)
 MIGRATION_GUIDE = "docs/migration-guide-2.8-to-3.0.0.md"  # removed keys and fields
 
 
-def retired_key_problem(config: object) -> str | None:
-    """The config error for a `tcw-config.yaml` mapping that still holds the 2.x
-    `connected-projects` key, or None. One wording wherever it is reported."""
-    if isinstance(config, dict) and RETIRED_PROJECTS_KEY in config:
-        return (f"the key '{RETIRED_PROJECTS_KEY}' was renamed to 'projects' in "
-                f"TCW 3.0 — see {MIGRATION_GUIDE}")
+def retired_key_problem(config: object,
+                        keys: tuple[str, ...] = REMOVED_LINK_KEYS) -> str | None:
+    """The problem for a `tcw-config.yaml` mapping that still holds a key that
+    once named other projects (the 3.x `projects`, the 2.x
+    `connected-projects`), or None (TCW-108 Design 3.5). One wording wherever
+    it is reported."""
+    if not isinstance(config, dict):
+        return None
+    for key in keys:
+        if key in config:
+            return (f"'{key}' is not a TCW 4.0 key: name parents under 'parents:' "
+                    f"and children under 'children:', by ID, and say where projects "
+                    f"are in .tcw/tcw-manifest.yaml")
     return None
 
 
@@ -934,14 +944,6 @@ class RepositoryDeclaration:
 
 
 @dataclass(frozen=True)
-class ConnectedProject:
-    """One `projects` entry: the ID of a connected project. Where it is, is a
-    manifest's to say (TCW-107 Design 3.1)."""
-
-    id: str
-
-
-@dataclass(frozen=True)
 class ProvisionResult:
     """What one provisioning attempt did.
 
@@ -1081,56 +1083,6 @@ def parse_repository_declaration(
         return None, problems
     return RepositoryDeclaration(url=url.strip(), ref=ref, path=store_path,
                                  checkout=checkout), problems
-
-
-def parse_connected_entry(
-    project_id: str, raw: Any, where: str
-) -> tuple["ConnectedProject | None", list[str]]:
-    """Parse one `projects` entry into a `ConnectedProject` plus problems.
-
-    An entry names its project by ID alone (TCW-107 Design 3.1): it is empty
-    (`lib:`) or an empty mapping. Where the project is, is a manifest's to
-    say, so a location here is refused with the entry to write in
-    `.tcw/tcw-manifest.yaml` instead; a `jira` block is refused, since TCW
-    4.0 files only into a project on this machine (TCW-108 Design 7.2).
-    Pure and filesystem-free.
-    """
-    if raw is None:
-        return ConnectedProject(id=project_id), []
-    if isinstance(raw, str) or (isinstance(raw, dict)
-                                and ("path" in raw or "repository" in raw)):
-        return None, [f"{where}: a location goes in .tcw/tcw-manifest.yaml, not "
-                      f"here: write '{project_id}:' here and "
-                      f"'{_manifest_entry(project_id, raw)}' under projects: there"]
-    if not isinstance(raw, dict):
-        return None, [f"{where}: expected nothing after the ID, got "
-                      f"{type(raw).__name__}"]
-    if "jira" in raw:
-        return None, [f"{where}: TCW 4.0 files only into a project on this machine, "
-                      f"so an entry holds no 'jira' block; remove it"]
-    unknown = {k for k in raw if follows_naming_rule(k)}
-    if unknown:
-        return None, [f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
-                      f"expected nothing after the ID"]
-    return ConnectedProject(id=project_id), []
-
-
-def _manifest_entry(project_id: str, raw: Any) -> str:
-    """The manifest entry a 3.x `projects:` location becomes, as text."""
-    if isinstance(raw, str):
-        return f"{project_id}: {raw}"
-    path = raw.get("path")
-    path = path if isinstance(path, str) and path.strip() else None
-    repository = raw.get("repository")
-    if not isinstance(repository, dict):
-        return f"{project_id}: {path or '<a folder>'}"
-    url = repository.get("url") or "<url>"
-    ref = repository.get("ref")
-    parts = [f"path: {path or '<a folder>'}",
-             f"repository: {url}{'#' + ref if ref else ''}"]
-    if repository.get("path"):
-        parts.append(f"subfolder: {repository['path']}")
-    return f"{project_id}: {{{', '.join(parts)}}}"
 
 
 def parse_documentation_entries(raw: Any) -> tuple[list["DocEntry"], list[str]]:

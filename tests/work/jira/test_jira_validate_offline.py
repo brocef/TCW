@@ -77,22 +77,6 @@ def test_a_malformed_work_jira_is_an_error(offline, monkeypatch, capsys):
     assert code == 1 and "work.jira.project" in text, text
 
 
-def test_a_connected_jira_block_is_an_error(offline, tmp_path, monkeypatch, capsys):
-    """TCW-108 Design 7.2: an entry holds no `jira` block in TCW 4.0."""
-    other = make_project(tmp_path, "web")
-    connect(offline.root, other, "children")
-    connect(other, offline.root, "parent")
-    path = config_file(offline.root)
-    doc = yaml.safe_load(path.read_text())
-    # The entry's location is in the manifest `connect` wrote (TCW-107).
-    # Written in the 3.x form, the only one that could hold such a block.
-    del doc["children"]
-    doc["projects"] = {"children": {"web": {"jira": {"site": "x"}}}}
-    write_config_file(path, yaml.safe_dump(doc, sort_keys=False))
-    code, text = validate(offline, monkeypatch, capsys)
-    assert code == 1 and "projects.children.web" in text and "'jira' block" in text, text
-
-
 # -- work links (AC 19) ----------------------------------------------------------------
 
 

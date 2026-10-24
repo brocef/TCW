@@ -304,3 +304,57 @@ def test_ac36_in_a_linked_worktree_the_folder_beside_the_main_checkout(tmp_path)
     unresolved = [line for line in lines if line.startswith("unresolved:")]
     assert len(unresolved) == 1 and f"places it at {beside_main}" in unresolved[0], lines
     assert str(tmp_path / "trees" / "lib2") not in unresolved[0]
+
+
+# -- AC 8 and AC 31: `projects:` and `connected-projects` are refused --------------------
+
+REFUSED = ("is not a TCW 4.0 key: name parents under 'parents:' and children "
+           "under 'children:', by ID, and say where projects are in "
+           ".tcw/tcw-manifest.yaml")
+
+
+@pytest.mark.parametrize("key", ["projects", "connected-projects"])
+def test_ac8_the_3x_key_is_refused(tmp_path, key):
+    proj(tmp_path / "ws", "ws", children=["a"])
+    a = tmp_path / "a"
+    write_config(a, yaml.safe_dump({"id": "a", key: {"parent": {"ws": None}}}))
+    listed = tcw(a, "projects", "list")
+    assert listed.code == 1, listed
+    ran, lines = findings(a)
+    assert ran.code == 1, ran
+    assert f"error: .tcw/tcw-config.yaml: '{key}' {REFUSED}" in lines, lines
+
+
+@pytest.mark.parametrize("key", ["projects", "connected-projects"])
+def test_ac31_the_3x_key_in_a_parent_leaves_its_links_unknown(tmp_path, key):
+    app = link(make_project(tmp_path, "app"), parents=["lib"])
+    lib = tmp_path / "lib"
+    write_config(lib, yaml.safe_dump({"id": "lib", key: {"parent": {"core": None}}}))
+    proj(tmp_path / "core", "core")
+    assert tcw(app, "work", "list").code == 0
+    ran, lines = findings(app)
+    assert ran.code == 0, ran
+    unresolved = [line for line in lines if line.startswith("unresolved:")]
+    assert len(unresolved) == 1 and f"'{key}' is not a TCW 4.0 key" in unresolved[0], lines
+
+
+def test_ac31_the_3x_key_in_a_descendant_is_a_graph_problem(tmp_path):
+    ws = proj(tmp_path / "ws", "ws", children=["kid"])
+    write_config(tmp_path / "kid", yaml.safe_dump(
+        {"id": "kid", "parents": ["ws"], "projects": {"children": {"x": None}}}))
+    ran, lines = findings(ws)
+    assert ran.code == 1, ran
+    assert any(f"'projects' {REFUSED}" in line for line in lines), lines
+
+
+def test_a_parent_passing_some_axes_is_read_by_every_command(tmp_path):
+    """`inherit` inside a `parents:` entry is the link's, not a chain list's
+    `inherit: true` (tcw/config.py's list rules)."""
+    app = link(make_project(tmp_path, "app"),
+               parents=[{"id": "ws", "inherit": "none"},
+                        {"id": "core", "inherit": ["taxonomy"]}])
+    proj(tmp_path / "ws", "ws")
+    proj(tmp_path / "core", "core")
+    for argv in (("projects", "list"), ("work", "list"), ("validate",)):
+        ran = tcw(app, *argv)
+        assert ran.code == 0, (argv, ran)

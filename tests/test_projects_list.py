@@ -31,33 +31,11 @@ def declare(root, relation, project_id, target):
     write_manifest(root, {project_id: os.path.relpath(target, root)})
 
 
-def declare_3x(root, relation, project_id, target):
-    """`declare` in the 3.x form, for the tests below whose subject is that
-    key: `project_id` under `projects.<relation>`, with its location in the
-    manifest."""
-    path = config_file(root)
-    document = yaml.safe_load(path.read_text())
-    document.setdefault("projects", {}).setdefault(relation, {})[project_id] = None
-    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
-    write_manifest(root, {project_id: os.path.relpath(target, root)})
-
-
-# The tests whose subject is a refusal of the 3.x `projects:` key or of the
-# 2.x `connected-projects` key renamed from it: their graph keeps that key.
-GRAPH_3X = {
-    "test_the_2x_key_is_an_error_naming_the_guide",
-    "test_every_command_refuses_the_2x_key",
-    "test_work_list_refuses_the_2x_key_in_a_child",
-    "test_the_2x_key_refusal_names_the_file_from_a_sub_folder",
-    "test_projects_list_reports_a_registry_problem",
-}
-
-
 @pytest.fixture
 def graph(tmp_path, request):
     """`fx` under parent `top`, with children `c1` and `c2`, an absent child
     `gone`, and a parent `up` passing no axis (a 3.x upstream)."""
-    link = declare_3x if request.node.originalname in GRAPH_3X else declare
+    link = declare
     top = make_project(tmp_path, "top")
     fx = make_project(tmp_path, "fx")
     c1 = make_project(tmp_path, "c1")
@@ -121,11 +99,17 @@ def test_work_nodes_is_gone(graph, monkeypatch, capsys):
 # -- the `projects:` key (Design 9.3; AC 7) -------------------------------------------
 
 
-def _rename_key(root, old, new):
+def _add_2x_key(root):
+    """Give `root`'s configuration the 2.x `connected-projects` key."""
     path = config_file(root)
     document = yaml.safe_load(path.read_text())
-    document[new] = document.pop(old)
+    document["connected-projects"] = {"children": {"zz": None}}
     write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+
+
+REFUSED = ("'connected-projects' is not a TCW 4.0 key: name parents under "
+           "'parents:' and children under 'children:', by ID, and say where "
+           "projects are in .tcw/tcw-manifest.yaml")
 
 
 def test_the_graph_under_projects_validates(graph, monkeypatch, capsys):
@@ -135,12 +119,12 @@ def test_the_graph_under_projects_validates(graph, monkeypatch, capsys):
 
 
 def test_the_2x_key_is_an_error_naming_the_guide(graph, monkeypatch, capsys):
-    _rename_key(graph, "projects", "connected-projects")
+    """TCW-108 Design 3.5: the message names `parents:`, `children:` and the
+    manifest rather than the 3.x key it was renamed to."""
+    _add_2x_key(graph)
     code, out, err = run(monkeypatch, capsys, graph, "validate")
     assert code == 1
-    text = out + err
-    assert "connected-projects" in text and "'projects'" in text
-    assert "docs/migration-guide-2.8-to-3.0.0.md" in text
+    assert REFUSED in out + err
 
 
 # -- review fix R1: every command refuses the 2.x key ------------------------------
@@ -154,12 +138,12 @@ def test_the_2x_key_is_an_error_naming_the_guide(graph, monkeypatch, capsys):
     ("taxonomy", "list"),
 ])
 def test_every_command_refuses_the_2x_key(graph, monkeypatch, capsys, argv):
-    _rename_key(graph, "projects", "connected-projects")
+    _add_2x_key(graph)
     code, out, err = run(monkeypatch, capsys, graph, *argv)
     assert (code, out) == (1, ""), (out, err)
     assert err.count("\n") == 1, err
     assert err.startswith(f"tcw {' '.join(argv[:2]) if argv[0] != 'provision' else 'provision'}"), err
-    assert "connected-projects" in err and "docs/migration-guide-2.8-to-3.0.0.md" in err
+    assert REFUSED in err
 
 
 
@@ -169,10 +153,10 @@ def test_work_list_refuses_the_2x_key_in_a_child(graph, monkeypatch, capsys):
     """Pre-freeze clean-up, C9: `open_backend` checks the project graph, as
     `taxonomy list` does."""
     child = graph.parent / "c1"
-    _rename_key(child, "projects", "connected-projects")
+    _add_2x_key(child)
     code, out, err = run(monkeypatch, capsys, graph, "work", "list")
     assert (code, out) == (1, ""), err
-    assert "c1" in err and "docs/migration-guide-2.8-to-3.0.0.md" in err
+    assert "c1" in err and REFUSED in err
 
 
 def test_work_list_runs_with_a_declared_child_that_is_not_here(graph, monkeypatch,
@@ -186,10 +170,10 @@ def test_the_2x_key_refusal_names_the_file_from_a_sub_folder(graph, monkeypatch,
                                                              capsys):
     """Pre-freeze clean-up, C8: run from `fx/docs`, the file is
     `../.tcw/tcw-config.yaml`."""
-    _rename_key(graph, "projects", "connected-projects")
+    _add_2x_key(graph)
     code, out, err = run(monkeypatch, capsys, graph / "docs", "taxonomy", "list")
     assert (code, out) == (1, ""), err
-    assert ": ../.tcw/tcw-config.yaml: the key 'connected-projects'" in err, err
+    assert f": ../.tcw/tcw-config.yaml: {REFUSED}" in err, err
 
 
 def test_an_upstreams_own_2x_key_is_not_its_readers_problem(graph, monkeypatch, capsys):
@@ -206,11 +190,10 @@ def test_projects_list_reports_a_registry_problem(graph, monkeypatch, capsys):
     """An invalid child ID is an error, not a project left off the list."""
     path = config_file(graph)
     document = yaml.safe_load(path.read_text())
-    document["projects"]["children"]["Bad ID"] = "../c1"
+    document["children"].append("Bad ID")
     write_config_file(path, yaml.safe_dump(document, sort_keys=False))
     code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
     assert (code, out) == (1, ""), (out, err)
-    # The naming rule every key follows catches it first (TCW-106 Design 5.1).
-    assert err.startswith("tcw projects list: .tcw/tcw-config.yaml: "
-                          "projects.children.Bad ID: key 'Bad ID' must be lowercase "
-                          "letters and digits joined by single hyphens"), err
+    index = document["children"].index("Bad ID")
+    assert err.startswith("tcw projects list: "), err
+    assert f"fx/.tcw/tcw-config.yaml: children[{index}]: project ID must match" in err, err

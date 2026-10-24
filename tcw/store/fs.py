@@ -34,10 +34,9 @@ from tcw.output import shown as _shown
 from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
 from tcw.store.base import (
     CAP_FIELDS, CAP_LIFECYCLES, MIGRATION_GUIDE, CAP_PRIORITIES, CAP_STATUSES,
-    RETIRED_CAP_FIELDS, retired_key_problem,
+    RETIRED_CAP_FIELDS, RETIRED_PROJECTS_KEY, retired_key_problem,
     TAXONOMY_EDITABLE_FIELDS, _UNSET, AmbiguousRef, Capability, CapabilitiesStore,
     CapabilityDetail, NotASlug, is_slug, slugify, StaleRevision,
-    parse_connected_entry,
     parse_repository_declaration, ProvisionResult, RepositoryDeclaration,
     StoreDeclarationError, StoreLocationUnusable, StoreNotProvisioned,
     StoreProvisioner, TaxonomyStore, Term, TermDetail,
@@ -339,7 +338,7 @@ def refuse_retired_config(start: Path | None = None) -> None:
         config = load_config(root / SENTINEL)
     except (ValueError, OSError):
         return
-    retired = retired_key_problem(config)
+    retired = retired_key_problem(config, (RETIRED_PROJECTS_KEY,))
     if retired:
         # Named from where the command runs, which may be a sub-folder.
         raise BackendError(f"{os.path.relpath(root / SENTINEL)}: {retired}")

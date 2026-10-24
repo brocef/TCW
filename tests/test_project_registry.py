@@ -30,13 +30,6 @@ def config(root: Path, text: str, where: dict | None = None) -> None:
         write_manifest(root, where)
 
 
-def config_3x(root: Path, text: str) -> None:
-    """`config` for a text under the 3.x `projects:` key, written as it is,
-    for the tests of what the entry parser refuses (TCW-107 Design 3.1)."""
-    root.mkdir(parents=True, exist_ok=True)
-    write_config(root, text, encoding="utf-8")
-
-
 def reciprocal(parent: Path, parent_id: str, child: Path, child_id: str) -> None:
     config(parent, f"id: {parent_id}\nchildren:\n- {child_id}\n",
            {child_id: os.path.relpath(child, parent)})
@@ -124,7 +117,8 @@ def test_relative_layout_and_transitive_descendants(tmp_path):
         # or none, is a problem naming the entry.
         ("id: child-wrong\n", "which declares 'child-wrong', not 'child-project'"),
         ("", "cannot be read: missing or invalid project id"),
-        ("id: child-project\nprojects: []\n", "must be a mapping"),
+        # TCW-108 Design 3.5: in a descendant, the 3.x key is a graph problem.
+        ("id: child-project\nprojects: []\n", "'projects' is not a TCW 4.0 key"),
     ],
 )
 def test_invalid_target_fails_closed(tmp_path, target, expected):
@@ -387,44 +381,6 @@ def test_an_unprovisioned_declaration_is_unreachable_at_its_locator(tmp_path, mo
     absent = registry.unreachable_project("child-project")
     assert absent is not None
     assert absent.locator == (tmp_path / "child").resolve()
-
-
-@pytest.mark.parametrize(
-    "entry, expected",
-    [
-        ("      nonsense: 1\n", "unknown key(s) nonsense; expected nothing after the ID"),
-        # TCW-108 Design 7.2: TCW 4.0 files only into a project on this machine.
-        ("      jira:\n        site: x\n", "TCW 4.0 files only into a project on this machine, so an entry "
-         "holds no 'jira' block; remove it"),
-        # TCW-107 Design 3.1: a location goes in the manifest.
-        ("      path: ''\n", "a location goes in .tcw/tcw-manifest.yaml"),
-        ("      repository:\n        ref: main\n", "a location goes in .tcw/tcw-manifest.yaml"),
-        ("      repository:\n        url: u\n        path: /abs\n",
-         "a location goes in .tcw/tcw-manifest.yaml"),
-    ],
-)
-def test_a_malformed_entry_is_an_error_naming_the_line(tmp_path, entry, expected):
-    parent = tmp_path / "orchestrator"
-    config_3x(
-        parent,
-        "id: root-project\nprojects:\n  children:\n"
-        f"    child-project:\n{entry}",
-    )
-    problems = _texts(FsProjectRegistry.open(parent).check())
-    assert any(f"projects.children.child-project: {expected}" in problem
-               for problem in problems), problems
-    assert FsProjectRegistry.open(parent).unreachable() == []
-
-
-def test_an_entry_holding_an_empty_mapping_is_accepted(tmp_path):
-    """TCW-107 Design 3.1: `{}` names the project by its ID alone, and with
-    nothing finding it the project is not on this machine."""
-    parent = tmp_path / "orchestrator"
-    config(parent, "id: root-project\nprojects:\n  children:\n"
-                   "    child-project: {}\n")
-    registry = FsProjectRegistry.open(parent)
-    assert registry.check() == []
-    assert [u.id for u in registry.unreachable()] == ["child-project"]
 
 
 def test_a_project_placed_with_a_repository_names_the_command_that_fetches_it(tmp_path):

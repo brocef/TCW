@@ -16,22 +16,7 @@ from tcw.work.open import (
     delegate, open_backend, open_for_update, open_project, uncommitted_changes,
 )
 from tcw.work.model import Changes
-from tests.work.jira.fake import SITE
 from tests.work.projects import commit_all, connect, git, make_project
-from tests.projectfiles import config_file, write_config_file
-
-
-#: A connected-project `jira` block for project q, answered by the fake.
-JIRA_BLOCK = {"site": SITE, "project": "TCW", "inbox-status": "To Do",
-              "credentials": {"email-env": "Q_EMAIL", "token-env": "Q_TOKEN"},
-              "fields": {"project": "TCW Project"}}
-
-def write_document(root, **document):
-    path = config_file(root)
-    data = yaml.safe_load(path.read_text())
-    data.update(document)
-    write_config_file(path, yaml.safe_dump(data, sort_keys=False))
-
 
 # -- open_backend (AC 20, library) ---------------------------------------------------
 
@@ -159,17 +144,6 @@ def test_a_declared_absent_project_is_refused(pq):
     shutil.rmtree(q)
     with pytest.raises(Refused, match="not on this machine"):
         delegate("q", "T", None, None, here=p)
-
-
-def test_a_jira_block_in_an_entry_is_refused(pq):
-    """TCW 4.0 files only into a project on this machine (TCW-108 Design
-    7.2): an entry's `jira` block is a configuration problem naming the
-    entry, whatever it holds."""
-    from tcw.store.project import FsProjectRegistry
-    p, q = pq
-    write_document(p, **{"projects": {"children": {"q": {"jira": JIRA_BLOCK}}}})
-    problems = [f.message for f in FsProjectRegistry.open(p).check()]
-    assert any("projects.children.q" in m and "jira" in m for m in problems), problems
 
 
 def test_an_absent_project_names_no_jira_block(pq):
