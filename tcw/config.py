@@ -1234,9 +1234,12 @@ def _withhold(config: Config, fold: _Fold, undecided: set, registry, own_id) -> 
                     missing=gap.state == "missing"))
     broken = fold.standing()
     for key, problems in broken.items():
+        if key in config.withheld:
+            # Undecided as well: what reaches the key is not known, so it is
+            # handled as undecided, and no warning is given (Design 1.6).
+            continue
         config.inherited_problems += problems
-        if key not in config.withheld:
-            config.withheld[key] = Withheld(lambda problems=problems: ConfigError(problems))
+        config.withheld[key] = Withheld(lambda problems=problems: ConfigError(problems))
     if "work.tags" in config.withheld:
         config.work = dataclasses.replace(config.work, tags=config.withheld["work.tags"])
     if "work.jira" in config.withheld and config.work.backend == "jira":

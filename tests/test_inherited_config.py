@@ -934,3 +934,18 @@ def test_ac18_a_project_with_no_parents_writes_what_it_wrote(tmp_path):
     bare = made(tmp_path, "bare")
     assert tcw(bare, "work", "tags", "add", "x").code == 0
     assert yaml.safe_load(config_file(bare).read_text())["work"]["tags"] == ["x"]
+
+
+def test_a_broken_key_that_is_also_undecided_is_undecided(tmp_path):
+    """Design 1.6: `lib` passes broken tags, and `core`, after it in the load
+    order, is missing, so what reaches `app` is not known: exit 7, and no
+    warning."""
+    made(tmp_path, "lib", work={"tags": [{"inherit": 5}, "a"]})
+    app = made(tmp_path, "app", parents=["lib", "core"])
+    config = load_config(app)
+    assert config.sources == ("lib", "core", "app")
+    assert config.inherited_problems == []
+    with pytest.raises(InheritedUnavailable):
+        config.require("work.tags")
+    ran = tcw(app, "validate")
+    assert ran.code == 0 and "warning:" not in ran.out, ran
