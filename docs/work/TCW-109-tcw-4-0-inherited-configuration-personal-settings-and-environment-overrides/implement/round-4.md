@@ -97,5 +97,8 @@ them listening afterwards.
 
 ## The suite
 
-The full Python suite was not run in this round: the dispatching session
-runs it, as CI does, on this tree.
+`.venv/bin/pytest -q -p no:cacheprovider`, run in full as CI runs it by the
+dispatching session at `a60555de` (2026-10-24), in two halves by folder:
+`1985 passed, 2 skipped` (`tests/work`, `tests/serve`) and `4358 passed,
+111 skipped` (the rest). `pnpm test` `195 passed`; `tsc --noEmit`,
+`pnpm lint` and `pnpm check:build` clean.
