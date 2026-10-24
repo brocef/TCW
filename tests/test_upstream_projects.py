@@ -240,10 +240,10 @@ _READ_CORE = {"id": "core", "inherit": ["taxonomy", "capabilities"]}
 
 
 def _assert_reads_core(app: Path, term_slug: str = "argument") -> None:
-    listed = _tcw(app, "taxonomy", "list")
+    listed = _tcw(app, "taxonomy", "list", "--scope", "up")
     assert listed.returncode == 0, listed.stderr
     assert f"core.taxonomy/{term_slug}" in listed.stdout.splitlines(), listed.stdout
-    listed = _tcw(app, "capabilities", "list")
+    listed = _tcw(app, "capabilities", "list", "--scope", "up")
     assert listed.returncode == 0, listed.stderr
     assert "core.capabilities/arguments/build-an-argument" in listed.stdout.splitlines()
     out = _tcw(app, "taxonomy", "show", f"core.taxonomy/{term_slug}")

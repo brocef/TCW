@@ -1601,7 +1601,7 @@ def test_a_parent_not_on_this_machine_reaches_the_user(tmp_path, monkeypatch, ca
                                                        component):
     node = _node(tmp_path, component, "parents:\n- ghost\n")
     monkeypatch.chdir(node)
-    assert main([component, "list"]) == 7
+    assert main([component, "list", "--scope", "up"]) == 7
     _assert_reports_not_no_node(capsys.readouterr().err, component, "ghost",
                                 "not on this machine")
 

@@ -59,7 +59,7 @@ def tcw(monkeypatch, capsys):
 
 def show(tcw, root: Path, axis: str, target: str) -> dict:
     """`tcw <axis> show <target> --json`'s record, after checking it exited 0."""
-    ran = tcw([axis, "show", target, "--json"], root)
+    ran = tcw([axis, "show", target, "--json", "--scope", "up"], root)
     assert ran.code == 0, ran.err
     return json.loads(ran.out)["capability" if axis == "capabilities" else "term"]
 

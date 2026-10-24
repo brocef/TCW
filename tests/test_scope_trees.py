@@ -415,4 +415,4 @@ def test_up_and_own_keep_each_commands_order_today(family):
     family.term("desktop", "zebra", description="", name="Zebra", kind="vocabulary")
     up = family.run("desktop", "taxonomy", "list", "--scope", "up")
     assert up.lines == ["desktop.taxonomy/zebra", "shared.taxonomy/invoice"]
-    assert up.lines == family.run("desktop", "taxonomy", "list").lines
+    assert up.lines == family.run("desktop", "taxonomy", "list", "--scope", "up").lines

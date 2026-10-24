@@ -105,8 +105,8 @@ def test_ac16_every_list_local_json_record_is_partial(app, tcw):
 
 
 @pytest.mark.parametrize("argv", [
-    ("taxonomy", "list"), ("taxonomy", "search", "a"), ("taxonomy", "show", "invoice"),
-    ("taxonomy", "add", "Invoice"),
+    ("taxonomy", "list", "--scope", "up"), ("taxonomy", "search", "a", "--scope", "up"),
+    ("taxonomy", "show", "invoice", "--scope", "up"), ("taxonomy", "add", "Invoice"),
 ], ids=["list", "search", "show-inherited", "add"])
 def test_ac16_taxonomy_commands_needing_the_view_exit_7(app, tcw, argv):
     """AC 16, third bullet: `tcw taxonomy list`, `search a`, `show invoice`
