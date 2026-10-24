@@ -10,6 +10,7 @@ from tcw.work.model import Changes, Slug
 from tests.work.jira.conftest import ME
 from tests.work.jira.fake import FIELDS
 from tests.statefiles import ITEM_STATE
+from tcw.project_files import version_line
 
 
 def ticket_of(project, item):
@@ -37,7 +38,7 @@ def test_a_new_item(jira_project):
     assert ticket.status == "Triage" and document_text(ticket.description) == "Please"
     folder = jira_project.work / "TCW-1-dark-mode"
     assert [p.name for p in folder.iterdir()] == [ITEM_STATE]
-    assert (folder / ITEM_STATE).read_text() == \
+    assert (folder / ITEM_STATE).read_text() == version_line() + \
         f"ticket: {jira_project.fake.site}/browse/TCW-1\n"
 
 

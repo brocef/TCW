@@ -22,7 +22,7 @@ from tcw.store.fs import (FsCapabilitiesStore, FsTaxonomyStore, _revision, _revi
 from test_capabilities_federation import child_of
 from tcw.errors import TcwError
 from tests.projectfiles import write_config, write_manifest
-from tests.statefiles import CAPABILITY_STATE, TAXONOMY_STATE
+from tests.statefiles import CAPABILITY_STATE, TAXONOMY_STATE, read_state
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -367,8 +367,7 @@ def test_update_capability_inherited_matches_set(tmp_path):
     def written(root: Path, write) -> dict:
         st = FsCapabilitiesStore.open(root)
         write(st)
-        meta = yaml.safe_load(
-            (root / "docs/capabilities/routes/login/tcw-capability.yaml").read_text())
+        meta = read_state(root / "docs/capabilities/routes/login" / CAPABILITY_STATE)
         upstream_id = st.get_view("routes/login").id
         meta["overrides"] = meta["overrides"].replace(upstream_id, "<id>")
         return meta

@@ -14,6 +14,7 @@ from tests.work.jira.conftest import JiraProject, jira_config
 from tests.work.jira.fake import FIELDS
 from tests.work.projects import make_project
 from tests.statefiles import write_state, ITEM_STATE
+from tcw.project_files import version_line
 
 PROJECT, ITEM = FIELDS["TCW Project"], FIELDS["TCW Item"]
 
@@ -162,11 +163,11 @@ def test_resuming_with_the_folder_at_the_inbox_status(jira_project, tcw):
     key = raw(jira_project, "x", TCW_Project="tcw", TCW_Item="tcw.work/TCW-1-kept")
     folder = jira_project.work / "TCW-1-kept"
     folder.mkdir(parents=True)
-    write_state(folder / ITEM_STATE, "ticket: mine\n")
+    written = write_state(folder / ITEM_STATE, "ticket: mine\n").read_text()
     result = tcw(["tickets", "adopt", key], jira_project.root)
     assert result.code == 0, result.err
     assert jira_project.fake.tickets[key].status == "Triage"
-    assert (folder / ITEM_STATE).read_text() == "ticket: mine\n"
+    assert (folder / ITEM_STATE).read_text() == written
     assert jira_project.fake.writes() == [("POST", f"/rest/api/3/issue/{key}/transitions")]
 
 
@@ -325,7 +326,7 @@ def test_a_folder_left_without_item_yaml_is_finished(jira_project, tcw):
     (jira_project.work / "TCW-1-kept").mkdir(parents=True)
     result = tcw(["tickets", "adopt", key], jira_project.root)
     assert (result.code, result.out.strip()) == (0, "tcw.work/TCW-1-kept"), result.err
-    assert (jira_project.work / "TCW-1-kept" / ITEM_STATE).read_text() == \
+    assert (jira_project.work / "TCW-1-kept" / ITEM_STATE).read_text() == version_line() + \
         f"ticket: {jira_project.fake.site}/browse/{key}\n"
 
 

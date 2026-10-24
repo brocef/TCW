@@ -26,7 +26,7 @@ FS = Path(tcw.__file__).resolve().parent / "store" / "fs.py"
 
 ALLOWED = {"NotFound", "UsageError", "Refused", "BackendError", "RefError",
            "AmbiguousRef", "NotASlug", "StaleRevision", "StoreLocationUnusable",
-           "MalformedId", "_DanglingRef", "_RefInputProblem"}
+           "MalformedId", "_DanglingRef", "_RefInputProblem", "StateFileProblem"}
 
 
 def _region(tree: ast.Module) -> list[ast.stmt]:

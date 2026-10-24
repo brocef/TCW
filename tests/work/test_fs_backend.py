@@ -14,6 +14,8 @@ from tcw.work.config import MIGRATION_GUIDE, parse_work_config
 from tcw.work.fs_backend import FsWorkBackend, read_all, work_store_problems
 from tcw.work.model import Changes, Slug
 from tests.statefiles import write_state, ITEM_STATE
+from tests.statefiles import read_state
+from tcw.project_files import version_line
 
 TODAY = date(2026, 10, 2)
 
@@ -68,7 +70,7 @@ def write_item(work, folder, data):
 def test_create_writes_exactly_title_stage_priority(backend, work):
     item = new(backend, "Add a widget")
     assert item.slug == Slug("tcw", "2026-10-02-add-a-widget")
-    assert item_yaml(work, item.slug.folder) == (
+    assert item_yaml(work, item.slug.folder) == version_line() + (
         "title: Add a widget\nstage: request\npriority: medium\n")
     assert sorted(p.name for p in (work / item.slug.folder).iterdir()) == [ITEM_STATE]
 
@@ -89,7 +91,7 @@ def test_properties_are_written_in_order(backend, work):
     item = new(backend, "child", priority="high", effort="low",
                complexity="very-high", add_tags=("ui",), assignee="sam",
                parent=parent.slug.folder, add_blocked_by=("other.work/x",))
-    assert item_yaml(work, item.slug.folder) == (
+    assert item_yaml(work, item.slug.folder) == version_line() + (
         "title: child\nstage: request\npriority: high\neffort: low\n"
         "complexity: very-high\ntags:\n- ui\nassignee: sam\n"
         f"parent: tcw.work/{parent.slug.folder}\nblocked-by:\n- other.work/x\n")
@@ -325,8 +327,8 @@ def test_rename_rewrites_references_and_reports_mentions(work):
 
     renamed = backend.rename(a.slug.folder, "new-words")
     assert renamed.slug.folder == "2026-10-02-new-words"
-    b = yaml.safe_load(item_yaml(work, "2026-10-01-b"))
-    c = yaml.safe_load(item_yaml(work, "2026-10-01-c"))
+    b = read_state(work / "2026-10-01-b" / ITEM_STATE)
+    c = read_state(work / "2026-10-01-c" / ITEM_STATE)
     assert b == {"title": "b", "stage": "verify", "priority": "medium",
                  "parent": "tcw.work/2026-10-02-new-words"}
     assert c["blocked-by"] == ["tcw.work/2026-10-02-new-words"]

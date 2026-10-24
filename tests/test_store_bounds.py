@@ -114,7 +114,9 @@ def _outside(root, name, text):
     """A file outside every store, for a planted symlink to point at."""
     d = root.parent / "outside"
     d.mkdir(exist_ok=True)
-    (d / name).write_text(text)
+    # Through `write_state`, so a state file planted here is one the stores
+    # would read if they followed the symlink.
+    write_state(d / name, text)
     return d / name
 
 

@@ -11,6 +11,7 @@ from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tcw.validate import validate
 from tests.projectfiles import config_file, write_config, write_config_file
 from tests.projectfiles import write_manifest
+from tests.statefiles import CAPABILITY_STATE, TAXONOMY_STATE, write_state
 
 
 def node(
@@ -48,7 +49,7 @@ def _vocabless_feature(root: Path, slug: str) -> None:
     node directly — the point of these tests is that `check` still reports it."""
     d = root / "docs" / "taxonomy" / slug
     d.mkdir(parents=True)
-    (d / "meta.yaml").write_text(f"name: {slug.title()}\nkind: Feature\nrelatesTo: []\n")
+    write_state(d / TAXONOMY_STATE, f"name: {slug.title()}\nkind: Feature\nrelatesTo: []\n")
     (d / "description.md").write_text("")
 
 
@@ -77,10 +78,10 @@ def test_valid_tcw_link_ok(tmp_path):
 
 def test_bad_yaml_syntax_does_not_crash_and_skips_checks(tmp_path):
     root = node(tmp_path)
-    (root / "docs" / "capabilities" / "meta.yaml").write_text("a: [unterminated\n")
+    write_state(root / "docs" / "capabilities" / "x" / CAPABILITY_STATE, "a: [unterminated\n")
     notes: list[str] = []
     findings = validate(root, notes=notes)
-    assert any("meta.yaml" in f.where for f in findings)
+    assert any(CAPABILITY_STATE in f.where for f in findings)
     assert any("checks skipped" in n for n in notes), notes
     # No taxonomy/capabilities check ran: the YAML error is the only finding.
     assert len(findings) == 1, findings
@@ -515,7 +516,7 @@ def test_a_duplicate_key_is_still_reported(tmp_path):
 
 def test_every_yaml_name_tcw_writes_is_owned_or_deliberately_not(tmp_path):
     """The set is a judgment that drifts as record files are added, so it is
-    checked against the YAML names the source mentions. Five absences are
+    checked against the YAML names the source mentions. Seven absences are
     deliberate: each is a file that is legitimately not a mapping, is never
     reached by this pass, or is no longer written at all — see
     `OWNED_YAML_NAMES` for why."""
@@ -544,9 +545,9 @@ def test_every_yaml_name_tcw_writes_is_owned_or_deliberately_not(tmp_path):
         # that will not parse, independently of this set.
         "config.yaml",
         ".config.yaml",
-        # TCW-111's state files, named in `tcw/object_folders.py` before the
-        # stores read them; its next step makes them the owned names.
-        "tcw-taxonomy.yaml",
-        "tcw-capability.yaml",
-        "tcw-work-item.yaml",
+        # The TCW 3.x state files, named only so the walk and `tcw validate`
+        # can say that a folder holding one needs `tcw migrate` (TCW-111
+        # Design 2.6 row f). TCW never writes either one now.
+        "meta.yaml",
+        "item.yaml",
     }, written

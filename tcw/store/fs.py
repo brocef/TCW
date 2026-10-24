@@ -1441,12 +1441,15 @@ class FsTreeStore:
     def _listable(self, d: Path) -> bool:
         """Whether a listing may show the object folder `d`: not when its
         state file's version cannot be read, which is recorded in
-        `unreadable` instead (Design 1.5)."""
+        `unreadable` instead (Design 1.5). A file that cannot be parsed at
+        all stays listed, as in 3.x: the readers that parse it report it."""
         try:
             self._state(d)
         except StateFileProblem as problem:
             self.unreadable[problem.path] = problem.problem
             return False
+        except (OSError, UnicodeDecodeError, yaml.YAMLError, ValueError):
+            return True
         return True
 
     def unreadable_files(self) -> dict[Path, str]:

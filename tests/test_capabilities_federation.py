@@ -13,7 +13,7 @@ from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 from nodeconfig import declare_extends
 from tcw.errors import InheritedUnavailable, TcwError, UsageError
 from tests.projectfiles import write_config, write_manifest
-from tests.statefiles import write_state, CAPABILITY_STATE
+from tests.statefiles import CAPABILITY_STATE, read_state, write_state
 
 
 def repo(tmp_path: Path, name: str) -> Path:
@@ -250,8 +250,7 @@ def test_get_by_id_local(tmp_path):
 # ── set on an inherited path: materialize the override (issue #3) ────────────
 
 def ov_meta(child: Path, path: str) -> dict:
-    return yaml.safe_load((child / "docs" / "capabilities" / path / CAPABILITY_STATE)
-                          .read_text())
+    return read_state(child / "docs" / "capabilities" / path / CAPABILITY_STATE)
 
 
 def test_set_inherited_qualified(tmp_path):

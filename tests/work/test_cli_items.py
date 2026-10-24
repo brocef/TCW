@@ -16,6 +16,8 @@ from tcw.cli import main
 from tests.work.projects import commit_all, connect, git, make_project, write_item
 from tests.projectfiles import write_config
 from tests.statefiles import ITEM_STATE
+from tests.statefiles import read_state
+from tcw.project_files import version_line
 
 TODAY = date.today().isoformat()
 
@@ -42,7 +44,7 @@ def tcw(monkeypatch, capsys):
 
 
 def item_yaml(root, folder):
-    return yaml.safe_load((root / "docs" / "work" / folder / ITEM_STATE).read_text())
+    return read_state(root / "docs" / "work" / folder / ITEM_STATE)
 
 
 @pytest.fixture
@@ -56,7 +58,7 @@ def test_new_prints_the_slug_and_writes_three_keys(tcw, p):
     r = tcw(["new", "Add a widget"], p)
     assert (r.code, r.out) == (0, f"p.work/{TODAY}-add-a-widget\n")
     folder = p / "docs" / "work" / f"{TODAY}-add-a-widget"
-    assert (folder / ITEM_STATE).read_text() == (
+    assert (folder / ITEM_STATE).read_text() == version_line() + (
         "title: Add a widget\nstage: request\npriority: medium\n")
     assert not (folder / "request").exists()
 
