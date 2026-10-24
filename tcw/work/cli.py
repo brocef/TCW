@@ -194,10 +194,12 @@ def _blocks_removed(args) -> UsageError:
     """TCW-114 Design 2.2's refusal of `--blocks`, naming the command that
     records the link on the blocked item. The first target is read only to
     word it: for another project's item the command runs in that project's
-    folder, found without changing the exit."""
+    folder, found without changing the exit, and names this item by its full
+    identifier, since its folder name there would be one of that project's."""
     from tcw.ids import IdError
     from tcw.ownership import active_project_id
     target = args.blocks[0]
+    blocker = args.slug
     where = ""
     try:
         found = sort_input(target, "work", KEY)
@@ -206,20 +208,40 @@ def _blocks_removed(args) -> UsageError:
         owner = None
     if owner is not None:
         folder = f"tcw://{owner}.path/"
+        blocker = "<this item's full id>"
+        try:
+            blocker = _quoted(_full_input(args.slug))
+        except Exception:               # looking never changes the exit (2.2)
+            pass
         try:
             root = project_root()
             if owner == active_project_id(root):
-                folder = None
+                folder, blocker = None, _quoted(args.slug)
             else:
                 from tcw.locate import Locator
                 locator = Locator.of(root)
                 folder = str(locator.owner_root(owner, named_by=locator.root).resolve())
         except Exception:               # looking never changes the exit (2.2)
             pass
-        where = f" -C {folder}" if folder else ""
+        where = f" -C {_quoted(folder)}" if folder else ""
+    else:
+        blocker = _quoted(blocker)
     return UsageError(f"work edit --blocks is removed in TCW 4: record it on the "
-                      f"blocked item instead: tcw{where} work edit {target} "
-                      f"--blocked-by {args.slug}")
+                      f"blocked item instead: tcw{where} work edit {_quoted(target)} "
+                      f"--blocked-by {blocker}")
+
+
+def _full_input(text: str) -> str:
+    """Command input naming this project's item, as text another project
+    reads the same way: a full identifier or an address as typed, and a
+    folder's id-path or a tracker key with this project's ID before it, which
+    the other project resolves in this one (TCW-110 Design 3.1). Its project's
+    configuration is read; no backend is opened."""
+    from tcw.ownership import active_project_id
+    found = sort_input(text, "work", KEY)
+    if found.form in ("a", "c"):
+        return text
+    return f"{active_project_id(project_root())}.work/{found.id_path or found.key}"
 
 
 # -- commands ----------------------------------------------------------------------------
