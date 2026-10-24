@@ -52,9 +52,15 @@ between them:
 
 A list or a mapping is written as YAML. A variable naming a stage changes only
 what it names, and a more specific variable wins over a broader one. A
-variable that names no setting, or one only the team may set, or holds a
-value that setting cannot take, stops commands in any project with exit 1, and
-`tcw validate` reports it, starting with the variable's name. Your settings for
+variable stops commands in any project with exit 1 when it names no setting,
+names one only the team may set, or holds a value that is not valid YAML, is
+`null`, is not the kind of value the setting takes (a list for a stage's
+`prompt`), breaks the rules of an `inherit` entry, or is not a valid
+`user.name` or credential variable name. The rest of a value is checked only
+when the project the variable names is loaded, and stops commands only there:
+a binding's shape or keys, a `post` entry, and a `file:` binding that leaves
+that project's folder. `tcw validate` reports each problem in the project it
+stops, starting with the variable's name. Your settings for
 a parent, from its personal file or a variable, reach its children through
 what it passes down. `TCW_NO_PERSONAL_CONFIG=1` turns the variables off along
 with the personal files. `tcw config show --origin` names the variable a value

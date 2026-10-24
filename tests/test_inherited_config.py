@@ -1026,3 +1026,56 @@ def test_an_unknown_jira_key_the_project_sets_is_reported_behind_a_gap(tmp_path)
     assert len(found) == 2, found
     assert all("unknown key" in p for p in found), found
     assert {p.split(": ")[1] for p in found} == {"work.jira.bogus", "work.jira.other"}
+
+
+BAD_KEYS = {"work.jira.bogus", "work.jira.priorities.bogus"}
+
+
+@pytest.mark.parametrize("parents", [["core", "lib"], ["lib"]], ids=["gap", "no-gap"])
+def test_an_ancestors_unknown_jira_keys_give_a_warning(tmp_path, parents):
+    """`lib` passes two keys TCW does not know, one inside a key it does
+    know. Each is marked at the longest known key above it, but whether its
+    value is known is decided by its own key: after the missing `core` they
+    are `lib`'s own, so both are warnings at `lib`'s file, as with no gap."""
+    lib = made(tmp_path, "lib", work=jira_mode(jira={
+        "bogus": 1, "priorities": {"bogus": "x"}}))
+    app = made(tmp_path, "app", parents=parents, work=jira_mode(jira={
+        "project": "APP", **({} if "core" in parents else {
+            k: v for k, v in CORE_JIRA.items() if k != "project"})}))
+    ran = tcw(app, "validate")
+    assert ran.code == 0, ran
+    warnings = [line for line in lines_of(ran) if line.startswith("warning:")]
+    assert len(warnings) == 2, ran
+    assert all(str(config_file(lib)) in w and "unknown key" in w for w in warnings), ran
+    assert {key for key in BAD_KEYS for w in warnings if key + ":" in w} == BAD_KEYS, ran
+
+
+def test_an_unknown_key_set_to_an_empty_mapping_is_reported_behind_a_gap(tmp_path):
+    """An empty mapping replaces nothing, but its key is still there, and
+    unknown: reported behind a gap as with none."""
+    for parents in (["core"], None):
+        app = made(tmp_path / str(bool(parents)), "app", parents=parents,
+                   work=jira_mode(jira={"project": "APP", "bogus": {}}))
+        found = [p for p in problems(load_config(app)) if "unknown key" in p]
+        assert len(found) == 1 and "work.jira.bogus" in found[0], (parents, found)
+
+
+
+@pytest.mark.parametrize("parents,warned", [(["core", "lib"], True), (["lib", "core"], False),
+                                            (["lib"], True)],
+                         ids=["after-the-gap", "before-the-gap", "no-gap"])
+def test_an_ancestors_bad_tag_entry_is_decided_by_its_place(tmp_path, parents, warned):
+    """`lib`'s tags hold an `inherit: true` entry, so they replace nothing and
+    `work.tags` stays undecided behind the missing `core`. Its second entry
+    is wrong whatever reaches it: after `core` it is `lib`'s own text, and a
+    warning; before `core`, what reaches `app` is not known, so none."""
+    lib = made(tmp_path, "lib", work={"tags": [{"inherit": True}, {"inherit": 5}]})
+    app = made(tmp_path, "app", parents=parents)
+    ran = tcw(app, "validate")
+    assert ran.code == 0, ran
+    warnings = [line for line in lines_of(ran) if line.startswith("warning:")]
+    if not warned:
+        assert warnings == [], ran
+        return
+    [warning] = warnings
+    assert str(config_file(lib)) in warning and "work.tags[1]" in warning, ran

@@ -1076,6 +1076,23 @@ def _replacements(mapping: dict) -> list[KeyPath]:
     return found
 
 
+def _empty_mappings(mapping: dict) -> list[KeyPath]:
+    """The keys under `work.jira` a layer sets to an empty mapping. They
+    replace nothing, and merge nothing, but the layer writes them."""
+    work = mapping.get("work") if isinstance(mapping, dict) else None
+    found: list[KeyPath] = []
+
+    def walk(value: Any, path: KeyPath) -> None:
+        if isinstance(value, dict):
+            if not value:
+                found.append(path)
+            for key, inner in value.items():
+                walk(inner, (*path, key))
+    if isinstance(work, dict) and isinstance(work.get("jira"), dict):
+        walk(work["jira"], ("work", "jira"))
+    return found
+
+
 def _broken_key(key_path: KeyPath) -> KeyPath:
     """Where a problem marks an inherited value broken: the longest start of
     its key path that is a key TCW knows under `work.tags` or `work.jira`."""
@@ -1097,18 +1114,27 @@ class _Fold:
         self.values, self.origins, self.written = values, origins, written
         self.jira_mode = jira_mode
         self.replaced: list[tuple[tuple, KeyPath]] = []
+        # Every key a layer writes: what it replaces whole, and the empty
+        # mappings it sets (for a key TCW does not know, Design 3.2).
+        self.written_keys: list[tuple[tuple, KeyPath]] = []
         self.gaps: list[tuple[int, Any]] = []
-        self.broken: list[tuple[KeyPath, tuple, Problem]] = []
+        # Each mark: the key it breaks, its layer's rank, the problem, and
+        # the problem's own key path, which may lie below the key it breaks
+        # and which a variable's problem no longer carries.
+        self.broken: list[tuple[KeyPath, tuple, Problem, KeyPath]] = []
         self.undecided_keys: set = set()
         self.last_gap: tuple = (-1, 0)
 
     def merge(self, mapping: dict, origin: Origin) -> None:
         for path in _replacements(mapping):
             self.replaced.append((origin.rank, path))
+            self.written_keys.append((origin.rank, path))
+        for path in _empty_mappings(mapping):
+            self.written_keys.append((origin.rank, path))
         _merge(self.values, self.origins, self.written, mapping, origin)
 
     def broke(self, key_path: KeyPath, origin: Origin, problem: Problem) -> None:
-        self.broken.append((_broken_key(key_path), origin.rank, problem))
+        self.broken.append((_broken_key(key_path), origin.rank, problem, tuple(key_path)))
 
     def ancestor(self, entry, position: int, user: Origin | None, user_kept: dict,
                  layers: list, config: Config) -> None:
@@ -1130,7 +1156,7 @@ class _Fold:
         if mapping is None:
             for problem in problems:
                 for key in (("work", "tags"), ("work", "jira")):
-                    self.broken.append((key, shared.rank, problem))
+                    self.broken.append((key, shared.rank, problem, key))
             return
         self._layer(_inherited_part(mapping, self.jira_mode), shared, key_problems)
         if not layers:
@@ -1153,9 +1179,11 @@ class _Fold:
         for problem in problems:
             if mapping is None or not problem.key_path:
                 if self.jira_mode:
-                    self.broken.append((("work", "jira"), local.rank, problem))
+                    self.broken.append((("work", "jira"), local.rank, problem,
+                                        ("work", "jira")))
             else:
-                self.broken.append((_broken_key(problem.key_path), local.rank, problem))
+                self.broken.append((_broken_key(problem.key_path), local.rank, problem,
+                                    tuple(problem.key_path)))
         if not mapping:
             return
         refused: list = []
@@ -1175,7 +1203,8 @@ class _Fold:
         problems += [Problem(p.file, p.key_path, p.message)
                      for p in _list_problems(mapping, origin, None)]
         for problem in problems:
-            self.broken.append((_broken_key(problem.key_path), origin.rank, problem))
+            self.broken.append((_broken_key(problem.key_path), origin.rank, problem,
+                                tuple(problem.key_path)))
         self.merge(mapping, origin)
 
     def _decided_after(self, path: KeyPath, rank: tuple) -> bool:
@@ -1198,21 +1227,26 @@ class _Fold:
                                if not self._decided_after(path, last)}
         return self.undecided_keys
 
-    def unknown(self, path: KeyPath) -> bool:
+    def unknown(self, path: KeyPath, rank: tuple | None = None) -> bool:
         """Whether the value at `path` is not known: it lies under an
         undecided key, and no layer after the last gap replaces it, or a key
         above it, whole. A key that layer sets under an undecided mapping,
         such as `work.jira.timeout` beside a `work.jira.site` a missing parent
         may set, is decided (Design 3.2), and `undecided` must have run. A
         key TCW does not know is decided when such a layer writes anything at
-        or under it: its problem is that it is there, which no gap can undo."""
+        or under it: its problem is that it is there, which no gap can undo.
+        So is an entry of a list, such as `work.tags` holding `inherit: true`,
+        when the layer `rank` that wrote it comes after the gap: the entry is
+        that layer's own text, whatever reaches the rest of the list."""
         from tcw.config_keys import known_keys
         if not any(path[:len(u)] == u for u in self.undecided_keys):
             return False
         if self._decided_after(path, self.last_gap):
             return False
+        if rank is not None and any(isinstance(part, int) for part in path):
+            return not rank > self.last_gap
         return path in known_keys() or not any(
-            r > self.last_gap and p[:len(path)] == path for r, p in self.replaced)
+            r > self.last_gap and p[:len(path)] == path for r, p in self.written_keys)
 
     def gap_for(self, path: KeyPath):
         """The gap Design 3.3 names for `path`: the first after the last layer
@@ -1223,15 +1257,16 @@ class _Fold:
                     self.gaps[0])
 
     def standing(self) -> dict:
-        """The broken marks no later layer replaced, by inherited key."""
+        """The broken marks no later layer replaced, by inherited key, each
+        as `(own key path, rank, problem)`."""
         out: dict = {}
-        for path, rank, problem in self.broken:
+        for path, rank, problem, own in self.broken:
             if self._decided_after(path, rank):
                 continue
             key = "work.tags" if path[:2] == ("work", "tags") else "work.jira"
             if key == "work.jira" and not self.jira_mode:
                 continue
-            out.setdefault(key, []).append((path, problem))
+            out.setdefault(key, []).append((own, rank, problem))
         return out
 
 
@@ -1264,11 +1299,12 @@ def _withhold(config: Config, fold: _Fold, undecided: set, registry, own_id) -> 
         if key in config.withheld:
             # Undecided as well: the key stays undecided (Design 1.6). A
             # problem whose own value is not known gives no warning; one at a
-            # key decided after the gap is still checked (Design 3.2).
-            config.inherited_problems += [problem for path, problem in marks
-                                          if not fold.unknown(path)]
+            # key decided after the gap is still checked (Design 3.2). That is
+            # decided by the problem's own key, not the known key it marks.
+            config.inherited_problems += [problem for own, rank, problem in marks
+                                          if not fold.unknown(own, rank)]
             continue
-        problems = [problem for _, problem in marks]
+        problems = [problem for _, _, problem in marks]
         config.inherited_problems += problems
         config.withheld[key] = Withheld(lambda problems=problems: ConfigError(problems))
     if "work.tags" in config.withheld:

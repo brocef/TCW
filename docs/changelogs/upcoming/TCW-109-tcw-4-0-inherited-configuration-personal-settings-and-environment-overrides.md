@@ -71,7 +71,11 @@
   undecided key would need. Under an undecided `work.jira`, the keys a layer
   after the last gap sets are still checked, apart from "required": an error
   when the active project sets them, a warning at the parent's file when a
-  parent does. (TCW-109)
+  parent does. That includes a key TCW does not know, even inside one it
+  knows or set to an empty mapping, and an entry a parent after the gap
+  writes in a `work.tags` list holding `inherit: true`: whether a parent's
+  problem is reported is decided by the problem's own key, not by the known
+  key it is filed under. (TCW-109)
 - A problem the parser finds in an override variable's value starts with the
   variable's name, as the ones found while reading it do. (TCW-109)
 - `parse_jira_config` checks a credential variable name that is given when
