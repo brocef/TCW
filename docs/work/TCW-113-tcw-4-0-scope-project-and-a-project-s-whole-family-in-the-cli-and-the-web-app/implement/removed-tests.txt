@@ -1,0 +1,7 @@
+# Tests removed on purpose in TCW-113: none.
+# Two tests were renamed in Step 14 (Design 6.4: a link to another project's
+# object on this machine now resolves), so their old ids no longer appear:
+# renamed to tests.serve.test_records::test_a_link_to_another_projects_item_resolves
+#   from tests.serve.test_records::test_a_link_to_another_projects_item_is_other_project
+# renamed to tests.serve.test_full_identifiers::test_ac20_a_link_into_a_project_not_inherited_from_resolves
+#   from tests.serve.test_full_identifiers::test_ac20_a_link_into_a_project_not_inherited_from_is_other_project
