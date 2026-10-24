@@ -198,9 +198,24 @@ def _bound_of(owner: Path, active_root: Path, cloned: dict, owner_id_hint=None
     return Path(os.path.realpath(repository)).parent, None
 
 
+def _holding(fetched: list[Planned], files: list[Path]) -> Planned | None:
+    """The project fetched this round whose own folder holds the first of
+    `files` that any of them holds: the one whose files have the problem
+    (Design 7.11). When one is in another's folder, as a project in the
+    clone made for the one at its top is, the deeper one."""
+    def folder(p: Planned) -> Path:
+        return Path(os.path.realpath(p.placement.entry_folder or p.target))
+    for file in files:
+        holders = [p for p in fetched if _below_folder(file, folder(p)) is not None]
+        if holders:
+            return max(holders, key=lambda p: len(folder(p).parts))
+    return None
+
+
 def _folder_state(folder: Path) -> str:
-    """`absent`, `empty`, `git-only` or `occupied`, without following a link
-    at the folder's own name (Design 7.6)."""
+    """`absent`, `empty`, `git-only`, `occupied` or `unreadable` (a folder
+    that cannot be listed), without following a link at the folder's own
+    name (Design 7.6)."""
     import stat
     try:
         found = os.lstat(folder)
@@ -210,8 +225,11 @@ def _folder_state(folder: Path) -> str:
         return "occupied"
     if not stat.S_ISDIR(found.st_mode):
         return "occupied"
-    with os.scandir(folder) as entries:
-        names = [entry.name for entry in entries]
+    try:
+        with os.scandir(folder) as entries:
+            names = [entry.name for entry in entries]
+    except OSError:
+        return "unreadable"
     if not names:
         return "empty"
     return "git-only" if names == [".git"] else "occupied"
@@ -222,6 +240,10 @@ def _folder_problem(planned: Planned) -> str | None:
     if state == "git-only":
         return (f"{planned.id}: {planned.target} holds only .git (a clone or a submodule "
                 f"update that stopped); finish or remove it with git, then run again")
+    if state == "unreadable":
+        return (f"{planned.id}: {planned.target} cannot be listed, so whether it is "
+                f"empty is not known; correct its permissions, or the manifest entry "
+                f"in {_file(planned.placement)}")
     if state == "occupied":
         return (f"{planned.id}: {planned.target} is not empty; move it aside, or correct "
                 f"the manifest entry in {_file(planned.placement)}")
@@ -531,13 +553,13 @@ def provision_projects(root: Path, project_id: str | None = None, *, dry_run: bo
         try:
             registry.require_valid(fetching=True)
         except ValueError as error:
-            last = fetched_here[-1] if fetched_here else None
-            where = f"{last.id}: fetched into {last.target}, but " if last else ""
+            holder = _holding(fetched_here, getattr(error, "files", []))
+            where = f"{holder.id}: fetched into {holder.target}, but " if holder else ""
             run.refuse(f"{where}{error}. Until it is corrected, commands in "
                        f"'{active}' that read the project graph refuse; "
-                       + (f"remove {last.target} to undo the fetch, or add an entry for "
-                          f"'{last.id}' to .tcw/tcw-manifest.local.yaml pointing elsewhere"
-                          if last else "correct it"))
+                       + (f"remove {holder.target} to undo the fetch, or add an entry for "
+                          f"'{holder.id}' to .tcw/tcw-manifest.local.yaml pointing elsewhere"
+                          if holder else "correct it"))
             break
         _keep(registry, run)
     if run.failed:

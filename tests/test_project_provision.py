@@ -316,6 +316,29 @@ def test_ac24_an_occupied_folder(tmp_path, ac19, stand_in_git):
     assert str(app / ".tcw/tcw-manifest.yaml") in done.err, done.err
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a folder whatever its mode")
+def test_ac24_an_unreadable_folder(tmp_path, ac19, stand_in_git):
+    """A target folder that cannot be listed is refused, naming it, with no
+    traceback, and nothing is written or removed (review round 1, finding 3)."""
+    app, _ = ac19
+    core = tmp_path / "core"
+    core.mkdir()
+    (core / "f").write_text("mine\n")
+    listing_before = sorted(p.name for p in tmp_path.iterdir())
+    core.chmod(0)
+    try:
+        done = provision(app)
+    finally:
+        core.chmod(0o755)
+    assert done.code == 1, done
+    assert "Traceback" not in done.err, done.err
+    assert f"{core.resolve()} cannot be listed" in done.err, done.err
+    assert stand_in_git.calls("clone") == []
+    assert (core / "f").read_text() == "mine\n"
+    assert sorted(p.name for p in tmp_path.iterdir()) == listing_before
+    assert staging_left(tmp_path) == []
+
+
 def test_ac24_an_empty_folder_is_filled(tmp_path, ac19):
     app, _ = ac19
     (tmp_path / "core").mkdir()
@@ -681,6 +704,56 @@ def test_ac32_a_fetched_manifest_with_a_problem(tmp_path, stand_in_git):
     assert (folder / ".tcw").is_dir()
 
 
+def test_ac32_the_refusal_names_the_project_with_the_problem(tmp_path, stand_in_git):
+    """Two parents fetched in one round, the first with the problem: the
+    refusal names that one and its folder, never the other (review round 1,
+    finding 1)."""
+    from tests.provision_support import manifest_text
+    base = make_remote(tmp_path, "base", project_files("base"))
+    files = project_files("aa", parents=["base"])
+    files[".tcw/tcw-manifest.yaml"] = manifest_text(
+        {"base": {"path": "../base", "repository": str(base), "ref": "x"}})
+    aa = make_remote(tmp_path, "aa", files)
+    bb = make_remote(tmp_path, "bb", project_files("bb"))
+    app = app_project(tmp_path, parents=["aa", "bb"], manifest={
+        "aa": {"path": "../aa", "repository": str(aa)},
+        "bb": {"path": "../bb", "repository": str(bb)}})
+    stand_in_git.allow_clone()
+    done = provision(app)
+    assert done.code == 1, done
+    assert sorted(_cloned(stand_in_git)) == ["aa", "bb"]
+    first, other = (tmp_path / "aa").resolve(), (tmp_path / "bb").resolve()
+    assert f"aa: fetched into {first}, but" in done.err, done.err
+    assert f"remove {first} to undo" in done.err, done.err
+    assert "'aa' to .tcw/tcw-manifest.local.yaml" in done.err, done.err
+    assert f"bb: fetched into {other}, but" not in done.err, done.err
+    assert f"remove {other}" not in done.err, done.err
+
+
+def test_ac32_the_refusal_names_the_deeper_of_two_holders(tmp_path, stand_in_git):
+    """`server` is in the clone made for `top`: a problem in `server`'s own
+    manifest is `server`'s, though `top`'s folder holds it too. The clone is
+    the folder whose removal undoes the fetch."""
+    from tests.provision_support import manifest_text
+    base = make_remote(tmp_path, "base", project_files("base"))
+    files = project_files("server", at="apps/server", parents=["base"])
+    files["apps/server/.tcw/tcw-manifest.yaml"] = manifest_text(
+        {"base": {"path": "../../../base", "repository": str(base), "ref": "x"}})
+    files.update(project_files("top"))
+    mono = make_remote(tmp_path, "mono", files)
+    app = app_project(tmp_path, parents=["top", "server"], manifest={
+        "top": {"path": "../mono", "repository": str(mono)},
+        "server": {"path": "../mono/apps/server", "repository": str(mono),
+                   "subfolder": "apps/server"}})
+    stand_in_git.allow_clone()
+    done = provision(app)
+    assert done.code == 1, done
+    clone = (tmp_path / "mono").resolve()
+    assert f"server: fetched into {clone}, but" in done.err, done.err
+    assert "'server' to .tcw/tcw-manifest.local.yaml" in done.err, done.err
+    assert f"top: fetched into {clone}, but" not in done.err, done.err
+
+
 def test_ac32_a_malformed_parents_is_a_warning(tmp_path, stand_in_git):
     core = make_remote(tmp_path, "core", project_files("core", parents=7))
     app = app_project(tmp_path, parents=["core"], manifest={
@@ -1028,3 +1101,16 @@ def test_ac38_another_projects_store(tmp_path):
     there = tcw(core, "taxonomy", "list")
     assert "tcw project provision --component taxonomy" in there.err, there
     assert "tcw -C" not in there.err
+
+
+def test_ac32_no_fetched_project_holds_the_file(tmp_path):
+    """Design 7.11's general text when the problem is in no fetched project's
+    folder: `_holding` names none."""
+    from types import SimpleNamespace
+
+    from tcw.provision import Planned, _holding
+    (tmp_path / "core").mkdir()
+    core = Planned("core", SimpleNamespace(entry_folder=tmp_path / "core"),
+                   tmp_path / "core", True)
+    assert _holding([core], [tmp_path / "app/.tcw/tcw-manifest.yaml"]) is None
+    assert _holding([core], [tmp_path / "core/.tcw/tcw-manifest.yaml"]) is core

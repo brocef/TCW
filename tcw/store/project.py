@@ -310,6 +310,16 @@ class _Answer:
     occupied: Path | None = None
 
 
+class GraphProblems(ValueError):
+    """`require_valid`'s refusal: the problems as one message, and `files`,
+    the file each is about in the same order, so a caller can say whose
+    files they are without reading the message (TCW-115 Design 7.11)."""
+
+    def __init__(self, message: str, files: list[Path]):
+        super().__init__(message)
+        self.files = files
+
+
 @dataclass(frozen=True)
 class Placement:
     """Where the lookup placed project `id`, and why (TCW-115 Design 8.1): the
@@ -438,6 +448,8 @@ class FsProjectRegistry(ProjectRegistry):
         # The same problems twice, in step: rendered for the refusals that
         # raise them, and as findings for `check()` (TCW-73 Design 6.3).
         self._problems: list[str] = []
+        # The file each rendered problem is about, for `GraphProblems.files`.
+        self._problem_files: dict[str, Path] = {}
         # The problems that are an entry's folder holding files and no
         # project (`_Answer.occupied`), as recorded.
         self._occupied_problems: set[str] = set()
@@ -704,14 +716,16 @@ class FsProjectRegistry(ProjectRegistry):
         return [entry for entry in self._unreachable if entry.id not in self._by_id]
 
     def require_valid(self, *, fetching: bool = False) -> "FsProjectRegistry":
-        """Raise `ValueError` naming every graph problem. `fetching` leaves
+        """Raise `GraphProblems` naming every graph problem. `fetching` leaves
         out an entry's folder that holds files and no project: `tcw project
         provision` refuses that one project as occupied and goes on with the
         others (TCW-115 Design 7.6)."""
         problems = [p for p in self._problems
                     if not (fetching and p in self._occupied_problems)]
         if problems:
-            raise ValueError("; ".join(problems))
+            raise GraphProblems("; ".join(problems),
+                                [self._problem_files[p] for p in problems
+                                 if p in self._problem_files])
         return self
 
     def occupied_ids(self) -> list[str]:
@@ -1301,6 +1315,7 @@ class FsProjectRegistry(ProjectRegistry):
         rendered = f"{path}: {message}"
         if rendered not in self._problems:
             self._problems.append(rendered)
+            self._problem_files[rendered] = Path(path)
             self._findings.append(Finding("error", str(path), message))
 
     def _unreachable_edge(self, config_path: Path, project_id: str | None,
