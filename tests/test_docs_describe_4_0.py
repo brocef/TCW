@@ -25,6 +25,7 @@ import re
 import pytest
 
 from tests.doc_vocabulary import THREE_X_PATTERNS, blocks, scan
+from tests.test_documented_cli_surface import DOC_FILES, REPO
 
 # This repository's taxonomy and capability records stay in 3.x form, with
 # their 3.x tcw:// links, until TCW-118 migrates the repository at the merge
@@ -203,3 +204,10 @@ def test_case_is_kept_for_the_3_0_table_and_dropped_for_the_3_x_table():
     assert scan("TCW WORK START")
     assert scan("TCW projects list", THREE_X_PATTERNS, flags=0) == []
     assert len(scan("tcw projects list", THREE_X_PATTERNS, flags=0)) == 1
+
+
+@pytest.mark.parametrize("path", DOC_FILES,
+                         ids=[path.relative_to(REPO).as_posix() for path in DOC_FILES])
+def test_no_live_document_names_a_3x_form(path):
+    rel = path.relative_to(REPO).as_posix()
+    assert three_x_problems(rel, path.read_text(encoding="utf-8")) == []
