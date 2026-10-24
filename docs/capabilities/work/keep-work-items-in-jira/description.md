@@ -4,3 +4,5 @@ Each stage maps to one Jira status (`work.stages.<stage>.status`), and `tcw work
 
 The TCW Item field holds the item's full identifier,
 `<project>.work/<folder>`.
+
+In Jira mode the item folder holds `tcw-work-item.yaml`; a ticket's key is found at any depth of the work store; and a full identifier never exceeds the 255 characters of the `TCW Item` field.

@@ -3,3 +3,5 @@ As a user, I run `tcw capabilities add <namespace/path> [name]`, with an optiona
 The record's fields are the locked set `tcw capabilities set --field` accepts — `Status`, `Priority`, `Lifecycle`, `Superseded by`, `Subject`, `Feature`, `Roles`, `When`, `Gaps` and `Blocked by`. The 2.x fields `Planning doc` and `Tracker` are retired: a capability links to work the other way, through each work item's `capabilities.yaml`.
 
 Adding a capability writes files and nothing else: it stages and commits nothing, and works the same inside or outside a git repository. A write that fails part-way is rolled back: whatever the command created is removed, and whatever was already there is left as it was.
+
+A capability is a folder holding `tcw-capability.yaml`. `tcw capabilities add --parent` writes `parent:`, and warns when the folder sits in another capability's folder that the parent does not name. A new capability's state file still holds the 3.x opaque `id: cap-…` until TCW-112.

@@ -32,3 +32,5 @@ round with no verdict, is saved and comes back with a warning.
 The web app never moves an item from one stage to another, and never changes
 git state. Each item page names the command that moves it,
 `tcw work advance <slug>`, and `tcw work discard` drops one.
+
+The new item form offers to put a new child's folder inside its parent's folder, unticked by default.

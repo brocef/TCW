@@ -3,3 +3,5 @@ As a user, I run `tcw taxonomy add <name>` to register a vocabulary term or a fe
 A `--vocab <ref>` is a term path (`alpha/zeta`), an `<alias>/<path>` into an inherited taxonomy, or a leaf slug that is unique across the local tree — a unique leaf slug is accepted and stored as its full path. The command refuses a ref that does not resolve or is ambiguous, one that names a feature where a vocabulary term is expected, and a feature carrying no vocabulary ref (usage errors, exit 2); it also refuses a name already taken (exit 3). A refused add writes nothing. So vocabulary entries must be registered before the features that name them.
 
 Adding a term writes files and nothing else: it stages and commits nothing, and works the same inside or outside a git repository. A write that fails part-way is rolled back: whatever the command created is removed, and whatever was already there is left as it was.
+
+A term is a folder holding `tcw-taxonomy.yaml`. `tcw taxonomy add --parent` writes `parent:` and makes the folder inside the parent's only when the parent is a term of this project's own store; a term's other files go in its `resources/` folder.

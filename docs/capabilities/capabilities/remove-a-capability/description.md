@@ -27,3 +27,5 @@ item's `capabilities.yaml`. That record is what the work gates check: moving the
 item on from implementation is refused while that path still resolves (see
 [Advance a work item](tcw://C/work/advance-a-work-item)), and removing the
 capability is my own step, not something completing the item does for me.
+
+A removal is refused while anything it would delete holds a state file, or a TCW 3.x `meta.yaml` or `item.yaml`, which names tcw migrate.

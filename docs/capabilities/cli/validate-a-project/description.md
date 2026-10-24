@@ -100,3 +100,5 @@ and every `tcw://` address, and reports one still in a TCW 3.x form as needing
 tcw migrate. It fails two stores that are the same folder or one inside the
 other, among this project's three stores and those of every project it can
 locate, and a store location that loops back to a store already followed.
+
+`tcw validate` also reports a file or folder that does not belong in an object's folder, a folder with a reserved name, a TCW 3.x `meta.yaml` or `item.yaml`, a state file whose version this TCW cannot read, an `id:` that differs from its folder's name, a full identifier longer than 255 characters, and, as a warning, an object that sits in another object's folder that its `parent` does not name. It never checks the YAML files under an object's `resources/` folder, so a broken sample file there stops no other check.

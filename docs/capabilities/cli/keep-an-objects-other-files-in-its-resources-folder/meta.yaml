@@ -1,0 +1,6 @@
+id: cap-18038d
+name: Keep an object's other files in its resources folder
+Status: Supported
+Subject:
+    - object-folder
+    - state-file

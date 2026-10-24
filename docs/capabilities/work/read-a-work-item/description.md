@@ -9,3 +9,5 @@ An item whose `item.yaml` cannot be read — not valid YAML, an unknown key, a m
 `tcw work path <item>` prints the item's folder; `tcw work path <item> <stage>` prints the stage's document or folder in it; `--next` names the next numbered round of a stage that loops, and `--handoff` the path for a note to whoever resumes the stage. None of them writes anything. `tcw work path` with no item prints the work store's folder.
 
 Errors keep stdout empty and exit non-zero — 4 for an item that does not exist, including one named in the TCW 3.x form `<project-id>/<folder>` — so piping into `jq` fails cleanly rather than on a fragment.
+
+An item is found at any depth of the work store, by its id-path: its folder's path, which may pass through its parent's folder and organising folders.

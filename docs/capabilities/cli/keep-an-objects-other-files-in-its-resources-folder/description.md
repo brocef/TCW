@@ -1,0 +1,1 @@
+Anything that belongs to a term, a capability or a work item but is not one of TCW's own files goes in the object's `resources/` folder. TCW reads nothing else from the object's folder, and `tcw validate` reports what does not belong there.

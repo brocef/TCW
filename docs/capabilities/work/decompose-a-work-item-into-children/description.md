@@ -6,3 +6,5 @@ or, when the project keeps its items in Jira, its ticket key, bare or as
 `<project>.work/<KEY>`. Whatever form I give, the child's `item.yaml` keeps
 the parent's full identifier, and `tcw work show` prints the parent and the
 children by full identifier.
+
+A child made with `--parent` stays at the top of the work store unless `--nest` is also given, or the web app's matching option is ticked; then, when the parent is an item of this project, the child is made inside its parent's folder. Nesting does not set the parent; `--parent` does.

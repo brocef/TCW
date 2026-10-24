@@ -38,3 +38,5 @@ command run in or below it, `tcw validate` and `tcw init` included, refuses with
 one line naming the folder and the command that converts it to TCW 4, and
 writes nothing. `tcw --version`
 and `--help` still answer.
+
+Each object's state file (`tcw-taxonomy.yaml`, `tcw-capability.yaml`, `tcw-work-item.yaml`) carries `tcw-version` on its first line and is read by the same rule as the configuration files.

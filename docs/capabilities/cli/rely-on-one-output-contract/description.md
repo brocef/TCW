@@ -56,3 +56,5 @@ with a `Prints:` line (what goes to standard output) and a `Writes:` line (what
 files it changes, or `nothing`), and closes with examples I can copy. Every
 option has one long spelling; a repeatable option takes one value each time it
 is given.
+
+Taxonomy and capability records carry `parent`, after `owner`: the full identifier of the object they belong under, or null.

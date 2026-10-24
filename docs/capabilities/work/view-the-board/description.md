@@ -17,3 +17,5 @@ because a list that silently left it out would read as complete.
 In a project that keeps its items in Jira, a ticket whose `TCW Item` field
 still holds a TCW 3.x value is left out, and one warning on standard error says
 how many were, names their keys, and names tcw migrate.
+
+Items are listed at any depth of the work store, each by its id-path.

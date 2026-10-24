@@ -15,3 +15,5 @@ that still mentions the old name, and leaves that prose for me to edit. An item 
 If any item in my project cannot be read, the rename is refused and nothing
 moves, because a reference that item holds could not be rewritten. TCW never
 commits the rename; the change is mine to commit.
+
+An item is renamed by its id-path, nested or not, within the folder that holds it. An item that has other items nested in its folder cannot be renamed until TCW-114.

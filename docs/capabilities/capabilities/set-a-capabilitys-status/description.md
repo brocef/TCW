@@ -31,3 +31,5 @@ A successful write prints nothing on standard output and names the file it wrote
 on standard error. It stages and commits nothing. A write that fails part-way
 removes the override folder it had just made, rather than leaving an empty one
 behind; an override that already existed keeps what the write put in it.
+
+`tcw capabilities set --parent` changes the parent, and an empty value clears it; it is refused, whole, on an inherited capability until TCW-112.
