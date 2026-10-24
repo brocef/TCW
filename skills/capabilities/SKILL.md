@@ -144,7 +144,7 @@ field:
   `--field K=V`, or `--parent`) on an inherited capability writes the project's
   own capability at that path, holding only the fields given; the inherited
   capability's full identifier is accepted in place of the path. A YAML null
-  clears an inherited field. A list field (`Subject`, `prependedDocs`,
+  clears an inherited field; `--field K=` with an empty value writes one. A list field (`Subject`, `prependedDocs`,
   `appendedDocs`, …) is replaced whole, and an override that does not mention
   one keeps its original's;
 - **compose the body** — a `description.md` in the override replaces the inherited description; `prependedDocs`/`appendedDocs` (bounded lists in `meta.yaml`) wrap it (e.g. a mobile app appending "…or take a photo with the camera"), and an override that does not list them keeps the original's. The override body is a _delta_: an empty one adds no text, so **clearing an override's body re-inherits the inherited description** rather than blanking it (that fallback is what makes append-only overrides work). To say "we deliberately don't have this", use `Status: Omitted`, not an empty body;
