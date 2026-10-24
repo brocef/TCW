@@ -181,3 +181,8 @@ tests/work/jira/test_kept_search.py`: `77 passed`.
 
 The full Python suite was not run by the implementing agent; the
 dispatching session runs it, as CI runs it, before the next review.
+
+The full suite as CI runs it, `.venv/bin/pytest -q -p no:cacheprovider`, run by
+the dispatching session at `065b52ce` (2026-10-24) in two halves by folder:
+`2185 passed, 2 skipped` and `5111 passed, 111 skipped`. `pnpm test`
+`239 passed`; `tsc --noEmit`, `pnpm lint` and `pnpm check:build` clean.
