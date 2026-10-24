@@ -510,6 +510,7 @@ export function NewItemForm({
     const [requestText, setRequestText] = useState("")
     const [props, setProps] = useState<JsonRecord>({})
     const [atStart, setAtStart] = useState(true)
+    const [nest, setNest] = useState(false)
     const [saving, setSaving] = useState(false)
     const [errors, setErrors] = useState<string[]>([])
     const refusals = useRefusals()
@@ -552,6 +553,7 @@ export function NewItemForm({
             if (!here) body.project = target
             if (here && project.inboxItems && !atStart)
                 body.stage = project.inboxStage
+            if (here && nest && properties.parent) body.nest = true
             const result = await requestJson<{
                 "full-id"?: string
                 ticket?: string
@@ -712,6 +714,22 @@ export function NewItemForm({
                                 )}
                                 onChange={(value) => set("parent", value)}
                             />
+                            <Text as="label" size="2">
+                                <Flex align="center" gap="2">
+                                    <Checkbox
+                                        checked={nest}
+                                        disabled={
+                                            !String(props.parent ?? "").trim()
+                                        }
+                                        onCheckedChange={(checked) => {
+                                            setNest(checked === true)
+                                            onDirty(true)
+                                        }}
+                                    />
+                                    Put its folder inside the parent&apos;s
+                                    folder
+                                </Flex>
+                            </Text>
                             <ReferenceInput
                                 label="Blocked by"
                                 multiple

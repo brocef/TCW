@@ -33,3 +33,41 @@ def test_an_encoded_id_path_naming_no_item_is_404(tmp_path, personal_on, serve_p
     commit_all(root)
     served = serve_project(root)
     assert served.get(f"/api/work/{quote(f'{EPIC}/{PART}', safe='')}").status == 404
+
+
+# -- creating (Step 10; AC 18's writing half) ------------------------------------------------
+
+
+def _served_epic(tmp_path, serve_project):
+    root = fs_project(tmp_path)
+    write_item(root, EPIC, {"title": "Epic", "stage": "request"})
+    commit_all(root)
+    return root, serve_project(root)
+
+
+def test_a_create_with_a_parent_and_no_nest_is_made_at_the_top(tmp_path, personal_on,
+                                                                 serve_project):
+    root, served = _served_epic(tmp_path, serve_project)
+    answer = served.post("/api/work", {"title": "Flat",
+                                       "properties": {"parent": f"p.work/{EPIC}"}})
+    assert answer.status == 201, answer.body
+    assert answer.json["full-id"].count("/") == 1
+
+
+def test_a_create_with_nest_is_made_inside_the_parents_folder(tmp_path, personal_on,
+                                                               serve_project):
+    root, served = _served_epic(tmp_path, serve_project)
+    answer = served.post("/api/work", {"title": "Part", "nest": True,
+                                       "properties": {"parent": f"p.work/{EPIC}"}})
+    assert answer.status == 201, answer.body
+    made = answer.json["full-id"]
+    assert made.startswith(f"p.work/{EPIC}/") and made.endswith("-part")
+    assert (root / "docs" / "work" / made.split("/", 1)[1]).is_dir()
+
+
+def test_nest_with_no_parent_is_refused_making_nothing(tmp_path, personal_on, serve_project):
+    root, served = _served_epic(tmp_path, serve_project)
+    before = sorted(p.name for p in (root / "docs" / "work").iterdir())
+    answer = served.post("/api/work", {"title": "Part", "nest": True})
+    assert answer.status == 400
+    assert sorted(p.name for p in (root / "docs" / "work").iterdir()) == before

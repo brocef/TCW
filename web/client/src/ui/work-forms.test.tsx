@@ -282,7 +282,7 @@ describe("the new item form", () => {
             target: { value: "New" },
         })
         await choose("Effort", "low")
-        fireEvent.click(screen.getByRole("checkbox"))
+        fireEvent.click(screen.getByRole("checkbox", { name: /Start at the first stage/ }))
         fireEvent.click(screen.getByRole("button", { name: "Save" }))
         await waitFor(() =>
             expect(onCreated).toHaveBeenCalledWith(
@@ -294,6 +294,38 @@ describe("the new item form", () => {
             title: "New",
             properties: { effort: "low" },
             stage: "intake",
+        })
+    })
+
+    test("nesting inside the parent's folder is unticked by default and sent only when ticked", async () => {
+        const fetch = fakeFetch([
+            [/^POST /, 201, { "full-id": "p.work/2026-10-15-new" }],
+        ])
+        globalThis.fetch = fetch as unknown as typeof globalThis.fetch
+        const posts = () => fetch.calls.filter((c) => c.method === "POST")
+        renderForm()
+        const nest = screen.getByRole("checkbox", {
+            name: /inside the parent's folder/,
+        })
+        expect(nest).not.toBeChecked()
+        expect(nest).toBeDisabled()
+        fireEvent.change(screen.getByRole("textbox", { name: "Title" }), {
+            target: { value: "New" },
+        })
+        const parent = screen.getByRole("combobox", { name: "Parent" })
+        fireEvent.change(parent, { target: { value: "p.work/a" } })
+        fireEvent.keyDown(parent, { key: "Enter" })
+        fireEvent.click(screen.getByRole("button", { name: "Save" }))
+        await waitFor(() => expect(posts()).toHaveLength(1))
+        expect(posts()[0].body).not.toHaveProperty("nest")
+        expect(nest).toBeEnabled()
+        fireEvent.click(nest)
+        expect(nest).toBeChecked()
+        fireEvent.click(screen.getByRole("button", { name: "Save" }))
+        await waitFor(() => expect(posts()).toHaveLength(2))
+        expect(posts()[1].body).toMatchObject({
+            nest: true,
+            properties: { parent: "p.work/a" },
         })
     })
 
@@ -338,7 +370,7 @@ describe("the new item form", () => {
         expect(
             screen.queryByRole("combobox", { name: "Complexity" })
         ).toBeNull()
-        expect(screen.queryByRole("checkbox")).toBeNull()
+        expect(screen.queryByRole("checkbox", { name: /Start at the first stage/ })).toBeNull()
     })
 
     test("in Jira mode another project's parent is kept with a warning, a blocker is not", async () => {

@@ -496,6 +496,11 @@ def create(request: Request):
     unknown = sorted(set(props) - set(CREATE_PROPERTIES))
     if unknown:
         raise usage(f"properties has unknown entries: {', '.join(unknown)}")
+    # Inside the parent's folder (TCW-111 Design 5), refused with no parent
+    # before anything is made, as `tcw work new --nest` is.
+    nest = request.field("nest", bool, required=False, default=False)
+    if nest and not props.get("parent"):
+        raise usage("nest puts the item's folder inside its parent's; give the parent")
     target = request.field("project", required=False)
     if target and target != ctx.backend.project:
         others = sorted(k for k, v in props.items() if k != "priority" and v)
@@ -526,7 +531,8 @@ def create(request: Request):
                         f"assignable in this project; choose one from the suggestions")
     with request.lock:
         item = new_item(ctx.backend, title, changes,
-                        stage=request.field("stage", required=False), request=text)
+                        stage=request.field("stage", required=False), request=text,
+                        nest=nest)
     answer: dict[str, Any] = {"full-id": str(item.slug)}
     if notes:
         answer["warnings"] = notes
