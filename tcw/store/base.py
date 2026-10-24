@@ -444,28 +444,37 @@ class ProjectRegistry(ABC):
         whose own parent links could not be read, since what reaches the
         project is then unknown. A project that passes nothing for `axis`
         never stops it, whatever its state."""
-        from tcw.errors import InheritedUnavailable
         order = self.load_order(project_id)
-        start = order.ids[-1]
-        absent = {*order.missing, *order.unreadable}
-        links = {pid: self.parents(pid) for pid in order.ids if pid not in absent}
-        passes = passing(axis, start, links, absent=frozenset(absent))
+        passes = self.passing_in(order, axis)
         found: list[Project] = []
         for pid in order.ids:
-            if pid not in passes:
-                continue
-            if pid in order.missing:
-                raise InheritedUnavailable(
-                    f"'{start}' inherits its {axis} from project '{pid}', which is "
-                    f"not on this machine: {self.absent_note(pid)}",
-                    project=pid, axis=axis, reason="missing")
-            if pid in order.unreadable:
-                raise InheritedUnavailable(
-                    f"'{start}' inherits its {axis} through project '{pid}', whose "
-                    f"parents could not be read: {self.link_problem(pid)}",
-                    project=pid, axis=axis, reason="unreadable")
-            found.append(self.order_project(pid))
+            if pid in passes:
+                if pid in order.missing or pid in order.unreadable:
+                    raise self.inherited_unavailable(order, axis, pid)
+                found.append(self.order_project(pid))
         return found
+
+    def passing_in(self, order: LoadOrder, axis: str) -> set[str]:
+        """The IDs of `order` that pass `axis` to its project (Design 5.1),
+        nothing being passed through a project missing or unreadable."""
+        absent = frozenset({*order.missing, *order.unreadable})
+        links = {pid: self.parents(pid) for pid in order.ids if pid not in absent}
+        return passing(axis, order.ids[-1], links, absent=absent)
+
+    def inherited_unavailable(self, order: LoadOrder, axis: str, project_id: str):
+        """Design 6.2's error for `project_id`, missing or unreadable, which
+        would pass `axis` to the project of `order`."""
+        from tcw.errors import InheritedUnavailable
+        start = order.ids[-1]
+        if project_id in order.missing:
+            return InheritedUnavailable(
+                f"'{start}' inherits its {axis} from project '{project_id}', which is "
+                f"not on this machine: {self.absent_note(project_id)}",
+                project=project_id, axis=axis, reason="missing")
+        return InheritedUnavailable(
+            f"'{start}' inherits its {axis} through project '{project_id}', whose "
+            f"parents could not be read: {self.link_problem(project_id)}",
+            project=project_id, axis=axis, reason="unreadable")
 
     def order_project(self, project_id: str) -> Project:
         """The `Project` for an ID of a load order that is available here. A

@@ -526,3 +526,111 @@ def test_ac26_a_planning_workspace_in_two_repositories(tmp_path):
     assert "'ws'" in finding, lines
     assert [p.id for p in FsProjectRegistry.open(alone).sources("config")] == ["app"]
     assert tcw(alone, "work", "list").code == 0
+
+
+# -- AC 19 and Design 3.6: `extends` held to the parent links ---------------------------
+
+
+def extends(root: Path, axis: str, *ids: str) -> None:
+    path = config_file(root)
+    document = yaml.safe_load(path.read_text())
+    document.setdefault(axis, {})["extends"] = list(ids)
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+
+
+def tree(tmp_path, name, *, parents=None, children=None, axes=("taxonomy",)):
+    from tcw.store.fs import init
+    root = make_project(tmp_path, name)
+    init(list(axes), root)
+    return link(root, parents=parents, children=children)
+
+
+def test_ac19_an_extended_parent_not_here_stops_with_exit_7(tmp_path):
+    app = tree(tmp_path, "app", parents=["core"], axes=("taxonomy", "capabilities"))
+    extends(app, "taxonomy", "core")
+    from tests.test_capabilities_rm import write_cap
+    write_cap(app, "cli", id="cap-cli00001", Status="Supported")
+    write_cap(app, "cli/x", id="cap-x000001", Status="Supported")
+    (app / "docs" / "capabilities" / "cli" / "x" / "description.md").write_text(
+        "See [this](tcw://app.capabilities/cli).\n")
+    listed = tcw(app, "taxonomy", "list")
+    assert listed.code == 7, listed
+    assert "'app' inherits its taxonomy from project 'core', which is not on this " \
+        "machine:" in listed.err
+    ran, lines = findings(app)
+    assert ran.code == 0, ran
+    assert not [line for line in lines if line.startswith("error:")], lines
+    [finding] = unresolved(lines)
+    assert "'core'" in finding
+    assert "could not check what it passes down to 'app'" in finding
+    assert finding.endswith("; could not check the taxonomy inherited from it"), finding
+
+
+@pytest.mark.parametrize("axis", ["taxonomy", "capabilities"])
+@pytest.mark.parametrize("shape", ["outside", "behind-none", "descendant"])
+def test_ac19_an_extends_the_links_do_not_pass_is_refused(tmp_path, axis, shape):
+    if shape == "descendant":
+        app = tree(tmp_path, "ws", children=["kid"], axes=(axis,))
+        tree(tmp_path, "kid", parents=["ws"], axes=(axis,))
+        named = "kid"
+    else:
+        app = tree(tmp_path, "app", axes=(axis,),
+                   parents=[{"id": "core", "inherit": "none"}] if shape == "behind-none"
+                   else None)
+        tree(tmp_path, "core" if shape == "behind-none" else "other", axes=(axis,))
+        named = "core" if shape == "behind-none" else "other"
+    extends(app, axis, named)
+    project = app.name
+    words = f"'{named}' is in {axis}.extends, but '{project}' does not inherit its {axis} " \
+            f"from it: name it under 'parents:'"
+    listed = tcw(app, axis, "list")
+    assert listed.code == 1 and words in listed.err, listed
+    ran, lines = findings(app)
+    assert ran.code == 1 and any(line.startswith("error:") and words in line
+                                 for line in lines), lines
+    extends(app, axis)
+    before = config_file(app).read_bytes()
+    added = tcw(app, axis, "extends", "add", named)
+    assert added.code == 2 and words in added.err, added
+    assert config_file(app).read_bytes() == before
+
+
+@pytest.mark.parametrize("state", ["missing", "unreadable"])
+def test_ac19_when_what_lies_above_is_unknown(tmp_path, state):
+    app = tree(tmp_path, "app", parents=["lib"])
+    if state == "unreadable":
+        proj(tmp_path / "lib", "lib", parents="top")
+    extends(app, "taxonomy", "core")
+    listed = tcw(app, "taxonomy", "list")
+    assert listed.code == 7, listed
+    lead = ("from project 'lib', which is not on this machine:" if state == "missing"
+            else "through project 'lib', whose parents could not be read:")
+    assert f"'app' inherits its taxonomy {lead}" in listed.err, listed
+    ran, lines = findings(app)
+    assert ran.code == 0, ran
+    assert not [line for line in lines if line.startswith("error:")], lines
+    [finding] = unresolved(lines)
+    assert "'lib'" in finding
+    first = ("could not check what it passes down to 'app'" if state == "missing"
+             else "could not check what 'lib' passes down to 'app'")
+    assert first in finding
+    assert finding.endswith("; could not check the taxonomy inherited from it"), finding
+    extends(app, "taxonomy")
+    before = config_file(app).read_bytes()
+    added = tcw(app, "taxonomy", "extends", "add", "core")
+    assert added.code == 7, added
+    assert config_file(app).read_bytes() == before
+
+
+def test_ac9_a_siblings_extends_is_read_from_its_own_load_order(tmp_path):
+    from tcw.store.project import FsProjectRegistry
+    tree(tmp_path, "ws", children=["a", "b"])
+    a = tree(tmp_path, "a", parents=["ws"])
+    b = tree(tmp_path, "b", parents=["ws", "bp"])
+    tree(tmp_path, "bp")
+    extends(b, "taxonomy", "bp")
+    added = tcw(b, "taxonomy", "add", "t")
+    assert added.code == 0, added
+    shown = tcw(a, "taxonomy", "show", "b.taxonomy/t")
+    assert shown.code == 0 and "t" in shown.out, shown
+    assert FsProjectRegistry.open(a).get("bp") is None

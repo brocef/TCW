@@ -1691,7 +1691,7 @@ class FsProjectRegistry(ProjectRegistry):
             files.add(personal_file(root, LOCAL_MANIFEST_NAME, self._anchors))
         return files
 
-    def manifest_findings(self) -> list[Finding]:
+    def manifest_findings(self, inherited=()) -> list[Finding]:
         """`tcw validate`'s check of every entry in the active project's two
         manifests, whether or not `projects:` names the ID (Design 5.1): an
         entry whose folder is not here, or empty, is `unresolved`; one whose
@@ -1708,7 +1708,8 @@ class FsProjectRegistry(ProjectRegistry):
         # 6.5's last paragraph), added to its finding rather than given one
         # of its own.
         owned = self.manifest_files()
-        unchecked = {record["id"]: record["message"] for record in self._availability()
+        unchecked = {record["id"]: record["message"]
+                     for record in self._availability(inherited)
                      if record["decided_by"] in owned}
         findings: list[Finding] = []
         for file, base, entries in manifests:
@@ -1733,12 +1734,14 @@ class FsProjectRegistry(ProjectRegistry):
                                             str(file), answer.problem + overridden))
         return findings
 
-    def _availability(self) -> list[dict]:
+    def _availability(self, inherited=()) -> list[dict]:
         """Design 6.5's rows (a), (b) and (d), one record per project of the
         family's load order or listed by a member of the family below it
         that is not on this machine or whose links could not be read: its
         ID, its `where` (the file naming it), its message, and the manifest
-        whose entry decided where a missing one should be."""
+        whose entry decided where a missing one should be. `inherited` holds
+        `(project ID, axis)` for each project at which a store check stopped
+        (row c), added to that project's record, or giving it one."""
         self._load_graph()
         here = self.current.id
         try:
@@ -1782,6 +1785,18 @@ class FsProjectRegistry(ProjectRegistry):
             for child_id in self.declared_child_ids(member.id):
                 if child_id not in order.ids:
                     note(child_id, cfg.path, "b", member.id)
+        for project_id, axis in inherited:
+            if project_id not in records:
+                note(project_id, self._naming_file(project_id), "a", here)
+            record = records.get(project_id)
+            if record is None:
+                continue
+            suffix = f"; could not check the {axis} inherited from it"
+            if "suffixes" in record:          # not on this machine: (a), (b), then (c)
+                if suffix not in record["suffixes"]:
+                    record["suffixes"].append(suffix)
+            elif not record["message"].endswith(suffix):   # unreadable: (d), then (c)
+                record["message"] += suffix
         for record in records.values():
             record["message"] += "".join(record.pop("suffixes", []))
         return list(records.values())
@@ -1795,14 +1810,14 @@ class FsProjectRegistry(ProjectRegistry):
         return self._reached_from.get(cfg.path, self._current_path) if cfg \
             else self._current_path
 
-    def availability_findings(self) -> list[Finding]:
+    def availability_findings(self, inherited=()) -> list[Finding]:
         """One `unresolved` finding per project Design 6.5 reports, except a
         missing one whose deciding entry is in the active project's own
         manifests: `manifest_findings` reports that one, with the same
         suffixes (TCW-107 Design 5.1)."""
         owned = self.manifest_files()
         return [Finding("unresolved", str(record["where"]), record["message"])
-                for record in self._availability()
+                for record in self._availability(inherited)
                 if record["decided_by"] is None or record["decided_by"] not in owned]
 
     @staticmethod

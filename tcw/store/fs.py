@@ -854,9 +854,51 @@ class _FederationCycles:
         return found
 
 
+class _NotInherited(ValueError):
+    """Design 3.6's refusal of an `extends` ID the project does not inherit
+    that axis from."""
+
+
+def _extends_target(registry, axis: str, owner_root: Path, owner_id: str,
+                    extends_id: str) -> "Project":
+    """The project an `extends` ID of the project at `owner_root` names,
+    held to the parent links until TCW-112 (Design 3.6, 6.3): it must pass
+    `axis` to that project. A passing project not available here raises
+    `InheritedUnavailable` (exit 7), as does any ID while some passing
+    project is not available, since what lies above is then unknown; any
+    other ID raises `_NotInherited`. `registry` is the command's one, and the
+    load order is the store's own project's, which may lie outside the
+    active project's family (Design 3.6's "whose links decide")."""
+    active = owner_id in ("", registry.current.id) and \
+        _same_folder_or_equal(owner_root, registry.project_root)
+    order = registry.load_order() if active else \
+        registry.load_order(owner_id, root=owner_root)
+    owner = order.ids[-1]
+    passes = registry.passing_in(order, axis) - {owner}
+    absent = {*order.missing, *order.unreadable}
+    if extends_id in passes:
+        if extends_id in absent:
+            raise registry.inherited_unavailable(order, axis, extends_id)
+        return registry.order_project(extends_id)
+    blocked = next((pid for pid in order.ids if pid in passes and pid in absent), None)
+    if blocked is not None:
+        raise registry.inherited_unavailable(order, axis, blocked)
+    raise _NotInherited(
+        f"'{extends_id}' is in {axis}.extends, but '{owner}' does not inherit its "
+        f"{axis} from it: name it under 'parents:' with an 'inherit' that includes "
+        f"{axis}")
+
+
+def _same_folder_or_equal(a: Path, b: Path) -> bool:
+    try:
+        return Path(a).resolve() == Path(b).resolve()
+    except OSError:
+        return False
+
+
 def _extended_component_stores(
     project_root: Path, config: dict, label: str, component: str,
-    walk: "_FederationWalk | None" = None,
+    walk: "_FederationWalk | None" = None, owner_id: str = "",
 ) -> "tuple[dict[str, object], list[str]]":
     """Each extended project's component store, by project id, and the ids whose
     edge closed a cycle.
@@ -871,24 +913,28 @@ def _extended_component_stores(
     projects, so this is also the
     honest place to detect one.
     """
-    registry = FsProjectRegistry.open(project_root).require_valid()
+    from tcw.locate import Locator
+    ids = _extends_ids(config, label)
+    active_root = (walk.active_root if walk is not None and walk.active_root is not None
+                   else project_root)
+    registry = Locator.of(active_root).registry if ids else None
+    if registry is not None:
+        registry.require_valid()
     walk = (walk or _FederationWalk()).descend(project_root.resolve())
     stores: dict[str, object] = {}
     cyclic: list[str] = []
-    for project_id in _extends_ids(config, label):
-        project = registry.get(project_id)
-        if project is None:
-            note = unreachable_project_note(registry, project_id)
-            # `label` already ends in `<component>.extends`, so the word is not
-            # repeated here the way it was when this took a bare file path.
-            raise ValueError(
-                f"{label}: {note}" if note else
-                f"{label}: project '{project_id}' is not reachable "
-                "through projects"
-            )
+    for project_id in ids:
         # Identity first: extending yourself is wrong whatever the store does,
         # and asking the store about it would make a config error depend on
         # whether a tree happens to be provisioned.
+        if owner_id and project_id == owner_id:
+            raise ValueError(f"a {component} store cannot extend itself")
+        try:
+            project = _extends_target(registry, component, project_root, owner_id,
+                                      project_id)
+        except _NotInherited as refused:
+            # `label` already ends in `<component>.extends`.
+            raise ValueError(f"{label}: {refused}") from None
         if Path(project.locator).resolve() == project_root.resolve():
             raise ValueError(f"a {component} store cannot extend itself")
         if Path(project.locator).resolve() in walk.seen:
@@ -1757,7 +1803,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         # already refuses by project id.
         self.extends, self.extends_cycles = _extended_component_stores(
             self.project_root, self.config, self._extends_label(), "taxonomy",
-            walk=self._walk_for(_walk),
+            walk=self._walk_for(_walk), owner_id=self.project_id,
         )
 
     # -- reads --
@@ -2026,13 +2072,16 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         extends = _extends_ids(self.config, self._extends_label())
         if project_id in extends:
             raise Refused(f"extends project already exists: {project_id}")
-        registry = FsProjectRegistry.open(self.project_root).require_valid()
-        project = registry.get(project_id)
-        if project is None:
-            note = unreachable_project_note(registry, project_id)
-            raise UsageError(note or f"project '{project_id}' is not registered")
-        if project_id == registry.current.id:
+        if project_id == self.project_id:
             raise Refused("a taxonomy cannot extend itself")
+        registry = self.locator.registry.require_valid()
+        try:
+            # Design 3.6: an ancestor passing taxonomy; exit 7 when what lies
+            # above is not known, and nothing written.
+            project = _extends_target(registry, "taxonomy", self.project_root,
+                                      self.project_id, project_id)
+        except _NotInherited as refused:
+            raise UsageError(str(refused)) from None
         if not (Path(project.locator) / "docs" / "taxonomy").is_dir():
             raise UsageError(f"project '{project_id}' has no docs/taxonomy/")
         extends.append(project_id)
@@ -2310,7 +2359,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         # already refuses by project id.
         self.extends, self.extends_cycles = _extended_component_stores(
             self.project_root, self.config, self._extends_label(), "capabilities",
-            walk=self._walk_for(_walk),
+            walk=self._walk_for(_walk), owner_id=self.project_id,
         )
 
     # -- resolution --
@@ -2883,13 +2932,16 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         extends = _extends_ids(self.config, self._extends_label())
         if project_id in extends:
             raise Refused(f"extends project already exists: {project_id}")
-        registry = FsProjectRegistry.open(self.project_root).require_valid()
-        project = registry.get(project_id)
-        if project is None:
-            note = unreachable_project_note(registry, project_id)
-            raise UsageError(note or f"project '{project_id}' is not registered")
-        if project_id == registry.current.id:
+        if project_id == self.project_id:
             raise Refused("a capabilities store cannot extend itself")
+        registry = self.locator.registry.require_valid()
+        try:
+            # Design 3.6: an ancestor passing capabilities; exit 7 when what lies
+            # above is not known, and nothing written.
+            project = _extends_target(registry, "capabilities", self.project_root,
+                                      self.project_id, project_id)
+        except _NotInherited as refused:
+            raise UsageError(str(refused)) from None
         if not (Path(project.locator) / "docs" / "capabilities").is_dir():
             raise UsageError(f"project '{project_id}' has no docs/capabilities/")
         extends.append(project_id)

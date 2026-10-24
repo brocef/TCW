@@ -502,9 +502,10 @@ def test_an_absent_upstream_is_a_warning_and_extends_says_unreachable(tmp_path):
     assert out.returncode == 0, out.stdout + out.stderr
     assert "core" in out.stdout + out.stderr, out.stdout
     added = _tcw(app, "taxonomy", "extends", "add", "core")
-    assert added.returncode != 0
-    # TCW-107 Design 6.2: a project not on this machine.
-    assert "project 'core' is not on this machine" in added.stderr, added.stderr
+    assert added.returncode == 7
+    # TCW-108 Design 6.3: a parent passing the axis, not on this machine.
+    assert "from project 'core', which is not on this machine" in added.stderr, \
+        added.stderr
 
 
 def test_a_project_beyond_an_upstream_cannot_be_named(tmp_path):

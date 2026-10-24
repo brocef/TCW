@@ -574,22 +574,25 @@ def test_check_alias_collides_with_local_top_level(tmp_path):
 def test_check_cycle(tmp_path):
     a = node(tmp_path, "a")
     b = node(tmp_path, "b")
-    # Each extends the other, so neither link can be a parent passing the
-    # axis both ways: `a` names `b` as a parent, and `b` lists `a` as a child.
+    # `a` names `b` as a parent and `b` lists `a`: `b` extending its
+    # descendant `a` is refused (TCW-108 Design 3.6), so the cycle is never
+    # built and that refusal is what opening `a` reports.
     write_project_config(a, "id: a\nparents:\n- id: b\n  inherit: [taxonomy]\n")
     write_manifest(a, {"b": "../b"})
     write_project_config(b, "id: b\nchildren:\n- a\n")
     write_manifest(b, {"a": "../a"})
     declare_taxonomy_extends(a, "extends:\n  - b\n")
     declare_taxonomy_extends(b, "extends:\n  - a\n")
-    problems = [str(f) for f in FsTaxonomyStore.open(a).check()]
-    assert any("cycle" in p for p in problems)
+    with pytest.raises(ValueError, match="'a' is in taxonomy.extends, but 'b' does "
+                                         "not inherit its taxonomy from it"):
+        FsTaxonomyStore.open(a).check()
 
 
 def test_check_unknown_extends_project(tmp_path):
     cons = node(tmp_path, "consumer")
     declare_taxonomy_extends(cons, "extends:\n  - ghost\n")
-    with pytest.raises(ValueError, match="not reachable"):
+    with pytest.raises(ValueError, match="'ghost' is in taxonomy.extends, but "
+                                         "'consumer' does not inherit"):
         FsTaxonomyStore.open(cons)
 
 

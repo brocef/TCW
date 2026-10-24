@@ -252,11 +252,16 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     # A project of the family that is not available here, one finding each
     # (TCW-108 Design 6.5); one that this project's own manifests place is
     # reported once, by `manifest_findings` (TCW-107 Design 5.1).
-    findings: list[Finding] = registry.availability_findings()
-    findings += registry.manifest_findings()
-    findings += registry.warning_findings()
     notes: list[str] = []
-    findings += validate(project_root, notes=notes)
+    unavailable: list = []
+    checked = validate(project_root, notes=notes, unavailable=unavailable)
+    # Where a store check stopped at a project it inherits from (Design 6.5
+    # row c), said in that project's one finding.
+    inherited = [(e.project, e.axis) for e in unavailable]
+    findings: list[Finding] = registry.availability_findings(inherited)
+    findings += registry.manifest_findings(inherited)
+    findings += registry.warning_findings()
+    findings += checked
     for note in notes:
         print(note, file=sys.stderr)
     if args.remote:

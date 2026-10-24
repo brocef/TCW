@@ -11,7 +11,7 @@ from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 
 
 from nodeconfig import declare_extends
-from tcw.errors import TcwError
+from tcw.errors import InheritedUnavailable, TcwError, UsageError
 from tests.projectfiles import write_config, write_manifest
 
 
@@ -212,15 +212,22 @@ def test_check_unlisted_extra_doc(tmp_path):
 def test_check_federation_cycle(tmp_path):
     a = repo(tmp_path, "a")
     b = repo(tmp_path, "b")
-    # Each extends the other, so neither link can be a parent passing the
-    # axis both ways: `a` names `b` as a parent, and `b` lists `a` as a child.
+    # `a` names `b` as a parent and `b` lists `a`: `a` may extend `b`, and
+    # `b` may not extend its descendant `a`, so the cycle cannot be written
+    # (TCW-108 Design 3.6).
     write_config(a, "id: a\nparents:\n- id: b\n  inherit: [capabilities]\n")
     write_manifest(a, {"b": "../b"})
     write_config(b, "id: b\nchildren:\n- a\n")
     write_manifest(b, {"a": "../a"})
     FsCapabilitiesStore.open(a).extends_add("b")
-    FsCapabilitiesStore.open(b).extends_add("a")     # a→b→a
-    assert any("cycle in capability federation" in p for p in map(str, store(a).check()))
+    before = (b / ".tcw" / "tcw-config.yaml").read_bytes()
+    with pytest.raises(UsageError) as refused:
+        FsCapabilitiesStore.open(b).extends_add("a")
+    assert str(refused.value) == (
+        "'a' is in capabilities.extends, but 'b' does not inherit its capabilities "
+        "from it: name it under 'parents:' with an 'inherit' that includes capabilities")
+    assert refused.value.code == 2
+    assert (b / ".tcw" / "tcw-config.yaml").read_bytes() == before
 
 
 # ── get_by_id + qualified override target ────────────────────────────────────
@@ -475,12 +482,13 @@ def test_extending_a_declared_but_absent_project_says_so(tmp_path):
     declare_extends(child, "capabilities",
         "extends:\n  - base\n"
     )
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(InheritedUnavailable) as excinfo:
         store(child).list_all()
     message = str(excinfo.value)
-    assert "'base'" in message
-    # TCW-107 Design 6.2: a project not on this machine.
-    assert "project 'base' is not on this machine" in message
+    # TCW-108 Design 6.3: exit 7, with TCW-107 Design 6.2's sentence.
+    assert excinfo.value.code == 7
+    assert message.startswith("'child' inherits its capabilities from project 'base', "
+                              "which is not on this machine: ")
     # TCW-108 AC 36: the folder the entry was resolved to, not its text.
     assert f"places it at {(tmp_path / 'base').resolve()}" in message
 
@@ -493,7 +501,9 @@ def test_extending_a_project_that_was_never_declared_is_unchanged(tmp_path):
     )
     with pytest.raises(ValueError) as excinfo:
         store(child).list_all()
-    assert "is not reachable through projects" in str(excinfo.value)
+    # TCW-108 Design 3.6: held to the parent links.
+    assert "'nowhere' is in capabilities.extends, but 'child' does not inherit its " \
+        "capabilities from it" in str(excinfo.value)
 
 
 def test_extends_add_names_a_declared_but_absent_project(tmp_path):
@@ -502,8 +512,9 @@ def test_extends_add_names_a_declared_but_absent_project(tmp_path):
     write_manifest(child, {"base": "../base"})
     with pytest.raises(TcwError) as excinfo:
         FsCapabilitiesStore.open(child).extends_add("base")
-    # TCW-107 Design 6.2: a project not on this machine.
-    assert "project 'base' is not on this machine" in str(excinfo.value)
+    # TCW-108 Design 6.3: a parent passing the axis, not on this machine.
+    assert excinfo.value.code == 7
+    assert "from project 'base', which is not on this machine" in str(excinfo.value)
 
 
 # ── the extended store is resolved, not composed ─────────────────────────────
@@ -641,13 +652,14 @@ def test_a_broken_sibling_reports_its_own_error(tmp_path):
 
 
 def test_a_cycle_is_reported_from_the_top_of_the_chain(tmp_path):
-    """A cycle is truncated by the store that closes it — the deepest one —
-    so the store someone is checking never holds the record itself."""
+    """A cycle needs one project to extend its descendant, which TCW-108
+    Design 3.6 refuses, so the store opened on the way names that instead."""
     base, child = child_of(tmp_path, {})
     declare_extends(base, "capabilities", "extends:\n  - child\n")
     declare_extends(child, "capabilities", "extends:\n  - base\n")
-    problems = [str(f) for f in store(child).check()]
-    assert any("cycle in capability federation" in p for p in problems)
+    with pytest.raises(ValueError, match="'child' is in capabilities.extends, but "
+                                         "'base' does not inherit"):
+        store(child).check()
 
 
 def _diamond(tmp_path, levels: int):

@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Literal
 
 import yaml
 
-from tcw.errors import ProjectGraphError, Unreachable
+from tcw.errors import InheritedUnavailable, ProjectGraphError, Unreachable
 from tcw.findings import Finding
 from tcw.project_files import LEGACY_SENTINEL, SENTINEL
 from tcw.locate import UNRESOLVED
@@ -102,7 +102,7 @@ def _iter(root: Path, pattern: str):
 
 
 def _tree_roots(project_root: Path, skip: "set[str] | frozenset[str]" = frozenset()
-                ) -> dict[str, "Path | ValueError"]:
+                ) -> dict[str, "Path | ValueError | InheritedUnavailable"]:
     """Each tree store this project has, at its resolved root — or why it could
     not be opened. Resolved once, so scanning and checking cannot disagree about
     where a store is. A store moved by `<c>.path` or kept in another repository
@@ -119,6 +119,12 @@ def _tree_roots(project_root: Path, skip: "set[str] | frozenset[str]" = frozense
         try:
             root = STORE_CLASSES[comp].open(project_root).root
         except ValueError as e:
+            roots[comp] = e
+            continue
+        except InheritedUnavailable as e:
+            # The store opens what it extends as it opens (TCW-108 Design
+            # 6.3), so its own files cannot be read either; its check below
+            # meets the same error and says it could not be checked.
             roots[comp] = e
             continue
         if root.is_dir():
@@ -282,8 +288,8 @@ def _config_message(error: Exception, project_root: Path) -> str:
     return text[len(prefix):] if text.startswith(prefix) else text
 
 
-def _run_check(project_root: Path, comp: str,
-               identifier: str | None = None) -> list[Finding]:
+def _run_check(project_root: Path, comp: str, identifier: str | None = None,
+               unavailable: list | None = None) -> list[Finding]:
     """One component's `check()`, or the reason its store could not be opened.
 
     Opening is guarded for every component, not just work. A store that is
@@ -293,6 +299,11 @@ def _run_check(project_root: Path, comp: str,
     whole validation with one component's problem instead of listing it beside
     the others. The project-root `tcw-config.yaml` is also not among the YAML-scan
     roots, so nothing else would catch it.
+
+    A project this store inherits from that is not available here (TCW-108
+    Design 6.3) could not be checked: the error goes in `unavailable` when
+    given, for `tcw validate` to add to that project's one finding (Design
+    6.5 row c), and is otherwise an `unresolved` finding of its own.
     """
     store_cls = {"taxonomy": FsTaxonomyStore,
                  "capabilities": FsCapabilitiesStore}[comp]
@@ -306,6 +317,11 @@ def _run_check(project_root: Path, comp: str,
             problems = store.check(identifier)
     except ValueError as e:
         return [Finding("error", _config_file(project_root), f"{comp}: {e}")]
+    except InheritedUnavailable as e:
+        if unavailable is not None:
+            unavailable.append(e)
+            return []
+        return [Finding("unresolved", _config_file(project_root), f"{comp}: {e}")]
     except Unreachable as e:
         # Another store this check opens is not on this machine (TCW-110
         # Design 7.2): it could not be checked, and the run goes on.
@@ -433,9 +449,11 @@ def config_findings(project_root: Path) -> list[Finding]:
 
 
 def validate(project_root: Path, *, target: ValidationTarget | None = None,
-             notes: list[str] | None = None) -> list[Finding]:
+             notes: list[str] | None = None,
+             unavailable: list | None = None) -> list[Finding]:
     """Every finding for the project ([] = clean). Lines about the run itself
-    are appended to `notes` when given."""
+    are appended to `notes` when given; an inherited project a store check
+    could not reach goes in `unavailable` when given (see `_run_check`)."""
     notes = [] if notes is None else notes
     from tcw.store.project import FsProjectRegistry
 
@@ -487,7 +505,8 @@ def validate(project_root: Path, *, target: ValidationTarget | None = None,
             if configured is not None:
                 problems.append(Finding("error", _config_file(project_root),
                                         f"{comp}.path: {configured}"))
-            problems += _run_check(project_root, comp, target.ref if target else None)
+            problems += _run_check(project_root, comp, target.ref if target else None,
+                                   unavailable)
 
     # (d) With the component checks skipped by a YAML problem, each tree store
     # still says whether it can open and whether a pre-2.5.0 store config is
@@ -499,7 +518,15 @@ def validate(project_root: Path, *, target: ValidationTarget | None = None,
                 problems.append(Finding("error", _config_file(project_root),
                                         f"{comp}: {root}"))
                 continue
-            store = STORE_CLASSES[comp].open(project_root)
+            try:
+                store = STORE_CLASSES[comp].open(project_root)
+            except InheritedUnavailable as e:
+                if unavailable is not None:
+                    unavailable.append(e)
+                else:
+                    problems.append(Finding("unresolved", _config_file(project_root),
+                                            f"{comp}: {e}"))
+                continue
             problems += store._legacy_config_problems()
 
     # (e) The work checks. Not skipped after a YAML problem: they read only the
