@@ -124,3 +124,9 @@ describes no behaviour this round changes, so it is unchanged.
 ## The suite
 
 The full suite is run by the dispatching session, as CI runs it.
+
+The full suite as CI runs it, `.venv/bin/pytest -q -p no:cacheprovider`, run by
+the dispatching session on the branch at `403f0319` (2026-10-24), rebased onto
+`v4` with TCW-113's implement round 2, in two halves by folder: `2175 passed,
+2 skipped` and `5108 passed, 111 skipped`. `pnpm test` `229 passed`;
+`tsc --noEmit`, `pnpm lint` and `pnpm check:build` clean.
