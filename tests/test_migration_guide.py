@@ -1075,6 +1075,9 @@ REMOVED_AFTER_3_0: dict[str, str] = {
     "tcw work edit <slug> [--title] [--priority <name>] [--effort] [--complexity] [--tag] [--untag] [--assignee] [--assign-me] [--parent] [--blocked-by] [--unblocked-by] [--blocks]":
         "the --blocks option of tcw work edit is removed in TCW 4.0: the relation is "
         "recorded on the blocked item, with --blocked-by (TCW-114 Design 2.2)",
+    "tcw capabilities list --local":
+        "the --local option of list is removed in TCW 4.0: --scope own, the default, "
+        "lists only the project's own capabilities (TCW-113 Design 5.1)",
 }
 
 
