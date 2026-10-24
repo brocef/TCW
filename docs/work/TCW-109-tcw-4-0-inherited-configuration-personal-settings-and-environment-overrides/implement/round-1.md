@@ -116,7 +116,7 @@ Only these, each for the design rule named:
 
 - `tests/test_parent_links_cli.py`, the two AC 19 tests that compare the end
   of the finding: they gain `; could not check the configuration inherited
-  from it` after the taxonomy suffix (Design 3.5, 3.6).
+from it` after the taxonomy suffix (Design 3.5, 3.6).
 - `tests/test_manifest_cli.py::test_ac8_an_entry_that_is_wrong[True]`, its
   `newer` case: a parent whose shared file has a newer `tcw-version` is now a
   gap, one `unresolved` finding and exit 0, not a manifest error (Design 1.6).
@@ -197,7 +197,7 @@ ticket.
   lookup defers its problem on the answer (`_Answer.unreadable`,
   `deferred`, `_settle`), and a descendant's stays a graph problem.
 - **TCW-113:** a project read for itself is `load_config(root,
-  personal=False, registry=<the command's registry>)`; without a registry,
+personal=False, registry=<the command's registry>)`; without a registry,
   for a project with `parents:`, it raises `TypeError`. Its ID comes from
   `project_facts`, never from the registry's `current`. It applies the
   variables naming it and reports no variable problem. A gap in its sources
@@ -226,42 +226,42 @@ Evaluated with the plan's Step 13 table.
   `docs/release-notes/upcoming/<folder>.md`, formatted with prettier.
 - **Deferred to TCW-117**, which rewrites the user-facing documents for 4.0
   in one pass. What each must say:
-  - `README.md`: a project takes its parents' `work.tags` and `work.jira`,
-    never its backend; the override variables `TCW_<KEY>__<PROJECT>`, with
-    one example.
-  - `docs/guide/configuration.md` and `skills/configure/references/`: the
-    inherited keys (`work.tags`, `work.jira` with every key under it); that
-    `work.backend` is never inherited; mappings merge key by key, a list or
-    value is replaced, `null` in a shared file removes an inherited value
-    (and restores a default), and `inherit: true` is accepted in
-    `work.tags`; the environment layer after `tcw-config.local.yaml`, the
-    name rule with examples (`TCW_USER_NAME__APP`,
-    `TCW_WORK_JIRA_CREDENTIALS_EMAIL_ENV__MY_PROJ`), values read by type, a
-    variable's mapping merging, the more specific variable winning, and the
-    allowed list (the personal keys; never `children` or a store location);
-    `TCW_NO_PERSONAL_CONFIG=1` turning the variables off; exit 7 for a
-    configuration setting and its two remedies, fetch the project or leave
-    `config` out of that link.
-  - `docs/guide/jira.md`: `work.jira` may come from a parent, key by key;
-    `work.backend: jira` and the statuses are always the project's own; a
-    credential name may come from a variable; a Jira-mode project whose
-    `work.jira` could come from a missing parent cannot open its store
-    (exit 7).
-  - `docs/guide/multi-repo.md`: what a parent in another repository passes,
-    and what happens in a clone without it (tags commands exit 7; the rest of
-    a filesystem project works).
-  - `skills/work/SKILL.md`: "On exit 7 naming a configuration setting
-    (`work.tags`, `work.jira`), report which project it comes from and its two
-    remedies, fetch the project or leave `config` out of that link; do not
-    retry", and that `tcw work tags add` in a child writes `inherit: true`
-    first.
-  - `docs/use-cases.md`: S-5's "another project's personal file is never
-    read" becomes "never read for a project read for itself; an ancestor's
-    personal credential names reach its children"; UC-5 gains the inherited
-    `work.jira` and the child's own `work.backend: jira`; UC-6 gains exit 7
-    for an undecided setting; TCW-108 Design 6.1's "listing, reading and
-    moving its own items still work" holds for a filesystem project, not for
-    a Jira-mode project whose Jira settings come from a missing parent.
+    - `README.md`: a project takes its parents' `work.tags` and `work.jira`,
+      never its backend; the override variables `TCW_<KEY>__<PROJECT>`, with
+      one example.
+    - `docs/guide/configuration.md` and `skills/configure/references/`: the
+      inherited keys (`work.tags`, `work.jira` with every key under it); that
+      `work.backend` is never inherited; mappings merge key by key, a list or
+      value is replaced, `null` in a shared file removes an inherited value
+      (and restores a default), and `inherit: true` is accepted in
+      `work.tags`; the environment layer after `tcw-config.local.yaml`, the
+      name rule with examples (`TCW_USER_NAME__APP`,
+      `TCW_WORK_JIRA_CREDENTIALS_EMAIL_ENV__MY_PROJ`), values read by type, a
+      variable's mapping merging, the more specific variable winning, and the
+      allowed list (the personal keys; never `children` or a store location);
+      `TCW_NO_PERSONAL_CONFIG=1` turning the variables off; exit 7 for a
+      configuration setting and its two remedies, fetch the project or leave
+      `config` out of that link.
+    - `docs/guide/jira.md`: `work.jira` may come from a parent, key by key;
+      `work.backend: jira` and the statuses are always the project's own; a
+      credential name may come from a variable; a Jira-mode project whose
+      `work.jira` could come from a missing parent cannot open its store
+      (exit 7).
+    - `docs/guide/multi-repo.md`: what a parent in another repository passes,
+      and what happens in a clone without it (tags commands exit 7; the rest of
+      a filesystem project works).
+    - `skills/work/SKILL.md`: "On exit 7 naming a configuration setting
+      (`work.tags`, `work.jira`), report which project it comes from and its two
+      remedies, fetch the project or leave `config` out of that link; do not
+      retry", and that `tcw work tags add` in a child writes `inherit: true`
+      first.
+    - `docs/use-cases.md`: S-5's "another project's personal file is never
+      read" becomes "never read for a project read for itself; an ancestor's
+      personal credential names reach its children"; UC-5 gains the inherited
+      `work.jira` and the child's own `work.backend: jira`; UC-6 gains exit 7
+      for an undecided setting; TCW-108 Design 6.1's "listing, reading and
+      moving its own items still work" holds for a filesystem project, not for
+      a Jira-mode project whose Jira settings come from a missing parent.
 
 ## Not done
 
