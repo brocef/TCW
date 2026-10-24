@@ -1,0 +1,3 @@
+changed:
+    - plugin/bootstrap-the-cli
+    - cli/install-from-pypi
