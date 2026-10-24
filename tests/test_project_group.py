@@ -67,3 +67,31 @@ def test_an_error_line_names_the_command_typed(tmp_path):
         done = run(root, *argv)
         assert done.code == 1, (argv, done)
         assert done.err.startswith(prefix), (argv, done.err)
+
+
+# -- Step 5: the three messages that named a removed command -----------------
+
+def test_outside_a_project_the_message_names_project_new(tmp_path):
+    done = run(tmp_path, "work", "list")
+    assert done.code == 1, done
+    assert "run `tcw project new --id <id>` in the project folder" in done.err, done.err
+
+
+@pytest.mark.parametrize("axis", ["taxonomy", "capabilities"])
+def test_a_project_with_no_store_of_an_axis_names_project_new(tmp_path, axis):
+    root = tmp_path / "app"
+    write_config(root, "id: app\n")
+    done = run(root, axis, "list")
+    assert done.code == 1, done
+    assert f"run `tcw project new {axis}" in done.err, done.err
+
+
+def test_new_refuses_a_store_with_a_repository_and_names_both_verbs(tmp_path):
+    root = tmp_path / "app"
+    write_config(root, "id: app\ntaxonomy:\n  repository:\n"
+                       "    url: https://example.invalid/terms.git\n")
+    done = run(root, "project", "new", "taxonomy", "capabilities")
+    assert done.code == 1, done
+    assert "declares a repository; run `tcw project provision`" in done.err, done.err
+    assert "name them: `tcw project new capabilities`" in done.err, done.err
+    assert not (root / "docs" / "taxonomy").exists()

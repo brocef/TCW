@@ -670,7 +670,7 @@ def test_a_malformed_declaration_never_misdirects_to_tcw_init(tmp_path, monkeypa
 
     err = capsys.readouterr().err
     assert "no tcw work node here" not in err
-    assert "tcw init" not in err
+    assert "tcw project new" not in err
     assert "work.repository.url" in err, err
 
 
@@ -691,9 +691,9 @@ def test_the_board_no_longer_misdirects_to_tcw_init(tmp_path, monkeypatch, capsy
 
     err = capsys.readouterr().err
     assert "no tcw work node here" not in err
-    assert "tcw init" not in err
+    assert "tcw project new" not in err
     assert "https://example.invalid/orchestrator.git" in err
-    assert "tcw provision" in err
+    assert "tcw project provision" in err
 
 
 @pytest.mark.parametrize("argv", [
@@ -707,7 +707,7 @@ def test_every_work_command_says_the_same_actionable_thing(tmp_path, monkeypatch
     monkeypatch.chdir(_declared_but_absent(tmp_path))
 
     assert main(argv) == 1
-    assert "tcw provision" in capsys.readouterr().err
+    assert "tcw project provision" in capsys.readouterr().err
 
 
 def test_an_absent_node_still_gets_the_tcw_init_advice(tmp_path, monkeypatch, capsys):
@@ -726,7 +726,7 @@ def test_validate_reports_the_declared_store_rather_than_a_dead_path(tmp_path, c
 
     problems = [str(f) for f in validate(code)]
 
-    assert any("tcw provision" in p for p in problems), problems
+    assert any("tcw project provision" in p for p in problems), problems
     assert not any("is not a directory" in p for p in problems), problems
 
 
@@ -1193,7 +1193,7 @@ def test_a_declared_tree_store_that_is_absent_says_so(tmp_path):
         FsTaxonomyStore.open(code)
 
     assert "taxonomy store is declared" in str(caught.value)
-    assert "tcw provision" in str(caught.value)
+    assert "tcw project provision" in str(caught.value)
 
 
 def test_a_provisioned_tree_store_resolves(tmp_path):
@@ -1272,9 +1272,9 @@ def test_a_declared_tree_store_is_never_reported_as_an_absent_component(
 
     err = capsys.readouterr().err
     assert "no tcw" not in err, err
-    assert "tcw init" not in err, err
+    assert "tcw project new" not in err, err
     assert "https://example.invalid/orchestrator.git" in err, err
-    assert "tcw provision" in err, err
+    assert "tcw project provision" in err, err
 
 
 @pytest.mark.parametrize("argv", TREE_COMMANDS)
@@ -1291,7 +1291,7 @@ def test_a_malformed_tree_declaration_names_the_line_from_every_command(
 
     err = capsys.readouterr().err
     assert "no tcw" not in err, err
-    assert "tcw init" not in err, err
+    assert "tcw project new" not in err, err
     assert f"{component}.repository.url" in err, err
 
 
@@ -1331,9 +1331,9 @@ def test_a_declared_tree_store_is_found_even_with_no_local_component_folder(
 
     err = capsys.readouterr().err
     assert "no tcw" not in err, err
-    assert "tcw init" not in err, err
+    assert "tcw project new" not in err, err
     assert "https://example.invalid/orchestrator.git" in err, err
-    assert "tcw provision" in err, err
+    assert "tcw project provision" in err, err
 
 
 @pytest.mark.parametrize("component", ["taxonomy", "capabilities"])
@@ -1354,7 +1354,7 @@ def test_validate_reports_a_declared_tree_store_rather_than_aborting(
     out = capsys.readouterr().out
     assert f"error: .tcw/tcw-config.yaml: {component}: " in out, out
     assert "has not been provisioned here" in out, out
-    assert "tcw provision" in out, out
+    assert "tcw project provision" in out, out
 
 
 # ── the provisioning verb, across components ────────────────────────────────
@@ -1486,7 +1486,7 @@ def test_a_malformed_tree_declaration_is_named_with_or_without_a_configured_path
 
     err = capsys.readouterr().err
     assert "no tcw" not in err, err
-    assert "tcw init" not in err, err
+    assert "tcw project new" not in err, err
     assert f"{component}.repository.url" in err, err
 
 
@@ -1530,7 +1530,7 @@ def test_a_federation_error_is_not_reported_as_unprovisioned(tmp_path):
         FsCapabilitiesStore.open(node)
     message = str(excinfo.value)
     assert "'capabilities.extends' was removed in TCW 4.0" in message
-    assert "tcw provision" not in message
+    assert "tcw project provision" not in message
     assert not isinstance(excinfo.value, StoreNotProvisioned)
 
 
@@ -1573,7 +1573,7 @@ def test_an_unprovisioned_declared_tree_now_fails_validate(tmp_path):
     problems = [p for p in map(str, validate(code))
                 if p.startswith("error: .tcw/tcw-config.yaml: taxonomy: ")]
     assert len(problems) == 1, problems
-    assert "tcw provision" in problems[0], problems
+    assert "tcw project provision" in problems[0], problems
 
 
 # ── A store that fails to open is not "no node here" ─────────────────────────
@@ -1591,7 +1591,7 @@ def _node(tmp_path: Path, component: str, extra: str) -> Path:
 
 def _assert_reports_not_no_node(err: str, component: str, *expected: str) -> None:
     assert f"no tcw {component} node here" not in err, err
-    assert "tcw init" not in err, err
+    assert "tcw project new" not in err, err
     for text in expected:
         assert text in err, err
 

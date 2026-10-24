@@ -187,7 +187,7 @@ def test_ac17_with_a_repository_declared_the_declaration_answers(tcw, tmp_path,
                         "repository": {"url": str(remote), "path": "docs/work/corelib"}}
     write_config_file(path, yaml.safe_dump(document, sort_keys=False))
     before = tcw(["work", "list"], app)
-    assert before.code == 1 and "tcw provision" in before.err, before
+    assert before.code == 1 and "tcw project provision" in before.err, before
     assert tcw(["project", "provision"], app).code == 0
     after = tcw(["work", "list"], app)
     assert after.code == 0, after.err

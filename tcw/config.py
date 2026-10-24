@@ -15,7 +15,7 @@ each procedure's list are "chain lists": a layer that sets one replaces what
 the layers below resolved, unless the list holds one `inherit: true` entry,
 which stands for that resolved list at its position. Every value and every
 list entry remembers the layer it came from (its `Origin`), so a problem can
-name the file to fix and `tcw config show --origin` can say where each value
+name the file to fix and `tcw project config --origin` can say where each value
 came from.
 
 It sits at the top of the package, beside `tcw/errors.py`, because all three
@@ -63,7 +63,7 @@ LOCAL_ONLY_KEYS = ("children",)
 #: The keys that cross a parent link passing `config` (TCW-109 Design 1.1):
 #: `work.tags`, and `work.jira` with every key under it. Everything else is
 #: each project's own, `work.backend` included. The list grows only in a
-#: release, and its order is the order `tcw config show` names an undecided
+#: release, and its order is the order `tcw project config` names an undecided
 #: key in (Design 7.1).
 INHERITED_KEYS = ("work.tags", "work.jira")
 
@@ -443,7 +443,7 @@ def store_location_problem(key: str | None, value: Any, address: bool = True) ->
     None. An absolute path or one starting with `~` names a folder on one
     machine in a file every machine reads. `key` starts the message; None
     leaves it out, for a problem whose line already names the key. `address`
-    False leaves out the tcw:// form, for `tcw init`, which refuses it."""
+    False leaves out the tcw:// form, for `tcw project new`, which refuses it."""
     if not isinstance(value, str) or value.startswith("tcw://"):
         return None
     if value.startswith("~") or Path(value).is_absolute():

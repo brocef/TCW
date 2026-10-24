@@ -134,7 +134,7 @@ def run_provision(components: list[str], *, dry_run: bool = False,
     # said here rather than left to the registry. Every other command reaches a
     # broken override through `check()`, but this one reads declarations straight
     # from the configs — so without this gate the registry refused the override
-    # while `tcw provision` went and cloned a second copy of the very project the
+    # while provisioning went and cloned a second copy of the very project the
     # override was pointing at. That is the bug the whole feature exists to stop.
     #
     # Deliberately only overrides, not graph problems at large: a graph with a

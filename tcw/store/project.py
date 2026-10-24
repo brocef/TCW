@@ -418,7 +418,7 @@ class FsProjectRegistry(ProjectRegistry):
         self._overrides: list[ProjectOverride] = []
         # Ids whose override was present and wrong. They are not "not obtained
         # yet", so they must not also be reported as unreachable — that would
-        # answer a refusal with `run tcw provision`, which is advice that
+        # answer a refusal with `run tcw project provision`, which is advice that
         # contradicts it.
         self._override_refused: set[str] = set()
         self._loaded = False
@@ -882,7 +882,7 @@ class FsProjectRegistry(ProjectRegistry):
         if not isinstance(project_id, str) or not project_id.strip():
             self._problem(
                 path,
-                "missing project id; migrate with `tcw init --id <project-id>`",
+                "missing project id; migrate with `tcw project new --id <project-id>`",
             )
             return None
         try:
@@ -1270,7 +1270,7 @@ class FsProjectRegistry(ProjectRegistry):
             return
         if project_id in self._override_refused:
             # Told where it is, and it is not a project. That is a refusal, not a
-            # thing to obtain, and `run tcw provision` would contradict it.
+            # thing to obtain, and `run tcw project provision` would contradict it.
             return
         if any(known.id == project_id for known in self._unreachable):
             # One record per project, the first in walk order, however many

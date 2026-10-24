@@ -76,14 +76,14 @@ def test_command_outside_a_node_reports_helpfully(tmp_path, monkeypatch, capsys)
     _git_init(tmp_path)            # a git repo but NOT a tcw node (no sentinel)
     monkeypatch.chdir(tmp_path)
     assert main(["work", "list"]) == 1
-    assert "tcw init" in capsys.readouterr().err
+    assert "tcw project new" in capsys.readouterr().err
 
 
 def test_capabilities_list_outside_a_node_reports_helpfully(tmp_path, monkeypatch, capsys):
     _git_init(tmp_path)            # a git repo but NOT a tcw node (no sentinel)
     monkeypatch.chdir(tmp_path)
     assert main(["capabilities", "list"]) == 1
-    assert "tcw init" in capsys.readouterr().err
+    assert "tcw project new" in capsys.readouterr().err
 
 
 def test_help_lists_four_groups(capsys):

@@ -27,7 +27,7 @@ NAME = "taxonomy"
 
 
 def _missing() -> BackendError:
-    return BackendError("no taxonomy store here — run `tcw init taxonomy --id <id>` "
+    return BackendError("no taxonomy store here — run `tcw project new taxonomy --id <id>` "
                         "in the project folder")
 
 

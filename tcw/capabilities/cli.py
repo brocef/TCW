@@ -28,7 +28,7 @@ NAME = "capabilities"
 
 
 def _missing() -> BackendError:
-    return BackendError("no capabilities store here — run `tcw init capabilities "
+    return BackendError("no capabilities store here — run `tcw project new capabilities "
                         "--id <id>` in the project folder")
 
 

@@ -542,7 +542,7 @@ def test_a_sibling_whose_tree_is_declared_but_absent_says_to_provision(tmp_path,
     message = str(excinfo.value)
     assert "project 'base'" in message
     assert "https://example.invalid/ledger.git" in message
-    assert "tcw provision" in message
+    assert "tcw project provision" in message
 
 
 def _chain(tmp_path, depth: int, moved: set[int] = frozenset()):

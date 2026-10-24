@@ -413,3 +413,50 @@ def test_the_capabilities_skill_changes_records_with_the_code():
     assert all("--status" in l for l in adds), \
         [l for l in adds if "--status" not in l]
     assert any("--status Supported" in l for l in adds)
+
+
+# -- TCW-115 AC 4: no file of the CLI names a removed command ----------------------
+
+REMOVED_COMMAND = re.compile(r"\btcw (init|projects|config show|provision)\b")
+
+# Swept for a removed command: the CLI's code and packaged files, the eval
+# harness, the scripts and the test fixtures. The web app's build output is
+# generated, and the one exception is the table that names each removed
+# command to point at its replacement (TCW-115 Design 1.2).
+SWEPT = ("tcw", "evals", "scripts", "tests/fixtures")
+
+
+def _removed_command_namers() -> list[str]:
+    found = []
+    for top in SWEPT:
+        for path in sorted((REPO / top).rglob("*")):
+            relative = path.relative_to(REPO).as_posix()
+            if not path.is_file() or relative.startswith("tcw/serve/dist/") \
+                    or "__pycache__" in path.parts:
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            if relative == "tcw/cli_suggest.py":
+                start = text.index("REMOVED_COMMANDS: dict[str, str] = {")
+                text = text[:start] + text[text.index("}", start):]
+            found += [f"{relative}:{number}: {line.strip()}"
+                      for number, line in enumerate(text.splitlines(), 1)
+                      if REMOVED_COMMAND.search(line)]
+    return found
+
+
+def test_no_file_of_the_cli_names_a_removed_command():
+    found = _removed_command_namers()
+    assert not found, "\n".join(["these name a removed command:", *found])
+
+
+@pytest.mark.parametrize("text, names", [
+    ("run `tcw provision` to obtain it", True), ("tcw init --id x", True),
+    ("`tcw projects list`", True), ("tcw config show --origin", True),
+    ("tcw provisioning", False), ("tcw initial", False), ("tcw config", False),
+    ("tcw project provision", False),
+])
+def test_the_removed_command_scan_sees_each_name(text, names):
+    assert bool(REMOVED_COMMAND.search(text)) is names

@@ -50,7 +50,7 @@ def test_init_scaffolds_at_the_configured_path(root, capsys, component, where):
     assert not (root / "docs" / component).exists()
     assert yaml.safe_load((root / ".tcw/tcw-config.yaml").read_text())[component] == {"path": where}
     code, _out, err = cli(capsys, component, "list")
-    assert code == 0 and "run `tcw init`" not in err, err
+    assert code == 0 and "run `tcw project new`" not in err, err
 
 
 def test_init_of_both_at_once_honors_both(root, capsys):
@@ -70,7 +70,7 @@ def test_a_path_that_is_not_a_string_is_refused(root, capsys):
 def test_a_declared_repository_is_not_shadowed_by_an_empty_local_store(root, capsys):
     configure(root, taxonomy={"repository": {"url": "git@host:o/terms.git"}})
     code, _out, err = cli(capsys, "project", "new", "taxonomy")
-    assert code == 1 and "tcw provision" in err, err
+    assert code == 1 and "tcw project provision" in err, err
     assert not (root / "docs" / "taxonomy").exists()
 
 
@@ -101,7 +101,7 @@ def test_init_in_a_linked_worktree_builds_where_the_readers_look(tmp_path):
 def test_init_of_several_components_names_the_rest(root, capsys):
     configure(root, taxonomy={"repository": {"url": "git@host:o/terms.git"}})
     code, _out, err = cli(capsys, "project", "new", "work", "taxonomy", "--id", "node")
-    assert code == 1 and "`tcw init work`" in err, err
+    assert code == 1 and "`tcw project new work`" in err, err
 
 
 def test_a_provisioned_repository_is_not_sent_back_to_provision(root, capsys, tmp_path):
@@ -116,5 +116,5 @@ def test_a_provisioned_repository_is_not_sent_back_to_provision(root, capsys, tm
                                              "checkout": str(tmp_path / "co")}})
     assert cli(capsys, "project", "provision", "--component", "taxonomy")[0] == 0
     code, _out, err = cli(capsys, "project", "new", "taxonomy")
-    assert code == 1 and "already provided" in err and "tcw provision" not in err, err
+    assert code == 1 and "already provided" in err and "tcw project provision" not in err, err
     assert not (root / "docs" / "taxonomy").exists()

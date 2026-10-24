@@ -48,7 +48,7 @@ class StoreLocationUnusable(ValueError):
     existed. Rules 1 and 2 try a location and fall through when it does not work
     out, which is right for "there is no store there" and wrong for every other
     reason a store fails to open: a federation error in a project that also declares
-    a repository was reported as "not provisioned; run `tcw provision`", which
+    a repository was reported as "not provisioned; run `tcw project provision`", which
     then succeeded and left the store just as unopenable, because the real error
     had been swallowed two rules earlier.
 
@@ -79,7 +79,7 @@ class StoreDeclarationError(ValueError):
 
     It exists because `find_component_project` cannot otherwise tell "this config is wrong"
     from "this is not a project", and flattening the first to the second is what
-    answered a typo'd `repository` block with "run `tcw init`" — the one command
+    answered a typo'd `repository` block with "run `tcw project new`" — the one command
     that would scaffold a second, empty store beside the real one.
     """
 

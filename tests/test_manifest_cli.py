@@ -572,7 +572,7 @@ def test_ac22_provision_fetches_no_project(tmp_path):
     assert "https://example.invalid/lib.git" in shown.err
     assert "tcw project provision lib" in shown.err
     for output in (ran.err, shown.err):
-        assert "`tcw provision`" not in output and "run tcw provision" not in output
+        assert "`tcw project provision`" not in output and "run tcw project provision" not in output
 
 
 @pytest.mark.parametrize("raw, shown", [

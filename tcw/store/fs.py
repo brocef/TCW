@@ -64,7 +64,7 @@ from tcw.project_files import (CONFIG_NAME, LOCAL_CONFIG_NAME, LOCAL_MANIFEST,
 from tcw.store.project import (FsProjectRegistry, _below, forget_registries,
                                validate_project_id, worktree_anchors)
 
-# Component trees `tcw init` scaffolds. `work` gets a status-folder skeleton;
+# Component trees `tcw project new` scaffolds. `work` gets a status-folder skeleton;
 # `taxonomy` and `capabilities` are flat trees that fill in per their phases.
 COMPONENTS = ("taxonomy", "capabilities", "work")
 
@@ -207,7 +207,7 @@ def _no_prompt_env() -> dict[str, str]:
 #: The personal file beside `.tcw/tcw-config.yaml` (TCW-72 Design 1; TCW-106),
 #: relative to the project root.
 LOCAL_CONFIG = LOCAL_SENTINEL
-#: The lines `tcw init` writes in `.tcw/.gitignore` for the two personal
+#: The lines `tcw project new` writes in `.tcw/.gitignore` for the two personal
 #: files (TCW-107 Design 1.9); the leading `/` limits each rule to that folder.
 LOCAL_CONFIG_RULE = "/" + LOCAL_CONFIG_NAME
 LOCAL_MANIFEST_RULE = "/" + LOCAL_MANIFEST_NAME
@@ -380,7 +380,7 @@ def find_component_project(component: str, start: Path | None = None,
     except (StoreNotProvisioned, StoreDeclarationError):
         # Not "no project here" — the project is right in front of us and says where
         # its store comes from. Flattening this to None is what made `tcw work
-        # list` answer a declared-but-absent store with "run `tcw init`", which
+        # list` answer a declared-but-absent store with "run `tcw project new`", which
         # would scaffold a second, empty store beside the real one.
         #
         # A *malformed* declaration is the same project with the same hazard, only
@@ -391,7 +391,7 @@ def find_component_project(component: str, start: Path | None = None,
         # The one failure that means "there is no store at this location" — the
         # ladder's own definition (see `resolve_store`). Anything else, a removed
         # key or a malformed `<component>.path`, is a project that is here and
-        # wrong, and "run `tcw init`" is the wrong advice for it.
+        # wrong, and "run `tcw project new`" is the wrong advice for it.
         return None
     # A work store that opened is a work store; a tree store's `open` validates
     # nothing when nothing is configured (rule 4), so the "is this component
@@ -501,7 +501,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     # `work_path` kept as its own parameter rather than folded into `paths`:
     # it is the fourth positional argument every existing caller passes, and
     # this component's location has a name in the CLI (`--work-path`,
-    # `tcw init work --work-path`) that predates the mapping.
+    # `tcw project new work --work-path`) that predates the mapping.
     paths = dict(paths or {})
     if work_path is not None:
         paths["work"] = work_path
@@ -520,7 +520,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     read_from_config: set[str] = set()
     # Every component, not only `work`: initializing the taxonomy alone used to
     # scaffold `docs/taxonomy` under a configured `taxonomy.path`, so the "run
-    # `tcw init`" advice for a configured-but-absent store never came true.
+    # `tcw project new`" advice for a configured-but-absent store never came true.
     configured_text: dict[str, str] = {}
     for c in components:
         if c in paths:
@@ -591,16 +591,16 @@ def init(components: list[str], root: Path, project_id: str | None = None,
             # A local tree always wins over a declared home (`resolve_store`
             # rule 1), so an empty one scaffolded here would hide the real store
             # from then on. Whether the home is already provisioned decides the
-            # advice: "run `tcw provision`" after it succeeded sends the user in
+            # advice: "run `tcw project provision`" after it succeeded sends the user in
             # a circle.
             others = [o for o in components if o != c]
-            rest = (f" To scaffold the rest, name them: `tcw init {' '.join(others)}`."
+            rest = (f" To scaffold the rest, name them: `tcw project new {' '.join(others)}`."
                     if others else "")
             try:
                 resolve_store(STORE_CLASSES[c], root)
             except ValueError:
                 raise ValueError(
-                    f"{root / SENTINEL}: {c} declares a repository; run `tcw provision` "
+                    f"{root / SENTINEL}: {c} declares a repository; run `tcw project provision` "
                     f"to fetch it rather than scaffolding an empty local store.{rest}"
                 ) from None
             raise ValueError(
@@ -3737,7 +3737,7 @@ def resolve_store(store_cls, project_root: Path, active_root: Path | None = None
     and if there is no store here try the next place" — which is a statement
     about the *location*, not about every way opening can fail. A store that is
     present and raises while opening has to surface, or the ladder answers a
-    config error with `tcw provision`.
+    config error with `tcw project provision`.
 
     One function for every component, because the ladder is the contract and
     three copies of a contract drift. The two things that genuinely differ are
@@ -3819,7 +3819,7 @@ def resolve_store(store_cls, project_root: Path, active_root: Path | None = None
     except StoreLocationUnusable as unusable:
         # Only this. A store that is *there* and fails to open — a removed key
         # in its project's file, say — is a real error, and swallowing it here
-        # reported "not provisioned; run `tcw provision`", which then succeeded
+        # reported "not provisioned; run `tcw project provision`", which then succeeded
         # and left the store exactly as unopenable.
         #
         # The reason is carried rather than discarded, but **only when the
@@ -3864,7 +3864,7 @@ def resolve_store(store_cls, project_root: Path, active_root: Path | None = None
     raise StoreNotProvisioned(                                  # rule 3
         f"{config_path}: the {component} store is declared in "
         f"{declaration.url} but has not been provisioned here; "
-        f"run `tcw provision` to obtain it"
+        f"run `tcw project provision` to obtain it"
         + (f" — and the configured {local_failure}" if local_failure else ""))
 
 
@@ -3897,7 +3897,7 @@ class FsStoreProvisioner(StoreProvisioner):
     place, so a failed or interrupted fetch is never visible as a store. That is
     what makes "leaves nothing behind" true rather than aspirational.
 
-    Its branches for `PROJECT_TARGET` are unused since `tcw provision` stopped
+    Its branches for `PROJECT_TARGET` are unused since `tcw project provision` stopped
     fetching connected projects (TCW-107 Design 6.3); they are kept for
     `tcw project provision` (TCW-115), which fetches a project into its
     deciding manifest entry's folder and reuses this clone code.
@@ -3950,7 +3950,7 @@ class FsStoreProvisioner(StoreProvisioner):
             self._require_declared_checkout(checkout)
             self._require_store_layout(target)
             raise ValueError(f"{self.component}.repository: {checkout} is not a "
-                             f"usable store; move it aside and run `tcw provision` "
+                             f"usable store; move it aside and run `tcw project provision` "
                              f"again")
         if dry_run:
             # Short on purpose: the caller prints `describe()` immediately above,
@@ -4012,7 +4012,7 @@ class FsStoreProvisioner(StoreProvisioner):
 
         A declared `checkout` is an arbitrary user-chosen directory, so it can
         hold anything at all; saying it is the declared store when it is not
-        would be the one thing `tcw provision` must never do.
+        would be the one thing `tcw project provision` must never do.
 
         Comparison is on the URL as spelled, normalized only for a trailing
         slash and a `.git` suffix. Deliberately not smarter: treating `ssh` and

@@ -611,7 +611,7 @@ def test_the_note_for_a_project_not_here_is_design_6_2s_message(tmp_path):
     assert note == (f"project 'lib' is not on this machine: {manifest} places it at "
                     f"{(tmp_path / 'gone').resolve()}, from https://h/lib.git; fetch it with "
                     f"'tcw project provision lib'")
-    assert "tcw provision`" not in note
+    assert "tcw project provision`" not in note
 
 
 # ---------------------------------------------------------------------------
