@@ -6,6 +6,22 @@ points at the real verb (`status` → `show` or `list`; `info`, `view`, `get` an
 `cat` → `show`; `ls` → `list`), and a near-miss spelling points at the closest
 verbs (`advnce` → `advance`). The 2.x lifecycle commands `start`, `submit`,
 `rework` and `complete`, which `tcw work advance` replaced, suggest `advance`.
+At most three commands are named.
+
+**The commands TCW 4.0 moved into `tcw project`** are answered from a fixed
+table before any other rule, when typed at the top level: *tcw init* is answered
+with `tcw project new`, *tcw projects* (any verb) with `tcw project list`,
+*tcw config* (any verb) with `tcw project config`, and *tcw provision* with
+`tcw project provision`. Each answer is one line saying the old command is now
+the new one.
+
+**A synonym comes before the same word elsewhere.** When the word I typed is a
+verb of another group and also a synonym whose target is valid where I typed it,
+the synonym is named first: *tcw work info* suggests `tcw work show` or
+`tcw project info`. Otherwise a word that is a verb somewhere else is named with
+the group it belongs to, the closest group first: *tcw info* suggests
+`tcw project info`, and *tcw new* suggests `tcw work new` or `tcw project new`.
+
 Nothing is run under the suggested name. Commands that remove things are never
 suggested, and a mistyped removal word (`rm`, `drop`, `delete`) gets no
 suggestion at all.

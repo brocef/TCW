@@ -52,7 +52,9 @@ fix them. The TCW 3 `projects:` key is an error saying to name parents under
 manifests is checked, whether or not a link names it: an entry whose folder is
 not here, or is empty, is `unresolved`, and one whose folder is wrong is an
 error. A project not on this machine is reported with where its manifest entry
-places it and, when the entry gives a repository, the command that fetches it.
+places it and, when the entry gives a repository, the command that fetches it,
+`tcw project provision <id>` (see [Fetch a project that is not on this
+machine](tcw://C/cli/fetch-a-project-that-is-not-on-this-machine)).
 
 A parent, a project further up, or a listed child that is not on this machine
 is one `unresolved` finding saying what could not be checked: what it passes
@@ -73,7 +75,8 @@ refuses like every other command.
 
 **Stores.** Validation tells a store's three failure modes apart: a
 `<component>.path` that is simply wrong, a store declared in another repository
-but not yet provisioned here (naming the declared remote and `tcw project provision`),
+but not yet provisioned here (naming the declared remote and the command that
+fetches that store, `tcw project provision --component <axis>`),
 and a malformed `repository` block (naming the configuration key). The last is
 reported even when no local store can be opened to report it through. A store
 that cannot be opened is one finding beside the others rather than the end of

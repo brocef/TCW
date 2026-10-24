@@ -27,3 +27,9 @@ I can scaffold the layout at a relative path with
 `tcw project new --taxonomy-path <path> taxonomy`. `tcw project new` refuses a `tcw://`
 address there; I write one into `.tcw/tcw-config.yaml` by hand once the project
 exists.
+
+Beside `taxonomy.path` I can declare where the tree _comes from_, with a
+`taxonomy.repository` block, so a machine that has never seen it obtains it
+with `tcw project provision --component taxonomy` (see [declaring the home
+repository](tcw://C/taxonomy/declare-the-taxonomy-stores-home-repository)). A tree
+already present at `taxonomy.path` keeps being used untouched.

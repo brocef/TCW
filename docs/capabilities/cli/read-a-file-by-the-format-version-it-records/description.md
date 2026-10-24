@@ -27,7 +27,10 @@ The same check applies to the project's personal file, to its two manifests,
 configuration of a connected project, which is then not read. When a manifest
 entry placed that project, the version is reported as a problem with the entry;
 when the search or `TCW_PROJECT_<ID>` found it, the problem names the project's
-own `.tcw/tcw-config.yaml`. A
+own `.tcw/tcw-config.yaml`. A project that `tcw project provision` fetches is
+checked the same way before it is moved into place: a clone whose
+`.tcw/tcw-config.yaml` is missing, is a TCW 3.x project, or records a version
+this TCW cannot read is refused and removed, so nothing is left behind. A
 manifest with no `tcw-version` is not read as a 3.x file, since TCW 3 had no
 manifests: the message gives the line to add. `tcw validate` reports each as an
 error.

@@ -27,7 +27,15 @@ instead of doing nothing.
 
 Every command that resolves connected projects honours the same variable,
 because it is read when the connections are loaded rather than by any one
-command. `tcw validate` notes on standard error each variable in effect and
+command. `tcw project path <id>` prints the folder the lookup chose, so I can
+see that the variable took effect (see [Find where a project is on this
+machine](tcw://C/cli/find-where-a-project-is-on-this-machine)), and
+`tcw project list --json` says, for each project, that a variable found it.
+`tcw project provision` never fetches a project the variable places here. When
+the variable names a folder this machine does not have, the lookup skips it, so
+a project fetched for want of it goes into the folder its manifest entry gives,
+not the variable's (see [Fetch a project that is not on this
+machine](tcw://C/cli/fetch-a-project-that-is-not-on-this-machine)). `tcw validate` notes on standard error each variable in effect and
 where it points, so a connection that resolves only because of a variable is
 never a mystery to the next person reading it. A committed manifest entry that
 the variable or my personal manifest overrides is still checked, since it is

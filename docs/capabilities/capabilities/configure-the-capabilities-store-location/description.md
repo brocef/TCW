@@ -26,3 +26,9 @@ Nothing changes for a project that sets nothing. I can scaffold at a configured
 relative path with `tcw project new --capabilities-path <path> capabilities`.
 `tcw project new` refuses a `tcw://` address there; I write one into
 `.tcw/tcw-config.yaml` by hand once the project exists.
+
+Beside `capabilities.path` I can declare where the tree _comes from_, with a
+`capabilities.repository` block, so a machine that has never seen it obtains it
+with `tcw project provision --component capabilities` (see [declaring the home
+repository](tcw://C/capabilities/declare-the-capabilities-stores-home-repository)). A tree
+already present at `capabilities.path` keeps being used untouched.

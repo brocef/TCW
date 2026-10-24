@@ -1,0 +1,7 @@
+id: cap-2d83ea
+name: Fetch a project that is not on this machine
+Status: Supported
+Subject:
+- project
+- manifest
+Feature: project-registry

@@ -40,7 +40,8 @@ never seen it can obtain it — see
 [declaring the home repository](tcw://C/work/declare-the-work-stores-home-repository).
 The declaration is a fallback and never an override: a store already present at
 `work.path` keeps being used untouched, so one configuration serves both a laptop
-that has the folder and a fresh checkout that does not.
+that has the folder and a fresh checkout that does not. `tcw project provision --component work`
+obtains the store on a machine that lacks it.
 
 I can scaffold this layout at a relative path with
 `tcw project new --work-path <path> work`. `tcw project new` refuses a `tcw://` address there;

@@ -2,15 +2,21 @@ As a user, I run `tcw project new --id <project-id> [taxonomy|capabilities|work]
 make the current folder a TCW project: it creates `.tcw/tcw-config.yaml`, whose
 first line records the version of the TCW that wrote it (`tcw-version: 4.0.0`),
 with a canonical project ID, and scaffolds the stores I name, or all three when
-I name none. Nothing is written at the project's root. It works whether or not the folder is in a git repository. There are no
-per-axis `init` commands; `tcw project new work` scaffolds the work store alone. On an
-already configured project I may omit `--id` or repeat the same value; a
-conflicting value is rejected. I can backfill a marker that has no ID with
-`tcw project new --id <project-id>` without losing tags or other configuration; the ID goes below the version
-line, which no edit changes.
+I name none. Nothing is written at the project's root. It works whether or not
+the folder is in a git repository. There are no per-axis commands for this;
+`tcw project new work` scaffolds the work store alone. On an already configured
+project I may run it again to add the stores I name, and I may omit `--id` or
+repeat the same value; a conflicting value is rejected. I can backfill a marker
+that has no ID with `tcw project new --id <project-id>` without losing tags or
+other configuration; the ID goes below the version line, which no edit changes.
 
-`init` prints nothing on standard output. Every file it writes and every folder
-it creates is named on standard error (`wrote <path>`, `created <path>/`), and it
+`tcw project new` is one verb of the `tcw project` group, the commands about a
+project itself rather than its records. TCW 3.x's name for it, *tcw init*, is
+not a command: typed, it is a usage error (exit 2) whose message says that
+`tcw project new` replaces it, and nothing is run.
+
+It prints nothing on standard output. Every file it writes and every folder it
+creates is named on standard error (`wrote <path>`, `created <path>/`), and it
 stages and commits nothing: committing the result is mine to do. Inside a
 repository it adds `/tcw-config.local.yaml` and `/tcw-manifest.local.yaml` to
 `.tcw/.gitignore`, beside the personal files they name, each unless its rule is
@@ -27,14 +33,16 @@ Each store's location is mine to choose: `--work-path`, `--taxonomy-path`, and
 `docs/<component>` and record the choice in `.tcw/tcw-config.yaml`, so later commands
 find it without being told again. A new work location replaces a default
 `docs/work/` only when it holds no work item; moving existing work is mine to do.
-A store whose home repository is declared is not scaffolded: `init` tells me to
-run `tcw project provision` instead, so an empty local store never hides the real one.
+A store whose home repository is declared is not scaffolded: the command tells
+me to run `tcw project provision` to fetch it instead, so an empty local store
+never hides the real one, and when I named other stores too it names the
+`tcw project new` command that scaffolds just those.
 
-Every refusal `init` makes happens before it writes anything at all — no marker,
-no config entry, no folders. It turns down a folder it would make that is really
-a file, a `docs/work` that is a symlink elsewhere, and an unknown store name (a
-usage error, exit 2). A `.tcw/tcw-config.yaml` it cannot read, or whose
-`tcw-version` it cannot read, reports that plainly rather than failing part-way
-through. In a TCW 3.x project, a folder with `tcw-config.yaml` at its root and
-no `.tcw/` folder, `init` refuses like every other command, naming the
-command that converts it to TCW 4.
+Every refusal happens before it writes anything at all: no marker, no config
+entry, no folders. It turns down a folder it would make that is really a file, a
+`docs/work` that is a symlink elsewhere, and an unknown store name (a usage
+error, exit 2). A `.tcw/tcw-config.yaml` it cannot read, or whose `tcw-version`
+it cannot read, is reported plainly rather than failing part-way through. In a
+TCW 3.x project, a folder with `tcw-config.yaml` at its root and no `.tcw/`
+folder, `tcw project new` refuses like every other command, naming the command
+that converts it to TCW 4.

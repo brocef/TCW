@@ -8,7 +8,9 @@ The declaration is a fallback, never an override: a tree already present at
 `taxonomy.path` keeps being used untouched, so one configuration serves a laptop
 that has the folder and a session that cloned only the code. Where the tree is
 absent, every command says so, names the declared remote and the command that
-fetches it, and never reports the project as having no taxonomy — which was the
+fetches it (`tcw project provision --component taxonomy`, or, for another
+project's tree, `tcw -C <folder> project provision --component taxonomy` with
+that project's folder), and never reports the project as having no taxonomy — which was the
 old answer for a checkout that simply had no `docs/taxonomy/` folder, and the
 answer that sent me to `tcw project new`.
 
@@ -19,3 +21,11 @@ repository whose tree path holds an empty or unrelated directory is accepted
 rather than refused. What is still guaranteed is that a failure leaves nothing
 behind: a repository with no directory at the declared path is refused before
 any working copy is published.
+
+With no argument, `tcw project provision` obtains every declared store that is
+missing and then fetches the projects of the family that are not here;
+`tcw project provision --component taxonomy` obtains this store alone and fetches no
+project (see [Provision declared
+stores](tcw://C/cli/provision-declared-stores)). The declaration's `ref` may
+name a branch, a tag or a commit; one that names none of these fails, with
+git's reason.
