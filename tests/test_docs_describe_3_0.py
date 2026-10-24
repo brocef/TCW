@@ -444,7 +444,8 @@ def test_the_web_app_and_the_cli_requirements_do_not_need_node():
 def test_the_documentation_index_links_the_guides_it_must():
     index = {target for _, target in
              links(_section(README.read_text(encoding="utf-8"), "## Documentation"))}
-    for must in ("docs/migration-guide-2.8-to-3.0.0.md",
+    for must in ("docs/migration-guide-3.X-to-4.0.0.md",
+                 "docs/migration-guide-2.8-to-3.0.0.md",
                  "docs/migration-guide-2.4.X-to-2.5.0.md", "docs/guide/cli.md"):
         assert must in index, must
     assert "docs/work-inbox-template.md" not in index
