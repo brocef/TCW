@@ -4,6 +4,7 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 from tcw.cli import main
@@ -551,3 +552,43 @@ def test_every_yaml_name_tcw_writes_is_owned_or_deliberately_not(tmp_path):
         "meta.yaml",
         "item.yaml",
     }, written
+
+
+# -- code spans located, not deleted (TCW-114 plan Step 11) ---------------------------
+
+CODE_TEXTS = [
+    "Example:\n\n```\n[x](tcw://test-project.capabilities/nope)\n```\n",
+    "Write `[x](tcw://test-project.capabilities/nope)` in prose.",
+    "strip fenced ```` ``` ```` then match `](tcw://…)` targets",
+    "a [b](tcw://p.work/x) and `[c](tcw://p.work/y)` and\n~~~\n[d](tcw://p.work/z)\n~~~\n"
+    "[e](tcw://p.work/w)",
+    "``double `tick` span`` then [f](tcw://p.taxonomy/t)",
+    "no code at all [g](tcw://p.capabilities/c)",
+]
+
+
+def _old_strip(md: str) -> str:
+    """What `_strip_code` returned before TCW-114 replaced it."""
+    from tcw.validate import _FENCE_RE, _INLINE_CODE_RE
+    return _INLINE_CODE_RE.sub("", _FENCE_RE.sub("", md))
+
+
+@pytest.mark.parametrize("text", CODE_TEXTS)
+def test_the_text_outside_code_spans_is_what_stripping_left(text):
+    from tcw.validate import code_spans
+    spans = code_spans(text)
+    outside, at = [], 0
+    for start, end in spans:
+        assert at <= start < end <= len(text)
+        outside.append(text[at:start])
+        at = end
+    outside.append(text[at:])
+    assert "".join(outside) == _old_strip(text)
+
+
+def test_links_outside_code_give_positions_in_the_original_text():
+    from tcw.validate import links_outside_code
+    text = CODE_TEXTS[3]
+    found = list(links_outside_code(text))
+    assert [a for _, _, a in found] == ["tcw://p.work/x", "tcw://p.work/w"]
+    assert all(text[s:e] == a for s, e, a in found)

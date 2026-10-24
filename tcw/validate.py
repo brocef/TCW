@@ -73,9 +73,41 @@ class ValidationTarget:
     item: "Item | None" = field(default=None, compare=False)
 
 
-def _strip_code(md: str) -> str:
-    """Drop fenced then inline code spans so `tcw://` examples in code are ignored."""
-    return _INLINE_CODE_RE.sub("", _FENCE_RE.sub("", md))
+def code_spans(md: str) -> list[tuple[int, int]]:
+    """`(start, end)` in `md` of each code span, sorted and not overlapping:
+    fenced blocks first, then inline spans found in the text the fences
+    leave, so a `tcw://` example in code is never read as a link. Located
+    rather than deleted, so a rewrite can change the text around them by
+    position (TCW-114 Design 6.2)."""
+    fences = [m.span() for m in _FENCE_RE.finditer(md)]
+    # The text the fences leave, with where each of its characters was.
+    kept, where, at = [], [], 0
+    for start, end in [*fences, (len(md), len(md))]:
+        kept.append(md[at:start])
+        where.extend(range(at, start))
+        at = end
+    rest = "".join(kept)
+    spans = list(fences)
+    for m in _INLINE_CODE_RE.finditer(rest):
+        if m.end() > m.start():
+            spans.append((where[m.start()], where[m.end() - 1] + 1))
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(spans):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def links_outside_code(md: str):
+    """`(start, end, address)` for each `](tcw://...)` link in `md` outside
+    every code span, `start` and `end` the address's own position in `md`."""
+    spans = code_spans(md)
+    for m in _LINK_RE.finditer(md):
+        start, end = m.span(1)
+        if not any(s <= m.start() < e or s < m.end() <= e for s, e in spans):
+            yield start, end, m.group(1)
 
 
 def _rel(f: Path, project_root: Path) -> str:
@@ -455,9 +487,7 @@ def _file_findings(project_root: Path, roots: list[Path]) -> tuple[list[Finding]
                 else:
                     problems.append(Finding("error", _rel(f, project_root), unreadable))
                 continue
-            text = _strip_code(raw)
-            for m in _LINK_RE.finditer(text):
-                uri = m.group(1)
+            for _, _, uri in links_outside_code(raw):
                 r = resolve_address(project_root, uri)
                 if r.ok:
                     continue
