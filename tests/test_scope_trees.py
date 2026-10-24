@@ -32,8 +32,9 @@ def record(result, key: str, full_id: str) -> dict:
     return found
 
 
-def entry(project, status, inherited):
-    return {"project": project, "status": status, "inherited": inherited}
+def entry(project, status, inherited, full_id):
+    return {"project": project, "status": status, "inherited": inherited,
+            "full-id": full_id}
 
 
 # -- AC 1 ------------------------------------------------------------------------------
@@ -123,17 +124,17 @@ def test_ac12_grouped_rows_in_down(family):
 def test_ac13_statuses_and_overridden_by(family):
     ran = family.run("shared", "capabilities", "list", "--scope", "down", "--json")
     abc = record(ran, "capabilities", ABC)
-    assert abc["statuses"] == [entry("shared", "Missing", False),
-                               entry("desktop", "Supported", False),
-                               entry("server", "Omitted", False)]
+    assert abc["statuses"] == [entry("shared", "Missing", False, ABC),
+                               entry("desktop", "Supported", False, "desktop.capabilities/abc"),
+                               entry("server", "Omitted", False, "server.capabilities/abc")]
     assert abc["overridden-by"] == ["desktop.capabilities/abc", "server.capabilities/abc"]
     ghi = record(ran, "capabilities", GHI)
-    assert ghi["statuses"] == [entry("shared", "Missing", False),
-                               entry("desktop", "Missing", True),
-                               entry("server", "Missing", True)]
+    assert ghi["statuses"] == [entry("shared", "Missing", False, GHI),
+                               entry("desktop", "Missing", True, GHI),
+                               entry("server", "Missing", True, GHI)]
     assert ghi["overridden-by"] == []
     assert record(ran, "capabilities", DEF)["statuses"] == [
-        entry("desktop", "Supported", False)]
+        entry("desktop", "Supported", False, DEF)]
 
 
 BLOCK = ["status by project:", "  Missing: shared", "  Supported: desktop",
@@ -160,12 +161,41 @@ def test_ac14_own_prints_neither(family):
 def test_ac15_a_status_inherited_without_a_ruling(family):
     family.capability("server", "abc", Priority="P2")
     ran = family.run("shared", "capabilities", "list", "--scope", "down", "--json")
-    assert entry("server", "Missing", True) in record(ran, "capabilities", ABC)["statuses"]
+    # Marked inherited, and naming server's own object, which its view comes
+    # from (review round 5, finding 1).
+    assert (entry("server", "Missing", True, "server.capabilities/abc")
+            in record(ran, "capabilities", ABC)["statuses"])
+    shown_json = family.run("shared", "capabilities", "show", "abc", "--scope", "down",
+                            "--json")
+    assert (entry("server", "Missing", True, "server.capabilities/abc")
+            in shown_json.json["capability"]["statuses"])
     shown = family.run("shared", "capabilities", "show", "abc", "--scope", "down")
     at = shown.lines.index("status by project:")
     assert shown.lines[at:at + 3] == ["status by project:",
                                       "  Missing: shared, server (inherited)",
                                       "  Supported: desktop"]
+
+
+def add_grandchild(family) -> None:
+    """`tablet`, a child of `desktop`, whose own `abc` holds only a
+    Priority: an override of `desktop`'s that sets no Status."""
+    from tests.families import _project
+    family.roots["tablet"] = _project(family.base, "tablet")
+    family.add_parent("tablet", "desktop")
+    family.add_child("desktop", "tablet")
+    family.capability("tablet", "abc", Priority="P2")
+
+
+def test_ac15_a_grandchilds_override_that_sets_no_status(family):
+    # The record's `overridden-by` names only direct overrides, so the
+    # entry's `full-id` is what says tablet has an object of its own here.
+    add_grandchild(family)
+    ran = family.run("shared", "capabilities", "list", "--scope", "down", "--json")
+    assert ran.code == 0, ran.err
+    abc = record(ran, "capabilities", ABC)
+    assert "tablet.capabilities/abc" not in abc["overridden-by"]
+    assert (entry("tablet", "Supported", True, "tablet.capabilities/abc")
+            in abc["statuses"])
 
 
 def test_ac16_status_across_the_scope(family):

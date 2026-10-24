@@ -179,6 +179,31 @@ def test_a_detail_under_down_carries_statuses_and_overridden_by(family, shared):
     assert {"coreRevision", "declaredDescription"} <= set(answer.json)
 
 
+def test_each_status_entry_names_the_object_its_projects_view_comes_from(
+        family, serve_project):
+    # Review round 5, finding 1: server's own `abc` holds only a name, and
+    # `tablet`, a child of `desktop`, overrides it with only a Priority.
+    # Both are marked inherited, and neither is in the record's
+    # `overridden-by` on desktop's override page; each entry's `full-id`
+    # still names that project's own object, as the CLI's does.
+    from tests.test_scope_trees import add_grandchild
+    family.capability("server", "abc", name="Server Abc")
+    add_grandchild(family)
+    key = quote("desktop.capabilities/abc", safe="")
+    answer = serve_project(family["shared"]).get(f"/api/capabilities/{key}?scope=down")
+    assert answer.status == 200, answer.body
+    statuses = answer.json["capability"]["statuses"]
+    assert {e["project"]: (e["inherited"], e["full-id"]) for e in statuses} == {
+        "shared": (False, "shared.capabilities/abc"),
+        "desktop": (False, "desktop.capabilities/abc"),
+        "server": (True, "server.capabilities/abc"),
+        "tablet": (True, "tablet.capabilities/abc")}
+    cli = family.run("shared", "capabilities", "show", "desktop.capabilities/abc",
+                     "--scope", "down", "--json")
+    assert cli.code == 0, cli.err
+    assert statuses == cli.json["capability"]["statuses"]
+
+
 def test_with_no_scope_a_detail_carries_neither(shared):
     answer = shared.get("/api/capabilities/abc")
     assert answer.status == 200

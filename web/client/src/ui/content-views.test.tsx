@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import { vi } from "vitest"
 import { ThemeProvider } from "../theme"
 import type { TSortDirection, TWorkSortKey } from "../model/tree"
@@ -308,13 +308,24 @@ test("under down the page lists each status with its projects", () => {
                 name: "Abc",
                 status: "Missing",
                 statuses: [
-                    { project: "shared", status: "Missing", inherited: false },
+                    {
+                        project: "shared",
+                        status: "Missing",
+                        inherited: false,
+                        "full-id": "shared.capabilities/abc",
+                    },
                     {
                         project: "desktop",
                         status: "Supported",
                         inherited: false,
+                        "full-id": "desktop.capabilities/abc",
                     },
-                    { project: "server", status: "Missing", inherited: true },
+                    {
+                        project: "server",
+                        status: "Missing",
+                        inherited: true,
+                        "full-id": "shared.capabilities/abc",
+                    },
                 ],
                 "overridden-by": ["desktop.capabilities/abc"],
             },
@@ -348,6 +359,69 @@ test("under down the page lists each status with its projects", () => {
         "abc"
     )
     expect(screen.queryByRole("link", { name: "server" })).toBeNull()
+})
+
+test("a project whose own object sets no status is linked by its entry", () => {
+    // Review round 5, finding 1: server's own `abc` holds only a name and
+    // tablet, a grandchild, overrides desktop's with only a Priority. Both
+    // are inherited and neither is in `overridden-by`; each entry's
+    // `full-id` is its own object, so each is linked. phone has no object
+    // of its own here, so its entry names desktop's, and it is not linked.
+    capabilityPage({
+        capability: capability(
+            "abc",
+            {
+                name: "Abc",
+                status: "Missing",
+                statuses: [
+                    {
+                        project: "shared",
+                        status: "Missing",
+                        inherited: false,
+                        "full-id": "shared.capabilities/abc",
+                    },
+                    {
+                        project: "desktop",
+                        status: "Supported",
+                        inherited: false,
+                        "full-id": "desktop.capabilities/abc",
+                    },
+                    {
+                        project: "tablet",
+                        status: "Supported",
+                        inherited: true,
+                        "full-id": "tablet.capabilities/abc",
+                    },
+                    {
+                        project: "phone",
+                        status: "Supported",
+                        inherited: true,
+                        "full-id": "desktop.capabilities/abc",
+                    },
+                    {
+                        project: "server",
+                        status: "Missing",
+                        inherited: true,
+                        "full-id": "server.capabilities/abc",
+                    },
+                ],
+                "overridden-by": ["desktop.capabilities/abc"],
+            },
+            "shared"
+        ),
+        coreRevision: "",
+    })
+    const block = screen.getByRole("region", { name: "Status by project" })
+    const lines = [...block.querySelectorAll("li")].map((li) => li.textContent)
+    expect(lines).toEqual([
+        "Missing: shared, server (inherited)",
+        "Supported: desktop, tablet (inherited), phone (inherited)",
+    ])
+    const key = (name: string) =>
+        within(block).getByRole("link", { name }).getAttribute("data-nav-key")
+    expect(key("server")).toBe("server.capabilities/abc")
+    expect(key("tablet")).toBe("tablet.capabilities/abc")
+    expect(within(block).queryByRole("link", { name: "phone" })).toBeNull()
 })
 
 test("with no statuses the page has no status block", () => {

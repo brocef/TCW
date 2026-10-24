@@ -67,6 +67,10 @@ export interface TScopeStatus {
     project: string
     status: string | null
     inherited: boolean
+    /** The object the project's view at the path comes from: its own
+     * when its owner is `project`, whether or not that object sets a
+     * Status. */
+    "full-id": string
 }
 
 /** An item record: what `tcw work list --json` and `show --json` carry. */

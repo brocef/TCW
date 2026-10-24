@@ -616,7 +616,11 @@ of the objects grouped under it.
 `show` prints, gains `statuses`: for each covered project `Q` that is not
 unavailable, in scope order, whose own view object at `X` is in the row's
 group, one entry `{"project": "<Q>", "status": <its view object's combined
-Status, or null>, "inherited": <bool>}`. `inherited` is true when `Q` has no
+Status, or null>, "inherited": <bool>, "full-id": "<its view object's full
+identifier>"}`. `full-id` is `Q`'s own object at `X` when `Q` has one,
+whether or not it sets `Status`, so the client can link each project with an
+own object at the path (6.9) without inferring it from `inherited` (added in
+implement round 6, answering review round 5's finding 1). `inherited` is true when `Q` has no
 own object at `X`, or has one that does not set `Status` (the rule of TCW-112
 Design 7.2, "never ruled on here"), and false otherwise. A view object is in
 a group when its full identifier (its chain's first member's, TCW-112 Design

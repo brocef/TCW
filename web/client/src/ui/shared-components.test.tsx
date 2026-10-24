@@ -475,13 +475,24 @@ test("a capability row under down shows each status counted", () => {
             {
                 status: "Missing",
                 statuses: [
-                    { project: "shared", status: "Missing", inherited: false },
+                    {
+                        project: "shared",
+                        status: "Missing",
+                        inherited: false,
+                        "full-id": "shared.capabilities/abc",
+                    },
                     {
                         project: "desktop",
                         status: "Supported",
                         inherited: false,
+                        "full-id": "desktop.capabilities/abc",
                     },
-                    { project: "server", status: "Omitted", inherited: false },
+                    {
+                        project: "server",
+                        status: "Omitted",
+                        inherited: false,
+                        "full-id": "server.capabilities/abc",
+                    },
                 ],
             },
             "shared"

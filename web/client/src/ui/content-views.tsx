@@ -26,7 +26,7 @@ import type {
     TScopeProject,
     TScopeStatus,
 } from "../model/types"
-import { fullIdText, parseFullId, routeKey } from "../model/identifier"
+import { parseFullId, routeKey } from "../model/identifier"
 import { ReferenceInput } from "./reference-input"
 import { ProjectIdContext } from "./project-context"
 import { LABELS, idPathOf, inherited, pathFor } from "./route-utils"
@@ -324,21 +324,16 @@ function StatusByProject({
 }) {
     const projectId = useContext(ProjectIdContext)
     if (!capability.statuses) return null
-    // A project whose own object sets the status has an object at this
-    // path; the full identifiers the record gives are used where it gives
-    // them: its own, the one it overrides, and those that override it.
-    const shown = parseFullId(capability["full-id"])
+    // A project has an object of its own at this path when the object its
+    // view comes from is owned by it, whether or not that object sets the
+    // status; the record's other full identifiers (its own, the one it
+    // overrides, and those that override it) are used for the rest.
     const own = new Map<string, string>()
-    for (const entry of capability.statuses)
-        if (shown && !entry.inherited)
-            own.set(
-                entry.project,
-                fullIdText(entry.project, "capabilities", shown.idPath)
-            )
     for (const fullId of [
         capability["full-id"],
         capability.overrides,
         ...(capability["overridden-by"] ?? []),
+        ...capability.statuses.map((entry) => entry["full-id"]),
     ]) {
         const owner = fullId ? parseFullId(fullId)?.project : undefined
         if (owner && fullId) own.set(owner, fullId)

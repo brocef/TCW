@@ -1033,8 +1033,18 @@ const ABC_DOWN = {
             name: "Abc",
             status: "Missing",
             statuses: [
-                { status: "Missing", project: "p", inherited: false },
-                { status: "Supported", project: "desktop", inherited: false },
+                {
+                    status: "Missing",
+                    project: "p",
+                    inherited: false,
+                    "full-id": "p.capabilities/abc",
+                },
+                {
+                    status: "Supported",
+                    project: "desktop",
+                    inherited: false,
+                    "full-id": "desktop.capabilities/abc",
+                },
             ],
             "overridden-by": ["desktop.capabilities/abc"],
         }),
@@ -1192,21 +1202,25 @@ test("an override's page links each project with its own object at the path", as
                                 status: "Missing",
                                 project: "p",
                                 inherited: false,
+                                "full-id": "p.capabilities/abc",
                             },
                             {
                                 status: "Supported",
                                 project: "desktop",
                                 inherited: false,
+                                "full-id": "desktop.capabilities/abc",
                             },
                             {
                                 status: "Omitted",
                                 project: "server",
                                 inherited: false,
+                                "full-id": "server.capabilities/abc",
                             },
                             {
                                 status: "Missing",
                                 project: "tablet",
                                 inherited: true,
+                                "full-id": "desktop.capabilities/abc",
                             },
                         ],
                         "overridden-by": [],
@@ -1289,11 +1303,13 @@ test("the object an override names is linked though its status is inherited", as
                                 status: "Missing",
                                 project: "p",
                                 inherited: true,
+                                "full-id": "p.capabilities/abc",
                             },
                             {
                                 status: "Supported",
                                 project: "desktop",
                                 inherited: false,
+                                "full-id": "desktop.capabilities/abc",
                             },
                         ],
                         "overridden-by": [],
@@ -1311,4 +1327,65 @@ test("the object an override names is linked though its status is inherited", as
     expect(
         within(lines).getByRole("link", { name: "p" }).getAttribute("href")
     ).toBe("/capabilities/abc")
+})
+
+test("an override's page links a project whose own object sets no status", async () => {
+    // Review round 5, finding 1: server's own `abc` holds only a name, so
+    // its entry is inherited, and the override's record names neither it
+    // nor tablet's override of desktop's (`overridden-by` holds direct
+    // overrides only); each entry's `full-id` is its project's own object.
+    serve({ scopes: FAMILY }, [
+        [
+            /^GET \/api\/capabilities\/desktop\.capabilities%2Fabc\?scope=down$/,
+            200,
+            {
+                capability: capability(
+                    "abc",
+                    {
+                        name: "Desktop Abc",
+                        status: "Supported",
+                        overrides: "p.capabilities/abc",
+                        statuses: [
+                            {
+                                status: "Missing",
+                                project: "p",
+                                inherited: false,
+                                "full-id": "p.capabilities/abc",
+                            },
+                            {
+                                status: "Supported",
+                                project: "desktop",
+                                inherited: false,
+                                "full-id": "desktop.capabilities/abc",
+                            },
+                            {
+                                status: "Supported",
+                                project: "tablet",
+                                inherited: true,
+                                "full-id": "tablet.capabilities/abc",
+                            },
+                            {
+                                status: "Missing",
+                                project: "server",
+                                inherited: true,
+                                "full-id": "server.capabilities/abc",
+                            },
+                        ],
+                        "overridden-by": [],
+                    },
+                    "desktop"
+                ),
+                coreRevision: "r1",
+            },
+        ],
+    ])
+    renderApp("/capabilities/desktop.capabilities/abc?scope=down")
+    const lines = await screen.findByRole("region", {
+        name: "Status by project",
+    })
+    const href = (name: string) =>
+        within(lines).getByRole("link", { name }).getAttribute("href")
+    expect(href("server")).toBe("/capabilities/server.capabilities/abc")
+    expect(href("tablet")).toBe("/capabilities/tablet.capabilities/abc")
+    expect(lines).toHaveTextContent("Missing: p, server (inherited)")
 })

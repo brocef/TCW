@@ -35,17 +35,52 @@ test("a path asks for the choice after any parameters it has", () => {
 test("a status summary counts each status in first-appearance order", () => {
     expect(
         statusSummary([
-            { project: "shared", status: "Missing", inherited: false },
-            { project: "desktop", status: "Supported", inherited: false },
-            { project: "server", status: "Omitted", inherited: false },
+            {
+                project: "shared",
+                status: "Missing",
+                inherited: false,
+                "full-id": "shared.capabilities/abc",
+            },
+            {
+                project: "desktop",
+                status: "Supported",
+                inherited: false,
+                "full-id": "desktop.capabilities/abc",
+            },
+            {
+                project: "server",
+                status: "Omitted",
+                inherited: false,
+                "full-id": "server.capabilities/abc",
+            },
         ])
     ).toBe("Missing(1), Supported(1), Omitted(1)")
     expect(
         statusSummary([
-            { project: "a", status: "Supported", inherited: false },
-            { project: "b", status: "Missing", inherited: true },
-            { project: "c", status: "Supported", inherited: true },
-            { project: "d", status: null, inherited: false },
+            {
+                project: "a",
+                status: "Supported",
+                inherited: false,
+                "full-id": "a.capabilities/x",
+            },
+            {
+                project: "b",
+                status: "Missing",
+                inherited: true,
+                "full-id": "b.capabilities/x",
+            },
+            {
+                project: "c",
+                status: "Supported",
+                inherited: true,
+                "full-id": "a.capabilities/x",
+            },
+            {
+                project: "d",
+                status: null,
+                inherited: false,
+                "full-id": "d.capabilities/x",
+            },
         ])
     ).toBe("Supported(2), Missing(1), (no status)(1)")
 })

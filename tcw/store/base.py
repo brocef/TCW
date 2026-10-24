@@ -580,7 +580,7 @@ def scope_rows(id_path: str, *, order: list[str], own: list[ScopeObject],
             for member in members}
         statuses = None if views is None else [
             {"project": view.project, "status": view.status,
-             "inherited": not view.sets_status}
+             "inherited": not view.sets_status, "full-id": str(view.view_object)}
             for view in views if view.view_object in members]
         rows.append(ScopeRow(shown, members, statuses, overridden_by))
     rows.sort(key=lambda row: place.get(row.shown.project, len(place)))

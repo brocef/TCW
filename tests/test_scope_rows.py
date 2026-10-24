@@ -19,8 +19,9 @@ def term(project: str, path: str) -> FullId:
     return FullId(project, "taxonomy", path)
 
 
-def entry(project, status, inherited):
-    return {"project": project, "status": status, "inherited": inherited}
+def entry(project, status, inherited, full_id):
+    return {"project": project, "status": status, "inherited": inherited,
+            "full-id": str(full_id)}
 
 
 def test_ac12_ac13_one_row_for_an_object_and_its_overrides():
@@ -32,9 +33,9 @@ def test_ac12_ac13_one_row_for_an_object_and_its_overrides():
                                         ProjectView("server", server, "Omitted", True)])
     assert row.shown == shared
     assert row.group == {shared, desktop, server}
-    assert row.statuses == [entry("shared", "Missing", False),
-                            entry("desktop", "Supported", False),
-                            entry("server", "Omitted", False)]
+    assert row.statuses == [entry("shared", "Missing", False, shared),
+                            entry("desktop", "Supported", False, desktop),
+                            entry("server", "Omitted", False, server)]
     assert row.overridden_by[shared] == [desktop, server]
     assert row.overridden_by[desktop] == [] and row.overridden_by[server] == []
 
@@ -45,9 +46,9 @@ def test_ac12_a_project_that_inherits_counts_with_the_status_it_inherits():
                        views=[ProjectView("shared", shared, "Missing", True),
                               ProjectView("desktop", shared, "Missing", False),
                               ProjectView("server", shared, "Missing", False)])
-    assert row.statuses == [entry("shared", "Missing", False),
-                            entry("desktop", "Missing", True),
-                            entry("server", "Missing", True)]
+    assert row.statuses == [entry("shared", "Missing", False, shared),
+                            entry("desktop", "Missing", True, shared),
+                            entry("server", "Missing", True, shared)]
 
 
 def test_ac12_a_descendants_new_object_is_its_own_row():
@@ -57,7 +58,7 @@ def test_ac12_a_descendants_new_object_is_its_own_row():
                               ProjectView("desktop", desktop, "Supported", True),
                               ProjectView("server", None)])
     assert row.shown == desktop
-    assert row.statuses == [entry("desktop", "Supported", False)]
+    assert row.statuses == [entry("desktop", "Supported", False, desktop)]
 
 
 def test_ac15_an_override_that_sets_no_status_is_marked_inherited():
@@ -66,7 +67,9 @@ def test_ac15_an_override_that_sets_no_status_is_marked_inherited():
                        own=[ScopeObject(server, shared)], chain=[],
                        views=[ProjectView("shared", shared, "Missing", True),
                               ProjectView("server", server, "Missing", False)])
-    assert row.statuses[-1] == entry("server", "Missing", True)
+    # The entry is marked inherited, and still names server's own object,
+    # which its view comes from (review round 5, finding 1).
+    assert row.statuses[-1] == entry("server", "Missing", True, server)
 
 
 def test_ac18_two_new_objects_at_one_id_path_are_two_rows_in_scope_order():
@@ -76,8 +79,8 @@ def test_ac18_two_new_objects_at_one_id_path_are_two_rows_in_scope_order():
                       views=[ProjectView("desktop", desktop, "Supported", True),
                              ProjectView("server", server, "Omitted", True)])
     assert [r.shown for r in rows] == [desktop, server]
-    assert [r.statuses for r in rows] == [[entry("desktop", "Supported", False)],
-                                          [entry("server", "Omitted", False)]]
+    assert [r.statuses for r in rows] == [[entry("desktop", "Supported", False, desktop)],
+                                          [entry("server", "Omitted", False, server)]]
 
 
 def test_ac19_under_down_each_override_of_an_inherited_object_is_its_own_row():
@@ -100,7 +103,7 @@ def test_ac19_under_all_the_view_object_holds_its_chain_and_the_overrides():
                               ProjectView("server", server, "Omitted", True)])
     assert row.shown == docs
     assert [e["project"] for e in row.statuses] == ["docs", "shared", "desktop", "server"]
-    assert row.statuses[1] == entry("shared", "Supported", True)
+    assert row.statuses[1] == entry("shared", "Supported", True, docs)
     assert row.overridden_by[docs] == [desktop, server]
 
 
