@@ -253,3 +253,12 @@ under `tests/work/jira/recorded/`); every web file this item changed passes.
 - Nothing in the plan is left undone. The helpers that converted tests and
   wrote the new test files did not deliver their own written reports; their
   work was checked by the suite and the mutation checks above instead.
+
+## Added by the dispatching session
+
+- `cli/read-from-an-upstream-project` is taken out of this item's
+  `capabilities.yaml` `changed:` list, decided by the dispatching session on
+  2026-10-24: TCW-108 removed that capability (its ledger lists it under
+  `removed:`), so the records gate refused the move to review with "declared
+  changed but not in the ledger". The spec (line 118) and plan named it
+  before TCW-108 had landed.

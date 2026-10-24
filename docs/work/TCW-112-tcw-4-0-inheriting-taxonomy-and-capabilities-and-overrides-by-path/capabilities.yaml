@@ -22,7 +22,6 @@ changed:
     - capabilities/detect-capability-drift
     - capabilities/configure-the-capabilities-store-location
     - cli/reference-a-tcw-object
-    - cli/read-from-an-upstream-project
     - work/declare-capability-changes-in-a-child-projects-ledger
     - web/editing
 taxonomy:
