@@ -24,7 +24,7 @@ def state(root, path: str) -> dict:
 
 def patch(served, path: str, payload: dict):
     key = path.replace("/", "%2F")
-    revision = detail(served, "capabilities", key)["coreRevision"]
+    revision = detail(served, "capabilities", f"{key}?scope=up")["coreRevision"]
     return served.patch(f"/api/capabilities/{key}", {"revision": revision, **payload})
 
 
@@ -65,7 +65,8 @@ def test_ac33_an_override_carries_what_it_overrides(served):
     found = detail(served, "capabilities", "cli%2Fx")["capability"]
     assert (found["full-id"], found["overrides"]) == \
         ("app.capabilities/cli/x", "core.capabilities/cli/x")
-    listed = {c["full-id"]: c for c in served.get("/api/capabilities").json}
+    listed = {c["full-id"]: c for c in
+              served.get("/api/capabilities?scope=up").json["capabilities"]}
     assert listed["app.capabilities/cli/x"]["overrides"] == "core.capabilities/cli/x"
     assert listed["core.capabilities/cli/y"]["overrides"] is None
     assert "core.capabilities/cli/x" not in listed
@@ -92,7 +93,7 @@ def test_ac33_a_patch_of_an_inherited_capability_is_read_only(family, served):
 def test_ac33_a_missing_parent_answers_503(family, serve_project):
     core, app = family
     shutil.rmtree(core)
-    answer = serve_project(app).get("/api/taxonomy")
+    answer = serve_project(app).get("/api/taxonomy?scope=up")
     assert_error(answer, 503, "inherited-unavailable")
     assert "'core'" in answer.json["error"]
 

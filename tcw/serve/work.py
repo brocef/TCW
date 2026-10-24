@@ -23,7 +23,7 @@ from typing import Any, Callable, Iterator
 from tcw.errors import BackendError, NotFound, TcwError, Unreachable
 from tcw.ids import FullId, MalformedId, identity, sort_input
 from tcw.serve import files as item_files
-from tcw.serve.records import checked
+from tcw.serve.records import checked, scope_of
 from tcw.serve.server import (Request, Written, creates, not_found, read_only, route,
                               usage)
 from tcw.store.base import (
@@ -39,6 +39,7 @@ from tcw.work.model import (
 )
 from tcw.work.open import name_item, read_work_config, work_path
 from tcw.work.record import item_record, readable
+from tcw.work.scoped import every_item, list_scope
 
 LOCAL, BACKEND = "local", "backend"
 # At most this many comments per item page; the page says when it got them all.
@@ -114,12 +115,18 @@ def people(request: Request, ctx: WorkContext, ids) -> dict[str, str]:
     """Display names for the people a response mentions, when the backend
     owns the record (a person is then an account ID). An ID with no name, or
     a name that cannot be read now, is left out: the page shows the ID."""
-    if ctx.owner != BACKEND:
+    return backend_people(request, ctx.backend, ids)
+
+
+def backend_people(request: Request, backend, ids) -> dict[str, str]:
+    """`people` for the items of one backend, which may be another
+    project's (TCW-113 Design 6.2)."""
+    if start_stage() not in backend.external_stages:
         return {}
     names: dict[str, str] = {}
     for person in sorted({i for i in ids if isinstance(i, str) and i}):
         try:
-            name = request.services.user_name(ctx.backend, person)
+            name = request.services.user_name(backend, person)
         except Exception:
             continue
         if name:
@@ -185,7 +192,17 @@ def project(request: Request):
         "user": user,
         "people": people(request, ctx, [user]),
         "axes": _axes(ctx.root),
+        "scopes": _scopes(ctx.root),
     }
+
+
+def _scopes(root: Path) -> dict[str, list[str]]:
+    """The IDs each scope covers, in scope order, those not on this machine
+    included (TCW-113 Design 6.2), for the page's scope control."""
+    from tcw.locate import Locator
+    from tcw.store.base import SCOPES
+    registry = Locator.of(root).registry
+    return {scope: [m.id for m in registry.scope_members(scope)] for scope in SCOPES}
 
 
 # -- the board ---------------------------------------------------------------------------
@@ -205,14 +222,28 @@ def _tags(request: Request) -> frozenset[str] | None:
     return frozenset(given) if given else None
 
 
+def _scoped(request: Request):
+    """The projects a work read covers, or None for the served project
+    alone, read as before TCW-113: scope `own` and no `project`."""
+    scope = (request.query.get("scope") or ["own"])[-1] or "own"
+    project = (request.query.get("project") or [""])[-1]
+    if scope == "own" and not project:
+        return None
+    return scope_of(request)
+
+
 def board(request: Request):
-    """`items` is exactly what `tcw work list [--all] [--tag …] --json` prints
-    under `items`. Without tags the board is one backend read: the default
-    board is taken from the full list by the model's own rule, and `blocks`
-    and `children` come from that same read."""
+    """`items` is exactly what `tcw work list [--all] [--tag …] [--scope …]
+    [--project …] --json` prints under `items`. Without tags or a scope the
+    board is one backend read: the default board is taken from the full list
+    by the model's own rule, and `blocks` and `children` come from that same
+    read."""
     ctx = context(request)
     tags = _tags(request)
     every = request.query.get("all", [""])[-1] in ("1", "true")
+    covered = _scoped(request)
+    if covered is not None:
+        return _scoped_board(request, ctx, covered, Query(all=every, tags=tags))
     try:
         if tags is None:
             siblings = ctx.backend.list(Query(all=True))
@@ -224,16 +255,48 @@ def board(request: Request):
     except CANNOT_ANSWER as error:
         if ctx.owner != BACKEND or isinstance(error, NotFound):
             raise
-        return HTTPStatus.OK, {
-            "items": [{**identity(ctx.slug(folder)),
-                       "path": str(ctx.layout.item_dir(ctx.slug(folder)))}
-                      for folder in item_folders(ctx)],
-            "people": {}, "fallback": True, "unavailable": str(error)}
+        return HTTPStatus.OK, _fallback(ctx, error)
     return HTTPStatus.OK, {
         "items": [item_record(i, siblings, ctx.layout) for i in items],
         "people": people(request, ctx, [i.assignee for i in items]),
         "fallback": False,
     }
+
+
+def _fallback(ctx: WorkContext, error: Exception) -> dict[str, Any]:
+    """The board of a project whose backend owns the record and cannot
+    answer: its item folders alone, read from the work path."""
+    return {"items": [{**identity(ctx.slug(folder)),
+                       "path": str(ctx.layout.item_dir(ctx.slug(folder)))}
+                      for folder in item_folders(ctx)],
+            "people": {}, "fallback": True, "unavailable": str(error)}
+
+
+def _scoped_board(request: Request, ctx: WorkContext, covered, query: Query):
+    """The board over a scope (TCW-113 Design 6.2), as `tcw work list
+    --scope … --json` lists it (`list_scope`). The served project is read
+    first, and only it falls back to its item folders when its backend
+    cannot answer; any other project that cannot be read is unavailable,
+    named in `projects`."""
+    try:
+        scoped = list_scope(covered, query, active=ctx.backend, need_every=True)
+    except CANNOT_ANSWER as error:
+        if ctx.owner != BACKEND or isinstance(error, NotFound):
+            raise
+        return HTTPStatus.OK, {**_fallback(ctx, error), **_projects(covered)}
+    names: dict[str, str] = {}
+    for _, items, backend in scoped.by_project:
+        names.update(backend_people(request, backend, [i.assignee for i in items]))
+    return HTTPStatus.OK, {
+        "items": [item_record(i, scoped.every, b.layout) for i, b in scoped.items()],
+        "people": names, "fallback": False, **_projects(covered)}
+
+
+def _projects(covered) -> dict[str, Any]:
+    """`projects` for an answer, once the reads are made, under a scope
+    other than `own` (Design 1.8)."""
+    projects = covered.projects_json()
+    return {} if projects is None else {"projects": projects}
 
 
 # -- one item ------------------------------------------------------------------------------
@@ -258,6 +321,7 @@ def _comments(found) -> list[dict[str, Any]]:
 
 def detail(request: Request):
     ctx = context(request)
+    covered = _scoped(request)
     folder = item_folder(ctx, request.param(1))
     slug = ctx.slug(folder)
     item: Item | None = None
@@ -274,11 +338,18 @@ def detail(request: Request):
         # `blocks` and `children` come from every other item; when those
         # cannot be read, the item still shows, and the page says why the
         # two lists may be short.
-        siblings = degrading(ctx, lambda: readable(ctx.backend))
+        # Under a scope, from every covered project's items, as `tcw work
+        # show --scope` computes them (TCW-113 Design 3.3); a project that
+        # cannot be read is named among the warnings.
+        siblings = degrading(ctx, lambda: readable(ctx.backend) if covered is None
+                             else every_item(covered, ctx.backend))
         if isinstance(siblings, dict):
             siblings, warnings = ([], []), [f"every other item ({siblings['unavailable']})"]
         else:
-            warnings = siblings[1]
+            warnings = list(siblings[1])
+        if covered is not None:
+            warnings += [f"project '{pid}' ({covered.reasons[pid]})"
+                         for pid in covered.unavailable()]
         record = item_record(item, siblings[0], ctx.layout)
         mentioned.append(item.assignee)
     answer: dict[str, Any] = {"folder": folder, "item": record}
@@ -305,6 +376,8 @@ def detail(request: Request):
     answer["files"] = item_files.listing(ctx, slug)
     answer["verdicts"] = item_files.verdicts(ctx, slug)
     answer["warnings"] = warnings
+    if covered is not None:
+        answer.update(_projects(covered))
     return HTTPStatus.OK, answer
 
 

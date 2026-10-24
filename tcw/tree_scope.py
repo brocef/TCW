@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from tcw.errors import BackendError, InheritedUnavailable, NotFound, UsageError
-from tcw.ids import FullId, sort_input
+from tcw.ids import FullId, identity, inherited_keys, parent_text, sort_input
 from tcw.scope import UNAVAILABLE, Covered
 from tcw.store.base import (UNAVAILABILITY_ERRORS, ProjectView, ScopeObject, ScopeRow,
                             row_order, scope_rows, text_matches)
@@ -49,6 +49,49 @@ class TreeRead:
     rows: list[TreeRow]
     store: Any
     view_built: bool = True
+
+
+# -- the records, which the CLI prints and `tcw serve` answers ----------------------------
+
+
+def term_record(term) -> dict:
+    # `parent` after `owner` (TCW-111 Design 3.1): its text, or null; then
+    # `overrides`, or `partial` (TCW-112 choice 7).
+    return {**identity(term.full_id), "parent": parent_text(term.parent),
+            **inherited_keys(term), "name": term.name, "kind": term.kind}
+
+
+def term_detail(term) -> dict:
+    return {**term_record(term), "vocabulary": list(term.vocabulary),
+            "relatesTo": list(term.relates_to), "attachments": list(term.attachments),
+            "description": term.description}
+
+
+def capability_record(cap) -> dict:
+    # `parent` after `owner` (TCW-111 Design 3.1): its text, or null; then
+    # `overrides`, or `partial` (TCW-112 choice 7).
+    return {**identity(cap.full_id), "parent": parent_text(cap.parent),
+            **inherited_keys(cap), "name": cap.name, "status": cap.status}
+
+
+def capability_detail(cap) -> dict:
+    return {**capability_record(cap), "fields": dict(cap.fields), "body": cap.body}
+
+
+#: Each axis's list record and the key a list document holds its records
+#: under.
+RECORDS: dict[str, Callable[[Any], dict]] = {"taxonomy": term_record,
+                                             "capabilities": capability_record}
+LIST_KEYS = {"taxonomy": "terms", "capabilities": "capabilities"}
+
+
+def term_order(terms: list, project_id: str) -> list:
+    # Sort on the SEGMENT TUPLE, never the joined text: `-` (0x2D) sorts before
+    # `/` (0x2F), so keying on the full identifier puts a hyphen-extended root
+    # slug (`event-reporting`) between `event` and `event/log-batch`. The
+    # owner groups each inherited tree separately, after this project's own.
+    return sorted(terms, key=lambda t: (t.owner != project_id, t.owner,
+                                        tuple(t.full_id.parts)))
 
 
 def rows_scope(covered: Covered) -> str:
@@ -95,11 +138,10 @@ def _p_own(store, say: Callable[[str], None]) -> tuple[list, bool]:
     """`P`'s own objects as it sees them or, when its view cannot be built,
     each from its own declaration alone, marked partial, with the warning
     (TCW-112 Design 3.4). The flag says whether the view was built."""
-    from tcw.output import own_only
     try:
         return store.list_all(local_only=True), True
     except InheritedUnavailable as error:
-        own_only(error, store.project_id)
+        say(f"warning: {error}; showing only '{store.project_id}''s own declarations")
         return store.own_declarations(), False
 
 
@@ -350,27 +392,45 @@ def scope_keys(row: TreeRow) -> dict:
     return out
 
 
-def print_rows(covered: Covered, axis: str, key: str, record: Callable[[Any], dict],
-               as_json: bool, reorder: Callable[[list], list] | None = None,
-               **filters) -> int:
+def listing(covered: Covered, axis: str, *, say: Callable[[str], None] | None = None,
+            **filters) -> TreeRead:
+    """The rows of a `list` or a `search` in the order the CLI prints them:
+    `list_rows`'s, except that an ungrouped taxonomy `list` keeps the order
+    `tcw taxonomy list` gives today (`term_order`)."""
+    read = list_rows(covered, axis, say=say, **filters)
+    if axis == "taxonomy" and filters.get("query") is None and (
+            covered.only is not None or rows_scope(covered) not in ("down", "all")):
+        read.rows = [TreeRow(o) for o in term_order([r.obj for r in read.rows],
+                                                     covered.active)]
+    return read
+
+
+def list_document(covered: Covered, axis: str, read: TreeRead,
+                  extra: Callable[[Any], dict] | None = None) -> dict:
+    """The `--json` document of a `list` or `search`: each row's record with
+    the keys its row adds, and `projects` when the scope is not `own`.
+    `extra(obj)`, when given, holds keys each record gains beneath the
+    record's own, which `tcw serve` answers beside them (Design 6.2)."""
+    record = RECORDS[axis]
+    projects = covered.projects_json()
+    return {LIST_KEYS[axis]: [{**(extra(r.obj) if extra else {}), **record(r.obj),
+                               **scope_keys(r)} for r in read.rows],
+            **({} if projects is None else {"projects": projects})}
+
+
+def print_rows(covered: Covered, axis: str, as_json: bool, **filters) -> int:
     """A `list` or `search` over `covered`: the warnings, then one full
     identifier per line, or the `--json` document; the exit code is the
-    active project's, as today (`left_out`). `reorder`, when given, orders
-    the objects of an ungrouped listing as the command orders them today."""
+    active project's, as today (`left_out`)."""
     from tcw.output import left_out, print_json, say
-    read = list_rows(covered, axis, **filters)
-    if reorder is not None and (covered.only is not None
-                                or rows_scope(covered) not in ("down", "all")):
-        read.rows = [TreeRow(o) for o in reorder([r.obj for r in read.rows])]
+    read = listing(covered, axis, **filters)
     covered.warn(LEFT_OUT[axis][0], say)
     if read.view_built:
         for warning in read.store.view_warnings(
                 {r.obj.full_id.id_path for r in read.rows}):
             say(f"warning: {warning}")
     if as_json:
-        projects = covered.projects_json()
-        print_json(None, {key: [{**record(r.obj), **scope_keys(r)} for r in read.rows],
-                          **({} if projects is None else {"projects": projects})})
+        print_json(None, list_document(covered, axis, read))
     else:
         for row in read.rows:
             print(row.obj.full_id)

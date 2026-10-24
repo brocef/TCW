@@ -12,6 +12,7 @@ import {
     capability,
     fakeFetch,
     project,
+    term,
     workDetail,
     workItem,
 } from "../test-fixtures"
@@ -70,8 +71,10 @@ function serve(
                 fallback: false,
             },
         ],
-        ["/api/taxonomy$", 200, []],
-        ["/api/capabilities$", 200, []],
+        ["/api/taxonomy$", 200, { terms: [] }],
+        ["/api/capabilities$", 200, { capabilities: [] }],
+        ["/api/taxonomy?scope=up$", 200, { terms: [] }],
+        ["/api/capabilities?scope=up$", 200, { capabilities: [] }],
         ["/api/resolve", 200, {}],
     ])
     globalThis.fetch = fetch as unknown as typeof globalThis.fetch
@@ -642,7 +645,7 @@ function serveCapability(declaredDescription: string | null, body: string) {
     return serve({}, [
         [/^GET \/api\/capabilities\/x$/, 200, detail],
         [/^PATCH \/api\/capabilities\/x$/, 200, detail],
-        ["/api/capabilities$", 200, [record]],
+        ["/api/capabilities$", 200, { capabilities: [record] }],
     ])
 }
 
@@ -690,4 +693,42 @@ test("a detail whose body is its declared description shows no note", async () =
             /also holds attached documents or an inherited description/
         )
     ).toBeNull()
+})
+
+// -- the pickers ask for the served project's view (TCW-113 plan choice 15) --
+
+test("the Subject picker offers an inherited term the list does not show", async () => {
+    const record = capability("x", {
+        name: "X",
+        status: "Supported",
+        fields: { Status: "Supported" },
+        body: "",
+    })
+    const detail = { capability: record, coreRevision: "r1" }
+    const inherited = term(
+        "money",
+        { name: "Money", kind: "Vocabulary" },
+        "core"
+    )
+    const fetch = serve({}, [
+        [/^GET \/api\/capabilities\/x$/, 200, detail],
+        ["/api/capabilities$", 200, { capabilities: [record] }],
+        ["/api/taxonomy?scope=up$", 200, { terms: [inherited] }],
+    ])
+    renderApp("/capabilities/x")
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }))
+    const subject = await screen.findByRole("combobox", { name: "Subject" })
+    fireEvent.focus(subject)
+    fireEvent.change(subject, { target: { value: "Mon" } })
+    // Each option's name and identifier, the typed text highlighted apart.
+    await waitFor(() =>
+        expect(
+            Array.from(document.querySelectorAll('[role="option"]')).map(
+                (option) => option.textContent
+            )
+        ).toEqual(["Moneycore.taxonomy/money"])
+    )
+    const lists = fetch.calls.map((call) => call.path)
+    expect(lists).toContain("/api/taxonomy")
+    expect(lists).toContain("/api/taxonomy?scope=up")
 })

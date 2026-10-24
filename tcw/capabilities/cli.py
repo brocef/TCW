@@ -15,12 +15,11 @@ import sys
 from tcw import exit as codes
 from tcw.cli_help import command, group
 from tcw.errors import BackendError, InheritedUnavailable, UsageError
-from tcw.ids import identity, inherited_keys, parent_text
 from tcw.locate import find_tree_writable
 from tcw.output import changed, own_only, print_json, say
 from tcw.scope import scope_options
-from tcw.tree_scope import (LEFT_OUT, active_store, covered_for, print_rows, refuse_local,
-                            scope_keys, show_lines, show_row)
+from tcw.tree_scope import (LEFT_OUT, active_store, capability_detail, covered_for,
+                            print_rows, refuse_local, scope_keys, show_lines, show_row)
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import CAP_STATUSES, Capability
 from tcw.store.fs import FsCapabilitiesStore, find_component_project
@@ -44,17 +43,6 @@ def _store() -> FsCapabilitiesStore:
     return FsCapabilitiesStore.open(_project())
 
 
-def _record(cap: Capability) -> dict:
-    # `parent` after `owner` (TCW-111 Design 3.1): its text, or null; then
-    # `overrides`, or `partial` (TCW-112 choice 7).
-    return {**identity(cap.full_id), "parent": parent_text(cap.parent),
-            **inherited_keys(cap), "name": cap.name, "status": cap.status}
-
-
-def _detail(cap: Capability) -> dict:
-    return {**_record(cap), "fields": dict(cap.fields), "body": cap.body}
-
-
 def _fmt(v) -> str:
     return ", ".join(v) if isinstance(v, list) else str(v)
 
@@ -65,13 +53,12 @@ def _covered(args: argparse.Namespace):
 
 def _list(args: argparse.Namespace) -> int:
     refuse_local(args)
-    return print_rows(_covered(args), NAME, "capabilities", _record, args.json,
-                      status=args.status, namespace=args.namespace)
+    return print_rows(_covered(args), NAME, args.json, status=args.status,
+                      namespace=args.namespace)
 
 
 def _search(args: argparse.Namespace) -> int:
-    return print_rows(_covered(args), NAME, "capabilities", _record, args.json,
-                      query=args.query)
+    return print_rows(_covered(args), NAME, args.json, query=args.query)
 
 
 def _show(args: argparse.Namespace) -> int:
@@ -84,7 +71,7 @@ def _show(args: argparse.Namespace) -> int:
         own_only(st.view_error, st.project_id)
     if args.json:
         projects = covered.projects_json()
-        print_json(None, {"capability": {**_detail(cap), **scope_keys(row)},
+        print_json(None, {"capability": {**capability_detail(cap), **scope_keys(row)},
                           **({} if projects is None else {"projects": projects})})
         return codes.OK
     overridden, block = show_lines(covered, row)

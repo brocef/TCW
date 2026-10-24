@@ -69,12 +69,14 @@ import type {
     AxisItem,
     CapabilityDetail,
     CapabilityItem,
+    CapabilityList,
     JsonRecord,
     TBoard,
     TFileContent,
     TProject,
     TaxonomyDetail,
     TaxonomyItem,
+    TaxonomyList,
     TreeNode,
     WorkDetail,
     WorkItem,
@@ -201,6 +203,12 @@ export function App() {
     // Every item, whatever the board's filters, for the fields that suggest
     // items and for `tcw://` links. Read only while something offers them.
     const [allWork, setAllWork] = useState<WorkItem[] | null>(null)
+    // The taxonomy and capabilities a reference may name: the served
+    // project's view, apart from the lists shown (plan choice 15).
+    const [pickable, setPickable] = useState<{
+        taxonomy: TaxonomyItem[]
+        capabilities: CapabilityItem[]
+    }>({ taxonomy: [], capabilities: [] })
     const [loadError, setLoadError] = useState("")
 
     const showToast = useCallback((message: string) => {
@@ -262,15 +270,34 @@ export function App() {
     }, [])
 
     const loadRecords = useCallback(async (found: TProject) => {
-        const [taxonomy, capabilities] = await Promise.all([
-            found.axes.taxonomy
-                ? fetchJson<TaxonomyItem[]>("/api/taxonomy")
-                : Promise.resolve([]),
-            found.axes.capabilities
-                ? fetchJson<CapabilityItem[]>("/api/capabilities")
-                : Promise.resolve([]),
-        ])
-        setData((old) => ({ ...old, taxonomy, capabilities }))
+        // The lists shown, and apart from them what the pickers offer: the
+        // served project's view, `scope=up`, whatever the lists show
+        // (TCW-113 Design 6.6, plan choice 15).
+        const none = { terms: [], capabilities: [] }
+        const [taxonomy, capabilities, taxonomyUp, capabilitiesUp] =
+            await Promise.all([
+                found.axes.taxonomy
+                    ? fetchJson<TaxonomyList>("/api/taxonomy")
+                    : Promise.resolve(none),
+                found.axes.capabilities
+                    ? fetchJson<CapabilityList>("/api/capabilities")
+                    : Promise.resolve(none),
+                found.axes.taxonomy
+                    ? fetchJson<TaxonomyList>("/api/taxonomy?scope=up")
+                    : Promise.resolve(none),
+                found.axes.capabilities
+                    ? fetchJson<CapabilityList>("/api/capabilities?scope=up")
+                    : Promise.resolve(none),
+            ])
+        setData((old) => ({
+            ...old,
+            taxonomy: taxonomy.terms,
+            capabilities: capabilities.capabilities,
+        }))
+        setPickable({
+            taxonomy: taxonomyUp.terms,
+            capabilities: capabilitiesUp.capabilities,
+        })
     }, [])
 
     const load = useCallback(async () => {
@@ -406,7 +433,12 @@ export function App() {
                 if (!stale) setAllWork(boardRows(found))
             })
             .catch(() => {
-                if (!stale) setAllWork(data.work)
+                // The board's rows of the served project alone: under a
+                // scope the board holds other projects' items too.
+                if (!stale)
+                    setAllWork(
+                        data.work.filter((item) => item.owner === projectId)
+                    )
             })
         return () => {
             stale = true
@@ -417,10 +449,9 @@ export function App() {
             tcwLinkOptions({
                 projectId,
                 work: allWork ?? data.work,
-                taxonomy: data.taxonomy,
-                capabilities: data.capabilities,
+                ...pickable,
             }),
-        [allWork, data, projectId]
+        [allWork, data, pickable, projectId]
     )
 
     const readFile = useCallback(
@@ -807,6 +838,7 @@ export function App() {
     const references = {
         projectId,
         ...data,
+        ...pickable,
         work: allWork ?? data.work,
         people,
         user: project?.user ?? null,
@@ -1243,7 +1275,11 @@ export function App() {
                                     saving={saving}
                                     errors={errors}
                                     conflict={conflict}
-                                    data={data}
+                                    data={{
+                                        ...data,
+                                        ...pickable,
+                                        work: references.work,
+                                    }}
                                     onSave={() => void save()}
                                     onCancel={cancelEditor}
                                     onRefreshConflict={() =>

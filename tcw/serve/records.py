@@ -11,7 +11,7 @@ from dataclasses import asdict, is_dataclass
 from http import HTTPStatus
 from typing import Any, Callable
 
-from tcw.errors import NotFound, TcwError
+from tcw.errors import NotFound, TcwError, UsageError
 from tcw.findings import Finding
 from tcw.ids import MalformedId, identity, inherited_keys, parent_text, sort_input
 from tcw.locate import find_tree
@@ -19,6 +19,8 @@ from tcw.refs import resolve_address
 from tcw.serve.server import (Request, Written, creates, not_found, route, usage)
 from tcw.store.base import Capability, Term
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
+from tcw.tree_scope import (active_store, capability_detail, list_document, listing,
+                            scope_keys, show_row, term_detail)
 from tcw.validate import ValidationTarget, validate
 
 # At most this many links per /api/resolve request (a rendered page's links).
@@ -50,6 +52,54 @@ def jsonable(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(k): jsonable(v) for k, v in value.items()}
     return value
+
+
+def scope_of(request: Request):
+    """The projects a read route covers (TCW-113 Design 6.1): its `scope`
+    query parameter, `own` when absent, and its `project`, each read as
+    `--scope` and `--project` are. `cover` is called once, so the request
+    has one `Locator` and one registry (plan choice 4). A value the CLI
+    refuses answers 400 `usage` with the CLI's message."""
+    from tcw.scope import cover
+    scope = (request.query.get("scope") or ["own"])[-1] or "own"
+    project = (request.query.get("project") or [""])[-1] or None
+    try:
+        return cover(request.root, scope, project)
+    except UsageError as error:
+        raise usage(str(error)) from None
+
+
+def _quiet(line: str) -> None:
+    """A warning the CLI prints on standard error: the server's answer
+    carries what the page shows, `projects` among it, and prints nothing."""
+
+
+def _listed(request: Request, axis: str, **filters):
+    """A list answer (Design 6.2): the records `tcw <axis> list --json`
+    prints for the same scope, in the same order, each beside the server's
+    other fields of that object (plan choice 9), and `projects` when the
+    scope is not `own`."""
+    covered = scope_of(request)
+    read = listing(covered, axis, say=_quiet, **filters)
+    return HTTPStatus.OK, list_document(covered, axis, read, extra=jsonable)
+
+
+def _shown(request: Request, axis: str):
+    """The row a detail route's key names under its scope (Design 4.8), the
+    detail read from the owner's store, and `projects` for the answer. The
+    served store reads another project's object through the request's
+    `Locator` (`_owner_store`), so `coreRevision` and `declaredDescription`
+    are the owner's (TCW-112 AC 44)."""
+    covered = scope_of(request)
+    row = show_row(covered, axis, request.param(1))
+    store = active_store(covered, axis)
+    read = store.get_term_detail if axis == "taxonomy" else store.get_capability_detail
+    detail = read(row.obj.full_id)
+    if detail is None:
+        noun = "term" if axis == "taxonomy" else "capability"
+        raise not_found(f"no such {noun}: {request.param(1)}")
+    projects = covered.projects_json()
+    return row, detail, {} if projects is None else {"projects": projects}
 
 
 def finding_record(finding: Finding) -> dict[str, str]:
@@ -129,16 +179,14 @@ def _written(open_store: Callable[[Request], Any], namespace: str,
 
 
 def list_terms(request: Request):
-    return HTTPStatus.OK, jsonable(_taxonomy(request).list_all())
+    return _listed(request, "taxonomy")
 
 
 def get_term(request: Request):
-    store = _taxonomy(request)
-    detail = store.get_term_detail(_route_target(store, request.param(1)).full_id)
-    if detail is None:
-        raise not_found(f"no such term: {request.param(1)}")
-    return HTTPStatus.OK, {"term": jsonable(detail.term),
-                           "coreRevision": detail.core_revision}
+    row, detail, projects = _shown(request, "taxonomy")
+    return HTTPStatus.OK, {"term": {**jsonable(detail.term), **term_detail(row.obj),
+                                    **scope_keys(row)},
+                           "coreRevision": detail.core_revision, **projects}
 
 
 def create_term(request: Request):
@@ -215,15 +263,15 @@ def _subjects_are_vocabulary(request: Request, fields: dict) -> None:
 
 
 def list_capabilities(request: Request):
-    return HTTPStatus.OK, jsonable(_capabilities(request).list_all())
+    return _listed(request, "capabilities")
 
 
 def get_capability(request: Request):
-    store = _capabilities(request)
-    detail = store.get_capability_detail(_route_target(store, request.param(1)).full_id)
-    if detail is None:
-        raise not_found(f"no such capability: {request.param(1)}")
-    return HTTPStatus.OK, _capability_answer(detail)
+    row, detail, projects = _shown(request, "capabilities")
+    answer = _capability_answer(detail)
+    answer["capability"] = {**answer["capability"], **capability_detail(row.obj),
+                            **scope_keys(row)}
+    return HTTPStatus.OK, {**answer, **projects}
 
 
 def _capability_answer(detail) -> dict:

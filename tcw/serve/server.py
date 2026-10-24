@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, unquote, urlparse
 
+from tcw.config import command_span
 from tcw.errors import (BackendError, InheritedUnavailable, NotFound, Refused, TcwError,
                         Unreachable, UsageError)
 from tcw.serve.services import Services
@@ -348,8 +349,11 @@ class TcwHandler(BaseHTTPRequestHandler):
         if found is None:
             raise not_found(f"no API route {method} {path}")
         request = Request(method, path, query, body, self.server, found[1])
-        check_writes(found[0], request)
-        status, value = found[0].handler(request)
+        # One request is one command (TCW-113 Design 3.5): a Jira search is
+        # made once for it, and kept for no other request (plan choice 10).
+        with command_span():
+            check_writes(found[0], request)
+            status, value = found[0].handler(request)
         self._send_json(status, value)
 
     def _json_body(self) -> dict[str, Any]:

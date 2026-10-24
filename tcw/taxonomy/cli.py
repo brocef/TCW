@@ -14,14 +14,13 @@ import argparse
 from tcw import exit as codes
 from tcw.cli_help import command, group
 from tcw.errors import BackendError, InheritedUnavailable, UsageError
-from tcw.ids import identity, inherited_keys, parent_text
 from tcw.locate import find_tree_writable
 from tcw.output import changed, own_only, print_json, say
 from tcw.scope import scope_options
 from tcw.tree_scope import (LEFT_OUT, active_store, covered_for, print_rows, refuse_local,
-                            scope_keys, show_lines, show_row)
+                            scope_keys, show_lines, show_row, term_detail)
 from tcw.stdin import read_piped_stdin
-from tcw.store.base import NotASlug, Term
+from tcw.store.base import NotASlug
 from tcw.store.fs import FsTaxonomyStore, find_component_project
 
 NAME = "taxonomy"
@@ -39,41 +38,17 @@ def _store() -> FsTaxonomyStore:
     return FsTaxonomyStore.open(project)
 
 
-def _record(term: Term) -> dict:
-    # `parent` after `owner` (TCW-111 Design 3.1): its text, or null; then
-    # `overrides`, or `partial` (TCW-112 choice 7).
-    return {**identity(term.full_id), "parent": parent_text(term.parent),
-            **inherited_keys(term), "name": term.name, "kind": term.kind}
-
-
-def _detail(term: Term) -> dict:
-    return {**_record(term), "vocabulary": list(term.vocabulary),
-            "relatesTo": list(term.relates_to), "attachments": list(term.attachments),
-            "description": term.description}
-
-
-def _ordered(terms: list[Term], project_id: str) -> list[Term]:
-    # Sort on the SEGMENT TUPLE, never the joined text: `-` (0x2D) sorts before
-    # `/` (0x2F), so keying on the full identifier puts a hyphen-extended root
-    # slug (`event-reporting`) between `event` and `event/log-batch`. The
-    # owner groups each inherited tree separately, after this project's own.
-    return sorted(terms, key=lambda t: (t.owner != project_id, t.owner,
-                                        tuple(t.full_id.parts)))
-
-
 def _covered(args: argparse.Namespace):
     return covered_for(args, NAME, _missing)
 
 
 def _list(args: argparse.Namespace) -> int:
     refuse_local(args)
-    covered = _covered(args)
-    return print_rows(covered, NAME, "terms", _record, args.json,
-                      reorder=lambda terms: _ordered(terms, covered.active))
+    return print_rows(_covered(args), NAME, args.json)
 
 
 def _search(args: argparse.Namespace) -> int:
-    return print_rows(_covered(args), NAME, "terms", _record, args.json, query=args.query)
+    return print_rows(_covered(args), NAME, args.json, query=args.query)
 
 
 def _show(args: argparse.Namespace) -> int:
@@ -84,7 +59,7 @@ def _show(args: argparse.Namespace) -> int:
     covered.warn(LEFT_OUT[NAME][1], say)
     if term.partial and st.view_error is not None:
         own_only(st.view_error, st.project_id)
-    detail = _detail(term)
+    detail = term_detail(term)
     if args.json:
         projects = covered.projects_json()
         print_json(None, {"term": {**detail, **scope_keys(row)},

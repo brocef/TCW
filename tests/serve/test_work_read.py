@@ -355,7 +355,7 @@ def test_ac32_undecided_tags_do_not_stop_the_project_summary(tmp_path, serve_pro
     assert set(project["tags"]) == {"unavailable"}
     assert "(work.tags)" in project["tags"]["unavailable"]
     for key in decided:
-        if key not in ("tags", "user"):
+        if key not in ("tags", "user", "scopes"):
             assert project[key] == decided[key], key
     assert served.get("/api/work").status == 200
 

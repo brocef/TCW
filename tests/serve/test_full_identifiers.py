@@ -33,7 +33,8 @@ def test_ac20_a_record_carries_full_id_and_owner(served, route, key, full_id):
 
 @pytest.mark.parametrize("route", ["/api/taxonomy", "/api/capabilities"])
 def test_ac20_listed_records_carry_full_id_and_owner(served, route):
-    records = served.get(route).json
+    records = served.get(f"{route}?scope=up").json[route.rsplit("/", 1)[1].replace(
+        "taxonomy", "terms")]
     assert {r["owner"] for r in records} == {"demo", "core"}
     assert all(not STRIPPED & set(r) for r in records)
 

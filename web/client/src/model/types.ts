@@ -45,6 +45,28 @@ export interface TProject {
     user: string | null
     people: Record<string, string>
     axes: Record<Axis, boolean>
+    /** The IDs each scope covers, in scope order, those not on this machine
+     * included (TCW-113 Design 6.2). */
+    scopes: Record<TScope, string[]>
+}
+
+/** Which projects a list or a page covers (TCW-113 Design 1). */
+export type TScope = "own" | "up" | "down" | "all"
+
+/** One project a scoped answer covers: how it is related to the served
+ * project and, when it could not be read, why (TCW-113 Design 1.8). */
+export interface TScopeProject {
+    id: string
+    relation: "ancestor" | "current" | "descendant"
+    unavailable?: string
+}
+
+/** One project's status of a capability path, under `down` or `all`
+ * (TCW-113 Design 4.6). */
+export interface TScopeStatus {
+    project: string
+    status: string | null
+    inherited: boolean
 }
 
 /** An item record: what `tcw work list --json` and `show --json` carry. */
@@ -83,6 +105,8 @@ export interface TBoard {
     people: Record<string, string>
     fallback: boolean
     unavailable?: string
+    /** Under a scope other than `own` (TCW-113 Design 6.2). */
+    projects?: TScopeProject[]
 }
 
 export interface TComment {
@@ -191,6 +215,9 @@ export interface TaxonomyItem extends JsonRecord, TOverrides {
     vocabulary?: string[]
     description?: string
     modified?: string
+    /** The objects of the row's group that override this one, under `down`
+     * or `all` (TCW-113 Design 4.7). */
+    "overridden-by"?: string[]
 }
 
 export interface CapabilityItem extends JsonRecord, TOverrides {
@@ -202,6 +229,21 @@ export interface CapabilityItem extends JsonRecord, TOverrides {
     fields?: Record<string, string | string[]>
     body?: string
     modified?: string
+    /** Each covered project's status, under `down` or `all` (TCW-113
+     * Design 4.6). */
+    statuses?: TScopeStatus[]
+    "overridden-by"?: string[]
+}
+
+/** `GET /api/taxonomy` and `GET /api/capabilities` (TCW-113 Design 6.2). */
+export interface TaxonomyList {
+    terms: TaxonomyItem[]
+    projects?: TScopeProject[]
+}
+
+export interface CapabilityList {
+    capabilities: CapabilityItem[]
+    projects?: TScopeProject[]
 }
 
 export type AxisItem = WorkItem | TaxonomyItem | CapabilityItem

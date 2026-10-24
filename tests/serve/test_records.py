@@ -29,7 +29,7 @@ def assert_error(answer, status: int, code: str):
 
 
 def test_list_terms(records):
-    full_ids = {t["full-id"] for t in records.get("/api/taxonomy").json}
+    full_ids = {t["full-id"] for t in records.get("/api/taxonomy").json["terms"]}
     assert {"r.taxonomy/work-item", "r.taxonomy/admin"} <= full_ids
 
 
@@ -136,7 +136,7 @@ def test_create_a_nested_capability_without_a_name(records):
     assert answer.status == 201
     assert answer.json["capability"]["full-id"] == "r.capabilities/web/editing"
     assert {"r.capabilities/web", "r.capabilities/web/editing"} <= {
-        c["full-id"] for c in records.get("/api/capabilities").json}
+        c["full-id"] for c in records.get("/api/capabilities").json["capabilities"]}
     assert detail(records, "capabilities", "web%2Fediting")["capability"]["full-id"] \
         == "r.capabilities/web/editing"
 
@@ -226,7 +226,7 @@ def test_every_write_route_works_outside_a_repository(records_root, serve_projec
 def test_a_project_without_a_taxonomy_lists_none(tmp_path, personal_on, serve_project):
     from tests.serve.conftest import fs_project
     served = serve_project(fs_project(tmp_path))
-    assert served.get("/api/taxonomy").json == []
+    assert served.get("/api/taxonomy").json == {"terms": []}
 
 
 # -- links ---------------------------------------------------------------------------------------
@@ -392,7 +392,8 @@ def inheriting(tmp_path, serve_project):
 
 
 def test_an_inherited_capability_is_listed_with_its_owner_and_read_only(inheriting):
-    listed = {c["full-id"]: c for c in inheriting.get("/api/capabilities").json}
+    listed = {c["full-id"]: c for c in
+              inheriting.get("/api/capabilities?scope=up").json["capabilities"]}
     assert listed["base.capabilities/shared-cap"]["owner"] == "base"
     meta = inheriting.root.parent / "base" / "docs" / "capabilities" / "shared-cap" / \
         CAPABILITY_STATE
@@ -406,7 +407,7 @@ def test_an_inherited_capability_is_listed_with_its_owner_and_read_only(inheriti
 
 
 def test_an_inherited_term_is_read_only(inheriting):
-    listed = {t["full-id"]: t for t in inheriting.get("/api/taxonomy").json}
+    listed = {t["full-id"]: t for t in inheriting.get("/api/taxonomy?scope=up").json["terms"]}
     assert listed["base.taxonomy/shared"]["owner"] == "base"
     answer = inheriting.patch("/api/taxonomy/shared", {"fields": {"name": "Mine"},
                                                        "revision": "r"})

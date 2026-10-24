@@ -61,6 +61,7 @@ export function project(overrides: Partial<TProject> = {}): TProject {
         user: "ann",
         people: {},
         axes: { work: true, taxonomy: true, capabilities: true },
+        scopes: { own: ["p"], up: ["p"], down: ["p"], all: ["p"] },
         ...overrides,
     }
 }
