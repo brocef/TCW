@@ -421,8 +421,8 @@ def test_an_inherited_capability_can_be_named_in_a_reference(inheriting):
     assert answer.status == 200, answer.body
 
 
-def test_a_link_to_another_projects_item_is_other_project(tmp_path, personal_on,
-                                                         serve_project, tcw):
+def test_a_link_to_another_projects_item_resolves(tmp_path, personal_on,
+                                                  serve_project, tcw):
     from tests.serve.conftest import fs_project
     from tests.serve.test_work_read import new
     from tests.work.projects import commit_all, connect, make_project
@@ -433,8 +433,9 @@ def test_a_link_to_another_projects_item_is_other_project(tmp_path, personal_on,
     folder = new(tcw, other, "Theirs")
     commit_all(other)
     found = resolve(serve_project(root), [f"tcw://q.work/{folder}"])
-    assert found[f"tcw://q.work/{folder}"] == {"ok": False, "reason": "other-project",
-                                               "project": "q"}
+    # TCW-113 Design 6.4: the link names the item by its full identifier.
+    assert found[f"tcw://q.work/{folder}"] == {"ok": True, "axis": "work",
+                                               "key": f"q.work/{folder}"}
 
 
 # -- references through an encoded slash (2.x's coverage, kept) ---------------------------------

@@ -76,6 +76,53 @@ def context(request: Request) -> WorkContext:
     return WorkContext(root, config, backend, layout)
 
 
+@dataclass(frozen=True)
+class WorkKey:
+    """What a work route key names (TCW-113 Design 6.4): the owner's
+    project, the folder name or ticket key within it, and the full
+    identifier when the key is one."""
+    project: str
+    name: str
+    full: FullId | None = None
+
+
+def work_key(request: Request, text: str) -> WorkKey:
+    """The work route key rule, for every work and files route (Design 6.4):
+    a full identifier names that project's item, at a folder or by a ticket
+    key, read from the identifier alone; anything else names an item of the
+    served project. Nothing is opened."""
+    from tcw.ownership import active_project_id
+    try:
+        found = sort_input(text, "work", KEY)
+    except MalformedId:
+        found = None
+    if found is not None and found.form in ("a", "c"):
+        return WorkKey(found.full_id.project, found.full_id.id_path, found.full_id)
+    return WorkKey(active_project_id(request.root), text)
+
+
+def context_for(request: Request, project_id: str) -> WorkContext:
+    """The served project's context, or another project's, read for itself
+    (TCW-113 Design 6.4, plan choice 4): its root as the served project
+    finds it, its own configuration, and its backend. A project nothing
+    knows is not found (404); one declared but not on this machine raises
+    `Unreachable` (503)."""
+    from tcw.errors import UnknownProject
+    from tcw.locate import Locator
+    from tcw.ownership import active_project_id
+    if project_id == active_project_id(request.root):
+        return context(request)
+    locator = Locator.of(request.root)
+    try:
+        root = locator.owner_root(project_id, named_by=request.root)
+    except UnknownProject as error:
+        raise not_found(str(error)) from None
+    config = read_work_config(root, personal=False, registry=locator.registry)
+    backend = request.services.open_project(project_id, request.root)
+    return WorkContext(root, config, backend,
+                       Layout(work_path(root), config.enabled, backend.external_stages))
+
+
 def item_folders(ctx: WorkContext) -> list[str]:
     """The item folders under the work path, by the backend's own rule for
     recognizing one; a folder anything else left there is not an item. Reads
@@ -304,7 +351,18 @@ def _projects(covered) -> dict[str, Any]:
 
 def item_folder(ctx: WorkContext, name: str) -> str:
     """The item folder `name` names: one under the work path, or, for a name
-    the backend knows another way (a Jira key), the folder it gives."""
+    the backend knows another way (a Jira key), the folder it gives. A full
+    identifier naming `ctx`'s project names its folder or key by the same
+    rule; one naming any other project is not found here (TCW-113 Design
+    6.5), so a write handler reaches only the served project's folders."""
+    try:
+        found = sort_input(name, "work", KEY)
+    except MalformedId:
+        found = None
+    if found is not None and found.form in ("a", "c"):
+        if found.full_id.project != ctx.backend.project:
+            raise not_found(f"no work item {name} in project '{ctx.backend.project}'")
+        name = found.full_id.id_path
     folders = item_folders(ctx)
     if name in folders:
         return name
@@ -320,7 +378,9 @@ def _comments(found) -> list[dict[str, Any]]:
 
 
 def detail(request: Request):
-    ctx = context(request)
+    # Read from the item's owner, whichever project it is (Design 6.4).
+    key = work_key(request, request.param(1))
+    ctx = context_for(request, key.project)
     covered = _scoped(request)
     folder = item_folder(ctx, request.param(1))
     slug = ctx.slug(folder)

@@ -14,7 +14,8 @@ from typing import Any, Callable
 from tcw.errors import NotFound, TcwError, UsageError
 from tcw.findings import Finding
 from tcw.ids import MalformedId, identity, inherited_keys, parent_text, sort_input
-from tcw.locate import find_tree
+from tcw.ids import parse_address
+from tcw.locate import UNRESOLVED, find_tree
 from tcw.refs import resolve_address
 from tcw.serve.server import (Request, Written, creates, not_found, route, usage)
 from tcw.store.base import Capability, Term
@@ -90,8 +91,14 @@ def _shown(request: Request, axis: str):
     served store reads another project's object through the request's
     `Locator` (`_owner_store`), so `coreRevision` and `declaredDescription`
     are the owner's (TCW-112 AC 44)."""
+    from tcw.errors import UnknownProject
     covered = scope_of(request)
-    row = show_row(covered, axis, request.param(1))
+    try:
+        row = show_row(covered, axis, request.param(1))
+    except UnknownProject as error:
+        # A mistyped project in a URL is not found, not a server fault
+        # (Design 6.4).
+        raise not_found(str(error)) from None
     store = active_store(covered, axis)
     read = store.get_term_detail if axis == "taxonomy" else store.get_capability_detail
     detail = read(row.obj.full_id)
@@ -329,10 +336,11 @@ def update_capability(request: Request):
 def resolve(request: Request):
     """Each `tcw://` link's target, or why it has none. `reason` is one of
     `unresolved` (with `detail`), `archived` (with `detail` and
-    `resolution`) and `other-project` (with `project`): a sound reference to
-    an object of a project this one neither is nor inherits from, drawn as
-    a labelled link that does not navigate, since this server shows one
-    project (TCW-110 Design 4.5)."""
+    `resolution`) and `other-project` (with `project`): a link to a project
+    that is not on this machine, drawn as a labelled link that does not
+    navigate. A link to another project's object that is there answers `ok`
+    with its full identifier as `key`, the route key that reads it from its
+    owner (TCW-113 Design 6.4)."""
     uris = request.body.get("uris")
     if not isinstance(uris, list):
         raise usage("uris must be a list")
@@ -341,7 +349,10 @@ def resolve(request: Request):
         if not isinstance(uri, str):
             continue
         found = resolve_address(request.root, uri)
-        if not found.ok:
+        if not found.ok and found.outcome == UNRESOLVED:
+            result[uri] = {"ok": False, "reason": "other-project",
+                           "project": parse_address(uri).project}
+        elif not found.ok:
             result[uri] = {"ok": False, "reason": "unresolved", "detail": found.reason}
         elif found.folder:
             # A sound folder address, drawn inert: the app shows objects.
@@ -355,9 +366,6 @@ def resolve(request: Request):
                          f"documents are no longer in the tree"
             result[uri] = {"ok": False, "reason": "archived", "detail": detail,
                            "resolution": found.resolution}
-        elif found.project:
-            result[uri] = {"ok": False, "reason": "other-project",
-                           "project": found.project}
         else:
             result[uri] = {"ok": True, "axis": found.namespace, "key": found.key}
     return HTTPStatus.OK, result

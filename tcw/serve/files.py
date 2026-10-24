@@ -166,7 +166,18 @@ def contained(item_dir: Path, path: Path) -> bool:
         return False
 
 
-def _target(request: Request):
+def _read_target(request: Request):
+    """The item a read route's key names, read from its owner (TCW-113
+    Design 6.4): another project's files are read from its own folder."""
+    from tcw.serve.work import context_for, item_folder, work_key
+    ctx = context_for(request, work_key(request, request.param(1)).project)
+    folder = item_folder(ctx, request.param(1))
+    return ctx, folder, ctx.slug(folder)
+
+
+def _write_target(request: Request):
+    """The item a write route's key names, within the served project only:
+    a full identifier naming another project is not found (Design 6.5)."""
     from tcw.serve.work import context, item_folder
     ctx = context(request)
     folder = item_folder(ctx, request.param(1))
@@ -227,14 +238,14 @@ def _expected(request: Request) -> str | None:
 
 
 def get_file(request: Request):
-    ctx, folder, slug = _target(request)
+    ctx, folder, slug = _read_target(request)
     path = file_path(ctx, slug, request.param(2))
     content = _read(path)
     return HTTPStatus.OK, {"content": content, "revision": revision(path)}
 
 
 def put_file(request: Request):
-    ctx, folder, slug = _target(request)
+    ctx, folder, slug = _write_target(request)
     path = file_path(ctx, slug, request.param(2))
     content = request.field("content")
     new = write_checked(request, path, content, _expected(request))
@@ -247,7 +258,7 @@ KINDS = {"document": DOCUMENT, "round": ROUNDS, "handoff": None}
 def new_file(request: Request):
     """Where a new document, round or handoff goes, and its starting text.
     Nothing is written: the `PUT` that follows creates it."""
-    ctx, folder, slug = _target(request)
+    ctx, folder, slug = _write_target(request)
     name, kind = request.field("stage"), request.field("kind")
     if kind not in KINDS:
         raise usage(f"kind must be one of {', '.join(KINDS)}")
@@ -285,7 +296,7 @@ def _lists(declared) -> dict[str, Any]:
 def get_declaration(request: Request):
     """The six lists, or, for a file the parser rejects, its message and the
     text, so the file can be fixed as plain text."""
-    ctx, folder, slug = _target(request)
+    ctx, folder, slug = _read_target(request)
     path = inside_item(ctx.layout.item_dir(slug), ctx.layout.capabilities_file(slug),
                        CAPABILITIES_FILE)
     declared = parse_declarations(path)
@@ -362,7 +373,7 @@ def _yaml(sent) -> str:
 
 
 def put_declaration(request: Request):
-    ctx, folder, slug = _target(request)
+    ctx, folder, slug = _write_target(request)
     path = inside_item(ctx.layout.item_dir(slug), ctx.layout.capabilities_file(slug),
                        CAPABILITIES_FILE)
     expected = _expected(request)

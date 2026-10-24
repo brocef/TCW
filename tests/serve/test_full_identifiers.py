@@ -89,8 +89,8 @@ def test_ac20_a_link_resolves_to_its_route_key(served, uri, axis, key):
     assert _resolve(served, uri) == {"ok": True, "axis": axis, "key": key}
 
 
-def test_ac20_a_link_into_a_project_not_inherited_from_is_other_project(tmp_path,
-                                                                       serve_project):
+def test_ac20_a_link_into_a_project_not_inherited_from_resolves(tmp_path,
+                                                                serve_project):
     from tcw.store.fs import init
     from tests.inherit import entry
     from tests.projectfiles import connect_projects
@@ -101,4 +101,5 @@ def test_ac20_a_link_into_a_project_not_inherited_from_is_other_project(tmp_path
     entry(core, "taxonomy", "term")
     connect_projects(app, "parent", "core", inherit="none")
     found = _resolve(serve_project(app), "tcw://core.taxonomy/term")
-    assert found == {"ok": False, "reason": "other-project", "project": "core"}
+    # TCW-113 Design 6.4: any object TCW can locate is read from its owner.
+    assert found == {"ok": True, "axis": "taxonomy", "key": "core.taxonomy/term"}
