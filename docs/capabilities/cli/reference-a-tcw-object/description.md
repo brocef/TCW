@@ -11,10 +11,10 @@ inherits is not found under that project's identifier.
 is an error, and a project that is named but not on this machine is reported
 as could not be checked. A link in a TCW 3.x form (`tcw://C/…`, `tcw://W/…`,
 `tcw://<project>/T/…`) is reported as needing tcw migrate, and is never
-resolved. `tcw serve` turns a link to this project's objects, and to those it
-inherits, into in-app navigation, shows a link to another project's object as
-a labelled name that names its project, and shows an unresolved target inert
-with the reason.
+resolved. `tcw serve` turns a link to any object TCW can locate on this machine
+into in-app navigation, where another project's object opens read-only; it
+shows a link into a project that is not on this machine as a labelled name that
+names its project, and an unresolved target inert with the reason.
 
 A work link names the item's folder, `tcw://<project>.work/<folder>`. An
 item's folder does not move with its stage, so a reference to finished work —

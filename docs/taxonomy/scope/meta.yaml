@@ -1,0 +1,4 @@
+name: Scope
+kind: Vocabulary
+relatesTo:
+    - project

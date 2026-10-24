@@ -19,3 +19,5 @@ still holds a TCW 3.x value is left out, and one warning on standard error says
 how many were, names their keys, and names tcw migrate.
 
 Items are listed at any depth of the work store, each by its id-path.
+
+`--scope` chooses which projects the board covers ([Choose which projects a list or show command covers](tcw://C/cli/choose-which-projects-a-list-or-show-command-covers)): `own`, the default, is my project alone; `up` adds each ancestor's own items, `down` each descendant's, and `all` both, each project with its own items, in scope order. `--project <id>` keeps one covered project's items. `--parent <item>` finds an epic's parts filed in any covered project, and `children` and `blocks` in each record are computed across the scope. A project the scope covers that is not on this machine, or cannot be read, is named on standard error as `warning: '<id>' is unavailable, so …`, with its reason, and in the `--json` document's `projects`; the command still exits 0.

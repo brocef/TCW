@@ -58,3 +58,5 @@ option has one long spelling; a repeatable option takes one value each time it
 is given.
 
 Taxonomy and capability records carry `parent`, after `owner`: the full identifier of the object they belong under, or null.
+
+**A document that covers more than one project says which.** A list or show run with `--scope up`, `down` or `all` carries `projects`: each project the scope covers, in scope order, as `{"id": …, "relation": …}`, and with `"unavailable"`, the reason, for one that is not on this machine or could not be read. Under the default scope, `own`, it carries none.

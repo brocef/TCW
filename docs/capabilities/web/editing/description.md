@@ -16,8 +16,11 @@ inbox tickets as items, which runs the request stage's `post` hooks as
 
 I create and edit taxonomy entries and capabilities. My project's own
 override of an inherited one is editable like any other of its own, and the
-page says what it overrides. An entry that belongs to another project has no
-edit control: it is changed in the project that keeps it. Editing a
+page says what it overrides. An object that belongs to another project, whether a
+taxonomy entry, a capability or a work item, is shown with whose it is and no
+control that changes it: no edit, comment, file or declaration editing. It is
+changed in the project that keeps it, and a write the app is sent for it is
+refused. Editing a
 capability's body changes only the capability's own description: the editor
 starts from that description, not from the body shown on the page, and says,
 when they differ, that the body shown also holds attached documents or an

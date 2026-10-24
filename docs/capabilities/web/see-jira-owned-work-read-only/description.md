@@ -1,8 +1,10 @@
 As a user of a project whose work is kept in Jira, I see each item's request,
 comments, stage and properties in the local web app read-only, each with an
 **Open in Jira** link to the ticket, where they are edited. The item's files,
-which live in the repository, stay editable. The board is read with one
-search, or two while a tag filter is ticked.
+which live in the repository, stay editable for the project's own items;
+another project's item, opened from a board that covers it or from a link, is
+read-only in its files too. Each page load reads Jira once for the projects of
+the scope that share one search.
 
 When Jira cannot be reached, or its credentials are not set, the board lists
 the item folders found on disk under a banner that gives the reason and offers
