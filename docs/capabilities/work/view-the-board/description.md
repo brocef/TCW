@@ -11,7 +11,7 @@ different sets. `--json` prints each item's full record, the same one
 `tcw work show --json` gives.
 
 A folder in the work store that is not an item, or a plain file, is ignored.
-An item whose `item.yaml` cannot be read makes `list` exit 1 naming the file,
+An item whose `tcw-work-item.yaml` cannot be read makes `list` exit 1 naming the file,
 because a list that silently left it out would read as complete.
 
 In a project that keeps its items in Jira, a ticket whose `TCW Item` field

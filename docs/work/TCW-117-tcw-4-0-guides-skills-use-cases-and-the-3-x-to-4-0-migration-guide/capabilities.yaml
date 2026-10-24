@@ -1,6 +1,25 @@
 changed:
-    - skills/work
-    - skills/taxonomy
+    - capabilities/browse-capabilities-by-status
+    - capabilities/detect-capability-drift
+    - cli/get-a-suggestion-for-a-mistyped-command
+    - cli/list-connected-projects
+    - cli/provision-declared-stores
+    - cli/rely-on-one-output-contract
+    - cli/scaffold-the-doc-trees
+    - cli/show-the-effective-configuration
+    - cli/validate-a-project
     - skills/capabilities
     - skills/configure
     - skills/setup
+    - skills/taxonomy
+    - skills/work
+    - taxonomy/browse-the-term-forest
+    - work/configure-procedures
+    - work/configure-the-work-lifecycle
+    - work/decompose-a-work-item-into-children
+    - work/keep-work-items-in-jira
+    - work/manage-blocking-relations
+    - work/open-a-work-item
+    - work/read-a-work-item
+    - work/run-a-lifecycle-stage
+    - work/view-the-board

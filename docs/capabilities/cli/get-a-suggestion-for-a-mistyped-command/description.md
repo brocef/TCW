@@ -13,7 +13,7 @@ table before any other rule, when typed at the top level: *tcw init* is answered
 with `tcw project new`, *tcw projects* (any verb) with `tcw project list`,
 *tcw config* (any verb) with `tcw project config`, and *tcw provision* with
 `tcw project provision`. Each answer is one line saying the old command is now
-the new one.
+the new one; [the 3.x to 4.0 migration guide](../../../migration-guide-3.X-to-4.0.0.md) lists them.
 
 **A synonym comes before the same word elsewhere.** When the word I typed is a
 verb of another group and also a synonym whose target is valid where I typed it,

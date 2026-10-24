@@ -4,7 +4,8 @@ parents in the order it lists them, then its children, each once. Projects are
 named by ID, never by folder, because the ID is a project's identity and a
 folder is only where it happens to sit on one machine. It writes nothing.
 TCW 3.x's name for it, *tcw projects list*, is not a command: typed, it is a
-usage error (exit 2) whose message names `tcw project list`.
+usage error (exit 2) whose message names `tcw project list`, as
+[the 3.x to 4.0 migration guide](../../../migration-guide-3.X-to-4.0.0.md) says.
 
 Only _declared_ projects appear. TCW reads `parents:` and `children:` in
 `.tcw/tcw-config.yaml`, and the children listed in my personal

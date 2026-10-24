@@ -9,7 +9,8 @@ describes. It reports on standard error what it is about to contact before
 contacting it, fetches each store into the location the declaration names or a
 per-machine cache, and says where each store landed. It prints nothing on
 standard output. TCW 3.x's name for it, *tcw provision*, is not a command:
-typed, it is a usage error (exit 2) whose message names `tcw project provision`.
+typed, it is a usage error (exit 2) whose message names `tcw project provision`,
+as [the 3.x to 4.0 migration guide](../../../migration-guide-3.X-to-4.0.0.md) says.
 
 `--component <axis>` limits it to that store (repeat it for more than one), and
 then it fetches no project and contacts no project's remote: a run that names a

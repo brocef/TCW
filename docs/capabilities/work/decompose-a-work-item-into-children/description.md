@@ -3,7 +3,7 @@ As a user, I run `tcw work new "<title>" --parent <item>` to create a child work
 I name the parent by its full identifier (`<project>.work/<folder>`), its
 `tcw://` address, its folder name alone for an item of the project I am in,
 or, when the project keeps its items in Jira, its ticket key, bare or as
-`<project>.work/<KEY>`. Whatever form I give, the child's `item.yaml` keeps
+`<project>.work/<KEY>`. Whatever form I give, the child's `tcw-work-item.yaml` keeps
 the parent's full identifier, and `tcw work show` prints the parent and the
 children by full identifier.
 

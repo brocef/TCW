@@ -13,7 +13,8 @@ other configuration; the ID goes below the version line, which no edit changes.
 `tcw project new` is one verb of the `tcw project` group, the commands about a
 project itself rather than its records. TCW 3.x's name for it, *tcw init*, is
 not a command: typed, it is a usage error (exit 2) whose message says that
-`tcw project new` replaces it, and nothing is run.
+`tcw project new` replaces it, and nothing is run; [the 3.x to 4.0 migration
+guide](../../../migration-guide-3.X-to-4.0.0.md) lists it.
 
 It prints nothing on standard output. Every file it writes and every folder it
 creates is named on standard error (`wrote <path>`, `created <path>/`), and it

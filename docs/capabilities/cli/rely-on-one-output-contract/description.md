@@ -46,7 +46,7 @@ the project I am in, by its id-path alone — a work item's folder name, a term'
 or capability's path. A work item can also be named by its ticket key when its
 project keeps its items in Jira, bare or as `<project>.work/<KEY>`. The match is
 exact — no prefixes, no old names and no other letter case — and every
-identifier TCW prints is the full one. The TCW 3.x forms, `<project-id>/<folder>`
+identifier TCW prints is the full one. The TCW 3.x forms ([the 3.x to 4.0 migration guide](../../../migration-guide-3.X-to-4.0.0.md) maps them), `<project-id>/<folder>`
 and an alias prefix such as `core/term`, are read as id-paths and so are not
 found (exit 4); when the first part is a project TCW can locate, the message
 says how to write the full identifier.

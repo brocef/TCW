@@ -4,10 +4,10 @@ The text form prints, in order: one `key: value` line per field of the item's re
 
 `--json` prints `{"schema": 2, "item": {...}, "request": ..., "comments": [...]}`: the record (the same shape each entry of `tcw work list --json` takes under `"items"`, carrying `full-id` and `owner`), the request text or `null`, and the comments newest first, each with `at`, `author` and `text`. In Jira mode it carries account IDs rather than display names.
 
-An item whose `item.yaml` cannot be read — not valid YAML, an unknown key, a missing title, a value of the wrong kind — makes `show` exit 1 naming the file and the key. One unreadable item does not stop me reading another: `show` still prints the readable item, works out its blocks and children from the items it can read, and says on stderr which files it could not.
+An item whose `tcw-work-item.yaml` cannot be read — not valid YAML, an unknown key, a missing title, a value of the wrong kind — makes `show` exit 1 naming the file and the key. One unreadable item does not stop me reading another: `show` still prints the readable item, works out its blocks and children from the items it can read, and says on stderr which files it could not.
 
 `tcw work path <item>` prints the item's folder; `tcw work path <item> <stage>` prints the stage's document or folder in it; `--next` names the next numbered round of a stage that loops, and `--handoff` the path for a note to whoever resumes the stage. None of them writes anything. `tcw work path` with no item prints the work store's folder.
 
-Errors keep stdout empty and exit non-zero — 4 for an item that does not exist, including one named in the TCW 3.x form `<project-id>/<folder>` — so piping into `jq` fails cleanly rather than on a fragment.
+Errors keep stdout empty and exit non-zero — 4 for an item that does not exist, including one named in the TCW 3.x form `<project-id>/<folder>` ([the 3.x to 4.0 migration guide](../../../migration-guide-3.X-to-4.0.0.md)) — so piping into `jq` fails cleanly rather than on a fragment.
 
 An item is found at any depth of the work store, by its id-path: its folder's path, which may pass through its parent's folder and organising folders.

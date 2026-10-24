@@ -12,7 +12,7 @@ notes such as a `TCW_PROJECT_<ID>` override in effect.
 
 There are three severities, and only one fails the run:
 
-- `error` — malformed YAML, a broken `tcw://` link, an `item.yaml` that cannot be
+- `error` — malformed YAML, a broken `tcw://` link, a `tcw-work-item.yaml` that cannot be
   read, a taxonomy or capabilities problem (including a capability record that
   still carries the retired `Planning doc` or `Tracker` field), or a
   configuration problem in any layer — `.tcw/tcw-config.yaml`, the user-wide
@@ -88,7 +88,7 @@ that is the ordinary state of a checkout holding only the code. A taxonomy or
 capabilities `config.yaml` or `.config.yaml` left over from before 2.5.0 is
 reported once for each store that has one.
 
-**Work items.** Every item is checked: an `item.yaml` that cannot be read is an
+**Work items.** Every item is checked: a `tcw-work-item.yaml` that cannot be read is an
 error naming the file and the key, and the other checks still run over the items
 that can be read. An item whose stage is not in the stage table, or is disabled
 in this project, is reported. While an item is still being worked, its
@@ -98,7 +98,7 @@ an error.
 
 **Jira mode.** When the project keeps its work items in Jira, plain
 `tcw validate` checks only what is on this machine: each item folder's name and
-`item.yaml`, the latest `review` round, and each folder's `capabilities.yaml`,
+`tcw-work-item.yaml`, the latest `review` round, and each folder's `capabilities.yaml`,
 which is an error when it cannot be read or is malformed, whatever the item's
 stage, since the stage is kept in Jira. A folder for a stage Jira keeps, such as
 `qa/`, is a warning that the folder is ignored, and its rounds are not read.
@@ -115,6 +115,6 @@ tcw migrate. It fails two stores that are the same folder or one inside the
 other, among this project's three stores and those of every project it can
 locate, and a store location that loops back to a store already followed.
 
-`tcw validate` also reports a file or folder that does not belong in an object's folder, a folder with a reserved name, a TCW 3.x `meta.yaml` or `item.yaml`, a state file whose version this TCW cannot read, an `id:` that differs from its folder's name, a full identifier longer than 255 characters, and, as a warning, an object that sits in another object's folder that its `parent` does not name. It never checks the YAML files under an object's `resources/` folder, so a broken sample file there stops no other check.
+`tcw validate` also reports a file or folder that does not belong in an object's folder, a folder with a reserved name, a TCW 3.x state file (which `tcw migrate` converts), a state file whose version this TCW cannot read, an `id:` that differs from its folder's name, a full identifier longer than 255 characters, and, as a warning, an object that sits in another object's folder that its `parent` does not name. It never checks the YAML files under an object's `resources/` folder, so a broken sample file there stops no other check.
 
 **Inherited taxonomy and capabilities.** A taxonomy entry or capability of this project's own that overrides nothing must be complete — a name, a description file that may be empty, and for a capability a `Status` — and one that is not is an error, so an override whose original was moved or removed is found. Each of the project's own objects is checked as the project sees it, combined with what it inherits. An `overrides` key in a state file, and a `taxonomy:` or `capabilities:` section of this project's own `.tcw/tcw-config.yaml` that still lists projects to inherit from, are errors saying what TCW 4.0 replaced them with. When inherited content cannot be read, the checks that need it are reported as could not be checked, and the others still run. TCW no longer checks override pointers, inheritance cycles or a project ID colliding with a top-level entry.
