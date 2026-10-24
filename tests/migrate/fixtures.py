@@ -9,7 +9,8 @@ another version of a fixture is noticed.
 
 F-single is one project, `app`, keeping its work in Jira, with no related
 project: every conversion and report part 1 of the build order makes.
-F-single-files is the same stores with the files backend.
+F-single-files is the same stores with the files backend. F-full places
+F-single's `app` in a family of related projects: what part 2 converts.
 """
 
 from __future__ import annotations
@@ -286,6 +287,226 @@ def seed_tickets(fake, project: str = JIRA_PROJECT) -> dict[str, dict]:
     return made
 
 
+# ---------------------------------------------------------------------------
+# F-full: F-single's `app` in a family (plan, Fixtures; Steps 15-24)
+
+LIB_URL = "https://example.invalid/lib.git"
+
+#: The `cap-…` id of each capability of `app`'s related projects, by project
+#: and id-path. An override's own folder keeps an id too, as 3.x wrote one.
+FAMILY_IDS = {
+    "core": {"auth/login": "cap-c0a001", "billing": "cap-c0a002",
+             "cli/report": "cap-c0a003", "x/fetch": "cap-c0a004"},
+    "lib": {"net/fetch": "cap-11b001"},
+    "ws": {"cli/shared": "cap-5e5001"},
+    "sib": {"cli/sib-only": "cap-51b001", "o/login": "cap-51b002"},
+    "kid": {"k-thing": "cap-c1d001"},
+    "app": {"ov/login": "cap-a99001", "core/billing": "cap-a99002",
+            "cli/report": "cap-a99003", "cli/shared": "cap-a99004"},
+}
+
+_WS_CONFIG = """\
+# ws: the workspace, holding app, sib and kid.
+id: ws
+projects:
+  children:
+    app:
+      path: app
+      # Filing into app's Jira project.
+      jira:
+        project: APP
+    sib: sib
+work:
+  tags:
+  - bug
+  - docs
+"""
+
+_APP_FAMILY = """\
+projects:
+  parent:
+    ws: ..
+  children:
+    kid: ../kid
+  upstream:
+    core: ../../core
+    lib:
+      repository:
+        url: {lib}
+taxonomy:
+  extends:
+  - core
+  - kid
+capabilities:
+  extends:
+  - core
+  - ws
+  - sib
+""".format(lib=LIB_URL)
+
+_SIB_CONFIG = """\
+id: sib
+projects:
+  parent:
+    ws: ..
+capabilities:
+  extends:
+  - core
+"""
+
+_KID_CONFIG = """\
+id: kid
+projects:
+  parent:
+    app: ../app
+"""
+
+_CORE_CONFIG = """\
+# core: a library app reads.
+id: core
+projects:
+  upstream:
+    lib:
+      repository:
+        url: {lib}
+capabilities:
+  extends:
+  - lib
+""".format(lib=LIB_URL)
+
+_LIB_CONFIG = "id: lib\n"
+
+
+def _cap(project: str, path: str, name: str, extra: str = "") -> str:
+    return (f"id: {FAMILY_IDS[project][path]}\nname: {name}\nStatus: Supported\n"
+            f"{extra}")
+
+
+_CORE_FILES = {
+    "tcw-config.yaml": _CORE_CONFIG,
+    "docs/taxonomy/money/meta.yaml": "name: Money\nkind: Vocabulary\nrelatesTo: []\n",
+    "docs/taxonomy/money/description.md": "Money.\n",
+    "docs/capabilities/auth/login/meta.yaml": _cap(
+        "core", "auth/login", "Log in", "Subject:\n- money\nprependedDocs:\n- intro.md\n"),
+    "docs/capabilities/auth/login/description.md": "Logs in.\n",
+    "docs/capabilities/auth/login/intro.md": "Before logging in.\n",
+    "docs/capabilities/billing/meta.yaml": _cap("core", "billing", "Bill"),
+    "docs/capabilities/billing/description.md": "Bills.\n",
+    "docs/capabilities/cli/report/meta.yaml": _cap("core", "cli/report", "Report"),
+    "docs/capabilities/cli/report/description.md": "Reports.\n",
+    # core's own override of lib's capability, from a folder of its own.
+    "docs/capabilities/x/fetch/meta.yaml": (
+        f"id: {FAMILY_IDS['core']['x/fetch']}\noverrides: {FAMILY_IDS['lib']['net/fetch']}\n"
+        "name: Fetch, as core does it\n"),
+}
+
+_LIB_FILES = {
+    "tcw-config.yaml": _LIB_CONFIG,
+    "docs/capabilities/net/fetch/meta.yaml": _cap("lib", "net/fetch", "Fetch"),
+    "docs/capabilities/net/fetch/description.md": "Fetches.\n",
+}
+
+_WS_FILES = {
+    "tcw-config.yaml": _WS_CONFIG,
+    "docs/capabilities/cli/shared/meta.yaml": _cap("ws", "cli/shared", "Shared"),
+    "docs/capabilities/cli/shared/description.md": "Shared by the workspace.\n",
+}
+
+_SIB_FILES = {
+    "tcw-config.yaml": _SIB_CONFIG,
+    "docs/capabilities/cli/sib-only/meta.yaml": _cap("sib", "cli/sib-only", "Sib only"),
+    "docs/capabilities/cli/sib-only/description.md": "Only in sib.\n",
+    # sib overrides core's capability: a middle project, since app reads sib.
+    "docs/capabilities/o/login/meta.yaml": (
+        f"id: {FAMILY_IDS['sib']['o/login']}\n"
+        f"overrides: core/{FAMILY_IDS['core']['auth/login']}\nStatus: Deprecated\n"),
+}
+
+_KID_FILES = {
+    "tcw-config.yaml": _KID_CONFIG,
+    "docs/taxonomy/party/meta.yaml": "name: Party\nkind: Vocabulary\nrelatesTo: []\n",
+    "docs/taxonomy/party/description.md": "A party.\n",
+    "docs/capabilities/k-thing/meta.yaml": _cap("kid", "k-thing", "K thing"),
+    "docs/capabilities/k-thing/description.md": "A thing of kid's.\n",
+}
+
+#: app's capabilities in F-full: F-single's, `cli/x` naming two inherited
+#: terms, and three overrides of core's and one capability ws also has.
+_APP_CAPABILITIES = dict(_CAPABILITIES) | {
+    "cli/x/meta.yaml": _CAPABILITIES["cli/x/meta.yaml"].replace(
+        "Subject:\n- invoice\n", "Subject:\n- invoice\n- core/money\n- party\n"),
+    # By bare id, from a folder unrelated to the original's path.
+    "ov/login/meta.yaml": (f"id: {FAMILY_IDS['app']['ov/login']}\n"
+                           f"overrides: {FAMILY_IDS['core']['auth/login']}\n"
+                           "name: Log in, as app does it\n"),
+    "ov/login/description.md": "Logs in to app.\n",
+    # By `<alias>/<id>`, from the `<alias>/` folder 3.x kept overrides in.
+    "core/billing/meta.yaml": (f"id: {FAMILY_IDS['app']['core/billing']}\n"
+                               f"overrides: core/{FAMILY_IDS['core']['billing']}\n"
+                               "Status: Deprecated\n"),
+    # Already at its original's path.
+    "cli/report/meta.yaml": (f"id: {FAMILY_IDS['app']['cli/report']}\n"
+                             f"overrides: {FAMILY_IDS['core']['cli/report']}\n"
+                             "name: Report, as app does it\n"),
+    "cli/shared/meta.yaml": _cap("app", "cli/shared", "Shared, as app has it"),
+    "cli/shared/description.md": "app's own.\n",
+}
+
+_APP_WORK = dict(_WORK_JIRA) | {
+    "APP-2-b/capabilities.yaml": ("changed:\n- core/billing\n- kid/k-thing\n"
+                                  "- cli/shared\n"),
+}
+
+
+def app_config_in_family() -> str:
+    """F-single's configuration with `app`'s place in the family and its
+    work store in the workspace."""
+    text = _CONFIG.replace("# app: one project whose work is kept in Jira.\nid: app\n",
+                           "# app: one project of the ws family, whose work is kept "
+                           "in Jira.\nid: app\n" + _APP_FAMILY)
+    return text.replace("work:\n  backend: jira\n",
+                        "work:\n  path: ../docs/app/work\n  backend: jira\n")
+
+
+def lib_clone(cache_home: Path) -> Path:
+    """Where 3.x put its clone of `lib`, below `cache_home` as `XDG_CACHE_HOME`."""
+    from tcw.migrate.legacy import RepoDecl3, _cache_key_3x
+    return cache_home / "tcw" / "stores" / _cache_key_3x(RepoDecl3(LIB_URL))
+
+
+#: Each F-full project's folder, relative to the fixture's base folder.
+F_FULL_PROJECTS = {"ws": "ws", "app": "ws/app", "sib": "ws/sib", "kid": "ws/kid",
+                   "core": "core"}
+
+
+def build_f_full(base: Path, *, config_home: Path | None = None,
+                 cache_home: Path | None = None, git: bool = True) -> Path:
+    """F-full below `base`: `ws` a git repository holding `app`, `sib` and
+    `kid`; `core` its own repository beside it; `lib` named only by its
+    repository, its 3.x clone below `cache_home`. Returns `app`'s folder."""
+    base.mkdir(parents=True, exist_ok=True)
+    ws, app = base / "ws", base / "ws" / "app"
+    write_files(ws, _WS_FILES)
+    write_files(base / "ws/sib", _SIB_FILES)
+    write_files(base / "ws/kid", _KID_FILES)
+    write_files(base / "core", _CORE_FILES)
+    if cache_home is not None:
+        write_files(lib_clone(cache_home), _LIB_FILES)
+    files = {"tcw-config.yaml": app_config_in_family(), "tcw-config.local.yaml": _LOCAL,
+             ".gitignore": "/tcw-config.local.yaml\n", "README.md": _README}
+    files |= {f"docs/taxonomy/{k}": v for k, v in _TAXONOMY.items()}
+    files |= {f"docs/capabilities/{k}": v for k, v in _APP_CAPABILITIES.items()}
+    write_files(app, files)
+    write_files(ws / "docs/app/work", _APP_WORK)
+    (app / "docs/taxonomy/customer").mkdir(parents=True, exist_ok=True)
+    if config_home is not None:
+        write_files(config_home, {"tcw/config.yaml": _USER})
+    if git:
+        git_init(ws)
+        git_init(base / "core")
+    return app
+
+
 def as_4_0_records(src: Path, dst: Path) -> Path:
     """A copy of a `docs/` folder at `dst` with every taxonomy and capability
     `meta.yaml` renamed to its TCW 4 name and the version line put first
@@ -356,19 +577,33 @@ def fixture_digest(root: Path) -> str:
 FIXTURES = {
     "f-single": {"backend": "jira"},
     "f-single-files": {"backend": "files"},
+    "f-full": {},
 }
+
+#: The projects of a fixture that holds several, each 3.x's answers are
+#: recorded in, by ID: its folder relative to the folder the fixture is
+#: built in. A fixture not named here is one project, at that folder.
+FIXTURE_PROJECTS = {"f-full": F_FULL_PROJECTS}
 
 
 def build_fixture(name: str, root: Path, *, config_home: Path | None = None,
-                  git: bool = False) -> Path:
+                  cache_home: Path | None = None, git: bool = False) -> Path:
+    """Fixture `name` at `root`; for F-full, `root` is its base folder, and
+    `lib`'s clone goes below `cache_home`."""
+    if name == "f-full":
+        build_f_full(root, config_home=config_home, cache_home=cache_home, git=git)
+        return root
     return build_f_single(root, config_home=config_home, git=git, **FIXTURES[name])
 
 
-def fixture_digest_of(name: str, root: Path, config_home: Path) -> str:
+def fixture_digest_of(name: str, root: Path, config_home: Path,
+                      cache_home: Path | None = None) -> str:
     """The digest a golden records for fixture `name` built at `root` with its
-    user-wide file below `config_home`: both folders' digests, together."""
+    user-wide file below `config_home` and, for F-full, `lib`'s clone below
+    `cache_home`: the folders' digests, together."""
     digest = hashlib.sha256(name.encode("utf-8"))
-    for folder in (root, config_home):
-        digest.update(fixture_digest(folder).encode("ascii") if folder.exists()
-                      else b"absent")
+    folders = [root, config_home] + ([cache_home] if name == "f-full" else [])
+    for folder in folders:
+        digest.update(fixture_digest(folder).encode("ascii") if folder is not None
+                      and folder.exists() else b"absent")
     return digest.hexdigest()

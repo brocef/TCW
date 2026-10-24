@@ -1,0 +1,216 @@
+{
+  "tcw-version": "tcw 3.0.2",
+  "pip-freeze": [
+    "PyYAML==6.0.3",
+    "-e git+ssh://git@github.com/brocef/TCW.git@64042c2b70c52804cbc3020b0ee9244c35d1afe6#egg=tcw_cli"
+  ],
+  "date": "2026-10-24",
+  "fixture-digest": "89fd6f831a278d66c7c3165d9659aa4c9245ea2ff24c3e101115c9548cbbaafe",
+  "projects": {
+    "ws": {
+      "taxonomy list --json": {
+        "exit": 1,
+        "stdout": "",
+        "stderr": "tcw taxonomy list: no taxonomy store here — run `tcw init taxonomy --id <id>` in the project folder\n"
+      },
+      "capabilities list --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capabilities\": [\n    {\n      \"path\": \"cli/shared\",\n      \"name\": \"Shared\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    }\n  ]\n}\n",
+        "stderr": ""
+      },
+      "capabilities show cli/shared --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"cli/shared\",\n    \"name\": \"Shared\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-5e5001\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Shared by the workspace.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "validate": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "0 errors, 0 warnings, 0 unresolved\n"
+      }
+    },
+    "app": {
+      "taxonomy list --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"terms\": [\n    {\n      \"path\": \"customer\",\n      \"name\": \"Customer\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"invoice\",\n      \"name\": \"Invoice\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"invoice/line\",\n      \"name\": \"Line\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"order\",\n      \"name\": \"Order\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"core/money\",\n      \"name\": \"Money\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"core\"\n    },\n    {\n      \"path\": \"kid/party\",\n      \"name\": \"Party\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"kid\"\n    }\n  ]\n}\n",
+        "stderr": ""
+      },
+      "capabilities list --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capabilities\": [\n    {\n      \"path\": \"cli/shared\",\n      \"name\": \"Shared, as app has it\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"cli/v\",\n      \"name\": \"Do V\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"cli/v/resources\",\n      \"name\": \"A sample, kept as a resource\",\n      \"status\": null,\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"cli/w\",\n      \"name\": \"Do W\",\n      \"status\": null,\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"cli/x\",\n      \"name\": \"Do X\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"cli/x/y\",\n      \"name\": \"Do Y\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"cli/z\",\n      \"name\": \"Z\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"conditions/online\",\n      \"name\": \"Online\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"roles/admin\",\n      \"name\": \"Admin\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"core/auth/login\",\n      \"name\": \"Log in, as app does it\",\n      \"status\": \"Supported\",\n      \"origin\": \"core\"\n    },\n    {\n      \"path\": \"core/billing\",\n      \"name\": \"Bill\",\n      \"status\": \"Deprecated\",\n      \"origin\": \"core\"\n    },\n    {\n      \"path\": \"core/cli/report\",\n      \"name\": \"Report, as app does it\",\n      \"status\": \"Supported\",\n      \"origin\": \"core\"\n    },\n    {\n      \"path\": \"ws/cli/shared\",\n      \"name\": \"Shared\",\n      \"status\": \"Supported\",\n      \"origin\": \"ws\"\n    },\n    {\n      \"path\": \"sib/cli/sib-only\",\n      \"name\": \"Sib only\",\n      \"status\": \"Supported\",\n      \"origin\": \"sib\"\n    }\n  ]\n}\n",
+        "stderr": ""
+      },
+      "capabilities show cli/shared --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"cli/shared\",\n    \"name\": \"Shared, as app has it\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-a99004\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"app's own.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show cli/v --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"cli/v\",\n    \"name\": \"Do V\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-5e6f70\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Does V.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show cli/v/resources --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"cli/v/resources\",\n    \"name\": \"A sample, kept as a resource\",\n    \"status\": null,\n    \"origin\": \"local\",\n    \"id\": \"\",\n    \"fields\": {},\n    \"body\": \"\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show cli/w --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"cli/w\",\n    \"name\": \"Do W\",\n    \"status\": null,\n    \"origin\": \"local\",\n    \"id\": \"cap-4d5e6f\",\n    \"fields\": {},\n    \"body\": \"Does W.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show cli/x --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"cli/x\",\n    \"name\": \"Do X\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-1a2b3c\",\n    \"fields\": {\n      \"Status\": \"Supported\",\n      \"Subject\": [\n        \"invoice\",\n        \"core/money\",\n        \"party\"\n      ],\n      \"Roles\": [\n        \"!roles/admin\"\n      ],\n      \"When\": [\n        \"conditions/online\"\n      ]\n    },\n    \"body\": \"The camera is on.\\n\\nDoes X.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show cli/x/y --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"cli/x/y\",\n    \"name\": \"Do Y\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-2b3c4d\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Does Y.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show cli/z --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"cli/z\",\n    \"name\": \"Z\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-3c4d5e\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show conditions/online --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"conditions/online\",\n    \"name\": \"Online\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-708192\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Connected.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show roles/admin --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"roles/admin\",\n    \"name\": \"Admin\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-6f7081\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Someone who runs it.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show core/auth/login --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"core/auth/login\",\n    \"name\": \"Log in, as app does it\",\n    \"status\": \"Supported\",\n    \"origin\": \"core\",\n    \"id\": \"cap-c0a001\",\n    \"fields\": {\n      \"Status\": \"Supported\",\n      \"Subject\": [\n        \"money\"\n      ]\n    },\n    \"body\": \"Logs in to app.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show core/billing --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"core/billing\",\n    \"name\": \"Bill\",\n    \"status\": \"Deprecated\",\n    \"origin\": \"core\",\n    \"id\": \"cap-c0a002\",\n    \"fields\": {\n      \"Status\": \"Deprecated\"\n    },\n    \"body\": \"Bills.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show core/cli/report --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"core/cli/report\",\n    \"name\": \"Report, as app does it\",\n    \"status\": \"Supported\",\n    \"origin\": \"core\",\n    \"id\": \"cap-c0a003\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Reports.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show ws/cli/shared --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"ws/cli/shared\",\n    \"name\": \"Shared\",\n    \"status\": \"Supported\",\n    \"origin\": \"ws\",\n    \"id\": \"cap-5e5001\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Shared by the workspace.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show sib/cli/sib-only --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"sib/cli/sib-only\",\n    \"name\": \"Sib only\",\n    \"status\": \"Supported\",\n    \"origin\": \"sib\",\n    \"id\": \"cap-51b001\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Only in sib.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "validate": {
+        "exit": 1,
+        "stdout": "error: docs/capabilities/cli/v/resources: missing id\nerror: docs/capabilities/cli/v/resources: missing Status\nerror: docs/capabilities/cli/w: missing Status\n",
+        "stderr": "3 errors, 0 warnings, 0 unresolved\n"
+      }
+    },
+    "sib": {
+      "taxonomy list --json": {
+        "exit": 1,
+        "stdout": "",
+        "stderr": "tcw taxonomy list: no taxonomy store here — run `tcw init taxonomy --id <id>` in the project folder\n"
+      },
+      "capabilities list --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capabilities\": [\n    {\n      \"path\": \"cli/sib-only\",\n      \"name\": \"Sib only\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"core/auth/login\",\n      \"name\": \"Log in\",\n      \"status\": \"Deprecated\",\n      \"origin\": \"core\"\n    },\n    {\n      \"path\": \"core/billing\",\n      \"name\": \"Bill\",\n      \"status\": \"Supported\",\n      \"origin\": \"core\"\n    },\n    {\n      \"path\": \"core/cli/report\",\n      \"name\": \"Report\",\n      \"status\": \"Supported\",\n      \"origin\": \"core\"\n    }\n  ]\n}\n",
+        "stderr": ""
+      },
+      "capabilities show cli/sib-only --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"cli/sib-only\",\n    \"name\": \"Sib only\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-51b001\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Only in sib.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show core/auth/login --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"core/auth/login\",\n    \"name\": \"Log in\",\n    \"status\": \"Deprecated\",\n    \"origin\": \"core\",\n    \"id\": \"cap-c0a001\",\n    \"fields\": {\n      \"Status\": \"Deprecated\",\n      \"Subject\": [\n        \"money\"\n      ]\n    },\n    \"body\": \"Logs in.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show core/billing --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"core/billing\",\n    \"name\": \"Bill\",\n    \"status\": \"Supported\",\n    \"origin\": \"core\",\n    \"id\": \"cap-c0a002\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Bills.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show core/cli/report --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"core/cli/report\",\n    \"name\": \"Report\",\n    \"status\": \"Supported\",\n    \"origin\": \"core\",\n    \"id\": \"cap-c0a003\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Reports.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "validate": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "0 errors, 0 warnings, 0 unresolved\n"
+      }
+    },
+    "kid": {
+      "taxonomy list --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"terms\": [\n    {\n      \"path\": \"party\",\n      \"name\": \"Party\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"local\"\n    }\n  ]\n}\n",
+        "stderr": ""
+      },
+      "capabilities list --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capabilities\": [\n    {\n      \"path\": \"k-thing\",\n      \"name\": \"K thing\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    }\n  ]\n}\n",
+        "stderr": ""
+      },
+      "capabilities show k-thing --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"k-thing\",\n    \"name\": \"K thing\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-c1d001\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"A thing of kid's.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "validate": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "0 errors, 0 warnings, 0 unresolved\n"
+      }
+    },
+    "core": {
+      "taxonomy list --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"terms\": [\n    {\n      \"path\": \"money\",\n      \"name\": \"Money\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"local\"\n    }\n  ]\n}\n",
+        "stderr": ""
+      },
+      "capabilities list --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capabilities\": [\n    {\n      \"path\": \"auth/login\",\n      \"name\": \"Log in\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"billing\",\n      \"name\": \"Bill\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"cli/report\",\n      \"name\": \"Report\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"lib/net/fetch\",\n      \"name\": \"Fetch, as core does it\",\n      \"status\": \"Supported\",\n      \"origin\": \"lib\"\n    }\n  ]\n}\n",
+        "stderr": ""
+      },
+      "capabilities show auth/login --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"auth/login\",\n    \"name\": \"Log in\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-c0a001\",\n    \"fields\": {\n      \"Status\": \"Supported\",\n      \"Subject\": [\n        \"money\"\n      ]\n    },\n    \"body\": \"Before logging in.\\n\\nLogs in.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show billing --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"billing\",\n    \"name\": \"Bill\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-c0a002\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Bills.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show cli/report --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"cli/report\",\n    \"name\": \"Report\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-c0a003\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Reports.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show lib/net/fetch --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"lib/net/fetch\",\n    \"name\": \"Fetch, as core does it\",\n    \"status\": \"Supported\",\n    \"origin\": \"lib\",\n    \"id\": \"cap-11b001\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Fetches.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "validate": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "0 errors, 0 warnings, 0 unresolved\n"
+      }
+    }
+  }
+}

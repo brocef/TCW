@@ -38,8 +38,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent))
 
-from tests.migrate.fixtures import (FIXTURES, build_fixture,  # noqa: E402
-                                    fixture_digest_of)
+from tests.migrate.fixtures import (FIXTURE_PROJECTS, FIXTURES,  # noqa: E402
+                                    build_fixture, fixture_digest_of)
 
 VERSION = "tcw 3.0.2"
 PYPI = "https://pypi.org/pypi/tcw-cli/3.0.2/json"
@@ -98,35 +98,52 @@ def placeheld(text: str, folder: Path) -> str:
     return text
 
 
+def answers(tcw: Path, root: Path, env: dict, folder: Path) -> dict:
+    """3.0.2's answers in the project at `root`."""
+    def run(*argv: str) -> dict:
+        done = subprocess.run([str(tcw), *argv], cwd=root, env=env,
+                              capture_output=True, text=True, timeout=120)
+        return {"exit": done.returncode, "stdout": placeheld(done.stdout, folder),
+                "stderr": placeheld(done.stderr, folder)}
+
+    commands = {"taxonomy list --json": run("taxonomy", "list", "--json"),
+                "capabilities list --json": run("capabilities", "list", "--json")}
+    listed = json.loads(commands["capabilities list --json"]["stdout"])
+    for row in listed["capabilities"]:
+        commands[f"capabilities show {row['path']} --json"] = run(
+            "capabilities", "show", row["path"], "--json")
+    commands["validate"] = run("validate")
+    return commands
+
+
 def record(name: str, tcw: Path, frozen: list[str], out: Path) -> None:
     folder = Path(tempfile.mkdtemp(prefix=f"tcw116-{name}-"))
     try:
         for sub in ("home", "cache"):
             (folder / sub).mkdir()
-        root = build_fixture(name, folder / "fixture", config_home=folder / "config")
-        if nearest_config(root) != root or nearest_config(folder) is not None:
-            fail(f"{root} is inside another project; not running tcw there")
+        root = build_fixture(name, folder / "fixture", config_home=folder / "config",
+                             cache_home=folder / "cache")
+        projects = FIXTURE_PROJECTS.get(name)
+        places = {key: root / rel for key, rel in (projects or {None: "."}).items()}
+        for place in places.values():
+            if nearest_config(place) != place:
+                fail(f"{place} holds no project of its own; not running tcw there")
+        if nearest_config(folder) is not None:
+            fail(f"{folder} is inside another project; not running tcw there")
         env = environment(folder)
-
-        def run(*argv: str) -> dict:
-            done = subprocess.run([str(tcw), *argv], cwd=root, env=env,
-                                  capture_output=True, text=True, timeout=120)
-            return {"exit": done.returncode, "stdout": placeheld(done.stdout, folder),
-                    "stderr": placeheld(done.stderr, folder)}
-
-        commands = {"taxonomy list --json": run("taxonomy", "list", "--json"),
-                    "capabilities list --json": run("capabilities", "list", "--json")}
-        listed = json.loads(commands["capabilities list --json"]["stdout"])
-        for row in listed["capabilities"]:
-            commands[f"capabilities show {row['path']} --json"] = run(
-                "capabilities", "show", row["path"], "--json")
-        commands["validate"] = run("validate")
-        golden = {"tcw-version": run("--version")["stdout"].strip(),
+        golden = {"tcw-version": subprocess.run(
+                      [str(tcw), "--version"], cwd=folder, env=env, capture_output=True,
+                      text=True, timeout=120).stdout.strip(),
                   "pip-freeze": frozen,
                   "date": datetime.date.today().isoformat(),
                   "fixture-digest": fixture_digest_of(name, folder / "fixture",
-                                                      folder / "config"),
-                  "commands": commands}
+                                                      folder / "config",
+                                                      folder / "cache")}
+        if projects is None:
+            golden["commands"] = answers(tcw, root, env, folder)
+        else:
+            golden["projects"] = {key: answers(tcw, place, env, folder)
+                                  for key, place in places.items()}
         out.write_text(json.dumps(golden, indent=2, ensure_ascii=False) + "\n",
                        encoding="utf-8")
         print(f"wrote {out}", file=sys.stderr)
@@ -137,6 +154,8 @@ def record(name: str, tcw: Path, frozen: list[str], out: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--tcw", type=Path, help="a tcw 3.0.2 already installed")
+    parser.add_argument("--only", nargs="+", choices=sorted(FIXTURES),
+                        help="record only these fixtures' goldens")
     args = parser.parse_args()
     work = Path(tempfile.mkdtemp(prefix="tcw116-record-"))
     try:
@@ -151,7 +170,8 @@ def main() -> int:
         if version != VERSION:
             fail(f"{tcw} prints {version!r}, not {VERSION!r}")
         (HERE / "golden").mkdir(exist_ok=True)
-        for name in FIXTURES:
+        names = args.only or list(FIXTURES)
+        for name in names:
             record(name, tcw, frozen, HERE / "golden" / f"{name}.json")
     finally:
         shutil.rmtree(work, ignore_errors=True)

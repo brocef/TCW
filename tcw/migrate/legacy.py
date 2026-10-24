@@ -595,3 +595,395 @@ def links_3x(text: str) -> list[Link3]:
         found.append(Link3(match.group(1), first, last + 1,
                            parse_tcw_uri_3x(match.group(1))))
     return found
+
+
+# ---------------------------------------------------------------------------
+# Related projects, as 3.x's registry declared and placed them (plan Step 15)
+
+#: The three relations of `projects:`, in the order 3.x's `_follow_edges`
+#: walked them (`tcw/store/project.py:542-551` at v3.0.2).
+RELATIONS_3X = ("children", "parent", "upstream")
+
+
+@dataclass(frozen=True)
+class RepoDecl3:
+    """`RepositoryDeclaration`, `tcw/store/base.py:679` at v3.0.2."""
+
+    url: str
+    ref: str | None = None
+    path: str = ""
+    checkout: str | None = None
+
+
+def parse_repository_3x(raw: Any, where: str) -> tuple[RepoDecl3 | None, list[str]]:
+    """`parse_repository_declaration`, `tcw/store/base.py:780-862` at v3.0.2:
+    a `repository` mapping, or None with its problems. Fails closed."""
+    problems: list[str] = []
+    if raw is None:
+        return None, problems
+    if not isinstance(raw, dict):
+        return None, [f"{where}: expected a mapping, got {type(raw).__name__}"]
+    known = {"url", "ref", "path", "checkout"}
+    unknown = set(raw) - known
+    if unknown:
+        problems.append(f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
+                        f"expected {', '.join(repr(k) for k in sorted(known))}")
+    url = raw.get("url")
+    if not isinstance(url, str) or not url.strip():
+        problems.append(f"{where}.url: expected a non-empty string")
+
+    def optional(key: str) -> str | None:
+        value = raw.get(key)
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            problems.append(f"{where}.{key}: expected a non-empty string")
+            return None
+        return value.strip()
+
+    ref, checkout = optional("ref"), optional("checkout")
+    store_path = ""
+    raw_path = raw.get("path")
+    if raw_path is not None:
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            problems.append(f"{where}.path: expected a non-empty string")
+        else:
+            candidate = raw_path.strip()
+            parts = Path(candidate).parts
+            if candidate.startswith("/") or (len(candidate) > 1 and candidate[1] == ":"):
+                problems.append(f"{where}.path: must be relative to the repository root, "
+                                f"got {candidate!r}")
+            elif ".." in parts:
+                problems.append(f"{where}.path: must not leave the repository root, "
+                                f"got {candidate!r}")
+            else:
+                store_path = Path(candidate).as_posix().strip("/")
+    if problems:
+        return None, problems
+    return RepoDecl3(url.strip(), ref, store_path, checkout), problems
+
+
+@dataclass(frozen=True)
+class Relation3:
+    """One entry of a 3.x `projects:` block: `ConnectedProject`
+    (`tcw/store/base.py` at v3.0.2) with the relation it is under."""
+
+    kind: str                       # children, parent or upstream
+    id: str
+    locator: str | None = None
+    repository: RepoDecl3 | None = None
+    jira: Any = None
+
+
+def _valid_id_3x(value: Any) -> str | None:
+    """`validate_project_id`, `tcw/store/project.py:24-36` at v3.0.2, whose
+    pattern and reserved IDs `tcw/project_files.py` keeps unchanged; the ID,
+    or None."""
+    from tcw.project_files import PROJECT_ID_PATTERN, RESERVED_PROJECT_IDS
+    text = (value or "").strip() if isinstance(value, str) else ""
+    if not PROJECT_ID_PATTERN.fullmatch(text) or text in RESERVED_PROJECT_IDS:
+        return None
+    return text
+
+
+def parse_connected_3x(project_id: str, raw: Any, where: str
+                       ) -> tuple[tuple | None, list[str]]:
+    """`parse_connected_entry`, `tcw/store/base.py:865-917` at v3.0.2: a bare
+    locator, or a mapping of `path`, `repository` and `jira`; the parts as
+    `(locator, repository, jira)`, or None with its problems."""
+    problems: list[str] = []
+    if isinstance(raw, str):
+        if not raw.strip():
+            return None, [f"{where}: locator must be a nonempty string"]
+        return (raw, None, None), problems
+    if not isinstance(raw, dict):
+        return None, [f"{where}: expected a locator string or a mapping, "
+                      f"got {type(raw).__name__}"]
+    known = {"path", "repository", "jira"}
+    unknown = set(raw) - known
+    if unknown:
+        problems.append(f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
+                        f"expected {', '.join(repr(k) for k in sorted(known))}")
+    locator = raw.get("path")
+    if locator is not None and (not isinstance(locator, str) or not locator.strip()):
+        problems.append(f"{where}.path: expected a non-empty string")
+        locator = None
+    declaration = None
+    if "repository" in raw:
+        declaration, more = parse_repository_3x(raw.get("repository"),
+                                                f"{where}.repository")
+        problems.extend(more)
+    if locator is None and declaration is None and not problems:
+        problems.append(f"{where}: needs 'path', 'repository', or both")
+    if problems:
+        return None, problems
+    return (locator, declaration, raw.get("jira")), problems
+
+
+def relations_3x(raw: dict, file: str) -> tuple[list[Relation3], list[str]]:
+    """The `projects:` reader of 3.x's registry (`_read_config` and
+    `_relation`, `tcw/store/project.py:614-668` at v3.0.2): every entry, in
+    the order written within each relation, children then parent then
+    upstream, and the problems 3.x would have reported, each naming `file`."""
+    connected = raw.get("projects")
+    if connected is None:
+        return [], []
+    if not isinstance(connected, dict):
+        return [], [f"{file}: projects must be a mapping"]
+    problems: list[str] = []
+    unknown = set(connected) - set(RELATIONS_3X)
+    if unknown:
+        problems.append(f"{file}: unknown projects keys: "
+                        f"{', '.join(sorted(map(str, unknown)))}")
+    out: list[Relation3] = []
+    for kind in RELATIONS_3X:
+        value = connected.get(kind)
+        if value is None:
+            continue
+        if not isinstance(value, dict):
+            problems.append(f"{file}: projects.{kind} must be a mapping")
+            continue
+        for key, entry in value.items():
+            valid = _valid_id_3x(key)
+            if valid is None:
+                problems.append(f"{file}: {kind} key: project ID must match "
+                                f"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+                continue
+            parts, more = parse_connected_3x(valid, entry, f"projects.{kind}.{valid}")
+            if parts is None:
+                problems += [f"{file}: {p}" for p in more]
+                continue
+            out.append(Relation3(kind, valid, *parts))
+    return out, problems
+
+
+def extends_3x(section: Any, label: str) -> list[str]:
+    """`_extends_ids`, `tcw/store/fs.py:884-913` at v3.0.2: one store
+    section's `extends`, or a `ValueError` naming `label`."""
+    config = section if isinstance(section, dict) else {}
+    value = config.get("extends") or []
+    if isinstance(value, dict):
+        raise ValueError(f"{label}: legacy extends map is unsupported; replace it with "
+                         "a list of registered project IDs")
+    if not isinstance(value, list) or any(not isinstance(v, str) for v in value):
+        raise ValueError(f"{label}: extends must be a list of project IDs")
+    ids = []
+    for v in value:
+        valid = _valid_id_3x(v)
+        if valid is None:
+            raise ValueError(f"{label}: project ID must match ^[a-z0-9]+(?:-[a-z0-9]+)*$")
+        ids.append(valid)
+    if len(ids) != len(set(ids)):
+        raise ValueError(f"{label}: extends contains duplicate project IDs")
+    return ids
+
+
+def _cache_root_3x() -> Path:
+    """`_cache_root`, `tcw/store/checkouts.py:60-68` at v3.0.2."""
+    base = os.environ.get("XDG_CACHE_HOME") or "~/.cache"
+    return Path(base).expanduser() / "tcw" / "stores"
+
+
+def _cache_key_3x(declaration: RepoDecl3) -> str:
+    """`_cache_key`, `tcw/store/checkouts.py:71-91` at v3.0.2."""
+    import hashlib
+    cleaned = declaration.url.strip().rstrip("/")
+    if cleaned.endswith(".git"):
+        cleaned = cleaned[:-4]
+    tokens = [token.rpartition("@")[2] for token in re.split(r"[/:]", cleaned) if token]
+    slug = "-".join(re.sub(r"[^A-Za-z0-9._-]+", "-", token).strip("-.")
+                    for token in tokens[-3:])
+    slug = (slug.strip("-").lower() or "store")[:60]
+    digest = hashlib.sha256(
+        f"{declaration.url}\n{declaration.ref or ''}".encode("utf-8")).hexdigest()[:12]
+    return f"{slug}-{digest}"
+
+
+def checkout_folder_3x(project_root: Path, declaration: RepoDecl3) -> Path:
+    """`checkout_root`, `tcw/store/checkouts.py:95-117` at v3.0.2: the
+    declared `checkout`, or the per-machine cache folder. A `~name` naming no
+    user is a `ValueError`."""
+    if declaration.checkout:
+        try:
+            value = Path(declaration.checkout).expanduser()
+        except RuntimeError as error:
+            raise ValueError(f"repository.checkout '{declaration.checkout}' cannot be "
+                             f"resolved: {error}") from None
+        return value if value.is_absolute() else (Path(project_root) / value)
+    return _cache_root_3x() / _cache_key_3x(declaration)
+
+
+def cache_folder_3x(project_root: Path, declaration: RepoDecl3) -> Path:
+    """`provisioned_root`, `tcw/store/checkouts.py:120-127` at v3.0.2: where
+    3.x put a declared project, the repository's `path` appended."""
+    root = checkout_folder_3x(project_root, declaration)
+    return (root / declaration.path) if declaration.path else root
+
+
+def holds_project(folder: Path) -> bool:
+    """Whether `folder` holds a TCW project's configuration in either form."""
+    return (folder / ROOT_CONFIG).is_file() or (folder / SENTINEL).is_file()
+
+
+def override_folder_3x(project_id: str) -> Path | None:
+    """Rule 0 of 3.x's `_target_path` (`_resolve_override`,
+    `tcw/store/project.py:745-777` at v3.0.2): the folder
+    `TCW_PROJECT_<ID>` names when it is a folder on this machine, else
+    None. A relative value is the working folder's."""
+    from tcw.store.project import override_variable
+    value = (os.environ.get(override_variable(project_id)) or "").strip()
+    if not value:
+        return None
+    folder = Path(value).expanduser()
+    if not folder.is_absolute():
+        folder = Path.cwd() / folder
+    folder = folder.resolve()
+    return folder if folder.is_dir() else None
+
+
+def locate_3x(config_folder: Path, relation: Relation3) -> tuple[Path, str]:
+    """Where 3.x's registry placed `relation`, declared by the project at
+    `config_folder` (`_target_path` and `_locator_path`,
+    `tcw/store/project.py:670-803` at v3.0.2), and how: `variable`,
+    `locator`, `repository` or, when no candidate holds a project, the first
+    candidate as `absent`. A candidate counts when it holds the project in
+    either form, since a related project may be migrated already. The
+    re-anchoring of a locator that leaves a linked worktree is not copied:
+    Design 6.6 reads a worktree's related projects from where it sits."""
+    override = override_folder_3x(relation.id)
+    if override is not None:
+        return override, "variable"
+    source = Path(config_folder).resolve()
+    candidates: list[tuple[Path, str]] = []
+    if relation.locator is not None:
+        target = Path(relation.locator)
+        folder = target if target.is_absolute() else source / target
+        candidates.append((Path(os.path.normpath(folder)), "locator"))
+    if relation.repository is not None:
+        try:
+            candidates.append((Path(os.path.normpath(
+                cache_folder_3x(source, relation.repository))), "repository"))
+        except ValueError:
+            pass
+    for folder, how in candidates:
+        if holds_project(folder):
+            return folder, how
+    return (candidates[0][0] if candidates else source), "absent"
+
+
+@dataclass
+class Ledger3:
+    """One 3.x capabilities store as its readers saw it: the standalone
+    capabilities (`_local_paths`, `tcw/store/fs.py:2253-2257` at v3.0.2),
+    each id-path to its `id` (`""` for none), and the overrides, each
+    id-path to its pointer and its whole `meta.yaml`."""
+
+    capabilities: dict[str, str] = field(default_factory=dict)
+    overrides: dict[str, tuple[str, dict]] = field(default_factory=dict)
+
+
+def ledger_3x(store_folder: Path) -> Ledger3:
+    """The capabilities store at `store_folder`, read as 3.x read it: a
+    `meta.yaml` with an `overrides` pointer is an override, not a
+    capability. A `meta.yaml` that cannot be read counts as a capability with
+    no id, as the listing would still show its folder."""
+    out = Ledger3()
+    for path in objects_3x(Path(store_folder), "capabilities"):
+        meta_path = Path(store_folder) / path / STATE_3X["capabilities"]
+        try:
+            data, _ = parse_mapping_3x(meta_path.read_text(encoding="utf-8"), meta_path)
+        except (OSError, UnicodeDecodeError):
+            data = None
+        data = data if isinstance(data, dict) else {}
+        pointer = data.get("overrides")
+        if pointer:
+            out.overrides[path] = (str(pointer), data)
+        else:
+            out.capabilities[path] = str(data.get("id") or "")
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Owners, as 3.x's stores gave them (plan Step 15)
+
+
+class Ambiguous3(ValueError):
+    """`AmbiguousRef` at v3.0.2: a bare reference more than one source has."""
+
+
+def override_target_3x(pointer: str, sources: dict[str, dict[str, str]]
+                       ) -> list[tuple[str, str]]:
+    """The match of 3.x's override index (`_override_index` and
+    `_apply_override`, `tcw/store/fs.py:2281-2289`, `:2324-2369`, the match
+    at `:2332`, at v3.0.2): every capability of a source, `sources`
+    being each `capabilities.extends` project's id to its own capabilities'
+    `{cap-id: id-path}`, whose id is `pointer` bare, or `<alias>/<id>` with
+    `<alias>` the source. 3.x applied the override to each such capability;
+    more than one is the caller's B9."""
+    found = []
+    for alias, ids in sources.items():
+        for cap_id, path in ids.items():
+            if cap_id and pointer in (cap_id, f"{alias}/{cap_id}"):
+                found.append((alias, path))
+    return found
+
+
+def bare_owner_3x(path: str, own: set[str], sources: dict[str, set[str]]
+                  ) -> tuple[str | None, str]:
+    """`get` of 3.x's capabilities store (`tcw/store/fs.py:2405-2420` at
+    v3.0.2), and the taxonomy store's (`:1779-1796`): the owner of a
+    reference and the id-path within it. A first folder naming a source is
+    that source's; a path the project has is its own (None); else the one
+    source that has it; more than one is `Ambiguous3`; none is the project's
+    own, which is where 3.x looked first. `own` and `sources` hold the
+    id-paths each store's `get_local` finds, so an override folder is not
+    among them."""
+    head, _, rest = path.partition("/")
+    if head in sources:
+        return head, rest
+    if path in own:
+        return None, path
+    matches = [alias for alias, paths in sources.items() if path in paths]
+    if len(matches) > 1:
+        raise Ambiguous3(path)
+    return (matches[0], path) if matches else (None, path)
+
+
+def route_entry_3x(path: str, *, extends: set[str], children: list[str],
+                   has_ledger: bool, own_namespaces: set[str], project_id: str
+                   ) -> tuple[str | None, str] | str:
+    """`route_capability_path`, `tcw/work/gates.py:331-380` at v3.0.2: the
+    project a `capabilities.yaml` entry under `new:`, `changed:` or
+    `removed:` is routed to (None for the project's own ledger, else a
+    source or a child) and the path within it, or the router's problem.
+    `own_namespaces` are the first folders of the project's resolved view,
+    its own capabilities and the inherited ones, for the ambiguity check.
+    A path routed to the project's own ledger is then read by `get`
+    (`bare_owner_3x`)."""
+    head, _, rest = path.partition("/")
+    if has_ledger and head in extends:
+        return None, path
+    if head in children:
+        if not rest:
+            return f"{path}: names project '{head}' but no capability"
+        if has_ledger and head in own_namespaces:
+            return (f"{path}: ambiguous — '{head}' is both a child project of this "
+                    f"project and a namespace in this project's capabilities ledger")
+        return head, rest
+    if has_ledger:
+        return None, path
+    qualifiers = ", ".join(children) or "it declares no child projects"
+    return (f"{path}: this project ('{project_id}') keeps no capabilities ledger; "
+            f"qualify the path with a child project id ({qualifiers})")
+
+
+def link_owner_3x(link: TcwRef3, own: dict[str, set[str]],
+                  sources: dict[str, dict[str, set[str]]]) -> tuple[str | None, str]:
+    """`resolve_tcw_ref`, `tcw/refs.py:84-125` at v3.0.2, for a taxonomy or
+    capability link: the reference `<namespace>/<ref>` read by the store's
+    `get` (`bare_owner_3x`). `own` and `sources` hold each axis's id-paths,
+    by `taxonomy` and `capabilities`."""
+    axis = "taxonomy" if link.axis == "T" else "capabilities"
+    ns_ref = f"{link.namespace}/{link.ref}" if link.namespace else link.ref
+    return bare_owner_3x(ns_ref, own.get(axis, set()),
+                         {alias: paths.get(axis, set()) for alias, paths in sources.items()})

@@ -25,9 +25,9 @@ def golden(name: str) -> dict:
 
 def stale(name: str, tmp_path: Path) -> str | None:
     """Why `name`'s golden does not describe the fixture built today, or None."""
-    root = build_fixture(name, tmp_path / name, config_home=tmp_path / f"{name}-config")
-    if golden(name)["fixture-digest"] != fixture_digest_of(name, root,
-                                                           tmp_path / f"{name}-config"):
+    config, cache = tmp_path / f"{name}-config", tmp_path / f"{name}-cache"
+    root = build_fixture(name, tmp_path / name, config_home=config, cache_home=cache)
+    if golden(name)["fixture-digest"] != fixture_digest_of(name, root, config, cache):
         return (f"golden/{name}.json was recorded from another fixture; run "
                 f"tests/migrate/record_3x_listings.py")
     return None

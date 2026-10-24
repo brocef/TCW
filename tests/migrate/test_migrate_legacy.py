@@ -166,3 +166,199 @@ def test_a_store_folder_is_placed_as_3x_placed_it(tmp_path):
     assert legacy.store_folder_3x(
         root, "taxonomy", {"repository": {"url": "x"}}).form == "repository"
     assert legacy.store_folder_3x(root, "work", {"path": ""}).problem
+
+
+# ---------------------------------------------------------------------------
+# Part 2's readers on F-full's pieces (plan Step 15)
+
+
+def full_golden(project: str, command: str) -> dict:
+    golden = json.loads((GOLDEN / "f-full.json").read_text(encoding="utf-8"))
+    return json.loads(golden["projects"][project][command]["stdout"])
+
+
+@pytest.fixture
+def f_full(tmp_path, monkeypatch):
+    from tests.migrate.fixtures import build_f_full
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    build_f_full(tmp_path / "base", cache_home=tmp_path / "cache", git=False)
+    return tmp_path / "base"
+
+
+def _config(folder: Path) -> dict:
+    data, problem = legacy.parse_mapping_3x((folder / "tcw-config.yaml").read_text(),
+                                            folder / "tcw-config.yaml")
+    assert problem is None
+    return data
+
+
+def test_the_relations_are_read_in_3x_order(f_full):
+    from tests.migrate.fixtures import LIB_URL
+    found, problems = legacy.relations_3x(_config(f_full / "ws/app"), "tcw-config.yaml")
+    assert problems == []
+    assert found == [
+        legacy.Relation3("children", "kid", "../kid"),
+        legacy.Relation3("parent", "ws", ".."),
+        legacy.Relation3("upstream", "core", "../../core"),
+        legacy.Relation3("upstream", "lib", None, legacy.RepoDecl3(LIB_URL))]
+    ws, _ = legacy.relations_3x(_config(f_full / "ws"), "tcw-config.yaml")
+    assert [(r.id, r.jira) for r in ws] == [("app", {"project": "APP"}), ("sib", None)]
+
+
+def test_a_relation_3x_refused_is_a_problem_naming_the_file():
+    found, problems = legacy.relations_3x(
+        {"projects": {"parent": {"ws": {}}, "children": "x", "peers": {}}}, "a.yaml")
+    assert found == []
+    assert problems == ["a.yaml: unknown projects keys: peers",
+                        "a.yaml: projects.children must be a mapping",
+                        "a.yaml: projects.parent.ws: needs 'path', 'repository', or both"]
+
+
+def test_extends_is_read_as_3x_read_it():
+    assert legacy.extends_3x({"extends": ["core", "kid"]}, "x") == ["core", "kid"]
+    assert legacy.extends_3x({}, "x") == []
+    for bad, message in (({"extends": {"core": "../core"}}, "legacy extends map"),
+                         ({"extends": ["core", "core"]}, "duplicate project IDs"),
+                         ({"extends": ["Core"]}, "project ID must match")):
+        with pytest.raises(ValueError, match=message):
+            legacy.extends_3x(bad, "taxonomy.extends")
+
+
+def test_each_related_project_is_placed_where_3x_placed_it(f_full, tmp_path):
+    from tests.migrate.fixtures import lib_clone
+    app = f_full / "ws/app"
+    placed = {r.id: legacy.locate_3x(app, r)
+              for r in legacy.relations_3x(_config(app), "tcw-config.yaml")[0]}
+    assert placed == {"kid": (f_full / "ws/kid", "locator"),
+                      "ws": (f_full / "ws", "locator"),
+                      "core": (f_full / "core", "locator"),
+                      "lib": (lib_clone(tmp_path / "cache"), "repository")}
+
+
+def test_the_variable_comes_first_and_absent_names_the_first_place(f_full, tmp_path,
+                                                                   monkeypatch):
+    app = f_full / "ws/app"
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.setenv("TCW_PROJECT_CORE", str(elsewhere))
+    core = legacy.Relation3("upstream", "core", "../../core")
+    assert legacy.locate_3x(app, core) == (elsewhere.resolve(), "variable")
+    monkeypatch.delenv("TCW_PROJECT_CORE")
+    gone = legacy.Relation3("upstream", "gone", "../gone")
+    assert legacy.locate_3x(app, gone) == (f_full / "ws/gone", "absent")
+
+
+def test_the_cache_folder_is_3x_s(tmp_path, monkeypatch):
+    """3.x prints no cache folder, so the expected values are written by hand
+    from the tag's `_cache_key` (Decided 3)."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "c"))
+    url = legacy.RepoDecl3("https://example.invalid/lib.git")
+    assert legacy.cache_folder_3x(tmp_path, url) == \
+        tmp_path / "c/tcw/stores/https-example.invalid-lib-b26a43c0c94d"
+    pinned = legacy.RepoDecl3("git@example.invalid:team/lib.git", ref="v1", path="sub")
+    assert legacy.cache_folder_3x(tmp_path, pinned).relative_to(tmp_path / "c") == \
+        Path("tcw/stores/example.invalid-team-lib-"
+             + legacy._cache_key_3x(pinned).rsplit("-", 1)[1], "sub")
+    checkout = legacy.RepoDecl3("https://x/lib.git", checkout="../lib")
+    assert legacy.cache_folder_3x(tmp_path / "p", checkout) == tmp_path / "p/../lib"
+    monkeypatch.delenv("XDG_CACHE_HOME")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    assert legacy.cache_folder_3x(tmp_path, url).parent == \
+        tmp_path / "home/.cache/tcw/stores"
+
+
+def _sources(f_full: Path, project: str) -> dict[str, dict[str, str]]:
+    """Each `capabilities.extends` source of `project`'s capabilities, as
+    `{cap-id: id-path}`."""
+    from tests.migrate.fixtures import F_FULL_PROJECTS, lib_clone
+    folders = {pid: f_full / rel for pid, rel in F_FULL_PROJECTS.items()}
+    folders["lib"] = lib_clone(f_full.parent / "cache")
+    names = legacy.extends_3x(_config(folders[project]).get("capabilities"), "x")
+    return {alias: {i: p for p, i in legacy.ledger_3x(
+        folders[alias] / "docs/capabilities").capabilities.items()} for alias in names}
+
+
+@pytest.mark.parametrize("project", ["app", "sib", "core"])
+def test_each_override_applies_where_3x_applied_it(f_full, project):
+    """The capability each pointer matches is the one 3.0.2 showed with the
+    override's own name or Status."""
+    from tests.migrate.fixtures import F_FULL_PROJECTS
+    folder = f_full / F_FULL_PROJECTS[project]
+    ledger = legacy.ledger_3x(folder / "docs/capabilities")
+    assert ledger.overrides
+    sources = _sources(f_full, project)
+    for path, (pointer, meta) in ledger.overrides.items():
+        [(alias, target)] = legacy.override_target_3x(pointer, sources)
+        shown = full_golden(project, f"capabilities show {alias}/{target} --json")
+        shown = shown["capability"]
+        if "name" in meta:
+            assert shown["name"] == meta["name"], path
+        assert shown["status"] == meta.get("Status", shown["status"]), path
+
+
+def test_the_alias_form_matches_only_its_own_source():
+    sources = {"core": {"cap-1": "billing"}, "ws": {"cap-2": "cli/shared"}}
+    assert legacy.override_target_3x("core/cap-1", sources) == [("core", "billing")]
+    assert legacy.override_target_3x("ws/cap-1", sources) == []
+    assert legacy.override_target_3x("cap-1", sources) == [("core", "billing")]
+    assert legacy.override_target_3x("cap-9", sources) == []
+
+
+def test_a_bare_reference_has_the_owner_3x_gave_it(f_full):
+    """Every capability 3.0.2 listed in `app`, read back by its bare path
+    when it is unique: its own first, else the one source holding it."""
+    own = set(legacy.ledger_3x(f_full / "ws/app/docs/capabilities").capabilities)
+    sources = {alias: set(ids.values()) for alias, ids in _sources(f_full, "app").items()}
+    for row in full_golden("app", "capabilities list --json")["capabilities"]:
+        if row["origin"] == "local":
+            assert legacy.bare_owner_3x(row["path"], own, sources) == (None, row["path"])
+            continue
+        prefixed = legacy.bare_owner_3x(row["path"], own, sources)
+        assert prefixed == (row["origin"], row["path"].split("/", 1)[1])
+    # Bare-wins-local: ws also has `cli/shared`.
+    assert legacy.bare_owner_3x("cli/shared", own, sources) == (None, "cli/shared")
+    assert legacy.bare_owner_3x("auth/login", own, sources) == ("core", "auth/login")
+    assert legacy.bare_owner_3x("nothing/here", own, sources) == (None, "nothing/here")
+    with pytest.raises(legacy.Ambiguous3):
+        legacy.bare_owner_3x("x", set(), {"a": {"x"}, "b": {"x"}})
+
+
+def test_a_bare_term_has_the_owner_3x_gave_it(f_full):
+    from tests.migrate.fixtures import F_FULL_PROJECTS
+    own = set(legacy.objects_3x(f_full / "ws/app/docs/taxonomy", "taxonomy"))
+    sources = {alias: set(legacy.objects_3x(f_full / F_FULL_PROJECTS[alias]
+                                            / "docs/taxonomy", "taxonomy"))
+               for alias in ("core", "kid")}
+    listed = full_golden("app", "taxonomy list --json")["terms"]
+    for row in listed:
+        if row["origin"] != "local":
+            bare = row["path"].split("/", 1)[1]
+            assert legacy.bare_owner_3x(bare, own, sources) == (row["origin"], bare)
+    assert legacy.bare_owner_3x("core/money", own, sources) == ("core", "money")
+
+
+def test_a_capabilities_yaml_entry_is_routed_as_3x_routed_it():
+    def route(path, **kw):
+        args = dict(extends={"core", "ws"}, children=["kid"], has_ledger=True,
+                    own_namespaces={"cli"}, project_id="app") | kw
+        return legacy.route_entry_3x(path, **args)
+    assert route("core/billing") == (None, "core/billing")
+    assert route("kid/k-thing") == ("kid", "k-thing")
+    assert route("cli/x") == (None, "cli/x")
+    assert route("kid") == "kid: names project 'kid' but no capability"
+    assert "ambiguous" in route("kid/x", own_namespaces={"kid"})
+    assert route("cli/x", has_ledger=False, children=[]) == (
+        "cli/x: this project ('app') keeps no capabilities ledger; qualify the path "
+        "with a child project id (it declares no child projects)")
+    assert route("kid/k-thing", has_ledger=False) == ("kid", "k-thing")
+
+
+def test_a_link_is_read_by_the_store_s_get(f_full):
+    own = {"capabilities": {"cli/x"}, "taxonomy": {"invoice"}}
+    sources = {"core": {"capabilities": {"billing"}, "taxonomy": {"money"}}}
+    parse = legacy.parse_tcw_uri_3x
+    assert legacy.link_owner_3x(parse("tcw://C/cli/x"), own, sources) == (None, "cli/x")
+    assert legacy.link_owner_3x(parse("tcw://C/billing"), own, sources) == \
+        ("core", "billing")
+    assert legacy.link_owner_3x(parse("tcw://core/T/money"), own, sources) == \
+        ("core", "money")

@@ -75,9 +75,10 @@ ALLOWED = {
 
 #: Code and tests that a later item (TCW-116, `tcw migrate`) adds, which read
 #: and rewrite the 3.x forms on purpose: folders, each as its path parts from
-#: the package's folder or the tests' folder, matched by whole parts. Empty
-#: until then.
-MIGRATION_CODE: tuple[tuple[str, ...], ...] = ()
+#: the package's folder or the tests' folder, matched by whole parts.
+#: `tcw/migrate/`: its copies of the 3.x readers name the 3.x function each
+#: was copied from, `_apply_override` among them (TCW-116 Design 8.2).
+MIGRATION_CODE: tuple[tuple[str, ...], ...] = (("migrate",),)
 #: `tests/migrate/`: the fixtures of `tcw migrate` are 3.x projects, written
 #: as 3.x wrote them (TCW-116 Design 8.2).
 MIGRATION_TESTS: tuple[tuple[str, ...], ...] = (("migrate",),)
@@ -167,3 +168,15 @@ def test_the_migration_test_exemption_covers_its_folder_only(tmp_path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('write_cap(root, "x", id="cap-x00001")\n', encoding="utf-8")
     assert offenders(tmp_path) == ["migrate_x/test_x.py: cap-id", "work/test_x.py: cap-id"]
+
+
+def test_the_migration_code_exemption_covers_its_folder_only(tmp_path):
+    """TCW-116 criterion 67: a removed name passes in `tcw/migrate/` and
+    nowhere else, the folder matched by whole path parts."""
+    for relative in ("migrate/legacy.py", "migrate_x.py", "store/x.py"):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('"""Copied from _apply_override."""\n', encoding="utf-8")
+    found = [p.relative_to(tmp_path).as_posix() for p in code_files(tmp_path)
+             if removed_names(p.read_text(encoding="utf-8"))]
+    assert found == ["migrate_x.py", "store/x.py"]
