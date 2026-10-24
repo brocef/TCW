@@ -30,9 +30,10 @@ from tcw.errors import (BackendError, NotFound, Refused, StateFileProblem, TcwEr
                         Unreachable, UsageError)
 from tcw.findings import Finding
 from tcw.ids import (SCHEME, FolderAddress, FullId, IdError, MalformedId, id_path_problem,
-                     parse_address, parse_stored, sort_input)
+                     length_problem, parse_address, parse_stored, sort_input)
 from tcw.object_folders import (EXTRA, LEGACY, MISPLACED, RESERVED, RESOURCES, STATE_FILES,
                                 Walk, exact_child, exact_path, id_problem, is_object,
+                                length_problems,
                                 is_reserved, object_paths, read_state, removal_blockers,
                                 shape_problems, state_text, walk)
 from tcw.output import shown as _shown
@@ -1065,6 +1066,14 @@ def _check_id_path(id_path: str, label: str) -> None:
         raise MalformedId(f"invalid {label} {id_path!r}: {problem}")
 
 
+def _check_length(project: str, ns: str, id_path: str) -> None:
+    """Refuse a new object whose full identifier would be longer than
+    `ID_LIMIT`, before anything is written (TCW-111 Design 4.2)."""
+    problem = length_problem(FullId(project, ns, id_path))
+    if problem:
+        raise UsageError(problem)
+
+
 def _check_reserved(id_path: str, namespace: str, label: str) -> None:
     """Refuse a new object's id-path with a part that is one of the store's
     reserved names, ignoring letter case (TCW-111 Design 2.4), before anything
@@ -1747,8 +1756,19 @@ class FsTreeStore:
                          tuple(f for f in found.files if own(f[0]) and f[1] == EXTRA),
                          found.resources)
         skip = {self.root / self.LEGACY_CONFIG_NAME} if self.LEGACY_CONFIG_NAME else set()
+        # Row n, for the objects themselves: a 3.x override folder names
+        # another project's capability, so its own path is no identifier.
+        named = [p for p in found.objects if (id_path is None or p == id_path)
+                 and not self._is_override(p)]
         return shape_problems(found, self.root, self.COMPONENT, self.project_id,
-                              where=self._where, skip=skip)
+                              where=self._where, skip=skip) + \
+            length_problems(named, self.root, self.COMPONENT, self.project_id,
+                            where=self._where)
+
+    def _is_override(self, id_path: str) -> bool:
+        """Whether the object at `id_path` is a 3.x override folder, which only
+        a capabilities store has."""
+        return False
 
     def _where(self, path: Path | str) -> str:
         """A finding's `where`: `path`, or an entry's slug joined onto the store
@@ -2038,6 +2058,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         full = f"{parent.strip('/')}/{leaf}" if parent else leaf
         _check_id_path(full, "slug")
         _check_reserved(full, "taxonomy", "slug")
+        _check_length(self.project_id, "taxonomy", full)
         # A term, not merely a folder: an organising folder holds no state
         # file and is no term (Design 2.3).
         if parent and not is_object(self.root, "taxonomy", parent.strip("/")):
@@ -2483,6 +2504,12 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         return [p for p in object_paths(self.root, "capabilities")
                 if self._entry_readable(self.root / p) and self._listable(self.root / p)]
 
+    def _is_override(self, id_path: str) -> bool:
+        try:
+            return bool(self._state(self.root / id_path).get("overrides"))
+        except TcwError:
+            return False
+
     def _local_paths(self) -> list[str]:
         """Standalone local capabilities — state-file folders WITHOUT an `overrides`
         pointer (those are deltas, not caps; see `_override_index`)."""
@@ -2717,6 +2744,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         path = _safe_store_id(identifier, "path")
         _check_id_path(path, "path")
         _check_reserved(path, "capabilities", "path")
+        _check_length(self.project_id, "capabilities", path)
         if status not in CAP_STATUSES:
             raise UsageError(f"invalid Status '{status}' "
                              f"(choose: {', '.join(sorted(CAP_STATUSES))})")

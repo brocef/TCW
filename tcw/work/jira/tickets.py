@@ -30,8 +30,7 @@ from tcw.work.jira.client import (
 from tcw.work.jira.mapping import document_text, text_document
 from tcw.work.layout import Layout
 from tcw.work.model import (
-    DEFAULT_PRIORITY, Slug, check_encodable, inbox_stage, start_stage,
-    title_words,
+    DEFAULT_PRIORITY, Slug, check_encodable, fitted_words, inbox_stage, start_stage,
 )
 
 
@@ -169,7 +168,11 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
     else:
         if here is not None:
             raise Refused(f"a folder for {key} already exists here: {here}")
-        slug = Slug(backend.project, f"{key}-{title_words(str(fields.get('summary') or key))}")
+        # The key is known, so the room is too: refused before any edit
+        # (TCW-111 Design 4.3, choice 2).
+        words = fitted_words(str(fields.get('summary') or key), project=backend.project,
+                             parent=None, prefix=len(key) + 1)
+        slug = Slug(backend.project, f"{key}-{words}")
     # A ticket this project made, whose create or delegation stopped before it
     # set TCW Item, may sit at a first status that no stage maps (Design 7.2).
     ours = tcw_project == backend.project and not tcw_item and \
@@ -381,7 +384,15 @@ def delegate_to_jira(project_id: str, title: str, request: str | None,
     if why is not None:
         report(f"{key} stays in {project_id}'s Jira inbox: {why}")
         return key
-    slug = Slug(project_id, f"{key}-{title_words(title)}")
+    # After the ticket exists: cut to the room, never refused (TCW-111 Design 4.3).
+    words = fitted_words(title, project=project_id, parent=None, prefix=len(key) + 1,
+                         refuse=False)
+    if words is None:
+        raise _named(BackendError(f"created {key} for {project_id}, but did not finish "
+                                  f"making it an item: the project ID and the key leave "
+                                  f"no room for title words; finish with `tcw work "
+                                  f"tickets adopt {key}` there"), key)
+    slug = Slug(project_id, f"{key}-{words}")
     try:
         with _jira():
             client.edit_issue(key, {backend.metadata().field_ids["item"]: str(slug)})

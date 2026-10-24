@@ -71,3 +71,20 @@ def test_nest_with_no_parent_is_refused_making_nothing(tmp_path, personal_on, se
     answer = served.post("/api/work", {"title": "Part", "nest": True})
     assert answer.status == 400
     assert sorted(p.name for p in (root / "docs" / "work").iterdir()) == before
+
+
+def test_a_create_under_a_200_character_parent_gets_a_shortened_folder(
+        tmp_path, personal_on, serve_project):
+    root = fs_project(tmp_path)
+    letters = 200 - len("p.work/") - len("2026-10-01-/2026-10-02-")
+    outer = f"2026-10-01-{'a' * (letters // 2)}"
+    parent = f"{outer}/2026-10-02-{'b' * (letters - letters // 2)}"
+    write_item(root, outer, {"title": "Outer", "stage": "request"})
+    write_item(root, parent, {"title": "Parent", "stage": "request"})
+    commit_all(root)
+    served = serve_project(root)
+    answer = served.post("/api/work", {"title": "A very long title " * 8, "nest": True,
+                                       "properties": {"parent": f"p.work/{parent}"}})
+    assert answer.status == 201, answer.body
+    assert answer.json["full-id"].startswith(f"p.work/{parent}/")
+    assert len(answer.json["full-id"]) <= 255

@@ -33,8 +33,8 @@ from tcw.store.base import normalize_tag
 from tcw.store.fs import exact_child
 from tcw.work.backend import Comment, Query, nesting_parent
 from tcw.work.config import WorkConfig
-from tcw.object_folders import (UNMADE, id_problem, is_object, object_paths, shape_problems,
-                                walk)
+from tcw.object_folders import (UNMADE, id_problem, is_object, length_problems, object_paths,
+                                shape_problems, walk)
 from tcw.project_files import VERSION_KEY, version_line, version_problem
 from tcw.work.fs_backend import STATE_FILE, WORDS, report_mentions
 from tcw.work.jira import jql
@@ -50,7 +50,8 @@ from tcw.work.jira.mapping import (
 )
 from tcw.work.layout import Layout
 from tcw.work.model import (
-    FOLDER_LIMIT, UNSET, Changes, Item, Slug, _as_slug, check_encodable, completion_stage,
+    FOLDER_LIMIT, PREFIX_ALLOWANCE, UNSET, Changes, Item, Slug, _as_slug, check_encodable,
+    completion_stage, fitted_words,
     discard_stage, stage as table_stage, start_stage, title_words as make_title_words,
     validate_changes,
 )
@@ -156,6 +157,7 @@ def jira_store_problems(work_path: Path, jira: JiraConfig, project: str) -> list
     found = walk(work_path, "work", item_named=_key_named)
     findings += shape_problems(found, work_path, "work", project,
                                unmade_message=UNMADE_MESSAGE)
+    findings += length_problems(found.objects, work_path, "work", project)
     by_key: dict[str, list[str]] = {}
     for id_path in found.objects:
         entry = work_path / id_path
@@ -779,6 +781,9 @@ class JiraBackend:
                 self, _as_slug(props.parent, self.project, "parent"), nest)
             if note:
                 self.report(note)
+        # Before the ticket exists, at the longest key allowed for: refused
+        # here, nothing has been made (TCW-111 Design 4.3).
+        fitted_words(title, project=self.project, parent=under, prefix=PREFIX_ALLOWANCE)
         assignee = (self.account(props.assignee)
                     if props.assignee not in (UNSET, None) else None)
         blockers = _unique(self.ticket_key(b, "blocked-by") for b in props.add_blocked_by)
@@ -800,7 +805,15 @@ class JiraBackend:
         if not isinstance(key, str) or not KEY.fullmatch(key):
             raise BackendError("Jira's answer to the create request names no ticket key; "
                                "a ticket may have been created: look for it in Jira")
-        name = f"{key}-{make_title_words(title)}"
+        # After it exists, cut to the room this key leaves, never refused.
+        words = fitted_words(title, project=self.project, parent=under,
+                             prefix=len(key) + 1, refuse=False)
+        if words is None:
+            raise _named(BackendError(
+                f"created Jira ticket {key}, but the key leaves no room for title "
+                f"words under {Slug(self.project, under)}, since no full identifier is "
+                f"longer than 255; finish with `tcw work tickets adopt {key}`"), key)
+        name = f"{key}-{words}"
         folder = f"{under}/{name}" if under else name
         slug = Slug(self.project, folder)
         request_status = self.statuses[start_stage()]

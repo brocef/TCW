@@ -190,3 +190,115 @@ def test_a_failed_item_edit_is_adopted_at_the_top(jira_project, monkeypatch, tcw
     assert adopted.code == 0, adopted.err
     assert (jira_project.work / "TCW-2-part" / ITEM_STATE).is_file()
     assert not (jira_project.work / epic / "TCW-2-part").exists()
+
+
+# -- AC 14: the 255-character limit in Jira mode -------------------------------------
+# Lengths are of full identifiers: `tcw.work/` is 9 characters.
+
+def jira_parent(project, total: int) -> str:
+    """A ticket's item nested in another's, whose full identifier is `total`
+    characters; returns its id-path."""
+    letters = total - len("tcw.work/") - len("TCW-1-/TCW-2-")
+    first = letters // 2
+    outer = f"TCW-1-{'a' * first}"
+    inner = f"{outer}/TCW-2-{'b' * (letters - first)}"
+    assert len(f"tcw.work/{inner}") == total
+    ticket(project, "Outer", outer)
+    ticket(project, "Parent", inner)
+    return inner
+
+
+def creates(fake):
+    return [path for method, path, _ in fake.log if (method, path) == ("POST", "/rest/api/3/issue")]
+
+
+def test_under_a_227_character_parent_no_ticket_is_made(jira_project, tcw):
+    parent = jira_parent(jira_project, 227)
+    jira_project.fake.log.clear()
+    refused = tcw(["new", "Part", "--parent", parent, "--nest"], jira_project.root)
+    assert refused.code == 2 and f"tcw.work/{parent}" in refused.err, refused
+    assert creates(jira_project.fake) == []
+
+
+def test_a_long_title_under_a_200_character_parent_is_shortened(jira_project, tcw):
+    parent = jira_parent(jira_project, 200)
+    made = tcw(["new", "A very long title " * 8, "--parent", parent, "--nest"],
+               jira_project.root)
+    assert made.code == 0, made.err
+    assert made.out.strip().startswith(f"tcw.work/{parent}/TCW-3-")
+    assert len(made.out.strip()) <= 255
+
+
+def rekey(fake, monkeypatch, key):
+    """The fake answers the next create with `key`."""
+    original = fake._create
+
+    def answered(body, route):
+        answer = original(body, route)
+        made = fake.tickets.pop(answer["key"])
+        made.key = key
+        fake.tickets[key] = made
+        return {**answer, "key": key}
+    monkeypatch.setattr(fake, "_create", answered)
+
+
+def test_after_the_ticket_exists_the_words_are_cut_to_the_room(jira_project, monkeypatch,
+                                                                tcw):
+    parent = jira_parent(jira_project, 226)
+    rekey(jira_project.fake, monkeypatch, "ABCDEFGHIJKLMNOPQRSTU-12")
+    made = tcw(["new", "Part of it", "--parent", parent, "--nest"], jira_project.root)
+    assert made.code == 0, made.err
+    full = f"tcw.work/{parent}/ABCDEFGHIJKLMNOPQRSTU-12-par"
+    assert made.out.strip() == full and len(full) <= 255
+    assert jira_project.fake.tickets["ABCDEFGHIJKLMNOPQRSTU-12"].custom[ITEM] == full
+
+
+def test_a_key_that_leaves_no_room_stops_before_the_item_edit(jira_project, monkeypatch,
+                                                               tcw):
+    parent = jira_parent(jira_project, 226)
+    rekey(jira_project.fake, monkeypatch, "ABCDEFGHIJKLMNOPQRSTUVWXY-12")
+    made = tcw(["new", "Part", "--parent", parent, "--nest"], jira_project.root)
+    assert made.code == 1, made
+    assert "tcw work tickets adopt ABCDEFGHIJKLMNOPQRSTUVWXY-12" in made.err
+    assert ITEM not in jira_project.fake.tickets["ABCDEFGHIJKLMNOPQRSTUVWXY-12"].custom
+
+
+def test_a_fresh_adoption_where_the_project_id_leaves_no_room(tmp_path, fake, tcw):
+    from tests.work.jira.conftest import JiraProject, jira_config
+    from tests.work.projects import make_project
+    long = "p" * 237
+    root = make_project(tmp_path, long, config=jira_config(long), name="long")
+    project = JiraProject(root, long, fake)
+    key = fake.ticket("Adopt me", project="TCW", status="To Do").key
+    fake.log.clear()
+    refused = tcw(["tickets", "adopt", key], project.root)
+    assert refused.code == 2 and long in refused.err, refused
+    assert fake.writes() == []
+
+
+def test_a_256_character_nested_folder_is_reported_offline(jira_project, validate):
+    letters = 256 - len("tcw.work/") - len("TCW-1-/TCW-2-")
+    outer = f"TCW-1-{'a' * (letters // 2)}"
+    inner = f"{outer}/TCW-2-{'b' * (letters - letters // 2)}"
+    key_folder(jira_project.work, outer)
+    key_folder(jira_project.work, inner)
+    checked = validate(jira_project)
+    assert checked.code == 1
+    assert (f"error: docs/work/{inner}/tcw-work-item.yaml: tcw.work/{inner} is 256 "
+            f"characters; a full identifier is at most 255") in checked.out, checked.out
+
+
+def test_a_delegation_into_a_project_with_little_room_fits_its_item(tmp_path, fake, tcw):
+    from tests.work.jira.conftest import jira_config
+    from tests.work.projects import commit_all, connect, make_project
+    long = "t" * 237
+    target = make_project(tmp_path, long, config=jira_config(long), name="target")
+    here = make_project(tmp_path, "p", config={})
+    connect(here, target, "children")
+    commit_all(target)
+    commit_all(here)
+    made = tcw(["new", "Add export", "--project", long], here)
+    assert made.code == 0, made.err
+    item = fake.tickets["TCW-1"].custom[ITEM]
+    # Whole words, as title_words cuts them: `add-ex` would fit, `add` is kept.
+    assert item == f"{long}.work/TCW-1-add" and len(item) <= 255

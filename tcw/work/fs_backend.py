@@ -30,7 +30,7 @@ import yaml
 from tcw.errors import BackendError, MovedWithoutNote, NotFound, Refused, UsageError
 from tcw.findings import Finding
 from tcw.object_folders import (STATE_FILES, existing_version_line, id_problem, is_object,
-                                shape_problems, state_text, walk)
+                                length_problems, shape_problems, state_text, walk)
 from tcw.project_files import VERSION_KEY, version_problem
 from tcw.output import shown
 from tcw.store.base import normalize_tag
@@ -40,7 +40,7 @@ from tcw.work.config import WorkConfig
 from tcw.work.layout import Layout
 from tcw.work.model import (
     DEFAULT_PRIORITY, FLOW, FOLDER_LIMIT, PRIORITIES, SIZES, TERMINAL, Changes,
-    UNSET, Item, Slug, _as_slug, apply_changes, check_encodable, is_stage, stage as table_stage, start_stage,
+    UNSET, Item, Slug, _as_slug, apply_changes, check_encodable, fitted_words, is_stage, stage as table_stage, start_stage,
     title_words as make_title_words, validate_changes,
 )
 
@@ -353,7 +353,10 @@ class FsWorkBackend:
         under, note = nesting_parent(self, parent, nest)
         if note:
             self.report(note)
-        name = f"{self.today().isoformat()}-{make_title_words(title)}"
+        # Fitted under the 255-character limit (TCW-111 Design 4.3): a date
+        # and its `-` lead the name.
+        words = fitted_words(title, project=self.project, parent=under, prefix=11)
+        name = f"{self.today().isoformat()}-{words}"
         folder = f"{under}/{name}" if under else name
         path = self.work_path / folder
         if path.exists():
@@ -595,6 +598,7 @@ def work_store_problems(work_path: Path, project: str,
     found = walk(work_path, "work", item_named=item_named)
     findings += shape_problems(found, work_path, "work", project,
                                unmade_message=UNMADE_MESSAGE)
+    findings += length_problems(found.objects, work_path, "work", project)
     for id_path in found.objects:
         entry = work_path / id_path
         if not item_named(id_path.rpartition("/")[2]):

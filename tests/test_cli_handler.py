@@ -50,7 +50,7 @@ def test_a_nested_command_names_every_word(run, fx):
 
 
 def test_a_failure_after_creation_prints_the_name_then_the_error(run, fx, monkeypatch):
-    def create(self, title, props, *, stage, request):
+    def create(self, title, props, *, stage, request, nest=False):
         (self.work_path / "2026-10-02-x").mkdir()
         raise BackendError("made it, then failed", name="fx.work/2026-10-02-x")
     monkeypatch.setattr(FsWorkBackend, "create", create)
@@ -60,7 +60,7 @@ def test_a_failure_after_creation_prints_the_name_then_the_error(run, fx, monkey
 
 
 def test_a_failure_before_anything_exists_prints_nothing_on_stdout(run, fx, monkeypatch):
-    def create(self, title, props, *, stage, request):
+    def create(self, title, props, *, stage, request, nest=False):
         raise BackendError("refused before writing")
     monkeypatch.setattr(FsWorkBackend, "create", create)
     code, out, _ = run(["work", "new", "x"], fx)

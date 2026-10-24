@@ -381,6 +381,22 @@ def shape_problems(found: Walk, root: Path, namespace: str, project: str, *,
     return problems
 
 
+def length_problems(id_paths: Iterable[str], root: Path, namespace: str, project: str,
+                    *, where: Callable[[Path], str] = str) -> list[Finding]:
+    """Row n of Design 2.6: each object of `id_paths` whose full identifier is
+    longer than `ID_LIMIT`, as an error at its state file. The limit is kept by
+    what makes objects; one placed by hand beyond it is still listed and read,
+    and reported here (TCW-111 Design 4.2)."""
+    from tcw.ids import length_problem
+    state = STATE_FILES[namespace]
+    found = []
+    for id_path in id_paths:
+        problem = length_problem(FullId(project, namespace, id_path))
+        if problem:
+            found.append(Finding("error", where(Path(root) / id_path / state), problem))
+    return found
+
+
 def under_resources(found: Walk, root: Path, path: Path) -> bool:
     """Whether `path` lies in one of the walk's `resources/` folders."""
     for folder in found.resources:
