@@ -34,14 +34,20 @@ live `TCW` Jira board, run the live Jira scenario, install 4.0 as this
 machine's shared `tcw`, post to a GitHub issue, or move TCW-99, unless the
 matching go is already written in `gates.md` and committed** (Design 10). Each
 step that needs a go names the gate in its "Who" line, and its first action is
-to read `gates.md` and confirm the entry is there and names the right commit.
-If it is not, the step does not run.
+the check `gate_go <gate> <commit>` (Tools), which stops the step unless the
+release folder's `gates.md` holds that go naming that commit and the
+committed copy says the same. If it stops, the step does not run.
+
+**Paths.** `~` is the user's home folder. The primary checkout is
+`~/Projects/TCW`; the `v4` worktree is `~/Projects/TCW/.claude/worktrees/v4`;
+the merge clone is `~/tcw-4.0-merge`; the release folder is
+`~/.tcw-4.0-release`.
 
 ## Which `tcw` runs what
 
 - **The lifecycle `tcw`** is the bare `tcw` first on this machine's `PATH`.
-  `which -a tcw` lists `/Users/brian/.pyenv/shims/tcw` first and
-  `/Users/brian/.local/bin/tcw` second; the first is the primary checkout's
+  `which -a tcw` lists `~/.pyenv/shims/tcw` first and
+  `~/.local/bin/tcw` second; the first is the primary checkout's
   editable install at 3.0.2 (spec Terms). Only the dispatching session runs
   it, and only outside rule 4.0's window (Design 2.2).
 - **The `v4` worktree's `tcw`** is `.claude/worktrees/v4/.venv/bin/tcw`, run by
@@ -178,20 +184,20 @@ fix.
    5.5, and waits for their word.** Gate 2's go was given before that was
    known; the user decides whether the live conversion goes ahead knowing
    it. This adds a question inside gate 2, not a new gate.
-5. **The merge clone cannot push to GitHub.** `git clone /Users/brian/Projects/TCW`
+5. **The merge clone cannot push to GitHub.** `git clone ~/Projects/TCW`
    makes the primary checkout the clone's `origin`, so a `git ls-remote origin`
    run inside the clone reads the primary checkout, not GitHub. Every check
    of GitHub's refs in phases B and C is therefore run as
-   `git -C /Users/brian/Projects/TCW ls-remote origin …`, and the clone's push
+   `git -C ~/Projects/TCW ls-remote origin …`, and the clone's push
    address is set to an invalid one at once (`git remote set-url --push origin
    no-push`), so no push from it can land anywhere.
 6. **M0 must be the primary checkout's `main`.** The clone copies the
    primary checkout's branches; GitHub's `main` reaches it only through the
    primary checkout's own `main`. Step 12 therefore checks that
-   `git -C /Users/brian/Projects/TCW rev-parse main` equals M0 (after
+   `git -C ~/Projects/TCW rev-parse main` equals M0 (after
    `git fetch origin`) and that the primary checkout is on `main` with no
    changes, which 5.5 needs anyway; if `main` is behind, it is brought to M0
-   with `git -C /Users/brian/Projects/TCW merge --ff-only origin/main` before
+   with `git -C ~/Projects/TCW merge --ff-only origin/main` before
    the clone is made.
 7. **One script runs the suite as CI runs it**, `~/.tcw-4.0-release/ci-suite.sh`
    (Tools), so that every run of Terms' definition (4.3 (d), 5.8, 6.2 (a)) is
@@ -208,17 +214,114 @@ fix.
 ## Tools used by several steps
 
 All live in the release folder `~/.tcw-4.0-release/`, outside every
-repository (spec Terms), made by Step 12. None is committed.
+repository (spec Terms). Step 9a makes the folder, `load.sh` and
+`ci-suite.sh`; Step 12 makes the rest. None is committed.
 
-**`refs.txt`**: one line per value, `M0 <hash>`, `V <hash>`, `A <hash>`, each
-with the `date -u` it was recorded; a value recorded again (a defect at gate
-1) is a new line, and the last line of each name is the current value.
+**How every shell block from Step 9a on is run.** Values do not survive from
+one shell to the next, and an agent started for a later step has none of an
+earlier step's variables. So each block below is written to a file in the
+release folder (`~/.tcw-4.0-release/step-<n>.sh`) and run as one
+`bash <file>`, its output saved where the step says; its first line sources
+`load.sh`, naming the values it uses, and every value a later step needs is
+written to `refs.txt` with `record` before the block ends. A block that
+must run for minutes (the suite, the board's conversion) is run in the
+background with its output going to its file.
+
+**`refs.txt`**: one line per value, `<name> <40-character commit hash> <date
+-u>`: `M0`, `V` (Step 12), `CI` (Steps 10 and 30, the commit CI ran on), `A`
+(Step 16) and `T` (Steps 28 and 35). A value recorded again (a defect at gate
+1, a failed check at 6.3) is a new line, and the last line of each name is
+the current value. Only `record` writes it.
+
+**`load.sh [<name>…]`**, sourced (`. ~/.tcw-4.0-release/load.sh M0 T`) as the
+first line of every block from Step 9a on. It turns on `set -euo pipefail`,
+so a failing command stops the block; sets the fixed paths; defines the
+helpers; and sets each named value from `refs.txt`, stopping the block when
+that value is missing or is not a commit hash. With a value guaranteed to be
+40 hexadecimal characters, no command below can receive it empty (an empty
+`T` would turn Step 30's push into `:refs/heads/v4`, which deletes `v4` on
+GitHub).
+
+```sh
+# Sourced, never run. TCW-118's release helpers (plan, "Tools").
+set -euo pipefail
+REL=~/.tcw-4.0-release; PRIMARY=~/Projects/TCW; C=~/tcw-4.0-merge
+Q=$REL/qa; P=$REL/pushes.txt
+stop() { echo "stop: $*" >&2; exit 1; }
+is_hash() { [[ "$1" =~ ^[0-9a-f]{40}$ ]]; }
+record() {   # record <name> <hash>: append a value to refs.txt
+  is_hash "$2" || stop "record $1: '$2' is not a commit hash"
+  printf '%s %s %s\n' "$1" "$2" "$(date -u +%FT%TZ)" >> "$REL/refs.txt"
+}
+value_of() {   # the last recorded hash of <name>, or a stop
+  local v
+  v=$(awk -v n="$1" '$1 == n { h = $2 } END { print h }' "$REL/refs.txt" 2>/dev/null || true)
+  is_hash "$v" || stop "no commit hash recorded for $1 in $REL/refs.txt"
+  printf '%s' "$v"
+}
+capture() {   # capture <file> <command…>: date, output and "exit <n>" into <file>
+  local file=$1 rc=0; shift
+  { date -u; "$@"; } > "$file" 2>&1 || rc=$?
+  echo "exit $rc" >> "$file"
+  return "$rc"
+}
+no_private_names() {   # <text on stdin> | no_private_names
+  local names=$REL/private-names.txt rc=0
+  [ -s "$names" ] || stop "$names is missing or empty; ask the user for the list"
+  grep -n -i -F -f "$names" || rc=$?
+  case $rc in
+    1) return 0 ;;
+    0) stop "a private project's name is in the text above" ;;
+    *) stop "the private-name search itself failed" ;;
+  esac
+}
+gate_go() {   # gate_go <gate> <commit>: the go is written and committed
+  grep -Eq "^gate $1: go $2\$" "$REL/gates.md" ||
+    stop "gates.md holds no 'gate $1: go $2' line"
+  local copy
+  for copy in "$PRIMARY" "$C"; do
+    [ -f "$copy/docs/work/TCW-118-tcw-4-0-release/gates.md" ] || continue
+    git -C "$copy" diff --quiet HEAD -- docs/work/TCW-118-tcw-4-0-release/gates.md ||
+      stop "$copy's gates.md has changes not committed"
+    grep -Eq "^gate $1: go $2\$" "$copy/docs/work/TCW-118-tcw-4-0-release/gates.md" &&
+      return 0
+  done
+  stop "no committed gates.md holds gate $1's go naming $2"
+}
+dispatch_ci() {   # id=$(dispatch_ci <commit>): start test.yml on v4, print its run's id
+  local since id i
+  since=$(date -u -v-1M +%FT%TZ)          # a minute early, for clock difference
+  gh workflow run test.yml --ref v4 >&2
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    sleep 10
+    id=$(gh run list --workflow test.yml --branch v4 --event workflow_dispatch --limit 5 \
+          --json databaseId,headSha,createdAt \
+          --jq "map(select(.headSha == \"$1\" and .createdAt >= \"$since\"))[0].databaseId // empty")
+    if [ -n "$id" ]; then echo "$id"; return 0; fi
+  done
+  stop "no workflow_dispatch run of test.yml on $1 appeared within two minutes"
+}
+retryable() {   # retryable <saved output>: the run stopped because Jira was unreachable or rate limiting
+  grep -Eq 'could not reach the tracker|did not respond within|the connection to the tracker .* was lost|the tracker returned 5[0-9][0-9]|the tracker is rate limiting requests' "$1"
+}
+for name in "$@"; do
+  [[ "$name" =~ ^[A-Z][A-Z0-9]*$ ]] || stop "load.sh: bad value name '$name'"
+  printf -v "$name" '%s' "$(value_of "$name")"
+  is_hash "${!name}" || stop "$name did not load"
+done
+```
+
+`printf -v`, `[[ =~ ]]` and `${!name}` all work in the macOS system bash
+(3.2). Inside `$( )` a `stop` ends only the substitution, which is why the
+loop checks each value again after setting it.
 
 **`gates.md`**: the master copy of every answer at every gate, written as it
-is given (Design 10): the gate, the commit it names, the date and time (UTC),
-the user's words quoted exactly, and what followed. Its whole content is
-copied to `docs/work/TCW-118-tcw-4-0-release/gates.md` by the commit that
-records each answer.
+is given (Design 10). Each entry starts with one line `gate <n>: <word>
+<commit>`, where the word is `go`, `declined` or `defect` and the commit is
+the full hash the go names (gate 1 and gate 2: A; gate 3: T); then the date
+and time (UTC), the user's words quoted exactly, and what followed. Its whole
+content is copied to `docs/work/TCW-118-tcw-4-0-release/gates.md` by the
+commit that records each answer, which `gate_go` checks.
 
 **`ci-suite.sh <checkout> [<python>]`**, the suite as CI runs it:
 
@@ -233,35 +336,47 @@ scratch="$(mktemp -d "${TMPDIR:-/tmp}/tcw-ci.XXXXXX")"
 mkdir -p "$scratch"/{home,config,data,state,cache}
 "$py" -m venv "$scratch/venv"
 nodebin="$(dirname "$(command -v pnpm)")"
-run() {
-  env -i PATH="$scratch/venv/bin:$nodebin:/usr/bin:/bin:/usr/sbin:/sbin" \
+# pnpm here is corepack's shim under nvm. With the scratch HOME it would look
+# for pnpm in an empty cache, download it and may ask before doing so, which
+# hangs a run nobody answers: point it at this machine's own corepack cache,
+# which holds the pnpm 10.14.0 that package.json names, and refuse any prompt.
+corepack_home="${COREPACK_HOME:-$HOME/.cache/node/corepack}"
+run() {   # run <path> <command>
+  env -i PATH="$1" \
     HOME="$scratch/home" XDG_CONFIG_HOME="$scratch/config" \
     XDG_DATA_HOME="$scratch/data" XDG_STATE_HOME="$scratch/state" \
     XDG_CACHE_HOME="$scratch/cache" LANG=en_US.UTF-8 \
-    bash -c "cd '$repo' && $1"
+    COREPACK_HOME="$corepack_home" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+    bash -c "cd '$repo' && $2" < /dev/null
 }
+system="/usr/bin:/bin:/usr/sbin:/sbin"
 echo "== $(date -u) in $repo, HEAD $(git -C "$repo" rev-parse HEAD)"
 echo "== TCW_ variables inside the run (nothing below this line means none):"
-run 'env | grep "^TCW_" || true'
-echo "== HOME inside the run: $(run 'echo $HOME')"
-run "pip install -q -e '.[dev]'"
-run "pytest"                      # bare pytest, test.yml:76
-run "pnpm install --frozen-lockfile && pnpm check:build"   # test.yml:103-104
+run "$scratch/venv/bin:$system" 'env | grep "^TCW_" || true'
+echo "== HOME inside the run: $(run "$system" 'echo $HOME')"
+run "$scratch/venv/bin:$system" "pip install -q -e '.[dev]'"
+run "$scratch/venv/bin:$system" "pytest"      # bare pytest, no Node on PATH, test.yml:66-76
+run "$nodebin:$system" "pnpm --version && pnpm install --frozen-lockfile && pnpm check:build"   # test.yml:103-104
 echo "== suite and web build passed"
 ```
 
 `env -i` starts the run with no inherited variable at all, which unsets every
 `TCW_` variable by construction; the script prints the proof criteria 17 and
-25 ask for. Its output is saved by each caller, with `2>&1`, to the file the
-step names.
+25 ask for. The pytest run has no Node on its `PATH`, as CI's pytest job has
+none (`test.yml:72-74`). **CI's web build runs Node 22** (`test.yml:101`);
+this machine has only Node 24 releases under nvm (24.16 to 24.21), so a local
+`pnpm check:build` that passes is not proof that CI's does, and only Steps 10
+and 30's `web-build` job proves the build. Its output is saved by each
+caller, with `2>&1`, to the file the step names. Step 9a proves the script
+on `v4` before anything relies on it.
 
 **`private-names.txt`**: the names of the user's private projects, from the
 maintainer's own notes, one per line, written by the user or the dispatching
 session at Step 12 and never committed (spec 4.3 (f); the repository is
-public). The search is `git -C <repo> diff <from> <to> | grep -n -i -F -f
-~/.tcw-4.0-release/private-names.txt`, which must print nothing. If the file
-cannot be written because nobody has the list, the step stops and asks the
-user.
+public). The search is `no_private_names` (`load.sh`), fed a diff or a log:
+it stops the block when a name is found, when the file is missing or empty,
+or when the search itself fails. If the file cannot be written because nobody
+has the list, the step stops and asks the user.
 
 **`way-back.py <project root> <project id> <folder of saved outputs>`**, the
 tickets' way back (Design 9; TCW-116's Step 27 comment, with Decided 2):
@@ -296,7 +411,9 @@ except TcwError as error:
 
 It builds the Jira client only when it runs (TCW-116's 21:30 handoff); it is
 written at Step 12 and run only by Step 21 (on `TCWTEST`) or by section 9's
-row "5.6-5.7". Step 21's run of it is its rehearsal.
+row "5.6-5.7" as Step 24 runs it ("The way back from Step 24"), in both
+cases while the project still holds the 4.0 files the migration wrote, and
+before those files are reset. Step 21's run of it is its rehearsal.
 
 ## The follow-ups
 
@@ -318,31 +435,50 @@ is not small.
 | # | Entry | What is wrong (evidence) | Change | Test |
 | --- | --- | --- | --- | --- |
 | 1 | F:1 | `parse_address("tcw://demo.foo/x")` says `'demo.foo/x' is not a full identifier`, dropping the prefix; the fall-through `return parse_full_id(rest)` at `tcw/ids.py:300` | catch `MalformedId` there and raise it again quoting the whole address | `tests/test_ids.py`, `test_ac2_each_refusal_names_its_rule`: case `("tcw://p1.foo/x", "tcw://p1.foo/x is not")` |
-| 2 | F:2c | a store `path` of `TCW://p1.path/other` is read as a folder (`is not a directory: …/TCW:/p1.path/other`); the scheme test is case-sensitive at `tcw/store/fs.py:3681`, `tcw/config.py:498`, `tcw/validate.py:301`, `tcw/migrate/stores.py:195` | compare the scheme without regard to case at those four places | a validate test: the message says `is not a tcw:// address` and not `not a directory` |
+| 2 | F:2c | a store `path` of `TCW://p1.path/other` is read as a folder (`is not a directory: …/TCW:/p1.path/other`); the scheme test is case-sensitive wherever a store `path` or a `-C` target is told apart from a folder: `tcw/store/fs.py:3681` and `:3760` (both `startswith(SCHEME)`), `tcw/config.py:498`, `tcw/validate.py:301` and `:930`, `tcw/migrate/stores.py:195` (each `startswith("tcw://")`), and `tcw/cli.py:540` and `:558` (`tcw -C TCW://p1.path/` is looked for as a folder and refused with `no such folder`) | a function `has_scheme(text)` in `tcw/ids.py` (`text[:len(SCHEME)].casefold() == SCHEME`) used at those eight places, so a mixed-case scheme reaches `parse_address`, whose refusal `… is not a tcw:// address` (`tcw/ids.py:262-263`) is the message wanted. Left case-sensitive on purpose: the parsers themselves (`tcw/ids.py:248`, `:262`, `:361`, `:364`), which refuse the mixed case; `tcw/cli.py:66`, which already uses `casefold()`; and the Markdown link readers (`tcw/validate.py:53`'s `_LINK_RE`, `tcw/migrate/legacy.py:513`, `:519`, `:541`, `tcw/migrate/references.py:158`), which do not read `](TCW://…)` as a TCW link at all, as 3.x did not either; noted in the round, not changed | a validate test: the message says `is not a tcw:// address` and not `not a directory`; a `-C` test: `tcw -C TCW://p1.path/ …` exits 2 with `is not a tcw:// address` |
 | 3 | F:3, F:18 | validate's message names the config file twice (`.tcw/tcw-config.yaml: taxonomy: /abs/…/.tcw/tcw-config.yaml: …`): `_run_check` formats `{e}` at `tcw/validate.py:372`, `:377`, `:381`, `:383` instead of `_config_message`, which `:309`, `:681`, `:776` use | use `_config_message(e, project_root)` at those four lines | `tests/test_legacy_store_config.py` near `:330`: the absolute path is absent from the message |
 | 4 | F:5 | `tcw capabilities set cli/a --parent cli/a` exits 0, as does a two-capability loop; only validate reports it (`tcw/store/fs.py:1246`); new in 4.0 (no `--parent` on `main`) | in `set` (`tcw/store/fs.py:3214-3222`) refuse a parent that is the object itself or whose parent chain in this project returns to it | `tests/test_capabilities_federation.py`: a self-parent `set` fails and the state file is unchanged; the same for a loop of two |
-| 5 | F:6, F:55 | the work store's reserved-name finding (`tcw/object_folders.py:375-377`) no longer points a 2.x store to its guide, which `main:tcw/work/fs_backend.py:537` did; a 2.x `docs/work/inbox/x/` is told to run `tcw migrate`, which cannot convert 2.x; A12 copies the message | append `MIGRATION_GUIDE` (`tcw/store/base.py:1194`) to that finding | validate on a store holding `docs/work/inbox/x/` names `docs/migration-guide-2.8-to-3.0.0.md` |
+| 5 | F:6, F:55 | the work store's reserved-name finding (`tcw/object_folders.py:375-377`) no longer points a 2.x store to its guide, which `main:tcw/work/fs_backend.py:537` did; a 2.x `docs/work/inbox/x/` is told to run `tcw migrate`, which cannot convert 2.x; A12 copies the message | append `MIGRATION_GUIDE` (`tcw/store/base.py:1194`) to that finding when the store is the work store, the only one a 2.x layout fills with stage folders; the taxonomy and capabilities stores' finding keeps its words, which TCW-117's guide quotes (`docs/guide/linking-and-validation.md:258`, `'resources' is reserved in the taxonomy store`), so that line stays true | validate on a store holding `docs/work/inbox/x/` names `docs/migration-guide-2.8-to-3.0.0.md` |
 | 6 | F:10 | `_merge`'s scalar branch at `tcw/config.py:796-798` clears `origins` but not `places`; nothing shows it today | add `_clear(places, here)` there | a unit test: a later layer writing `work.tags` as a non-list leaves no `places` entry under `("work", "tags")` |
 | 7 | F:11 | with both `TCW_WORK_STAGES_SPEC__APP` and `…_SPEC_PROMPT__APP` set, the note names both though only the second's prompt is used: a list that replaces the one below still appends to `written` (`tcw/config.py:768-769`, `:800-801`) | when the list has no `inherit: true` entry, set `written[here] = [origin]` | `personal_variables(("work","stages","spec","prompt")) == ["TCW_WORK_STAGES_SPEC_PROMPT__APP"]` |
 | 8 | F:14 | `rm`'s referrer message names bare id-paths (`billing/c (Blocked by)`) while `reset`'s names full identifiers (`tcw/store/fs.py:3022`); no spec asks for the bare form | build the full identifier at `tcw/store/fs.py:3018`, and at `:2442`, `:2477` for taxonomy | `tests/test_taxonomy.py:416`, `:426` and `tests/test_capabilities_rm.py` expect `app.capabilities/billing/c (Blocked by)` |
 | 9 | F:15 | `capabilities rm a` succeeds while `b` names `a` as its `parent`, leaving `dangling parent ref` (reproduced): `_referrers` (`tcw/store/fs.py:3012`) skips `parent`, which `_cap_ref_rows` (`:2745`) leaves out. Older than 4.0, but it damages the records | also check `meta.get("parent")`, adding `"<p> (parent)"` | `tests/test_capabilities_rm.py`: add `a`, add `b --parent a`; `rm a` is refused naming `billing/b (parent)`, and `a` is still on disk |
-| 10 | F:16, F:44 | `rm` and `reset` leave an empty organising folder, which 4.0's validate then warns about (`holds no TCW object`, `tcw/object_folders.py:381`); `move` already cleans up with `remove_emptied` (`:536`) | call `remove_emptied(self.root, id_path)` after `_rm` at `tcw/store/fs.py:2412`, `:2973`, `:3067` | rm the only capability under `billing/`, and reset one: the folder is gone and validate prints no warning |
+| 10 | F:16, F:44 | `rm` and `reset` leave an empty organising folder, which 4.0's validate then warns about (`holds no TCW object`, `tcw/object_folders.py:381`); `move` already cleans up with `remove_emptied` (`:536`) | call `remove_emptied(self.root, id_path)` after `_rm` at `tcw/store/fs.py:2412`, `:2973`, `:3067`, and add each folder it returns to `self.changed` as `("removed", self.root / rel)`, so the command's report names every folder it deleted, as `move` reports each one (`tcw/move.py:377-378`, `removed the empty folder …`) | rm the only capability under `billing/`, and reset one: the folder is gone, the command's output has a `removed` line for it, and validate prints no warning |
 | 11 | F:23 | `tcw taxonomy rename bill PAY` says `docs/taxonomy/PAY already exists` when the folder is `pay` (reproduced) | at `tcw/move.py:228-229`, name the spelling `exact_child` returns | `tests/test_tree_move.py`: with `pay` present, the message names `docs/taxonomy/pay` |
 | 12 | F:30 | with two fetched projects each with a bad manifest, the advice names only the first one's folder: `tcw/provision.py:556-562` takes one `_holding()` (`:200`) though the error lists every file (`tcw/store/project.py:726`) | name each distinct holder of `error.files` | `tests/test_project_provision.py`: two fetched projects with unreadable manifests; both folders appear |
 | 13 | F:33 | test docstrings still describe `list --local`, a flag 4.0 replaced with `--scope` (`tcw taxonomy list --help`): `tests/test_tree_parent_missing.py:58-59`, `:98`, `:193`; `tests/test_overrides_by_path.py:417` | reword each to the `--scope` form the test runs | none: text only; the module passes unchanged |
-| 14 | F:45 | the drift message still says "upstream default", a 3.x term (`tcw/capabilities/cli.py:199-200`) | "the status it inherits" | `tests/work/test_drift_work.py` asserts the new line |
+| 14 | F:45 | the `unreviewed` line of `tcw capabilities drift` still says "upstream default", a 3.x term (`tcw/capabilities/cli.py:199-200`) | the line becomes `unreviewed: <id>: inherited, and its status is still the one it inherits; never ruled on here`; **[after TCW-117]** the guide line that quotes it, `docs/guide/taxonomy-and-capabilities.md:413` in TCW-117's work, is changed to the same words in the same commit | `tests/work/test_drift_work.py` asserts the new line; `grep -rn 'upstream default' tcw docs/guide skills` prints nothing |
 | 15 | F:48 | `tcw project config --origin`'s help says it "prints even when something is wrong" (`tcw/project_cli.py:94-97`), but it follows TCW-109 Design 7.1, printing nothing when an inherited key is undecided or broken (`tcw/config_cli.py:295-301`) | the help says an undecided or broken inherited key still stops it | the existing help test, if one pins the text; else none (help text) |
 | 16 | F:51 | a `capabilities.yaml` entry for a project the manifest places at a missing folder is an error with exit 1 (reproduced); TCW-110's spec (`:567`) says unresolved | at `tcw/validate.py:729-730` and `:819-820`, report `unresolved` when the problem is an `_UncheckedProblem` | the same setup gives an `unresolved:` line and exit 0 |
 | 17 | F:53 | no test covers A14's other source name (`tcw/migrate/config.py:666-667`) | none: test only | `tests/migrate/test_migrate_manifests.py`: the path comes from an ancestor's file and A14 names `<relative>/tcw-config.yaml` |
 | 18 | F:57 | a package migrated before its related projects: the after-run check lists no A12 and the summary does not say the check was cut short; `collect_findings` (`tcw/cli.py:274-278`) returns only the configuration findings and the graph problem, and `check_after` (`tcw/migrate/execute.py:356-360`) drops that as A8 predicted (read in code, not run) | `check_after` returns a flag when `registry.check()` is not empty; `_check_after` (`tcw/migrate/cli.py:103-109`) adds a report line: `check after the run stopped: a related project is still TCW 3.x; run 'tcw validate' once it is migrated` | `tests/migrate/test_migrate_monorepo.py`: migrate `api` first; the line is printed |
 | 19 | F:58 | A8 in a workspace's run lists descendants before a parent: Design 2.10 and 6.2 of TCW-116 say parents first, but `still_3x_reports` (`tcw/migrate/config.py:1050-1070`) keeps the order found | order the non-ancestors by the family's predicted parent links | the order of A8's lines in a workspace run with a parent and a child both 3.x |
-| 20 | F:59 | `1 tickets edited`, `1 files written`: `tcw/migrate/report.py:111-112` never uses the singular | singular for a count of 1 | `counts([one write], 1, dry=False) == "changed: 1 file written, 0 moved, 0 deleted; 1 ticket edited"` |
+| 20 | F:59 | `1 tickets edited`, `1 files written`: `tcw/migrate/report.py:111-112` never uses the singular | singular for a count of 1; **[after TCW-117]** the migration guide's template of that line (`docs/migration-guide-3.X-to-4.0.0.md:160`, `changed: <n> files written, … <n> tickets edited`) gains "(`file` and `ticket` when the count is 1)"; its example at `:98` (counts 6 and 0) is unchanged | `counts([one write], 1, dry=False) == "changed: 1 file written, 0 moved, 0 deleted; 1 ticket edited"`; `tests/migrate/test_migrate_command.py:163-167` still passes (it asserts `0 tickets edited`, and is changed only if one of its cases writes exactly one file) |
 | 21 | F:60 | a refused run's planned lines describe C12 and D7 for a B9-refused override: it is missing from `resolved` (`tcw/migrate/stores.py:539`), so `_plan_object` plans them | at `tcw/migrate/stores.py:319` and `:345`, also require `"overrides" not in data` | a refused B9 run lists no C12 or D7 for that file |
 
 Fixes 18 to 21 are in `tcw migrate`, TCW-116's area, and are made before
 Step 15 runs it on this repository. Any fix found at implement to be larger
 than its row says becomes a new item instead (Decided 1), and Step 2's
 record says so.
+
+**Where TCW-117's documents quote what a fix changes.** Each fix's changed
+text was searched for in TCW-117's work (its worktree at `a10e1226`,
+`docs/` and `skills/`, `README.md`, leaving out `docs/work/`, the changelogs
+and the release notes) with `grep -rnF`. Two quotations change with a fix:
+`docs/guide/taxonomy-and-capabilities.md:413` (fix 14) and
+`docs/migration-guide-3.X-to-4.0.0.md:160` (fix 20). The others found stay
+true and are not changed: `docs/guide/linking-and-validation.md:258` (fix
+5, the taxonomy store's words, kept); `:260` and `docs/guide/work.md:161`
+(fix 10: they name the `holds no TCW object` warning, whose words do not
+change); `docs/guide/linking-and-validation.md:300` (fix 2: the same refusal
+for another address); `docs/guide/configuration.md:174-177` (fix 15: it
+already says what the corrected help says); `skills/configure/references/personal.md:117-120`
+and `docs/capabilities/cli/override-configuration-from-the-environment/description.md:7`
+(fix 7: the more specific variable wins, which the fix keeps; neither quotes
+the note); `docs/migration-guide-3.X-to-4.0.0.md:98` (fix 20: counts of 6
+and 0). Nothing quotes the texts of fixes 1, 3, 4, 8, 9, 11, 12, 16, 18, 19
+or 21. Step 2 searches again for each fix's old text before committing it,
+since TCW-117 may have added a quotation after `a10e1226`.
 
 ### Documentation already answered by TCW-117
 
@@ -436,12 +572,13 @@ Each with the evidence above, under TCW, not under TCW-99:
 
 ## Phase A: ready on `v4` (Design 3)
 
-Steps 1 to 11 run in the `v4` worktree, `/Users/brian/Projects/TCW/.claude/worktrees/v4`,
+Steps 1 to 11 run in the `v4` worktree, `~/Projects/TCW/.claude/worktrees/v4`,
 with its `.venv`. TCW-118 moves to `implement` (the dispatching session, the
 3.0.2 lifecycle `tcw`) after Step 1 and before Step 2's first change to code
 (Design 2.1). The order is Design 3's, with the release-preparation step
-(Decided 1) placed after 3.1: 3.1, preparation, 3.2, 3.9, 3.3, 3.4, 3.5, 3.6,
-3.7, the documentation entries, 3.10, 3.8. A fix made at Step 6 (the combined
+(Decided 1) placed after 3.1 and the suite script's proof (Step 9a) before
+CI: 3.1, preparation, 3.2, 3.9, 3.3, 3.4, 3.5, 3.6, 3.7, the documentation
+entries, the suite script proved, 3.10, 3.8. A fix made at Step 6 (the combined
 review) or Step 10 (CI) sends the steps after it round again, and CI runs on
 the new commit (Design 3).
 
@@ -483,9 +620,15 @@ the dispatching session moves TCW-118 to `implement` before it starts.
 first, run and seen to fail for the reason the entry gives; then the change;
 then the test and its module pass. The full suite (`.venv/bin/pytest` from the
 worktree's root) passes after the last fix. One commit per fix,
-`TCW-118: <what was fixed>`, with only the files the entry names.
+`TCW-118: <what was fixed>`, with only the files the entry names, plus any
+line of a guide, a skill, a capability record or the migration guide that
+quotes the text the fix changes. Before each commit, `grep -rnF '<the old
+text>' docs skills README.md` (leaving out `docs/work/`, `docs/changelogs/`
+and `docs/release-notes/`) is run, and every line it prints is either changed
+in that commit to match the new text or named in the round as still true.
 
-**Files:** those each fix names in "The follow-ups", and
+**Files:** those each fix names in "The follow-ups", the quoting lines found
+as above, and
 `docs/changelogs/upcoming/TCW-118-tcw-4-0-release.md` (created here, under
 `## Fixed`, one line per fix; Step 5 adds the rest). A fix a user would notice
 also gets a line in `docs/release-notes/upcoming/TCW-118-tcw-4-0-release.md`
@@ -644,7 +787,11 @@ docs/capabilities/plugin/bootstrap-the-cli` prints nothing (45); no test
 asserts the unpinned `install --force tcw-cli` (`grep -n '"install --force
 tcw-cli"' tests/test_session_bootstrap.py` prints nothing).
 
-### Step 5 — TCW-118's own entry files (3.3)
+### Step 5 — TCW-118's own entry files (3.3) [after TCW-117]
+
+It links TCW-117's migration guide (`docs/migration-guide-3.X-to-4.0.0.md`,
+P117:677), which does not exist on `v4` until TCW-117 lands; the step checks
+`test -f docs/migration-guide-3.X-to-4.0.0.md` first and stops if it fails.
 
 **Who:** an agent; the harness paragraph is copied from "The open items",
 item 1, word for word.
@@ -719,7 +866,13 @@ and the failure to look for:
    113, 114, `tcw/work/jira/`);
 4. `tcw project` and `tcw migrate` against what the other children write
    (TCW-115, 116);
-5. the release's own changes (Steps 2-4).
+5. the release's own changes (Steps 2-4);
+6. **[after TCW-117]** TCW-117's guides, skills, use cases and migration
+   guide against the code as it stands after Step 2's fixes: every command,
+   flag, message and exit code a guide or skill quotes (`docs/guide/`,
+   `skills/`, `docs/migration-guide-3.X-to-4.0.0.md`, `README.md`) is run or
+   found in the code, and the failure to look for is a quotation that one of
+   Step 2's fixes made untrue, or that was untrue already.
 
 It sorts its findings into "belongs to 4.0" and "needs a separate change" and
 ends with a literal `DONE` or `NOT DONE`. Each "belongs to 4.0" finding is
@@ -826,6 +979,52 @@ files; `implement/round-1.md`.
 **Proves it:** criterion 11; the Documentation Sync block's every row
 answered.
 
+### Step 9a — the suite script proved on `v4` (Decided 7)
+
+**Who:** an agent. It runs no `tcw` command itself; the suite does, in a
+scratch clone outside this repository.
+
+**Does:** makes the release folder, writes `load.sh` and `ci-suite.sh`
+exactly as in "Tools", and runs the suite once on a fresh clone of `v4`, so
+that a script that hangs or fails for a reason of its own is found here and
+not at 4.3 (d), inside rule 4.0's window:
+
+The folder is made first (`mkdir -p ~/.tcw-4.0-release`) and the two files
+written into it; then:
+
+```sh
+. ~/.tcw-4.0-release/load.sh
+test ! -e "$REL/suite-proof" || stop "$REL/suite-proof exists from an earlier run; delete it first"
+git clone -q --branch v4 "$PRIMARY" "$REL/suite-proof"
+test "$(git -C "$REL/suite-proof" rev-parse HEAD)" = "$(git -C "$PRIMARY" rev-parse v4)" || stop "the clone is not at v4"
+bash "$REL/ci-suite.sh" "$REL/suite-proof" > "$REL/suite-proof.txt" 2>&1 || stop "the suite failed: see suite-proof.txt"
+grep -q '^== suite and web build passed$' "$REL/suite-proof.txt" || stop "the suite did not finish"
+```
+
+It is run in the background, and its output file is watched. **If pnpm
+hangs**, that is, the file shows `pnpm --version` as the last command and
+gains no line for ten minutes, the run is stopped and the cause is one of
+corepack's: a prompt (which `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` and the
+`/dev/null` input should already refuse) or a download (the cache at
+`COREPACK_HOME` lacks `v1/pnpm/10.14.0`; on 2026-10-24 it holds it). The
+fixes, in order: confirm `ls "$HOME/.cache/node/corepack/v1/pnpm/10.14.0/bin/pnpm.cjs"`;
+if it is missing, run `corepack install` once in the `v4` worktree (outside
+the scratch run, with the real HOME), which fills the cache; if pnpm still
+hangs, change the script's last `run` line to call the cached pnpm directly,
+`node "$corepack_home/v1/pnpm/10.14.0/bin/pnpm.cjs"` in place of `pnpm`, and
+record the change in the round. A failing test, not a hang, is a 4.0 defect
+and is fixed on `v4` as Step 10 fixes one. The run's Node is this machine's
+24, not CI's 22 ("Tools"); Step 10 is the proof of the web build. The clone
+`suite-proof` is deleted once the run passes.
+
+**Files:** the release folder only; `implement/round-1.md` gets the run's
+first lines (the `TCW_` and `HOME` proof), its last line, and any change made
+to the script.
+
+**Proves it:** `ci-suite.sh` runs to its last line on `v4` with this
+machine's HOME replaced, so 4.3 (d), 5.8 and 6.2 (a) rely on a script that
+has run.
+
 ### Step 10 — CI on `v4`, before the merge (3.10)
 
 **Who:** the dispatching session (the user allowed pushing `v4`).
@@ -833,13 +1032,16 @@ answered.
 **Does,** with `v4` not moving and every Phase A commit in:
 
 ```sh
-git -C /Users/brian/Projects/TCW/.claude/worktrees/v4 push origin v4
-test "$(git ls-remote origin refs/heads/v4 | cut -f1)" = "$(git rev-parse v4)"
-gh pr list --head v4 --json number,labels,state     # item 2: expected []
-gh workflow run test.yml --ref v4
-gh run list --workflow test.yml --branch v4 --event workflow_dispatch --limit 1
-gh run watch <id> --exit-status
-gh run view <id> --json headSha,jobs
+. ~/.tcw-4.0-release/load.sh
+W=$PRIMARY/.claude/worktrees/v4
+git -C "$W" push origin v4
+head=$(git -C "$W" rev-parse v4)
+test "$(git -C "$W" ls-remote origin refs/heads/v4 | cut -f1)" = "$head" || stop "GitHub's v4 is not v4's tip"
+gh pr list --head v4 --json number,labels,state     # item 2: [] expected; any pull request is named in the record
+id=$(dispatch_ci "$head")
+gh run watch "$id" --exit-status || stop "CI failed on $head"
+gh run view "$id" --json headSha,jobs
+record CI "$head"
 ```
 
 **Files:** `implement/round-1.md` gets `gh run view`'s output.
@@ -869,7 +1071,7 @@ Rule 4.0 holds from Step 12 to Step 26: no `tcw` command anywhere in this
 repository, TCW-118's own included. Every step from here to Step 26 records
 what it did in the release folder; the dispatching session writes those
 records into `implement/round-1.md` after Step 26. Let `C` be the merge clone's
-folder, `~/tcw-4.0-merge` (outside `/Users/brian/Projects/TCW`).
+folder, `~/tcw-4.0-merge` (outside `~/Projects/TCW`).
 
 ### Step 12 — step 0: stop every `tcw`, record M0 and V (4.0)
 
@@ -881,21 +1083,27 @@ recording each recipient and the time; stops every agent that has finished.
 Then:
 
 ```sh
-mkdir -p ~/.tcw-4.0-release
-git -C /Users/brian/Projects/TCW fetch origin
-git -C /Users/brian/Projects/TCW status --porcelain --branch   # "## main...origin/main" and nothing else
-M0=$(git -C /Users/brian/Projects/TCW rev-parse origin/main)
-test "$(git -C /Users/brian/Projects/TCW rev-parse main)" = "$M0" ||
-  git -C /Users/brian/Projects/TCW merge --ff-only origin/main   # Decided 6
-V=$(git -C /Users/brian/Projects/TCW rev-parse v4)
-printf 'M0 %s %s\nV %s %s\n' "$M0" "$(date -u +%FT%TZ)" "$V" "$(date -u +%FT%TZ)" >> ~/.tcw-4.0-release/refs.txt
-git rev-list --count "$M0..$V"; git rev-list --count "$V..$M0"
+. ~/.tcw-4.0-release/load.sh CI
+git -C "$PRIMARY" fetch origin
+test "$(git -C "$PRIMARY" branch --show-current)" = main || stop "the primary checkout is not on main"
+test -z "$(git -C "$PRIMARY" status --porcelain)" || stop "the primary checkout has changes"
+m0=$(git -C "$PRIMARY" rev-parse origin/main)
+if [ "$(git -C "$PRIMARY" rev-parse main)" != "$m0" ]; then          # Decided 6
+  git -C "$PRIMARY" merge --ff-only origin/main || stop "main cannot be fast-forwarded to origin/main"
+fi
+test "$(git -C "$PRIMARY" rev-parse main)" = "$m0" || stop "main is not GitHub's main (it is ahead of it)"
+record M0 "$m0"
+record V "$(git -C "$PRIMARY" rev-parse v4)"
+. ~/.tcw-4.0-release/load.sh M0 V CI                                  # read back: the records hold
+changed=$(git -C "$PRIMARY" diff --name-only "$CI" "$V") || stop "cannot compare CI's commit with V"
+if printf '%s\n' "$changed" | grep -v -e '^docs/work/TCW-118-tcw-4-0-release/' -e '^$'; then
+  stop "V differs from the commit CI ran on outside TCW-118's folder: run Step 10 again"
+fi
+git -C "$PRIMARY" rev-list --count "$M0..$V"; git -C "$PRIMARY" rev-list --count "$V..$M0"
 ```
 
-and writes `ci-suite.sh`, `way-back.py` and `private-names.txt` (Tools), and
-an empty `gates.md`. `V` differs from Step 10's run commit only in files under
-`docs/work/TCW-118-tcw-4-0-release/` (`git diff --name-only <run commit> $V`);
-otherwise Step 10 runs again first.
+and writes `way-back.py` and `private-names.txt` (Tools), and an empty
+`gates.md`.
 
 **Files:** the release folder only.
 
@@ -908,21 +1116,27 @@ release here: the dispatching session brings it to the user.
 **Who:** an agent.
 
 ```sh
-git clone /Users/brian/Projects/TCW ~/tcw-4.0-merge
-cd ~/tcw-4.0-merge
+. ~/.tcw-4.0-release/load.sh M0 V
+test ! -e "$C" || stop "$C already exists; an old merge clone is deleted first"
+git clone -q "$PRIMARY" "$C"
+cd "$C"
 git remote set-url --push origin no-push            # Decided 5
-git checkout -b release-4.0.0 "$M0"
+git checkout -q -b release-4.0.0 "$M0"
 git merge --no-ff "$V" -m "Merge v4 into main: TCW 4.0"
 python3.14 -m venv .venv && .venv/bin/pip install -q -e '.[dev]'
+test -d .git || stop "the merge clone has no .git folder"
+case "$(pwd -P)/" in "$(cd "$PRIMARY" && pwd -P)/"*) stop "the merge clone is inside the primary checkout" ;; esac
+test "$(git rev-parse release-4.0.0^1)" = "$M0" || stop "the merge's first parent is not M0"
+test "$(git rev-parse release-4.0.0^2)" = "$V" || stop "the merge's second parent is not V"
 ```
 
 A conflict (a 3.x patch on `main` after the split; none today, `git rev-list
---count v4..main` printed 0) is resolved by applying the patch's intent to the
-4.0 code, and the resolution reviewed as Step 6 reviews, before Step 14.
+--count v4..main` printed 0) stops the block at the merge. It is resolved by
+applying the patch's intent to the 4.0 code, committed with the same message,
+and the resolution reviewed as Step 6 reviews; then the block's lines after
+the merge are run, and only then Step 14.
 
-**Proves it:** criterion 13: `test -d .git`; the folder is outside
-`/Users/brian/Projects/TCW`; `git rev-parse release-4.0.0^1` is M0 and
-`release-4.0.0^2` is V.
+**Proves it:** criterion 13: the block's last four checks.
 
 ### Step 14 — step 2: the dry run, then the files (4.2)
 
@@ -930,13 +1144,23 @@ A conflict (a 3.x patch on `main` after the split; none today, `git rev-list
 `TCW_JIRA_EMAIL` and `TCW_JIRA_API_KEY`). The dry run only reads the board.
 
 ```sh
-cd ~/tcw-4.0-merge
-{ date -u; .venv/bin/tcw migrate --dry-run; echo "exit $?"; } > ~/.tcw-4.0-release/tcw116-dry-run.txt 2>&1
-grep -o 'would edit [A-Z0-9]*-[0-9]*' ~/.tcw-4.0-release/tcw116-dry-run.txt | sort -u | wc -l
-grep -o 'would edit [A-Z0-9]*-[0-9]*' ~/.tcw-4.0-release/tcw116-dry-run.txt | grep -v 'would edit TCW-[0-9]*$'  # nothing
-env -u TCW_JIRA_EMAIL -u TCW_JIRA_API_KEY https_proxy=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 \
-  .venv/bin/tcw migrate --no-jira > ~/.tcw-4.0-release/no-jira.txt 2>&1; echo "exit $?" >> ~/.tcw-4.0-release/no-jira.txt
+. ~/.tcw-4.0-release/load.sh V
+cd "$C"
+test "$(git rev-parse release-4.0.0^2)" = "$V" || stop "the merge clone is not the merge of V"
+set +eu; source ~/.bashrc; set -eu                   # ~/.bashrc is not written for set -eu
+dry=$REL/tcw116-dry-run.txt
+capture "$dry" .venv/bin/tcw migrate --dry-run || stop "the dry run failed: see $dry"
+keys=$(grep -o 'would edit [A-Z0-9_]*-[0-9]*' "$dry" | sort -u) || stop "the dry run names no ticket to edit"
+printf '%s\n' "$keys" | wc -l                        # the count, recorded
+if printf '%s\n' "$keys" | grep -v 'would edit TCW-[0-9]*$'; then stop "the dry run would edit a ticket outside TCW"; fi
+capture "$REL/no-jira.txt" env -u TCW_JIRA_EMAIL -u TCW_JIRA_API_KEY \
+  https_proxy=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 \
+  .venv/bin/tcw migrate --no-jira || stop "the --no-jira run failed: see no-jira.txt"
 ```
+
+A dry run naming no ticket at all stops here too: the `TCW` board holds 3.x
+values, so a count of 0 means the run did not read the board, and it is
+brought to the dispatching session.
 
 **Proves it:** criterion 14 (the dry run exited 0, every key `^TCW-[0-9]+$`,
 the count recorded; the count is also what Decided 3 weighs against Jira's
@@ -945,7 +1169,8 @@ tickets were not converted).
 
 ### Step 15 — step 3: the files finished, the suite, validate (4.3) [after TCW-117]
 
-**Who:** an agent, in `~/tcw-4.0-merge`.
+**Who:** an agent, in `~/tcw-4.0-merge`. Items (d) to (f) run as one
+block that starts `. ~/.tcw-4.0-release/load.sh M0` and `cd "$C"`.
 
 - (a) `git rm -q tests/test_repo_config_pair.py`; delete the line
   `/tcw-config.local.yaml` from `.gitignore`.
@@ -956,13 +1181,12 @@ tickets were not converted).
   before anything is fixed.
 - (c) fix every hit in `docs/taxonomy/` and `docs/capabilities/` by editing
   files (no `tcw` command), until that test passes.
-- (d) `bash ~/.tcw-4.0-release/ci-suite.sh ~/tcw-4.0-merge >
-  ~/.tcw-4.0-release/suite-4.3.txt 2>&1`, with no proxy setting.
-- (e) `.venv/bin/tcw validate > ~/.tcw-4.0-release/validate-4.3.txt 2>&1`,
-  exit 0.
-- (f) `git diff "$M0" | grep -n -i -F -f ~/.tcw-4.0-release/private-names.txt`
-  prints nothing, run after `git add -A` so new files are in the diff
-  (`git diff --cached "$M0"`).
+- (d) `bash "$REL/ci-suite.sh" "$C" > "$REL/suite-4.3.txt" 2>&1 || stop
+  "the suite failed"`, with no proxy setting.
+- (e) `capture "$REL/validate-4.3.txt" .venv/bin/tcw validate || stop
+  "validate failed"`.
+- (f) `git add -A && git diff --cached "$M0" | no_private_names`, after
+  `git add -A` so new files are in the diff.
 
 **Proves it:** criteria 16, 17 and 18.
 
@@ -971,22 +1195,31 @@ tickets were not converted).
 **Who:** an agent, in `~/tcw-4.0-merge`.
 
 ```sh
+. ~/.tcw-4.0-release/load.sh M0 V
+cd "$C"
 git add -A && git commit -qm "Migrate this repository to TCW 4.0 (tcw migrate --no-jira)"
 git checkout -q main && git merge --ff-only release-4.0.0
-A=$(git rev-parse main); printf 'A %s %s\n' "$A" "$(date -u +%FT%TZ)" >> ~/.tcw-4.0-release/refs.txt
-git -C /Users/brian/Projects/TCW ls-remote origin refs/heads/main    # prints M0 (Decided 5)
+test "$(git rev-parse main^1^1)" = "$M0" || stop "main^1^1 is not M0"
+test "$(git rev-parse main^1^2)" = "$V" || stop "main^1^2 is not V"
+record A "$(git rev-parse main)"
+. ~/.tcw-4.0-release/load.sh A                                        # read back
+test "$(git -C "$PRIMARY" ls-remote origin refs/heads/main | cut -f1)" = "$M0" ||
+  stop "GitHub's main is not M0"                                      # Decided 5
 ```
 
-**Proves it:** criterion 19: `main` is one commit past the merge commit
-(`git rev-parse main^1^1` is M0 and `git rev-parse main^1^2` is V), and
-GitHub's `main` is M0.
+**Proves it:** criterion 19: the block's checks: `main` is one commit past
+the merge commit, and GitHub's `main` is M0.
 
 ### Step 17 — the acceptance tarball, checked (4.5)
 
 **Who:** an agent.
 
 ```sh
-cd ~/tcw-4.0-merge && .venv/bin/pip install -q build && .venv/bin/python -m build
+. ~/.tcw-4.0-release/load.sh A
+cd "$C"
+test "$(git rev-parse HEAD)" = "$A" || stop "the merge clone is not at A"
+test -z "$(git status --porcelain)" || stop "the merge clone has changes"
+.venv/bin/pip install -q build && .venv/bin/python -m build
 mkdir -p ~/.tcw-4.0-release/acceptance && cp dist/tcw_cli-4.0.0.tar.gz ~/.tcw-4.0-release/acceptance/
 cd ~/.tcw-4.0-release/acceptance && shasum -a 256 tcw_cli-4.0.0.tar.gz > tcw_cli-4.0.0.tar.gz.sha256
 python3.14 -m venv venv && venv/bin/pip install -q ./tcw_cli-4.0.0.tar.gz
@@ -1014,8 +1247,10 @@ since `which -a tcw` lists two; a copy of a project, never the project
 itself, migrated with `--no-jira` or pointed at the test Jira project; never
 inside this repository). Then stops.
 
-The answer is written to `~/.tcw-4.0-release/gates.md` as it is given, copied
-to `docs/work/TCW-118-tcw-4-0-release/gates.md` in `~/tcw-4.0-merge` and
+The answer is written to `~/.tcw-4.0-release/gates.md` as it is given, as an
+entry whose first line is `gate 1: go <A>`, `gate 1: declined <A>` or
+`gate 1: defect <A>` with A's full hash ("Tools"), copied to
+`docs/work/TCW-118-tcw-4-0-release/gates.md` in `~/tcw-4.0-merge` and
 committed on its `main`, `TCW-118: gate 1, <accepted|declined|defect>`:
 
 - **Accepted**, naming A: on to Step 19.
@@ -1048,7 +1283,8 @@ for the tickets has never run against a live board**, which is why Step 21
 rehearses it; and that whether an edit emails watchers is not known yet,
 and Step 21 finds out (Decided 4).
 
-The answer goes to both copies of `gates.md` and is committed on
+The answer goes to both copies of `gates.md`, as an entry whose first line
+is `gate 2: go <A>` (or `declined`), and is committed on
 `~/tcw-4.0-merge`'s `main`, `TCW-118: gate 2, <answer>`, before Step 20. A
 decline, or a failure at Step 20 or 21, runs section 9's row "5.1-5.2"; a
 failure at 5.5 runs row "5.5"; at 5.6-5.7, row "5.6-5.7". A failure at Step 20
@@ -1062,15 +1298,21 @@ again before gate 2 is.
 **Who:** an agent, under gate 2's go, or the user.
 
 ```sh
-cd ~/tcw-4.0-merge && git log --format=%H "$A..main" -- . ':!docs' | wc -l   # 0: past A only in docs/
-source ~/.bashrc
-{ date -u; TCW_JIRA_LIVE=1 .venv/bin/pytest -s \
-    tests/work/jira/test_jira_scenario.py::test_the_scenario_live; echo "exit $?"; } \
-  > ~/.tcw-4.0-release/live-scenario.txt 2>&1
+. ~/.tcw-4.0-release/load.sh A
+gate_go 2 "$A"
+cd "$C"
+past=$(git log --format=%H "$A..main" -- . ':!docs') || stop "cannot read the commits past A"
+test -z "$past" || stop "main has commits past A outside docs/"
+set +eu; source ~/.bashrc; set -eu
+out=$REL/live-scenario.txt
+capture "$out" env TCW_JIRA_LIVE=1 .venv/bin/pytest -s \
+  tests/work/jira/test_jira_scenario.py::test_the_scenario_live || stop "the live scenario failed: see $out"
+grep -q '1 passed' "$out" || stop "the live test did not run (skipped?)"
+grep -q 'validate --remote exited 0' "$out" || stop "validate --remote did not pass in the scenario"
 ```
 
-**Proves it:** criterion 48: `exit 0`, `1 passed` (not `skipped`), and the
-printed `validate --remote exited 0`. It touches only `TCWTEST` and builds
+**Proves it:** criterion 48: the block's checks, `exit 0`, `1 passed` (not
+`skipped`), and the printed `validate --remote exited 0`. It touches only `TCWTEST` and builds
 its own project in pytest's scratch folder.
 
 ### Step 21 — the ticket conversion and its way back, rehearsed (5.2) — gate 2
@@ -1086,7 +1328,9 @@ paging with `nextPageToken`, the site from `.tcw/tcw-config.yaml`'s
 **The rehearsal project,** in `~/.tcw-4.0-release/rehearsal/`:
 
 ```sh
-cd ~/.tcw-4.0-release/rehearsal
+. ~/.tcw-4.0-release/load.sh A
+gate_go 2 "$A"
+mkdir "$REL/rehearsal" && cd "$REL/rehearsal"
 python3.14 -m venv venv-3 && venv-3/bin/pip install -q tcw-cli==3.0.2
 mkdir proj && cd proj && git init -q && git config user.email t@t && git config user.name t
 ../venv-3/bin/tcw init work --id tcw-rehearsal
@@ -1104,23 +1348,33 @@ type the board uses is edited by the migration.
 **The conversion,** with the merge clone's 4.0 `tcw` by full path:
 
 ```sh
-T4=~/tcw-4.0-merge/.venv/bin/tcw
-{ date -u; $T4 migrate --dry-run; echo "exit $?"; } > ../rehearsal-dry-run.txt 2>&1
-{ date -u; $T4 migrate; echo "exit $?"; } > ../rehearsal-step6.txt 2>&1
-{ date -u; $T4 migrate --dry-run; echo "exit $?"; } > ../rehearsal-lag-0.txt 2>&1      # index lag, at once
-sleep 60; { date -u; $T4 migrate --dry-run; echo "exit $?"; } > ../rehearsal-lag-60.txt 2>&1
+. ~/.tcw-4.0-release/load.sh
+cd "$REL/rehearsal/proj"
+set +eu; source ~/.bashrc; set -eu
+T4=$C/.venv/bin/tcw; R=$REL/rehearsal
+capture "$R/rehearsal-dry-run.txt" "$T4" migrate --dry-run || stop "the rehearsal's dry run failed"
+capture "$R/rehearsal-step6.txt" "$T4" migrate || stop "the rehearsal's conversion failed"
+capture "$R/rehearsal-lag-0.txt" "$T4" migrate --dry-run || true      # index lag, at once
+sleep 60; capture "$R/rehearsal-lag-60.txt" "$T4" migrate --dry-run || true
 ```
 
 Then ticket three's `TCW Item` is edited by hand in Jira to another value
 (the check that the way back refuses it), and the way back runs:
 
 ```sh
-~/tcw-4.0-merge/.venv/bin/python ~/.tcw-4.0-release/way-back.py . tcw-rehearsal .. 'rehearsal-step6*.txt' \
-  > ../rehearsal-way-back.txt 2>&1
+. ~/.tcw-4.0-release/load.sh
+cd "$REL/rehearsal/proj"
+set +eu; source ~/.bashrc; set -eu
+rc=0
+"$C/.venv/bin/python" "$REL/way-back.py" . tcw-rehearsal "$REL/rehearsal" 'rehearsal-step6*.txt' \
+  > "$REL/rehearsal/rehearsal-way-back.txt" 2>&1 || rc=$?
+test "$rc" -eq 1 || stop "the rehearsal's way back exited $rc, not 1 (ticket three should be left out)"
+grep -q '^left out:' "$REL/rehearsal/rehearsal-way-back.txt" || stop "the way back names nothing left out"
 ```
 
 It must put back tickets one and two and leave out three, naming it under
-"left out" and exiting 1. Ticket three's own value is then put back by hand.
+"left out" and exiting 1; a person reads the file to confirm the two keys
+under "put back" and the one under "left out". Ticket three's own value is then put back by hand.
 Then the files' way back in `proj`, its own throwaway repository
 (`git reset -q --hard HEAD && git clean -fdq`, which returns it to the 3.x
 commit, since `tcw migrate` commits nothing), and 3.0.2's
@@ -1150,16 +1404,22 @@ rehearsal saw before its checks.
 **Who:** the dispatching session, under gate 2's go.
 
 ```sh
-cd /Users/brian/Projects/TCW
-git status --porcelain --branch                         # on main, no changes, at M0
+. ~/.tcw-4.0-release/load.sh M0 A
+gate_go 2 "$A"
+cd "$PRIMARY"
+test "$(git branch --show-current)" = main || stop "the primary checkout is not on main"
+test -z "$(git status --porcelain)" || stop "the primary checkout has changes"
+test "$(git rev-parse main)" = "$M0" || stop "the primary checkout's main is not M0"
 py=$(head -1 "$(pyenv which tcw)" | sed 's/^#!//')    # the lifecycle tcw's own Python
-{ date -u; git pull --ff-only ~/tcw-4.0-merge main && "$py" -m pip install -q -e '.[dev]' && tcw --version; } \
-  > ~/.tcw-4.0-release/install.txt 2>&1
-test "$(git rev-parse main)" = "$(git -C ~/tcw-4.0-merge rev-parse main)"
+test -x "$py" || stop "cannot find the lifecycle tcw's Python"
+capture "$REL/install.txt" bash -c "git pull -q --ff-only '$C' main && '$py' -m pip install -q -e '.[dev]' && tcw --version" ||
+  stop "the install failed: see install.txt; run section 9's row 5.5"
+grep -q '^tcw 4\.0\.0$' "$REL/install.txt" || stop "the shared tcw is not 4.0.0"
+test "$(git rev-parse main)" = "$(git -C "$C" rev-parse main)" || stop "the two mains differ"
 ```
 
-**Proves it:** criterion 20: `tcw 4.0.0` in `install.txt`, and the two
-`main`s equal. An untracked root `tcw-config.local.yaml`, if any, is
+**Proves it:** criterion 20: the block's checks: `tcw 4.0.0` in
+`install.txt`, and the two `main`s equal. An untracked root `tcw-config.local.yaml`, if any, is
 converted at Step 24.
 
 ### Step 24 — step 6: the live board converted (5.6) — gate 2
@@ -1168,12 +1428,40 @@ converted at Step 24.
 20 and 21 passed (and Step 22's word, if asked).
 
 ```sh
-cd /Users/brian/Projects/TCW && source ~/.bashrc
-{ date -u; tcw migrate; echo "exit $?"; } > ~/.tcw-4.0-release/tcw116-step6.txt 2>&1
+. ~/.tcw-4.0-release/load.sh A
+gate_go 2 "$A"
+cd "$PRIMARY"
+tcw --version | grep -q '^tcw 4\.0\.0$' || stop "the shared tcw is not 4.0.0 (Step 23)"
+set +eu; source ~/.bashrc; set -eu
+n=1; f=$REL/tcw116-step6.txt
+until capture "$f" tcw migrate; do
+  retryable "$f" && [ "$n" -le 3 ] ||
+    stop "run $n stopped for another reason, or a fourth run stopped: bring $f to the user"
+  wait=$(sed -n 's/.*Retry after \([0-9]*\)s.*/\1/p' "$f" | tail -n 1)
+  [ "${wait:-0}" -gt 300 ] || wait=300
+  sleep "$wait"
+  n=$((n + 1)); f=$REL/tcw116-step6-$n.txt
+done
 ```
 
-A run that stops partway is run again, each run saved as its own file
-(`tcw116-step6-2.txt`, `-3`, …), until one exits 0; it never repeats an edit.
+**The re-run limit.** A run that stops is run again only when its saved
+output names Jira as unreachable or rate limiting, in the Jira client's own
+words (`retryable` in `load.sh`: `could not reach the tracker`, `did not
+respond within`, `the connection to the tracker … was lost`, `the tracker
+returned 5…`, `the tracker is rate limiting requests`;
+`tcw/work/jira/client.py:225-240`, `:558-568`). It is run again at most
+three times after the first run (four runs in all, saved as
+`tcw116-step6.txt` and `tcw116-step6-2.txt` to `-4.txt`), waiting five
+minutes before each, or longer when the output says `Retry after <n>s`. A
+run never repeats an edit, since a converted ticket is skipped. **Any other
+stop, or a fourth run that stops, ends the re-runs:** the block stops, and
+the dispatching session brings every saved output to the user, with the way
+back below offered. Running the way back writes to the live board, so the
+user decides whether it is run, under gate 2; nothing is run until they
+answer, and their answer is added to both copies of `gates.md` and
+committed. The block runs in the background, since the waits can take
+twenty minutes.
+
 Then the `C17` keys of all the runs are compared with the dry run's:
 
 ```sh
@@ -1191,20 +1479,58 @@ Each key in only one is read, and its reason recorded, before Step 25.
 
 **Proves it:** criterion 21.
 
+**The way back from Step 24** (section 9's row "5.6-5.7", run at 5.6 or 5.7,
+or at 6.1-6.4 when the release is abandoned, and only on the user's word).
+**The tickets first, then the files**, in the order Step 21 rehearses:
+
+```sh
+. ~/.tcw-4.0-release/load.sh M0
+cd "$PRIMARY"
+set +eu; source ~/.bashrc; set -eu
+# 1. The tickets, while the primary checkout still holds the 4.0 files the
+#    migration wrote and the 4.0 install, as in the rehearsal.
+"$C/.venv/bin/python" "$REL/way-back.py" "$PRIMARY" tcw "$REL" > "$REL/way-back.txt" 2>&1 ||
+  stop "the tickets' way back stopped or left tickets out: see way-back.txt, and bring it to the user"
+# 2. Then the files, as for 5.5.
+git reset --keep "$M0"
+py=$(head -1 "$(pyenv which tcw)" | sed 's/^#!//')
+"$py" -m pip install -q -e '.[dev]'
+tcw --version | grep -q '^tcw 3\.0\.2$' || stop "the shared tcw is not 3.0.2 again"
+```
+
+`way-back.py` reads the runs as `tcw116-step6*.txt` and the dry run as the
+one `*dry-run*.txt` file in the release folder (`tcw116-dry-run.txt`; the
+rehearsal's files are in `rehearsal/`, which the search does not enter). It
+keeps its `getattr` reads of `restored` and `pending` (Decided 2). A key in
+only one of the two files stops it until a person has read the key and
+re-runs it with `--read`. Why this order: it is the order the rehearsal
+proves; the script must run with the 4.0 code (its own docstring); and a
+stop partway leaves the primary checkout exactly as it was before the way
+back began, so the way back can be run again from the same state once the
+cause is known (it edits only a ticket still holding the 4.0 value).
+Resetting the files first would be likely to
+work as well, since `settings(root)` reads the root `tcw-config.yaml` of a
+3.x layout when it is present (`own_jira_layers`,
+`tcw/migrate/legacy.py:355-370`), but that order is never rehearsed. The
+spec's row lists the files before the tickets (Spec issues, 5).
+
 ### Step 25 — step 7: nothing left to migrate (5.7)
 
 **Who:** the dispatching session.
 
 ```sh
-cd /Users/brian/Projects/TCW
-tcw migrate          # prints "nothing to migrate", exit 0
-tcw validate --remote
-tcw work list        # no warning about unconverted tickets
+. ~/.tcw-4.0-release/load.sh
+cd "$PRIMARY"
+set +eu; source ~/.bashrc; set -eu
+capture "$REL/step7-migrate.txt" tcw migrate || stop "tcw migrate failed"
+grep -q 'nothing to migrate' "$REL/step7-migrate.txt" || stop "something is still to migrate"
+capture "$REL/step7-validate.txt" tcw validate --remote || stop "validate --remote failed"
+capture "$REL/step7-list.txt" tcw work list || stop "work list failed"
 ```
 
-Each output saved to `~/.tcw-4.0-release/step7.txt`.
-
-**Proves it:** criterion 22.
+**Proves it:** criterion 22: the checks, and `step7-list.txt` read for any
+warning about tickets not converted (whose words the plan cannot know in
+advance, so a person reads it).
 
 ### Step 26 — rule 4.0 ends; the round written
 
@@ -1235,20 +1561,28 @@ TCW-118 then moves to `qa`.
 
 ## Phase D: cut and check (Design 6)
 
-In the primary checkout, on `main`. Let `Q` be the qa folder,
-`~/.tcw-4.0-release/qa/`.
+In the primary checkout, on `main`. `Q` is the qa folder,
+`~/.tcw-4.0-release/qa/`, set by `load.sh`. Every block from Step 29 on
+starts `. ~/.tcw-4.0-release/load.sh T` (with `M0` or `A` added where it
+uses them).
 
 ### Step 28 — the cut (6.1)
 
 **Who:** an agent.
 
 ```sh
-cd /Users/brian/Projects/TCW
+. ~/.tcw-4.0-release/load.sh
+cd "$PRIMARY"
+test "$(git branch --show-current)" = main || stop "not on main"
+test -z "$(git status --porcelain)" || stop "the primary checkout has changes"
 git fetch --tags origin
-test -z "$(git ls-remote --tags origin v4.0.0)"
+tags=$(git ls-remote --tags origin v4.0.0) || stop "cannot read GitHub's tags"
+test -z "$tags" || stop "v4.0.0 is already on GitHub"
 python scripts/cut_version.py 4.0.0     # not `major` (3.2 (c)); do not follow its push advice (Decided 8)
-git log -1 --format=%s                  # chore(release): cut v4.0.0
-T=$(git rev-parse v4.0.0^{commit}); test "$T" = "$(git rev-parse HEAD)"
+test "$(git log -1 --format=%s)" = "chore(release): cut v4.0.0" || stop "the cut's commit is not the last one"
+test "$(git rev-parse 'v4.0.0^{commit}')" = "$(git rev-parse HEAD)" || stop "the tag is not on HEAD"
+record T "$(git rev-parse 'v4.0.0^{commit}')"
+. ~/.tcw-4.0-release/load.sh T                                        # read back
 ```
 
 **Proves it:** criterion 24. Nothing is pushed.
@@ -1258,8 +1592,12 @@ T=$(git rev-parse v4.0.0^{commit}); test "$T" = "$(git rev-parse HEAD)"
 **Who:** an agent.
 
 ```sh
-git clone -q /Users/brian/Projects/TCW "$Q/clone" && git -C "$Q/clone" checkout -q "$T"
-bash ~/.tcw-4.0-release/ci-suite.sh "$Q/clone" python3.14 > "$Q/suite-T.txt" 2>&1
+. ~/.tcw-4.0-release/load.sh T
+mkdir -p "$Q"
+test ! -e "$Q/clone" || stop "$Q/clone exists; after a failed check (Step 35) it is deleted first"
+git clone -q "$PRIMARY" "$Q/clone" && git -C "$Q/clone" checkout -q "$T"
+test "$(git -C "$Q/clone" rev-parse HEAD)" = "$T" || stop "the clone is not at T"
+bash "$REL/ci-suite.sh" "$Q/clone" python3.14 > "$Q/suite-T.txt" 2>&1 || stop "the suite failed on T"
 ```
 
 **Proves it:** criterion 25.
@@ -1269,14 +1607,19 @@ bash ~/.tcw-4.0-release/ci-suite.sh "$Q/clone" python3.14 > "$Q/suite-T.txt" 2>&
 **Who:** the dispatching session (pushing `v4` is allowed).
 
 ```sh
-cd /Users/brian/Projects/TCW
+. ~/.tcw-4.0-release/load.sh T M0
+cd "$PRIMARY"
+git diff "$M0" "$T" | no_private_names                 # v4 is public once pushed
 R=$(git ls-remote origin refs/heads/v4 | cut -f1)
-git merge-base --is-ancestor "$R" "$T"      # else stop and bring it to the user
-gh pr list --head v4 --json number,labels,state
+is_hash "$R" || stop "cannot read GitHub's v4"
+git merge-base --is-ancestor "$R" "$T" || stop "GitHub's v4 is not an ancestor of T: bring it to the user"
+gh pr list --head v4 --json number,labels,state         # any pull request is named in the qa record
 git push origin "$T:refs/heads/v4"
-gh workflow run test.yml --ref v4
-gh run list --workflow test.yml --branch v4 --event workflow_dispatch --limit 1
-gh run watch <id> --exit-status; gh run view <id> --json headSha,jobs
+test "$(git ls-remote origin refs/heads/v4 | cut -f1)" = "$T" || stop "GitHub's v4 is not T"
+id=$(dispatch_ci "$T")
+gh run watch "$id" --exit-status || stop "CI failed on T"
+gh run view "$id" --json headSha,jobs
+record CI "$T"
 ```
 
 **Proves it:** criterion 26: head commit T; `pytest (3.11)`, `pytest (3.14)`
@@ -1299,18 +1642,20 @@ findings.
   is `## Upgrading`; the guide linked and `docs/migration-guide-3.X-to-4.0.0.md`
   present; automation below 4; the `tcw project` group and the four commands
   with their replacements; the four TCW-115 statements; the pinned install
-  and the `3.x` branch. Then `git diff "$M0" "$T" | grep -n -i -F -f
-  ~/.tcw-4.0-release/private-names.txt` prints nothing (criterion 29).
+  and the `3.x` branch. Then `git diff "$M0" "$T" | no_private_names`
+  (criterion 29), in a block that loads `M0` and `T`.
 
 ### Step 32 — the tarball in a clean environment (6.2 (f))
 
 **Who:** an agent.
 
 ```sh
+. ~/.tcw-4.0-release/load.sh T
+test "$(git -C "$Q/clone" rev-parse HEAD)" = "$T" || stop "the qa clone is not at T"
 cd "$Q/clone" && python3.14 -m venv "$Q/build" && "$Q/build/bin/pip" install -q build && "$Q/build/bin/python" -m build
 python3.14 -m venv "$Q/venv-4" && "$Q/venv-4/bin/pip" install -q "$Q/clone/dist/tcw_cli-4.0.0.tar.gz"
-"$Q/venv-4/bin/tcw" --version                       # tcw 4.0.0
-"$Q/venv-4/bin/tcw" --help | grep -E '^\s+(project|migrate)\b'
+"$Q/venv-4/bin/tcw" --version | grep -q '^tcw 4\.0\.0$' || stop "the tarball's tcw is not 4.0.0"
+test "$("$Q/venv-4/bin/tcw" --help | grep -cE '^\s+(project|migrate)\b')" -eq 2 || stop "project or migrate missing from --help"
 "$Q/venv-4/bin/python" -c "import tcw, pathlib; r = pathlib.Path(tcw.__file__).parent; \
   assert (r/'serve/dist/index.html').is_file() and any((r/'work/prompts').iterdir())"
 mkdir "$Q/new" && cd "$Q/new" && git init -q && git config user.email t@t && git config user.name t
@@ -1323,7 +1668,9 @@ cp tcw-config.yaml "$Q/old-3x-tcw-config.yaml" && git add -A && git commit -qm 3
 "$Q/venv-4/bin/tcw" migrate --no-jira && "$Q/venv-4/bin/tcw" validate && "$Q/venv-4/bin/tcw" work list
 ```
 
-All saved to `$Q/tarball.txt`.
+The block is run as one file with its output saved to `$Q/tarball.txt`
+(`bash "$REL/step-32.sh" > "$Q/tarball.txt" 2>&1`); `load.sh`'s `set -e`
+stops it at the first command that fails, and the file's last line names it.
 
 **Proves it:** criterion 30: every command exits 0 with the output 6.2 (f)
 states.
@@ -1333,6 +1680,7 @@ states.
 **Who:** an agent.
 
 ```sh
+. ~/.tcw-4.0-release/load.sh
 "$Q/venv-4/bin/python" - "$Q" <<'PY'
 import sys, yaml
 from pathlib import Path
@@ -1354,12 +1702,15 @@ Both files shown in the qa record. **Proves it:** criterion 31.
 **Who:** an agent.
 
 ```sh
+. ~/.tcw-4.0-release/load.sh T
+test "$(git -C "$Q/clone" rev-parse HEAD)" = "$T" || stop "the qa clone is not at T"
 cd "$Q" && PATH="$Q/venv-4/bin:$PATH" claude -p --plugin-dir "$Q/clone" \
   --output-format stream-json --verbose "Run tcw --version and report its output exactly." \
   > "$Q/plugin.jsonl"
 "$Q/venv-4/bin/python" -c "import json,sys; e=[json.loads(l) for l in open('$Q/plugin.jsonl')]; \
   i=next(x for x in e if x.get('type')=='system' and x.get('subtype')=='init'); print(i.get('plugins'))"
-PATH="$Q/venv-4/bin:$PATH" bash "$Q/clone/scripts/check_versions.sh" "$Q/clone"   # prints nothing
+said=$(PATH="$Q/venv-4/bin:$PATH" bash "$Q/clone/scripts/check_versions.sh" "$Q/clone")
+test -z "$said" || stop "check_versions.sh printed: $said"
 ```
 
 **Proves it:** criterion 32: one plugin, path `$Q/clone`, version `4.0.0`
@@ -1372,8 +1723,11 @@ differently, the step records the new names (spec Risks).
 **Who:** an agent for the fix; the dispatching session for the tag and push.
 
 No tag is pushed. The fix is a new commit on `main` in the primary checkout
-(in the child's area, briefed as Step 6), then `git tag -f v4.0.0 HEAD`, Step
-30's fast-forward push of `v4` to the new T, and **every** check of Steps 29 to
+(in the child's area, briefed as Step 6), then `git tag -f v4.0.0 HEAD` and
+`record T "$(git rev-parse 'v4.0.0^{commit}')"` (in a block that sources
+`load.sh`), so every later step loads the new T; then the qa folder's
+`clone`, `build`, `venv-4`, `venv-3`, `new` and `old` are deleted, Step 30's
+fast-forward push of `v4` to the new T, and **every** check of Steps 29 to
 34 again on the new T (criterion 33).
 
 ### Step 36 — gate 3 asked (6.4)
@@ -1390,7 +1744,8 @@ covers, with no wait between them, the tag's push, the upload's confirmation,
 and at once the check of GitHub's `main` and the pushes of `3.x` and `main`,
 plus later pushes to `main` touching only TCW-118's and TCW-99's folders.
 
-The answer, naming T, is written to both copies of `gates.md` and committed on
+The answer, naming T, is written to both copies of `gates.md`, as an entry
+whose first line is `gate 3: go <T>` (or `declined`), and committed on
 the primary checkout's `main` (`TCW-118: gate 3, <answer>`) before Step 37. A
 decline: nothing is pushed; section 9's row "6.1-6.4".
 
@@ -1404,23 +1759,36 @@ T and is an ancestor of `origin/main` after Step 39).
 **Who:** the dispatching session, after reading gate 3's entry naming this T.
 
 ```sh
-cd /Users/brian/Projects/TCW
-P=~/.tcw-4.0-release/pushes.txt
-{ echo "before 7.1"; date -u; git ls-remote origin refs/heads/main; } >> $P
+. ~/.tcw-4.0-release/load.sh T M0
+gate_go 3 "$T"
+cd "$PRIMARY"
+test "$(git rev-parse 'v4.0.0^{commit}')" = "$T" || stop "the local tag v4.0.0 is not T"
+remote_main() { git ls-remote origin refs/heads/main | cut -f1; }
+{ echo "before 7.1"; date -u; remote_main; } >> "$P"
+test "$(remote_main)" = "$M0" || stop "GitHub's main is not M0 before the tag"
 git push origin v4.0.0
-{ echo "after 7.1"; date -u; git ls-remote origin refs/heads/main; } >> $P
+{ echo "after 7.1"; date -u; remote_main; } >> "$P"
+test "$(remote_main)" = "$M0" || stop "GitHub's main moved while the tag was pushed"
 ```
 
-Both `ls-remote` lines print M0 (criterion 34).
+Both checks find M0 (criterion 34).
 
 ### Step 38 — the upload confirmed (7.2) — gate 3
 
 ```sh
-gh run list --workflow release.yml --limit 1     # the run for v4.0.0
-gh run watch <id> --exit-status; gh run view <id> --json jobs
-curl -sf https://pypi.org/pypi/tcw-cli/4.0.0/json | python3 -c "import json,sys; print(json.load(sys.stdin)['info']['version'])"
-pipx run --spec tcw-cli==4.0.0 tcw --version
+. ~/.tcw-4.0-release/load.sh T
+gate_go 3 "$T"
+gh run list --workflow release.yml --limit 5 --json databaseId,headSha,event,createdAt
+# <id>: the run whose headSha is $T; read from the list above, then:
+gh run watch <id> --exit-status || stop "the release run failed: follow 7.4"
+gh run view <id> --json jobs
+test "$(curl -sf https://pypi.org/pypi/tcw-cli/4.0.0/json | python3 -c "import json,sys; print(json.load(sys.stdin)['info']['version'])")" = 4.0.0 ||
+  stop "PyPI does not list tcw-cli 4.0.0"
+pipx run --spec tcw-cli==4.0.0 tcw --version | grep -q '^tcw 4\.0\.0$' || stop "the published tcw is not 4.0.0"
 ```
+
+This step is run by hand in two parts, since the run's id is read from the
+list: the list, then the rest with the id written in.
 
 **Proves it:** criteria 35 and 38. A failed run follows 7.4: a failed `test`
 job stops for the user's decision (move the tag or cut 4.0.1); a `publish`
@@ -1433,13 +1801,32 @@ after the upload ships the fix as 4.0.1 (criterion 37).
 to the user.
 
 ```sh
-{ echo "before 7.3"; date -u; git ls-remote origin refs/heads/main; } >> $P   # must be M0, else stop
-test -z "$(git ls-remote origin refs/heads/3.x)"
+. ~/.tcw-4.0-release/load.sh T M0
+gate_go 3 "$T"
+cd "$PRIMARY"
+remote_main() { git ls-remote origin refs/heads/main | cut -f1; }
+{ echo "before 7.3"; date -u; remote_main; } >> "$P"
+test "$(remote_main)" = "$M0" || stop "GitHub's main is not M0: someone pushed to it"
+x=$(git ls-remote origin refs/heads/3.x) || stop "cannot read GitHub's branches"
+test -z "$x" || stop "3.x already exists on GitHub"
+test "$(git branch --show-current)" = main || stop "not on main"
+git merge-base --is-ancestor "$T" main || stop "T is not an ancestor of main"
+after=$(git diff --name-only "$T" main) || stop "cannot compare T with main"
+if printf '%s\n' "$after" | grep -v -e '^docs/work/TCW-118-tcw-4-0-release/' -e '^docs/work/TCW-99-' -e '^$'; then
+  stop "main changes files past T outside TCW-118's and TCW-99's folders; gate 3 does not cover them"
+fi
+git diff "$T" main | no_private_names                   # what main adds past T
+git log -p "$T..main" | no_private_names                # and every commit past T, messages included
 git push origin "$M0:refs/heads/3.x"
 git push origin main
-git fetch origin && git merge-base --is-ancestor "$T" origin/main
-git ls-remote origin refs/heads/3.x refs/heads/release-4.0.0   # 3.x at M0; no release-4.0.0
+git fetch origin
+git merge-base --is-ancestor "$T" origin/main || stop "T is not on GitHub's main"
+test "$(git ls-remote origin refs/heads/3.x | cut -f1)" = "$M0" || stop "GitHub's 3.x is not M0"
+test -z "$(git ls-remote origin refs/heads/release-4.0.0)" || stop "release-4.0.0 reached GitHub"
 ```
+
+The checks after the pushes report; nothing pushed can be taken back by
+them, and a failure there goes to the user with section 9's row "7.2-7.3".
 
 **Proves it:** criteria 34, 36 and 51.
 
@@ -1508,7 +1895,7 @@ the release's later steps change no documented behaviour.
 | --- | --- | --- |
 | `README.md` [Public-API] | yes | Step 4: the session-start install takes the CLI of the plugin's own version (`:77-86`, as TCW-117 leaves it). |
 | `docs/guide/jira.md` [Jira-Change] | no | No `tcw work` command's effect on a ticket changes; the conversion is TCW-116's and its guide entry is TCW-117's. |
-| `docs/guide/<topic>.md` [Guide-Topic-Change] | checked | No guide describes the plugin's install; Step 9 greps `docs/guide/` for `pipx` and `tcw-cli` and corrects any line saying the install floats. `docs/releasing.md` (Step 3) is contributor documentation, not a guide, and is updated anyway (criterion 6). |
+| `docs/guide/<topic>.md` [Guide-Topic-Change] | yes | Step 2: fix 14 changes `docs/guide/taxonomy-and-capabilities.md:413` (the `unreviewed` line it quotes) and fix 20 changes `docs/migration-guide-3.X-to-4.0.0.md:160` (the summary line's singular), both as TCW-117 leaves them; every other quotation found ("The follow-ups") stays true. No guide describes the plugin's install; Step 9 greps `docs/guide/` for `pipx` and `tcw-cli` and corrects any line saying the install floats. `docs/releasing.md` (Step 3) is contributor documentation, not a guide, and is updated anyway (criterion 6). |
 | `docs/release-notes/upcoming/<folder>.md` [Public-API] | yes | Step 5 (and Steps 2, 8): `TCW-118-tcw-4-0-release.md`. |
 | `docs/changelogs/upcoming/<folder>.md` [Any-Code-Change] | yes | Steps 2 and 5: `TCW-118-tcw-4-0-release.md`. |
 | `skills/<component>/SKILL.md` [Skill-Driven-Component] | checked | No component's CLI changes. The `setup` skill's reference `install.md` changes (Step 4); `skills/setup/SKILL.md` is grepped for "newest" and `pipx upgrade` and corrected if either is there. |
@@ -1538,13 +1925,14 @@ not a documentation entry.
 ## Self-review against the spec
 
 Every criterion and the step that meets it: 1 → 1; 2-5 → 3; 6 → 3; 7 → 5;
-8 → 6; 9, 49 → 7; 10 → 1; 11 → 9; 43-45 → 4; 46 → 10, 12; 12 → 11, 12; 13 →
+8 → 6; 9, 49 → 7; 10 → 1; 11 → 9; (no criterion: 9a proves the suite
+script that 17, 23 and 25 rely on); 43-45 → 4; 46 → 10, 12; 12 → 11, 12; 13 →
 13; 14, 15 → 14; 16-18 → 15; 19 → 16; 54 → 17; 47 → 18; 52 → 19; 48 → 20; 53 →
 21; 20 → 23; 21 → 24; 22 → 25; 23 → 27; 24 → 28; 25 → 29; 26 → 30; 27-29 → 31;
 30 → 32; 31 → 33; 32 → 34; 33 → 35; 50 → 36; 34 → 37, 39; 35, 37, 38 → 38; 36,
 51 → 39; 39 → 40; 40 → 41; 41 → 42; 42 → 43. Every step traces to a Design rule
 or to a decision above (Step 2: Decided 1; Step 22: Decided 4; Step 26:
-Design 2.2). No step repeats another: 4.5 and 6.2 (f)-(g) share their
+Design 2.2; Step 9a: Decided 7). No step repeats another: 4.5 and 6.2 (f)-(g) share their
 commands by reference (Step 17 runs Steps 32 and 33's).
 
 The gates are kept exactly: Steps 20, 21, 23, 24 read gate 2's entry first;
@@ -1569,3 +1957,107 @@ move it; Step 42 posts only approved text.
    assertions in `tests/test_session_bootstrap.py` are at `:198`, `:201`,
    `:215`, `:368` and `:386` (spec 3.9 (f) cites `:201`, `:215`); the spec
    says the plan re-finds them by their words, and Step 4 does.
+5. **Section 9's row "5.6-5.7" names the files before the tickets** ("The
+   files as for 5.5. The tickets: …"). This plan runs the tickets first and
+   the files after ("The way back from Step 24"), because that is the order
+   Step 21 rehearses and the script must run with the 4.0 code. If the row
+   is read as an order, this departs from it; if it is read as a list, it
+   does not. No rule of the row changes otherwise.
+6. **5.6 says a stopped run "is run again to finish" with no limit.** This
+   plan limits it (Step 24, "The re-run limit"): only a stop the run reports
+   as Jira unreachable or rate limiting is run again, at most three times;
+   anything else goes to the user, who decides whether the way back runs.
+
+## Revision 1
+
+The first plan review's findings, each checked against the plan by the
+dispatching session and accepted (decided by the dispatching session); what
+changed for each, and the choices made while answering them (decided by the
+plan's author, as marked).
+
+1. **[blocking] Values passed between steps lived only in shell variables,
+   and T was never recorded.** "Tools" now says how every block is run (as
+   one file, sourcing `load.sh` first) and adds `load.sh`: `set -euo
+   pipefail`, the fixed paths (`REL`, `PRIMARY`, `C`, `Q`, `P`), and the
+   helpers `stop`, `record`, `value_of`, `capture`, `no_private_names`,
+   `gate_go`, `dispatch_ci` and `retryable`. Each named value is loaded from
+   the last line of its name in `refs.txt` and refused unless it is a
+   40-character hexadecimal hash; `refs.txt` now holds `M0`, `V`, `CI`, `A`
+   and `T`, written only by `record`. Every block from Step 9a on loads the
+   values it uses. Every comment-only guard is now a check that stops:
+   Step 10 (GitHub's `v4` equals its tip; the run found by commit, not by
+   a typed id), Step 12 (on `main`, no changes, `main` equal to M0, V
+   differs from CI's commit only in TCW-118's folder), Step 13 (both merge
+   parents, outside the primary checkout), Step 14 (dry-run exit and keys),
+   Step 15 (d)-(f), Step 16 (parents and GitHub's `main`), Step 17 (clone at
+   A), Step 20 (nothing past A outside `docs/`, `1 passed`), Step 21 (the way
+   back's exit 1), Step 23 (branch, changes, M0, `tcw 4.0.0`, equal
+   `main`s), Step 25, Step 28 (no tag on GitHub, read in a way that fails
+   when GitHub cannot be read), Step 29, Step 30 (the ancestor check), Steps
+   32 and 34, Step 37 (GitHub's `main` is M0 before and after) and Step 39
+   (GitHub's `main` is M0, `3.x` absent, read so that a failed read stops).
+   Running each block under `set -e` meant the old `{ …; echo "exit $?"; }`
+   captures would stop before writing the exit code, so they all use
+   `capture`. Choices (author): the gate entries' first line has a fixed
+   form (`gate <n>: go <commit>`) so `gate_go` can check it; Step 38 keeps
+   a typed run id, read from a list filtered by T, since the release
+   workflow is started by the tag and not by this plan.
+2. **The way back's order (row "5.6-5.7").** Choice (author): the tickets
+   first, with the 4.0 files and install still in the primary checkout, then
+   the files ("The way back from Step 24"), rather than passing the merge
+   clone as the root. Why: it is the order Step 21 rehearses; it reads the
+   primary checkout's own layers, including a personal file the clone does
+   not have; and it does not depend on the merge clone, which Step 40 may
+   delete. The script's `getattr` reads are kept. Narrowed while checking:
+   `settings(root)` reads `own_jira_layers`, which reads the root 3.x
+   `tcw-config.yaml` when present (`tcw/migrate/legacy.py:355-370`), so a
+   reset to M0 first would probably not make it fail; the order is changed
+   anyway, for the rehearsal's sake. Listed as Spec issue 5.
+3. **Step 24's re-runs had no limit.** Choice (author): only a stop reported
+   in the Jira client's words for unreachable or rate limiting is re-run, at
+   most three times after the first run, five minutes apart or longer when
+   Jira says `Retry after`; any other stop, or a fourth stopped run, goes to
+   the user with the way back offered, and the user decides whether it runs.
+   Spec issue 6.
+4. **Fix 14 changes text that TCW-117's guide quotes.** Fix 14's row now
+   gives the exact new line and changes `docs/guide/taxonomy-and-capabilities.md:413`
+   in the same commit; the Documentation Sync table's guide row fires. Step
+   2's rule now allows a fix to change a guide, skill, capability record or
+   migration guide line that quotes what it changes, and requires a search
+   for the old text before each commit. Every fix's text was searched for in
+   TCW-117's worktree: one more quotation changes, the migration guide's
+   summary template (`docs/migration-guide-3.X-to-4.0.0.md:160`, fix 20); the
+   others found stay true and are listed under the fixes table (fix 5's row
+   now limits the added guide link to the work store so that
+   `docs/guide/linking-and-validation.md:258` stays true).
+5. **Fix 2 missed `tcw/validate.py:930`.** A search of `tcw/` for every
+   `startswith("tcw://")` and `startswith(SCHEME)` found eight places that
+   tell a store `path` or a `-C` target from a folder: the four already
+   listed, `tcw/validate.py:930`, `tcw/store/fs.py:3760`, and `tcw/cli.py:540`
+   and `:558`. All eight are in the fix now, through one `has_scheme`
+   function. The parsers in `tcw/ids.py` (`:248`, `:262`, `:361`, `:364`),
+   `tcw/cli.py:66` (already case-blind) and the Markdown link readers are
+   listed as left alone, with the reason.
+6. **Fix 10 did not report the folders it removes.** The row now adds each
+   folder `remove_emptied` returns to `self.changed`, as `move` reports them
+   (`tcw/move.py:377-378`), and the test checks the `removed` line.
+7. **`ci-suite.sh` had never run.** New Step 9a writes it and runs it once on
+   a fresh clone of `v4` before CI. The script now passes this machine's
+   corepack cache (`COREPACK_HOME`) and `COREPACK_ENABLE_DOWNLOAD_PROMPT=0`,
+   and gives every run `/dev/null` as input, so pnpm cannot hang on a
+   download or a question; Step 9a says what to do if it hangs anyway.
+   "Tools" notes that CI builds the web app on Node 22 and this machine has
+   only Node 24, so only CI's `web-build` job proves the build. Choice
+   (author): pytest now runs with no Node on its `PATH`, as in CI's pytest
+   job.
+8. **The private-name search covered only M0 to T, and the plan held
+   machine paths.** Step 39 now searches `git diff "$T" main` and `git log
+   -p "$T..main"` (every commit after T, its message included) before
+   pushing, and refuses files past T outside TCW-118's and TCW-99's folders.
+   Choice (author): Step 30 also searches `git diff "$M0" "$T"` before it
+   pushes T to the public `v4`, since Step 31's search came after that push.
+   Every home-folder path is now written with `~`, and "Who does what" names
+   the four folders once.
+9. **Minor.** Step 5 is marked **[after TCW-117]** and first checks that the
+   migration guide exists. Step 6 gains slice 6: TCW-117's guides, skills
+   and migration guide against the code after Step 2's fixes.
