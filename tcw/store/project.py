@@ -268,6 +268,12 @@ class _Answer:
     named: bool = False
     message: str = ""
     remedy: str = ""
+    # A folder that holds the project's shared file but cannot be read
+    # (TCW-109 Design 1.6), and the problem not yet recorded: in an ancestor,
+    # or a project read only for a lookup, it is a gap rather than a graph
+    # problem, so the problem is recorded only where it stays one.
+    unreadable: Path | None = None
+    deferred: tuple | None = None
 
 
 def _not_here_message(project_id: str, remedy: str) -> str:
@@ -780,7 +786,11 @@ class FsProjectRegistry(ProjectRegistry):
         if target_id == cfg.project.id:
             return cfg
         answer = self._locate(target_id, root_of(cfg.path))
+        if answer.unreadable is not None and role in ("ancestor", "outside"):
+            return self._visit(self._canonical(answer.unreadable / SENTINEL), target_id,
+                               cfg.path, role)
         if answer.problem is not None:
+            self._settle(answer)
             return None
         if answer.folder is None:
             self._unreachable_edge(
@@ -865,25 +875,35 @@ class FsProjectRegistry(ProjectRegistry):
                 return None
             self._unreachable_edge(declared_in or path, declared_id, root_of(path))
             return None
+        def unreadable(message: str) -> _Config | None:
+            """A shared file that cannot be read at all. In an ancestor, or a
+            project read only for a lookup, its parents and settings are
+            unknown: it is placed as a project with no parents and its links
+            as unreadable (TCW-109 Design 1.6, adding to TCW-108 Design 6.6).
+            Anywhere else it is a graph problem, as is a file of any role
+            that does not say which project it is."""
+            if role in ("ancestor", "outside") and declared_id:
+                return _Config(project=Project(declared_id, root_of(path)), path=path,
+                               links=None, link_problem=f"{path}: {message}",
+                               children=[], raw={})
+            self._problem(path, message)
+            return None
+
         text = self._text(path)
         if isinstance(text, UnicodeDecodeError):
-            self._problem(path, _not_utf8(text))
-            return None
+            return unreadable(_not_utf8(text))
         try:
             if isinstance(text, Exception):
                 raise text
             raw = _load_named_yaml(text, path, _UniqueKeyLoader) or {}
         except (OSError, yaml.YAMLError) as error:
-            self._problem(path, f"invalid YAML: {error}")
-            return None
+            return unreadable(f"invalid YAML: {error}")
         if not isinstance(raw, dict):
-            self._problem(path, "config must be a mapping")
-            return None
+            return unreadable("config must be a mapping")
         version = version_problem(raw)
         if version:
             # Read by every reader of a `tcw-*.yaml` file (TCW-106 Design 3.4a).
-            self._problem(path, version)
-            return None
+            return unreadable(version)
         project_id = raw.get("id")
         if not isinstance(project_id, str) or not project_id.strip():
             self._problem(
@@ -1327,6 +1347,7 @@ class FsProjectRegistry(ProjectRegistry):
             return root
         answer = self._locate(project_id, root)
         if answer.problem is not None:
+            self._settle(answer)
             raise ProjectGraphError(answer.problem)
         if answer.folder is None:
             if not answer.named:
@@ -1382,6 +1403,11 @@ class FsProjectRegistry(ProjectRegistry):
     def _recorded(self, path: Path, message: str) -> str:
         self._problem(path, message)
         return f"{path}: {message}"
+
+    def _settle(self, answer: _Answer) -> None:
+        """Record an answer's deferred problem, where it is a graph problem."""
+        if answer.deferred is not None:
+            self._problem(*answer.deferred)
 
     def _edge_target(self, source_config: Path, target_id: str) -> Path | None:
         """Where an edge's configuration is: the answer the walk got (never
@@ -1609,6 +1635,13 @@ class FsProjectRegistry(ProjectRegistry):
                     return answer if conflict is None else _Answer(
                         problem=conflict, named=True)
         matches, problems = _search(self, project_id, named_by)
+        if problems and not matches and all(path.name == Path(SENTINEL).name
+                                            for path, _ in problems):
+            # A version this TCW cannot read: a gap in an ancestor (TCW-109
+            # Design 1.6), a graph problem elsewhere, so recorded when settled.
+            path, message = problems[0]
+            return _Answer(problem=f"{path}: {message}", named=True,
+                           unreadable=root_of(path), deferred=(path, message))
         if problems:
             rendered = [self._recorded(path, message) for path, message in problems]
             return _Answer(problem=rendered[0], named=True)
@@ -1678,6 +1711,11 @@ class FsProjectRegistry(ProjectRegistry):
             else:
                 wrong = (f"places it at {folder}, which is not a TCW project: it "
                          f"holds files and no {SENTINEL}")
+        if record and probe.kind in ("version", "unreadable"):
+            # A gap in an ancestor (TCW-109 Design 1.6), so recorded when
+            # settled, where it is a graph problem.
+            return _Answer(entry=entry, problem=f"{entry.file}: {named} {wrong}",
+                           unreadable=folder, deferred=(entry.file, f"{named} {wrong}"))
         return _Answer(entry=entry, problem=self._recorded(entry.file, f"{named} {wrong}")
                        if record else f"{named} {wrong}")
 

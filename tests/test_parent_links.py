@@ -443,3 +443,84 @@ def test_ac31_an_unreadable_parent_stops_what_it_passes(tmp_path):
     assert raised.value.reason == "unreadable"
     proj(tmp_path / "app", "app", parents=[{"id": "lib", "inherit": "none"}])
     assert ids(FsProjectRegistry.open(app).sources("taxonomy")) == ["app"]
+
+
+# -- TCW-109: the sources without raising, and an ancestor's unreadable file ------------
+
+
+def entries(registry, axis="config"):
+    return [(e.id, e.state) for e in registry.source_entries(axis)]
+
+
+def test_tcw109_source_entries_never_raise_for_a_gap(tmp_path):
+    proj(tmp_path / "core", "core")
+    app = proj(tmp_path / "app", "app", parents=["core"])
+    assert entries(FsProjectRegistry.open(app)) == [("core", "here"), ("app", "here")]
+    app2 = proj(tmp_path / "app2", "app2", parents=[{"id": "ws", "inherit": "none"}, "core"])
+    assert entries(FsProjectRegistry.open(app2)) == [("core", "here"), ("app2", "here")]
+    app3 = proj(tmp_path / "app3", "app3", parents=["gone"])
+    assert entries(FsProjectRegistry.open(app3)) == [("gone", "missing"), ("app3", "here")]
+    proj(tmp_path / "bad", "bad", parents="notalist")
+    app4 = proj(tmp_path / "app4", "app4", parents=["bad"])
+    assert entries(FsProjectRegistry.open(app4)) == [("bad", "unreadable"), ("app4", "here")]
+    with pytest.raises(Exception) as raised:
+        FsProjectRegistry.open(app4).sources("config")
+    assert "'app4' inherits its config through project 'bad'" in str(raised.value)
+
+
+@pytest.mark.parametrize("text", ["id: core\nparents: [\n", "tcw-version: 99.0.0\nid: core\n",
+                                  "id: core\nid: core\n", "- a list\n"])
+def test_tcw109_an_ancestors_unreadable_file_is_a_gap(tmp_path, reads, text):
+    core = tmp_path / "core"
+    (core / ".tcw").mkdir(parents=True)
+    (core / ".tcw" / "tcw-config.yaml").write_text(text)
+    proj(tmp_path / "top", "top")
+    app = proj(tmp_path / "app", "app", parents=["core"])
+    # The search cannot read the folder's ID from a file it cannot read, so an
+    # entry places it.
+    write_manifest(app, {"core": "../core"})
+    registry = FsProjectRegistry.open(app).require_valid()
+    order = registry.load_order()
+    assert order.unreadable == ("core",)
+    problem = registry.link_problem("core")
+    assert str(core.resolve() / ".tcw" / "tcw-config.yaml") in problem
+    assert not any(path.parent.parent.name == "top" for path in reads)
+    with pytest.raises(Exception) as raised:
+        registry.sources("taxonomy")
+    assert "'app' inherits its taxonomy through project 'core', whose parents could " \
+           "not be read: " in str(raised.value)
+
+
+def test_tcw109_a_descendants_unreadable_file_stays_a_graph_problem(tmp_path):
+    core = tmp_path / "core"
+    (core / ".tcw").mkdir(parents=True)
+    (core / ".tcw" / "tcw-config.yaml").write_text("id: core\nparents: [\n")
+    app = proj(tmp_path / "app", "app", children=["core"])
+    write_manifest(app, {"core": "../core"})
+    with pytest.raises(ValueError, match="core/.tcw/tcw-config.yaml"):
+        FsProjectRegistry.open(app).require_valid()
+
+
+def test_tcw109_unavailable_builds_the_configuration_message(tmp_path):
+    app = proj(tmp_path / "app", "app", parents=["core"])
+    registry = FsProjectRegistry.open(app)
+    error = registry.unavailable("app", "core", "config",
+                                 subject="configuration (work.tags)")
+    assert error.axis == "config" and error.reason == "missing"
+    assert str(error).startswith("'app' inherits its configuration (work.tags) from "
+                                 "project 'core', which is not on this machine: ")
+
+
+def test_tcw109_an_ancestor_found_by_the_search_with_a_newer_version_is_a_gap(tmp_path):
+    write_config(tmp_path / "core", "tcw-version: 99.0.0\nid: core\n")
+    app = proj(tmp_path / "app", "app", parents=["core"])
+    registry = FsProjectRegistry.open(app).require_valid()
+    assert registry.load_order().unreadable == ("core",)
+    assert "upgrade TCW" in registry.link_problem("core")
+
+
+def test_tcw109_a_child_with_a_newer_version_stays_a_graph_problem(tmp_path):
+    write_config(tmp_path / "core", "tcw-version: 99.0.0\nid: core\nparents: [app]\n")
+    app = proj(tmp_path / "app", "app", children=["core"])
+    with pytest.raises(ValueError, match="upgrade TCW"):
+        FsProjectRegistry.open(app).require_valid()

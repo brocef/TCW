@@ -157,6 +157,18 @@ class LoadOrder:
         return not self.missing and not self.unreadable
 
 
+@dataclass(frozen=True)
+class SourceEntry:
+    """One project of a project's sources for an axis (TCW-109 Design 1.3):
+    its ID, its `Project` when it is on this machine, and its state, `here`,
+    `missing` (not on this machine) or `unreadable` (its own parent links, or
+    its whole shared file, could not be read)."""
+
+    id: str
+    project: Project | None
+    state: str
+
+
 def _parents_of(project_id: str, links, absent: "set[str]") -> list[str]:
     if project_id in absent:
         return []
@@ -407,10 +419,13 @@ class ProjectRegistry(ABC):
         default is right for a store with no unreadable state."""
         return "here" if self.get(project_id) is not None else "missing"
 
-    def load_order(self, project_id: str | None = None) -> LoadOrder:
+    def load_order(self, project_id: str | None = None, *,
+                   root: Any = None) -> LoadOrder:
         """The project's load order (Design 4), computed from the declared
         links alone by `load_order_of`, so every store orders a family the
-        same way. Raises `ProjectGraphError` on a loop (Design 4.7)."""
+        same way. Raises `ProjectGraphError` on a loop (Design 4.7). `root`
+        is where the caller holds a project outside the family, for a store
+        that finds projects by folder; this default does not need it."""
         from tcw.errors import ProjectGraphError
         start = project_id or self.current.id
         links: dict[str, list[ParentLink]] = {}
@@ -444,15 +459,32 @@ class ProjectRegistry(ABC):
         whose own parent links could not be read, since what reaches the
         project is then unknown. A project that passes nothing for `axis`
         never stops it, whatever its state."""
-        order = self.load_order(project_id)
+        entries = self.source_entries(axis, project_id)
+        for entry in entries:
+            if entry.state != "here":
+                raise self.unavailable(entries[-1].id, entry.id, axis)
+        return [entry.project for entry in entries]
+
+    def source_entries(self, axis: str, project_id: str | None = None, *,
+                       root: Any = None) -> list[SourceEntry]:
+        """`sources` without raising (TCW-109 Design 1.3): every project of
+        the load order that passes `axis`, in order and ending with the
+        project, each with its state, so a caller that needs to know what a
+        gap could have set can carry on past it."""
+        order = (self.load_order(project_id) if root is None
+                 else self.load_order(project_id, root=root))
         passes = self.passing_in(order, axis)
-        found: list[Project] = []
+        entries: list[SourceEntry] = []
         for pid in order.ids:
-            if pid in passes:
-                if pid in order.missing or pid in order.unreadable:
-                    raise self.inherited_unavailable(order, axis, pid)
-                found.append(self.order_project(pid))
-        return found
+            if pid not in passes:
+                continue
+            if pid in order.missing:
+                entries.append(SourceEntry(pid, None, "missing"))
+            elif pid in order.unreadable:
+                entries.append(SourceEntry(pid, None, "unreadable"))
+            else:
+                entries.append(SourceEntry(pid, self.order_project(pid), "here"))
+        return entries
 
     def passing_in(self, order: LoadOrder, axis: str) -> set[str]:
         """The IDs of `order` that pass `axis` to its project (Design 5.1),
@@ -464,17 +496,29 @@ class ProjectRegistry(ABC):
     def inherited_unavailable(self, order: LoadOrder, axis: str, project_id: str):
         """Design 6.2's error for `project_id`, missing or unreadable, which
         would pass `axis` to the project of `order`."""
+        return self.unavailable(order.ids[-1], project_id, axis,
+                                missing=project_id in order.missing)
+
+    def unavailable(self, project_id: str, gap_id: str, axis: str, *,
+                    subject: str | None = None, missing: bool | None = None):
+        """Design 6.2's error: `gap_id`, missing or unreadable, would pass
+        `axis` to `project_id`. The one place its messages are built.
+        `subject` stands for the axis in the message (TCW-109 passes
+        `configuration (work.tags)`); `missing` says which of the two it is
+        when the caller knows, else `link_state` does."""
         from tcw.errors import InheritedUnavailable
-        start = order.ids[-1]
-        if project_id in order.missing:
+        words = subject or axis
+        if missing is None:
+            missing = self.link_state(gap_id) == "missing"
+        if missing:
             return InheritedUnavailable(
-                f"'{start}' inherits its {axis} from project '{project_id}', which is "
-                f"not on this machine: {self.absent_note(project_id)}",
-                project=project_id, axis=axis, reason="missing")
+                f"'{project_id}' inherits its {words} from project '{gap_id}', which "
+                f"is not on this machine: {self.absent_note(gap_id)}",
+                project=gap_id, axis=axis, reason="missing")
         return InheritedUnavailable(
-            f"'{start}' inherits its {axis} through project '{project_id}', whose "
-            f"parents could not be read: {self.link_problem(project_id)}",
-            project=project_id, axis=axis, reason="unreadable")
+            f"'{project_id}' inherits its {words} through project '{gap_id}', whose "
+            f"parents could not be read: {self.link_problem(gap_id)}",
+            project=gap_id, axis=axis, reason="unreadable")
 
     def order_project(self, project_id: str) -> Project:
         """The `Project` for an ID of a load order that is available here. A
