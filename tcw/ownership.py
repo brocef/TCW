@@ -76,6 +76,9 @@ def _where(owner: str, active_root: Path) -> str:
 
 
 def not_here(owner: str, repository: str | None) -> str:
-    """The tail of a refusal naming a project that is not on this machine."""
+    """The tail of a refusal naming a project that is not on this machine,
+    and the command that fetches it when a repository is known (TCW-115
+    plan, choice 22)."""
     return f"; project '{owner}' is not on this machine" + \
-        (f" ({repository})" if repository else "")
+        (f" ({repository}); fetch it with tcw project provision {owner}"
+         if repository else "")

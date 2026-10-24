@@ -42,6 +42,11 @@ EXEMPT = {
     # TCW-114 Design 5.8: after a clash with a move made in another clone,
     # that clone's folder move arrives only by pulling its commit.
     ("move.py", "clash_advice"),
+    # TCW-115 Design 7: fetching a project names git where git is the reason.
+    ("provision.py", "repository_top"),     # why git could not name a repository
+    ("provision.py", "_bound_problem"),     # 7.8: "git could not say which repository"
+    ("provision.py", "_folder_problem"),    # 7.6: "holds only .git … with git"
+    ("store/fs.py", "fetch_project"),       # git's failure text, through `_git_reason`
 }
 
 WORKTREE_SENTENCE = ("while this worktree has its own at",

@@ -1767,3 +1767,91 @@ def test_with_real_git_a_command_line_ssh_command_is_kept(monkeypatch, tmp_path)
     monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.sshCommand")
     monkeypatch.setenv("GIT_CONFIG_VALUE_0", "ssh -i command-line")
     assert "GIT_SSH_COMMAND" not in fs._no_prompt_env()
+
+
+# -- TCW-115 Step 11: the store clone's argv, and git's location variables ------------
+
+def _recorded_obtain(tmp_path, monkeypatch, **repository):
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    remote = _remote_with_store(tmp_path)
+    calls = []
+    real = FsStoreProvisioner._run
+
+    def recording(self, argv):
+        calls.append(list(argv))
+        return real(self, argv)
+    monkeypatch.setattr(FsStoreProvisioner, "_run", recording)
+    provisioner = _provisioner(tmp_path, code, remote, **repository)
+    return provisioner, calls, str(remote)
+
+
+def test_the_store_clone_puts_a_separator_before_the_url_and_after_the_ref(
+        tmp_path, monkeypatch):
+    provisioner, calls, url = _recorded_obtain(tmp_path, monkeypatch, ref="main")
+    assert provisioner.ensure_available().action == "obtained"
+    clone, checkout = calls
+    assert clone[:5] == ["git", "clone", "--quiet", "--", url], clone
+    assert checkout[:2] == ["git", "-C"]
+    assert checkout[3:] == ["checkout", "--quiet", "main", "--"], checkout
+
+
+def test_a_store_ref_naming_a_file_and_no_branch_fails(tmp_path, monkeypatch):
+    provisioner, _, _ = _recorded_obtain(tmp_path, monkeypatch,
+                                         ref="docs/work/corelib/inbox/.gitkeep")
+    with pytest.raises(ValueError, match="git checkout failed"):
+        provisioner.ensure_available()
+
+
+def _other_repository(tmp_path: Path) -> Path:
+    other = _repo(tmp_path / "other")
+    (other / "f").write_text("x\n")
+    subprocess.run(["git", "-C", str(other), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(other), "commit", "-qm", "one"], check=True)
+    subprocess.run(["git", "-C", str(other), "checkout", "-qb", "side"], check=True)
+    return other
+
+
+def test_a_store_clone_ignores_git_dir_and_git_index_file(tmp_path, monkeypatch):
+    other = _other_repository(tmp_path)
+    index_before = (other / ".git" / "index").read_bytes()
+    provisioner, _, _ = _recorded_obtain(tmp_path, monkeypatch, ref="main")
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(other / ".git" / "index"))
+    assert provisioner.ensure_available().action == "obtained"
+    assert (other / ".git" / "HEAD").read_text() == "ref: refs/heads/side\n"
+    assert (other / ".git" / "index").read_bytes() == index_before
+
+
+def test_every_git_call_drops_the_location_variables_and_keeps_the_rest(monkeypatch):
+    seen = {}
+
+    def run(argv, **kwargs):
+        seen.update(kwargs["env"])
+        return subprocess.CompletedProcess(argv, 0, "", "")
+    monkeypatch.setattr(fs.subprocess, "run", run)
+    fs._git(["git", "status"], env={"GIT_DIR": "x", "KEEP": "1"})
+    assert seen == {"KEEP": "1"}
+
+
+def test_finding_a_worktree_ignores_git_dir(tmp_path, monkeypatch):
+    from tcw.store.project import worktree_anchors
+    main = _repo(tmp_path / "main")
+    (main / "f").write_text("")
+    subprocess.run(["git", "-C", str(main), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(main), "commit", "-qm", "one"], check=True)
+    subprocess.run(["git", "-C", str(main), "worktree", "add", "-q", "-b", "w",
+                    str(tmp_path / "linked")], check=True)
+    alone = tmp_path / "alone"
+    alone.mkdir()
+    monkeypatch.setenv("GIT_DIR", str(tmp_path / "linked" / ".git"))
+    assert worktree_anchors(alone) is None
+
+
+def test_the_location_variables_are_the_ones_git_names():
+    from tcw.store.project import GIT_LOCATION_VARIABLES
+    done = subprocess.run(["git", "rev-parse", "--local-env-vars"], capture_output=True,
+                          text=True, check=True, stdin=subprocess.DEVNULL)
+    named = set(done.stdout.split()) - {"GIT_CONFIG", "GIT_CONFIG_PARAMETERS",
+                                        "GIT_CONFIG_COUNT"}
+    assert named <= set(GIT_LOCATION_VARIABLES), named - set(GIT_LOCATION_VARIABLES)

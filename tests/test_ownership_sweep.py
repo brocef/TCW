@@ -88,6 +88,11 @@ WRITER_CALLERS = {
         NOT_A_STORE, "`_personal_children` is a dict"),
     "store/project.py:FsProjectRegistry._resolve_override": (
         NOT_A_STORE, "`_override_refused` is a set"),
+    "store/project.py:FsProjectRegistry._entry_answer": (
+        NOT_A_STORE, "`_occupied_problems` is a set"),
+    "provision.py:_round_ids": (NOT_A_STORE, "`seen` is a set made in the function"),
+    "provision.py:provision_projects": (NOT_A_STORE, "`run.attempted` is the run's set "
+                                        "of the IDs it tried"),
     "store/project.py:FsProjectRegistry._family": (NOT_A_STORE, "`named` is a set made "
                                                    "by the enclosing function"),
     "work/generate.py:_drain": (NOT_A_STORE, "`overflow` is a threading.Event"),

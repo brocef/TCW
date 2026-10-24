@@ -15,6 +15,8 @@ import dataclasses
 import hashlib
 import os
 import re
+import secrets
+import shlex
 import shutil
 import subprocess
 import sys
@@ -58,10 +60,10 @@ from tcw.store.checkouts import (
 )
 from tcw.project_files import (CONFIG_NAME, LOCAL_CONFIG_NAME, LOCAL_MANIFEST,
                                LOCAL_MANIFEST_NAME, LOCAL_SENTINEL, MANIFEST_NAME,
-                               SENTINEL, TCW_FOLDER, V3, V4,
+                               LEGACY_SENTINEL, SENTINEL, TCW_FOLDER, V3, V4,
                                find_marker, legacy_message, version_problem,
                                without_version)
-from tcw.store.project import (FsProjectRegistry, _below, forget_registries,
+from tcw.store.project import (FsProjectRegistry, _below, forget_registries, git_environment,
                                validate_project_id, worktree_anchors)
 
 # Component trees `tcw project new` scaffolds. `work` gets a status-folder skeleton;
@@ -168,6 +170,9 @@ def _git(*args, **kwargs):
     is what caught the three `serve` spawns that do matter.
     """
     stdin = kwargs.pop("stdin", subprocess.DEVNULL)
+    # Never the repository a git hook was run for: git's location variables
+    # are removed from every call (TCW-115 Design 7.8).
+    kwargs["env"] = git_environment(kwargs.get("env"))
     return subprocess.run(*args, stdin=stdin, **kwargs)
 
 
@@ -3590,12 +3595,6 @@ def _normalize_remote(url: str) -> str:
     return cleaned[:-4] if cleaned.endswith(".git") else cleaned
 
 
-# What a *project* is, for the provisioner: a directory carrying a sentinel. Not a
-# component, and deliberately not spelled as one anywhere it could be mistaken
-# for a store — `PROVISION_COMPONENTS` never contains it.
-PROJECT_TARGET = "project"
-
-
 def _is_store_layout(root: Path, component: str) -> bool:
     """Whether `root` holds `component`'s store, as far as the filesystem can say.
 
@@ -3616,17 +3615,8 @@ def _is_store_layout(root: Path, component: str) -> bool:
     state and nothing distinguishes the two. What this still refuses — a
     `repository.path` naming nothing at all — is what keeps "a failure leaves
     nothing behind" true for every component.
-
-    `component` is required rather than defaulted: a caller that forgets it
-    should not silently get a store's answer for a project.
     """
-    if not root.is_dir():
-        return False
-    if component == PROJECT_TARGET:
-        # A project names one file and it is the same file everywhere, which is
-        # exactly how much a project can honestly claim.
-        return (root / SENTINEL).is_file()
-    return True
+    return root.is_dir()
 
 
 def _registry_checkout_root(
@@ -3710,6 +3700,11 @@ def store_location(project_root: Path, component: str, configured: str | None, *
         return resolve_folder_address(found, locator, Path(project_root), chain=chain)
     except Unreachable as error:
         raise LocationProjectAbsent(error) from None
+
+
+def _same_root(a: Path, b: Path) -> bool:
+    """Whether two project roots are one folder, compared by identity."""
+    return _below(Path(a).resolve(), Path(b).resolve()) == Path(".")
 
 
 def resolve_store(store_cls, project_root: Path, active_root: Path | None = None):
@@ -3861,10 +3856,17 @@ def resolve_store(store_cls, project_root: Path, active_root: Path | None = None
             active_root=active_root)
     except StoreLocationUnusable:
         pass                                                    # same rule
+    # The command that fetches *this* store: run in its own project, which
+    # is not the active one when an inheriting project reads it (TCW-115
+    # Design 7.2). `active_root` is given only for another project's store.
+    command = f"tcw project provision --component {component}"
+    if active_root is not None and not _same_root(active_root, project_root):
+        command = (f"tcw -C {shlex.quote(str(project_root))} project provision "
+                   f"--component {component}")
     raise StoreNotProvisioned(                                  # rule 3
         f"{config_path}: the {component} store is declared in "
         f"{declaration.url} but has not been provisioned here; "
-        f"run `tcw project provision` to obtain it"
+        f"run `{command}` to obtain it"
         + (f" — and the configured {local_failure}" if local_failure else ""))
 
 
@@ -3896,11 +3898,7 @@ class FsStoreProvisioner(StoreProvisioner):
     Obtains into a temporary directory beside the target and renames it into
     place, so a failed or interrupted fetch is never visible as a store. That is
     what makes "leaves nothing behind" true rather than aspirational.
-
-    Its branches for `PROJECT_TARGET` are unused since `tcw project provision` stopped
-    fetching connected projects (TCW-107 Design 6.3); they are kept for
-    `tcw project provision` (TCW-115), which fetches a project into its
-    deciding manifest entry's folder and reuses this clone code.
+    A project is fetched by `fetch_project`, below, not by this class.
     """
 
     def __init__(self, project_root: Path, component: str,
@@ -3916,8 +3914,7 @@ class FsStoreProvisioner(StoreProvisioner):
             return f"{self.component}: no home repository declared"
         d = self.declaration
         at = f" at {d.ref}" if d.ref else ""
-        thing = "project" if self.component == PROJECT_TARGET else "store"
-        within = f", {thing} at {d.path}" if d.path else ""
+        within = f", store at {d.path}" if d.path else ""
         return (f"{self.component}: {d.url}{at}{within} → "
                 f"{provisioned_store_root(self.project_root, d)}")
 
@@ -3973,10 +3970,6 @@ class FsStoreProvisioner(StoreProvisioner):
         if _is_store_layout(root, self.component):
             return
         where = self.declaration.path or "."
-        if self.component == PROJECT_TARGET:
-            raise ValueError(
-                f"projects: {self.declaration.url} has no TCW project at "
-                f"'{where}': no {SENTINEL} there")
         prefix = (f"{self.component}.repository: {self.declaration.url} has no "
                   f"{self.component} store at '{where}'")
         raise ValueError(f"{prefix}: no such directory in the repository")
@@ -3996,10 +3989,14 @@ class FsStoreProvisioner(StoreProvisioner):
         checkout.parent.mkdir(parents=True, exist_ok=True)
         staging = checkout.parent / f".{checkout.name}.tcw-{uuid.uuid4().hex[:8]}"
         try:
-            self._run(["git", "clone", "--quiet", self.declaration.url, str(staging)])
+            # `--` before the URL and after the `ref`, so neither is read as an
+            # option, and a `ref` naming no branch, tag or commit fails rather
+            # than being read as a file (TCW-115 Design 7.2).
+            self._run(["git", "clone", "--quiet", "--", self.declaration.url,
+                       str(staging)])
             if self.declaration.ref:
                 self._run(["git", "-C", str(staging), "checkout", "--quiet",
-                           self.declaration.ref])
+                           self.declaration.ref, "--"])
             self._require_store_layout(
                 (staging / self.declaration.path) if self.declaration.path else staging)
             staging.rename(checkout)
@@ -4047,3 +4044,187 @@ class FsStoreProvisioner(StoreProvisioner):
             raise ValueError(
                 f"{self.component}.repository: git {_git_subcommand(argv)} failed: "
                 f"{_git_reason(done) or f'exit {done.returncode}'}")
+
+
+# ── fetching a project that is not on this machine (TCW-115 Design 7.9, 7.10) ──
+
+class FetchRefused(TcwError):
+    """A project `tcw project provision` did not fetch, and why: one line,
+    starting with the project's ID."""
+
+
+#: How many staging names are tried before a project is refused (Design 7.9).
+STAGING_TRIES = 5
+
+
+def _same_file(a: os.stat_result, b: os.stat_result) -> bool:
+    return (a.st_dev, a.st_ino) == (b.st_dev, b.st_ino)
+
+
+def _inside(path: Path, top: Path) -> bool:
+    """Whether `path`, every link followed, is `top` or below it."""
+    return _below(Path(os.path.realpath(path)), Path(os.path.realpath(top))) is not None
+
+
+def _empty_or_absent(target: Path) -> bool:
+    """Whether `target` is absent, or a real folder (not a link) with no
+    entries; the name itself is never followed."""
+    try:
+        found = os.lstat(target)
+    except FileNotFoundError:
+        return True
+    import stat as kinds
+    if not kinds.S_ISDIR(found.st_mode):
+        return False
+    with os.scandir(target) as entries:
+        return next(entries, None) is None
+
+
+def _clone_problem(clone: Path, url: str, project_id: str, subfolder: str | None,
+                   kept: dict, group: frozenset, target: Path) -> str | None:
+    """What makes the staging clone not the project its entry names (Design
+    7.9), or None. Every path read is first checked to lie inside the clone,
+    so a committed link never leads these checks to a file elsewhere."""
+    where = subfolder or "."
+    reads = [Path(subfolder)] if subfolder else []
+    at = Path(subfolder) if subfolder else Path()
+    reads += [at / TCW_FOLDER, at / SENTINEL]
+    if subfolder:
+        reads += [Path(TCW_FOLDER), Path(SENTINEL)]
+    for relative in reads:
+        if os.path.lexists(clone / relative) and not _inside(clone / relative, clone):
+            return (f"{project_id}: {url} has a link at '{relative.as_posix()}' that "
+                    f"leads outside the clone")
+    config = clone / at / SENTINEL
+    if not config.is_file():
+        if (clone / at / LEGACY_SENTINEL).is_file():
+            return f"{project_id}: {url}: {legacy_message(clone / at)}"
+        return f"{project_id}: {url} has no TCW project at '{where}'"
+    try:
+        mapping = yaml.safe_load(config.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as error:
+        return f"{project_id}: {url}: {where}/{SENTINEL} cannot be read: {error}"
+    problem = version_problem(mapping)
+    if problem:
+        return f"{project_id}: {url}: {where}/{SENTINEL} {problem}"
+    declared = mapping.get("id") if isinstance(mapping, dict) else None
+    if declared != project_id:
+        return f"{project_id}: {url} holds project '{declared}' at '{where}', not '{project_id}'"
+    if subfolder and (clone / SENTINEL).is_file():
+        try:
+            top = yaml.safe_load((clone / SENTINEL).read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, yaml.YAMLError):
+            top = None
+        other = top.get("id") if isinstance(top, dict) else None
+        if isinstance(other, str) and other not in group and other in kept \
+                and _below(Path(os.path.realpath(target)),
+                           Path(os.path.realpath(kept[other]))) != Path("."):
+            return (f"{project_id}: the clone of {url} holds project '{other}' at its "
+                    f"top, but '{other}' is already at {kept[other]}; placing the clone "
+                    f"at {target} would give '{other}' a second folder")
+    return None
+
+
+def fetch_project(url: str, branch: str | None, target: Path, *, project_id: str,
+                  subfolder: str | None = None, trusted: bool = True,
+                  bound: Path | None = None, kept: dict | None = None,
+                  group: frozenset = frozenset(), recheck=None, written: str | None = None,
+                  file=None, warn=print) -> None:
+    """Clone `url` (at `branch`) into `target`, the resolved repository folder
+    of project `project_id`'s deciding entry, or raise `FetchRefused` having
+    left nothing behind (TCW-115 Design 7.9, 7.10; plan choice 9).
+
+    The clone is made in `<target's parent>/.tcw-staging-<hex>/<name>`, checked,
+    and renamed into place within the parent folder held open since it was
+    checked, so the folder written is the folder checked. `trusted` entries
+    may have their missing parent folders made; a bounded entry's parent must
+    be `bound`. `kept` maps the IDs this run keeps answers for to their
+    folders, and `group` holds the projects this one clone is made for.
+    `recheck()` resolves the entry's path again just before the move;
+    `written` is that path as the manifest `file` gives it, for messages."""
+    target = Path(target)
+    parent = target.parent
+    made: list[Path] = []
+    fetched = False
+    parent_fd = None
+    staging = None
+    try:
+        if trusted and not parent.exists():
+            missing = []
+            for folder in (parent, *parent.parents):
+                if os.path.lexists(folder):
+                    break
+                missing.append(folder)
+            for folder in reversed(missing):
+                try:
+                    os.mkdir(folder)
+                except OSError as error:
+                    raise FetchRefused(f"{project_id}: could not make {folder}: "
+                                       f"{error.strerror or error}") from None
+                made.append(folder)
+            if _below(Path(os.path.realpath(parent)), parent) != Path("."):
+                raise FetchRefused(f"{project_id}: {parent} led elsewhere once it was made; "
+                                   f"nothing was fetched for it")
+        try:
+            parent_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+        except OSError as error:
+            raise FetchRefused(f"{project_id}: cannot open {parent}: "
+                               f"{error.strerror or error}") from None
+        held = os.fstat(parent_fd)
+        if bound is not None and not _same_file(held, os.stat(bound)):
+            raise FetchRefused(f"{project_id}: {parent} is no longer the folder directly "
+                               f"inside {bound}; nothing was fetched for it")
+        for _ in range(STAGING_TRIES):
+            name = f".tcw-staging-{secrets.token_hex(4)}"
+            try:
+                os.mkdir(name, dir_fd=parent_fd)
+            except FileExistsError:
+                continue
+            staging = name
+            break
+        else:
+            raise FetchRefused(f"{project_id}: could not make a staging folder in {parent}: "
+                               f"five names in a row were already taken")
+        clone = parent / staging / target.name
+        argv = ["git", "clone", "--quiet", *(["--branch", branch] if branch else []),
+                "--", url, str(clone)]
+        done = _git(argv, capture_output=True, text=True, env=_no_prompt_env())
+        if done.returncode != 0:
+            raise FetchRefused(f"{project_id}: git clone of {url} failed: "
+                               f"{_git_reason(done) or f'exit {done.returncode}'}")
+        problem = _clone_problem(clone, url, project_id, subfolder, kept or {}, group,
+                                 target)
+        if problem is not None:
+            raise FetchRefused(problem)
+        if recheck is not None:
+            again = recheck()
+            if _below(Path(os.path.realpath(again)), target) != Path("."):
+                raise FetchRefused(f"{project_id}: {written or target} led to {target} when this round "
+                                   f"was checked, and now leads to {again}; nothing was "
+                                   f"fetched for it")
+        if not _same_file(os.stat(parent), held) or not _empty_or_absent(target):
+            raise FetchRefused(f"{project_id}: {target} is not empty; move it aside, or "
+                               f"correct the manifest entry in {file}")
+        try:
+            os.rename(f"{staging}/{target.name}", target.name,
+                      src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+        except OSError as error:
+            raise FetchRefused(f"{project_id}: could not move the clone into {target}: "
+                               f"{error.strerror or error}") from None
+        fetched = True
+    finally:
+        if staging is not None:
+            try:
+                if _same_file(os.stat(parent), os.fstat(parent_fd)):
+                    shutil.rmtree(parent / staging)
+            except OSError as error:
+                warn(f"could not remove the staging folder {parent / staging}: "
+                     f"{error.strerror or error}; remove it by hand")
+        if parent_fd is not None:
+            os.close(parent_fd)
+        if not fetched:
+            for folder in reversed(made):
+                try:
+                    os.rmdir(folder)
+                except OSError:
+                    break

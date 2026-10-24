@@ -99,11 +99,16 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p_config.set_defaults(own_config=True, func=config_cli._show)
 
     p_provision = command(
-        verbs, "provision", help="fetch the stores this project declares but does "
-        "not have here",
+        verbs, "provision", help="fetch the stores this project declares, and the "
+        "projects its family names, that are not on this machine",
         prints="nothing; its plan and every remote, before it is contacted, on stderr",
-        writes="a clone of each declared store repository that is missing",
-        examples=["project provision", "project provision --component work --dry-run"])
+        writes="a clone of each missing store and project, where its manifest entry "
+               "places it",
+        examples=["project provision", "project provision core --dry-run",
+                  "project provision --component work"])
+    p_provision.add_argument(
+        "id", nargs="?", help="only this project and the projects it inherits from "
+        "(its load order), and no store")
     p_provision.add_argument(
         "--component", action="append", choices=list(PROVISION_COMPONENTS),
         help="only this axis's store; repeat for more (default: every declared one)")

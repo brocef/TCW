@@ -157,12 +157,38 @@ def _config_file(path: Path) -> Path:
     return root_of(path).resolve() / SENTINEL
 
 
+#: The variables that tell git which repository to act on, or where to look
+#: for one (TCW-115 Design 7.8, "Git answers about the folder named"): every
+#: name `git rev-parse --local-env-vars` prints at git 2.54 but the three
+#: configuration variables, and the two that change where git searches. A git
+#: hook runs with `GIT_DIR` and often `GIT_WORK_TREE` and `GIT_INDEX_FILE` set,
+#: and with them `git -C <folder>` answers about the hook's repository.
+GIT_LOCATION_VARIABLES = (
+    "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE", "GIT_NO_REPLACE_OBJECTS",
+    "GIT_REPLACE_REF_BASE", "GIT_PREFIX", "GIT_SHALLOW_FILE",
+    "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM")
+
+
+def git_environment(base: "dict[str, str] | None" = None) -> dict[str, str]:
+    """`base` (this process's environment by default) without
+    `GIT_LOCATION_VARIABLES`, for every git call TCW makes: no TCW command
+    means a git call to act on any repository but the folder it names. The
+    configuration variables are kept, since a person's `git -c` settings
+    are theirs."""
+    env = dict(os.environ if base is None else base)
+    for name in GIT_LOCATION_VARIABLES:
+        env.pop(name, None)
+    return env
+
+
 def _git_lines(directory: Path, *args: str) -> list[str] | None:
     """`git -C directory <args>`'s output lines, or None on any failure."""
     try:
         return subprocess.run(
             ["git", "-C", str(directory), *args],
-            capture_output=True, text=True, check=True,
+            capture_output=True, text=True, check=True, env=git_environment(),
             stdin=subprocess.DEVNULL,      # reads no input; see tcw/store/fs.py::_git
             # splitlines(), NOT split(): git emits one path per line, and a repo
             # path containing a space (`~/My Drive`, `~/Google Drive`) would split
@@ -278,6 +304,10 @@ class _Answer:
     # manifest; for a personal file a linked worktree borrows, the worktree
     # (TCW-115 Design 8.1).
     owner: Path | None = None
+    # The entry's folder, when it holds files and no project (Design 2.3,
+    # row b): a graph problem, except to the command that would fetch the
+    # project there, which refuses that project alone (TCW-115 Design 7.6).
+    occupied: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -408,6 +438,9 @@ class FsProjectRegistry(ProjectRegistry):
         # The same problems twice, in step: rendered for the refusals that
         # raise them, and as findings for `check()` (TCW-73 Design 6.3).
         self._problems: list[str] = []
+        # The problems that are an entry's folder holding files and no
+        # project (`_Answer.occupied`), as recorded.
+        self._occupied_problems: set[str] = set()
         self._findings: list[Finding] = []
         self._unreachable: list[UnreachableProject] = []
         self._warnings: list[str] = []
@@ -670,10 +703,25 @@ class FsProjectRegistry(ProjectRegistry):
         """
         return [entry for entry in self._unreachable if entry.id not in self._by_id]
 
-    def require_valid(self) -> "FsProjectRegistry":
-        if self._problems:
-            raise ValueError("; ".join(self._problems))
+    def require_valid(self, *, fetching: bool = False) -> "FsProjectRegistry":
+        """Raise `ValueError` naming every graph problem. `fetching` leaves
+        out an entry's folder that holds files and no project: `tcw project
+        provision` refuses that one project as occupied and goes on with the
+        others (TCW-115 Design 7.6)."""
+        problems = [p for p in self._problems
+                    if not (fetching and p in self._occupied_problems)]
+        if problems:
+            raise ValueError("; ".join(problems))
         return self
+
+    def occupied_ids(self) -> list[str]:
+        """The IDs whose deciding entry places them at a folder that holds
+        files and no project, in the order they were looked up."""
+        found: list[str] = []
+        for (project_id, _), answer in list(self._answers.items()):
+            if answer.occupied is not None and project_id not in found:
+                found.append(project_id)
+        return found
 
     def config(self, project_id: str | None = None) -> dict[str, Any]:
         cfg = self._config_for(project_id)
@@ -1376,6 +1424,28 @@ class FsProjectRegistry(ProjectRegistry):
                 return self._placement(project_id, root, answer)
         return None
 
+    def placements(self) -> list[Placement]:
+        """Every answer this registry has recorded, in the order it recorded
+        them, one per ID and asking project (TCW-115 Design 7.4: the answers a
+        provisioning run keeps). Reads nothing."""
+        return [self._placement(project_id, root, answer)
+                for (project_id, root), answer in list(self._answers.items())]
+
+    def entry_elsewhere(self, project_id: str, asked_by: Path) -> Placement | None:
+        """The first entry for `project_id` in a manifest the lookup from
+        `asked_by` reads after the asking project's own, as a placement, or
+        None: what disagrees with a search answer (Design 3.4), which a
+        provisioning run names when a fetch moved a project it kept (TCW-115
+        Design 7.4). Records nothing."""
+        roots, _ = self._family(asked_by, project_id)
+        found = self._entry_from_others(project_id, roots)
+        if found is None:
+            return None
+        entry, base = found
+        answer = self._entry_answer(entry, base, record=False)
+        return self._placement(project_id, asked_by,
+                               _Answer(folder=answer.folder, entry=entry, owner=base))
+
     def _placement(self, project_id: str, asked_by: Path, answer: _Answer) -> Placement:
         entry = answer.entry
         folder = Path(os.path.realpath(answer.folder)) if answer.folder else None
@@ -1741,6 +1811,12 @@ class FsProjectRegistry(ProjectRegistry):
             else:
                 wrong = (f"places it at {folder}, which is not a TCW project: it "
                          f"holds files and no {SENTINEL}")
+                if not record:
+                    return _Answer(entry=entry, problem=f"{named} {wrong}",
+                                   occupied=folder)
+                problem = self._recorded(entry.file, f"{named} {wrong}")
+                self._occupied_problems.add(problem)
+                return _Answer(entry=entry, problem=problem, occupied=folder)
         if probe.kind in ("version", "unreadable"):
             # A gap in an ancestor (TCW-109 Design 1.6), so recorded when
             # settled, where it is a graph problem.

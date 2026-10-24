@@ -545,9 +545,11 @@ def test_ac25_one_answer_whichever_project_runs(tmp_path):
     assert Path(FsProjectRegistry.open(app).get("k").locator) == k
 
 
-def test_ac22_provision_fetches_no_project(tmp_path):
-    """`tcw project provision` fetches the declared component stores only; a project
-    not on this machine names `tcw project provision` (TCW-115) instead."""
+def test_ac22_a_dry_run_plans_the_project_and_contacts_nothing(tmp_path):
+    """TCW-107 AC 22 said provisioning fetched no project; since TCW-115 it
+    fetches one not on this machine into its deciding entry's folder, and the
+    dry run plans that and contacts nothing (TCW-115 Design 7.12). A project
+    not here names `tcw project provision <id>`."""
     app, _ = pair(tmp_path)
     shutil.rmtree(tmp_path / "lib")
     (app / "docs" / "work").mkdir(parents=True)
@@ -562,17 +564,17 @@ def test_ac22_provision_fetches_no_project(tmp_path):
     env = {"PATH": f"{tools}{os.pathsep}{os.environ['PATH']}"}
     ran = tcw(app, "project", "provision", "--dry-run", env=env)
     assert ran.code == 0, ran
-    assert ran.err.strip() == ("Nothing to provision: no component declares a home "
-                               "repository in .tcw/tcw-config.yaml."), ran
+    assert ran.err.startswith("Nothing to provision: no component declares a home "
+                              "repository in .tcw/tcw-config.yaml.\n"), ran
+    assert f"lib: would fetch into {(tmp_path / 'lib').resolve()}" in ran.err, ran
     ran_git = calls.read_text() if calls.exists() else ""
     assert "example.invalid" not in ran_git and "clone" not in ran_git, ran_git
-    assert "'lib'" not in ran.err and "lib.git" not in ran.err
+    assert not (tmp_path / "lib").exists()
     shown = tcw(app, "work", "show", "lib.work/x")
     assert shown.code == 5, shown
     assert "https://example.invalid/lib.git" in shown.err
     assert "tcw project provision lib" in shown.err
-    for output in (ran.err, shown.err):
-        assert "`tcw project provision`" not in output and "run tcw project provision" not in output
+    assert "`tcw project provision`" not in shown.err
 
 
 @pytest.mark.parametrize("raw, shown", [

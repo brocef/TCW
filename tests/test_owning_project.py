@@ -85,8 +85,8 @@ def test_a_work_write_to_a_project_not_on_this_machine(tcw, app_core, argv, stdi
     _fail_if_opened(monkeypatch)
     result = tcw(argv, app, stdin)
     assert_refused_naming(result, "core", None)
-    assert "project 'core' is not on this machine (https://example.invalid/core.git)" \
-        in result.err
+    assert "project 'core' is not on this machine (https://example.invalid/core.git); " \
+        "fetch it with tcw project provision core" in result.err
 
 
 def test_a_work_write_naming_a_project_nothing_names(tcw, app_core, monkeypatch):

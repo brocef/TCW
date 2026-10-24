@@ -102,7 +102,8 @@ def run_init(components: list[str], project_id: str | None = None,
 
 
 def run_provision(components: list[str], *, dry_run: bool = False,
-                  prefix: str = "tcw project provision") -> int:
+                  prefix: str = "tcw project provision", project_id: str | None = None,
+                  projects: bool = True) -> int:
     """Make this project's declared component stores usable here.
 
     The only command in `tcw` that clones a repository, and it does so only
@@ -116,6 +117,10 @@ def run_provision(components: list[str], *, dry_run: bool = False,
     printed before it is contacted, for the same reason. Everything it says
     goes to stderr, `--dry-run` included: it has no product (TCW-73 Design
     1.7). A store already here is never fetched into (Design 8.4).
+
+    Then, unless `projects` is false (the `--component` form), the projects
+    the family names that are not here (`tcw.provision`, TCW-115 Design 7).
+    With `project_id`, that project and its load order, and no store.
     """
     project_root = find_project_root()
     if project_root is None:
@@ -153,6 +158,18 @@ def run_provision(components: list[str], *, dry_run: bool = False,
             print(f"{prefix}: {override.problem}", file=sys.stderr)
         return 1
 
+    # A graph problem refuses before anything is contacted (TCW-115 Design
+    # 7.14); the `--component` form keeps exactly the checks it had.
+    if projects:
+        try:
+            FsProjectRegistry.open(project_root).require_valid(fetching=True)
+        except ValueError as error:
+            print(f"{prefix}: {error}", file=sys.stderr)
+            return 1
+    if project_id is not None:
+        from tcw.provision import provision_projects
+        return provision_projects(project_root, project_id, dry_run=dry_run, prefix=prefix)
+
     declared: list[tuple[str, object]] = []
     problems: list[str] = []
     for component in components:
@@ -169,15 +186,13 @@ def run_provision(components: list[str], *, dry_run: bool = False,
             print(f"{prefix}: {problem}", file=sys.stderr)
         return 1
 
-    # Connected projects are not fetched here: where one goes is its deciding
-    # manifest entry's folder, and `tcw project provision <id>` fetches it
-    # (TCW-107 Design 6.3; TCW-115).
     if not declared:
         print(f"Nothing to provision: no component declares a home repository in "
               f"{SENTINEL}.", file=sys.stderr)
-        return 0
 
-    failed = False
+    # A store that fails does not stop the run: the projects pass follows,
+    # and the last line counts both (TCW-115 Design 7.2, 7.13).
+    fetched = failed = 0
     for component, declaration in declared:
         provisioner = FsStoreProvisioner(project_root, component, declaration)
         declared_available = provisioner.is_available()
@@ -199,16 +214,35 @@ def run_provision(components: list[str], *, dry_run: bool = False,
             result = provisioner.ensure_available(dry_run=dry_run)
         except (ValueError, OSError) as error:
             print(f"{prefix}: {error}", file=sys.stderr)
-            failed = True
+            failed += 1
             continue
         print(f"  {result.detail}", file=sys.stderr)
-    return 1 if failed else 0
+        fetched += result.action == "obtained"
+    if not projects:
+        return 1 if failed else 0
+    from tcw.provision import provision_projects
+    return provision_projects(project_root, dry_run=dry_run, prefix=prefix,
+                              stores=(fetched, failed))
 
 
 def _cmd_provision(args: argparse.Namespace) -> int:
     # The error lines name the command as it was typed (TCW-115 plan, choice 23).
+    from tcw.errors import UsageError
+    from tcw.project_files import validate_project_id
+    project_id = getattr(args, "id", None)
+    if project_id is not None:
+        if args.component:
+            raise UsageError("name a project or --component, not both: a project is "
+                             "fetched with its load order and no store")
+        try:
+            validate_project_id(project_id)
+        except ValueError as error:
+            raise UsageError(str(error)) from None
+        return run_provision([], dry_run=args.dry_run, prefix=args._command,
+                             project_id=project_id)
     return run_provision(args.component or list(PROVISION_COMPONENTS),
-                         dry_run=args.dry_run, prefix=args._command)
+                         dry_run=args.dry_run, prefix=args._command,
+                         projects=not args.component)
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
