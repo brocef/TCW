@@ -331,3 +331,115 @@ def test_ac21_the_write_rule(tmp_path):
         "'top' is read-only from here: 'lib' does not list 'app' among its children")
     assert registry.get("sib") is None
     assert FsProjectRegistry.open(tmp_path / "ws").read_only_reason("sib") is None
+
+
+# -- Design 2.1-2.4: personal children ---------------------------------------------------
+
+
+def test_ac7_another_projects_personal_children_are_not_read(tmp_path, monkeypatch):
+    from tests.projectfiles import write_local_config
+    monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
+    ws = proj(tmp_path / "ws", "ws", children=["a"])
+    write_local_config(ws, "children: [b, a]\n")
+    a = proj(tmp_path / "a", "a", parents=["ws"])
+    proj(tmp_path / "b", "b", parents=["ws"])
+    write_local_config(a, "children: [kid]\n")
+    proj(tmp_path / "kid", "kid", parents=["a"])
+    from_ws = FsProjectRegistry.open(ws).require_valid()
+    assert ids(from_ws.descendants()) == ["a", "b"]
+    assert from_ws.declared_child_ids() == ["a", "b"]
+    assert from_ws.personal_child_ids() == {"b"}
+    assert ids(FsProjectRegistry.open(a).require_valid().descendants()) == ["kid"]
+
+
+def test_personal_children_are_skipped_with_personal_files(tmp_path):
+    from tests.projectfiles import write_local_config
+    ws = proj(tmp_path / "ws", "ws", children=["a"])
+    write_local_config(ws, "children: [b]\n")
+    proj(tmp_path / "a", "a", parents=["ws"])
+    proj(tmp_path / "b", "b", parents=["ws"])
+    registry = FsProjectRegistry.open(ws).require_valid()
+    assert ids(registry.descendants()) == ["a"]
+    assert registry.personal_child_ids() == set()
+
+
+# -- Design 5 and 6.2: what reaches a project for an axis --------------------------------
+
+
+@pytest.mark.parametrize("ll_link, taxonomy", [
+    ("kk", ["kk", "ll", "gg"]),
+    ({"id": "kk", "inherit": ["config"]}, ["ll", "gg"]),
+])
+def test_ac17_sources_of_each_axis(tmp_path, ll_link, taxonomy):
+    gg = proj(tmp_path / "gg", "gg", parents=[{"id": "ww", "inherit": "none"},
+                                               {"id": "ll", "inherit": ["taxonomy"]}])
+    proj(tmp_path / "ll", "ll", parents=[ll_link])
+    proj(tmp_path / "ww", "ww", parents=["vv"])
+    proj(tmp_path / "kk", "kk")
+    proj(tmp_path / "vv", "vv")
+    registry = FsProjectRegistry.open(gg).require_valid()
+    assert registry.load_order().ids == ("vv", "ww", "kk", "ll", "gg")
+    assert ids(registry.sources("taxonomy")) == taxonomy
+    assert ids(registry.sources("config")) == ["gg"]
+    assert ids(registry.sources("capabilities")) == ["gg"]
+
+
+def test_ac18_a_parent_passing_nothing_needed_may_be_missing(tmp_path):
+    app = proj(tmp_path / "app", "app",
+               parents=[{"id": "ws", "inherit": ["config"]},
+                        {"id": "core", "inherit": ["taxonomy"]}])
+    proj(tmp_path / "core", "core")
+    registry = FsProjectRegistry.open(app).require_valid()
+    assert ids(registry.sources("taxonomy")) == ["core", "app"]
+    order = registry.load_order()
+    assert order.ids == ("ws", "core", "app") and order.missing == ("ws",)
+
+
+def test_ac19_a_missing_source_stops_with_exit_7(tmp_path):
+    from tcw.errors import InheritedUnavailable
+    from tcw.exit import INHERITED_UNAVAILABLE
+    app = proj(tmp_path / "app", "app", parents=[{"id": "core", "inherit": ["taxonomy"]}])
+    registry = FsProjectRegistry.open(app).require_valid()
+    with pytest.raises(InheritedUnavailable) as raised:
+        registry.sources("taxonomy")
+    message = str(raised.value)
+    assert raised.value.code == INHERITED_UNAVAILABLE == 7
+    assert message.startswith("'app' inherits its taxonomy from project 'core', which "
+                              "is not on this machine: ")
+    assert message.count("not on this machine") == 1
+    assert (raised.value.project, raised.value.axis, raised.value.reason) == (
+        "core", "taxonomy", "missing")
+    write_manifest(app, {"core": {"path": "../core", "repository": "https://h/core.git"}})
+    with pytest.raises(InheritedUnavailable, match="tcw project provision core"):
+        FsProjectRegistry.open(app).sources("taxonomy")
+
+
+def test_ac20_a_missing_grandparent_stops_its_axis(tmp_path):
+    from tcw.errors import InheritedUnavailable
+    app = proj(tmp_path / "app", "app", parents=["lib"])
+    proj(tmp_path / "lib", "lib", parents=[{"id": "core", "inherit": ["capabilities"]}])
+    registry = FsProjectRegistry.open(app).require_valid()
+    assert ids(registry.sources("taxonomy")) == ["lib", "app"]
+    with pytest.raises(InheritedUnavailable, match="project 'core'"):
+        registry.sources("capabilities")
+
+
+def test_ac26_config_reaches_only_the_project(tmp_path):
+    app = proj(tmp_path / "app", "app", parents=[{"id": "ws", "inherit": "none"}])
+    registry = FsProjectRegistry.open(app).require_valid()
+    assert ids(registry.sources("config")) == ["app"]
+
+
+def test_ac31_an_unreadable_parent_stops_what_it_passes(tmp_path):
+    from tcw.errors import InheritedUnavailable
+    app = proj(tmp_path / "app", "app", parents=["lib"])
+    lib = proj(tmp_path / "lib", "lib", parents="core")
+    registry = FsProjectRegistry.open(app).require_valid()
+    with pytest.raises(InheritedUnavailable) as raised:
+        registry.sources("taxonomy")
+    assert str(raised.value).startswith(
+        "'app' inherits its taxonomy through project 'lib', whose parents could not "
+        f"be read: {lib / '.tcw/tcw-config.yaml'}: parents")
+    assert raised.value.reason == "unreadable"
+    proj(tmp_path / "app", "app", parents=[{"id": "lib", "inherit": "none"}])
+    assert ids(FsProjectRegistry.open(app).sources("taxonomy")) == ["app"]

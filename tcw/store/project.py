@@ -17,7 +17,8 @@ from tcw.store.base import (
     UnreachableProject, find_loop, load_order_of, loop_message, retired_key_problem,
 )
 from tcw.errors import ProjectGraphError, Unreachable, UnknownProject
-from tcw.project_files import (LEGACY_PROJECT, LEGACY_SENTINEL, LOCAL_MANIFEST,
+from tcw.project_files import (LEGACY_PROJECT, LEGACY_SENTINEL, LOCAL_CONFIG_NAME,
+                               LOCAL_MANIFEST,
                                LOCAL_MANIFEST_NAME, MANIFEST, PROJECT_ID_PATTERN,
                                SENTINEL, TCW_FOLDER,
                                personal_files_skipped, root_of,
@@ -266,6 +267,12 @@ class _Answer:
     problem: str | None = None
     named: bool = False
     message: str = ""
+    remedy: str = ""
+
+
+def _not_here_message(project_id: str, remedy: str) -> str:
+    """TCW-107 Design 6.2's sentence: its lead, then `remedy`."""
+    return f"project '{project_id}' is not on this machine: {remedy}"
 
 
 def _search(registry: "FsProjectRegistry", project_id: str,
@@ -353,6 +360,9 @@ class FsProjectRegistry(ProjectRegistry):
         self._read_order: list[str] = []
         self._roles: dict[Path, str] = {}
         self._walked: set[Path] = set()
+        # The active project's children listed only in its personal file
+        # (Design 2.1).
+        self._personal_children: set[str] = set()
         self._reached_from: dict[Path, Path] = {}
         # The same problems twice, in step: rendered for the refusals that
         # raise them, and as findings for `check()` (TCW-73 Design 6.3).
@@ -448,6 +458,12 @@ class FsProjectRegistry(ProjectRegistry):
         cfg = self._any_config(project_id)
         return list(cfg.children) if cfg else []
 
+    def personal_child_ids(self) -> set[str]:
+        """The active project's children listed only in its personal file
+        (Design 2.1), for the listing's `personal` flag."""
+        self._load_graph()
+        return set(self._personal_children)
+
     def load_order(self, project_id: str | None = None, *,
                    root: Path | None = None) -> LoadOrder:
         """Design 4, for the active project, any project of the family, or
@@ -474,6 +490,26 @@ class FsProjectRegistry(ProjectRegistry):
         ids = self.load_order(project_id).ids[:-1]
         return [cfg.project for cfg in (self._any_config(pid) for pid in ids)
                 if cfg is not None]
+
+    def order_project(self, project_id: str) -> Project:
+        cfg = self._any_config(project_id)
+        if cfg is None:
+            raise KeyError(project_id)
+        return cfg.project
+
+    def absent_note(self, project_id: str) -> str:
+        """TCW-107 Design 6.2's sentence for the project, after its colon:
+        where the deciding entry places it, and how to fetch it when the entry
+        gives a repository, or that no entry places it."""
+        self._load_graph()
+        record = next((u for u in self._unreachable if u.id == project_id), None)
+        if record is not None and record.remedy:
+            return record.remedy
+        return f"no manifest lists it; add it to {MANIFEST} or {LOCAL_MANIFEST}"
+
+    def link_problem(self, project_id: str) -> str | None:
+        cfg = self._any_config(project_id)
+        return cfg.link_problem if cfg is not None else None
 
     def descendants(self, project_id: str | None = None) -> list[Project]:
         """The family's projects below this one, breadth first through each
@@ -749,6 +785,7 @@ class FsProjectRegistry(ProjectRegistry):
         if answer.folder is None:
             self._unreachable_edge(
                 cfg.path, target_id, answer.entry_folder, message=answer.message,
+                remedy=answer.remedy,
                 decided_by=answer.entry.file if answer.entry else None,
                 repository=answer.entry.repository if answer.entry else None)
             return None
@@ -900,12 +937,45 @@ class FsProjectRegistry(ProjectRegistry):
         if role in ("active", "descendant"):
             for problem in child_problems:
                 self._problem(path, problem)
+        if role == "active" and not personal_files_skipped():
+            children = [*children, *self._personal_children_of(
+                root_of(path), project_id, children, parent_ids)]
         if not link_problems:
             return links or [], None, children
         if role == "active":
             for problem in link_problems:
                 self._problem(path, problem)
         return None, f"{path}: {link_problems[0]}", children
+
+    def _personal_children_of(self, root: Path, project_id: str, committed: list[str],
+                              parent_ids: set[str]) -> list[str]:
+        """The children the active project's personal file adds after its
+        committed ones (Design 2.1-2.3), its problems recorded against that
+        file as graph problems. No other project's personal file is read
+        (Design 2.4). A file that cannot be read or parsed adds nothing here:
+        the configuration reader reports it."""
+        path = personal_file(root, LOCAL_CONFIG_NAME, self._anchors)
+        text = self._text(path)
+        if isinstance(text, Exception):
+            return []
+        try:
+            raw = _load_named_yaml(text, path, _UniqueKeyLoader)
+        except yaml.YAMLError:
+            return []
+        if not isinstance(raw, dict) or raw.get("children") is None:
+            return []
+        listed = raw["children"]
+        found, problems = parse_children(listed, str(path), own_id=project_id)
+        for key, message in problems:
+            self._problem(path, f"{key}: {message}")
+        for child_id in found:
+            if child_id in parent_ids:
+                self._problem(path, f"children[{listed.index(child_id)}]: '{child_id}' "
+                                    f"is named both as a parent and as a child")
+        added = [child_id for child_id in found
+                 if child_id not in committed and child_id not in parent_ids]
+        self._personal_children.update(added)
+        return added
 
     def _override_path(self, project_id: str) -> Path | None:
         """Rule 0: where `TCW_PROJECT_<ID>` says this project is, or None.
@@ -1194,7 +1264,7 @@ class FsProjectRegistry(ProjectRegistry):
     def _unreachable_edge(self, config_path: Path, project_id: str | None,
                           locator: Path | None, *,
                           message: str = "", decided_by: Any = None,
-                          repository: str | None = None) -> None:
+                          repository: str | None = None, remedy: str = "") -> None:
         """Record a declared project that is not here, rather than a problem.
 
         `project_id` is the key the declaring config used. It can be None only
@@ -1214,7 +1284,7 @@ class FsProjectRegistry(ProjectRegistry):
             return
         self._unreachable.append(UnreachableProject(
             id=project_id, locator=locator, declared_in=config_path, message=message,
-            decided_by=decided_by, repository=repository))
+            decided_by=decided_by, repository=repository, remedy=remedy))
 
     def unreachable_project(self, project_id: str) -> UnreachableProject | None:
         """The recorded entry for `project_id`, or None.
@@ -1555,10 +1625,10 @@ class FsProjectRegistry(ProjectRegistry):
                 f"{LOCAL_MANIFEST} (this machine) or {MANIFEST} (everyone)"))
         if distinct:
             return _Answer(folder=next(iter(distinct.values())), by="search")
-        return _Answer(named=project_id in named, message=(
-            f"project '{project_id}' is not on this machine: no manifest lists it, "
-            f"and no folder next to {named_by} or enclosing it declares it; add it "
-            f"to {MANIFEST} or {LOCAL_MANIFEST}"))
+        remedy = (f"no manifest lists it, and no folder next to {named_by} or "
+                  f"enclosing it declares it; add it to {MANIFEST} or {LOCAL_MANIFEST}")
+        return _Answer(named=project_id in named, remedy=remedy,
+                       message=_not_here_message(project_id, remedy))
 
     def _searched(self, project_id: str, named_by: Path) -> list[Path]:
         """The distinct folders the search from `named_by` finds declaring
@@ -1598,8 +1668,10 @@ class FsProjectRegistry(ProjectRegistry):
             if isinstance(listing, FileNotFoundError) or (
                     isinstance(listing, list) and [n for n, _ in listing] in ([], [".git"])):
                 only_git = isinstance(listing, list) and bool(listing)
+                remedy = self._not_here(entry, folder, only_git)
                 return _Answer(entry=entry, entry_folder=folder, named=True,
-                               message=self._not_here(entry, folder, only_git))
+                               remedy=remedy,
+                               message=_not_here_message(entry.id, remedy))
             if isinstance(listing, OSError):
                 wrong = (f"places it at {folder}, which cannot be listed, so whether "
                          f"it is empty is not known: {listing.strerror or listing}")
@@ -1748,11 +1820,11 @@ class FsProjectRegistry(ProjectRegistry):
 
     @staticmethod
     def _not_here(entry: ManifestEntry, folder: Path, only_git: bool) -> str:
-        """Design 6.2's message for a project its deciding entry places in a
-        folder that is not here, or empty, naming the folder the entry was
-        resolved to, as the error lines for a wrong folder do (TCW-108 AC 36)."""
-        message = (f"project '{entry.id}' is not on this machine: {entry.file} places "
-                   f"it at {folder}")
+        """Design 6.2's message, after its lead, for a project its deciding
+        entry places in a folder that is not here, or empty, naming the folder
+        the entry was resolved to, as the error lines for a wrong folder do
+        (TCW-108 AC 36)."""
+        message = f"{entry.file} places it at {folder}"
         if entry.repository is None:
             return message + (f"; {_holds_only_git(str(folder))}" if only_git else "")
         fetch = f"fetch it with 'tcw project provision {entry.id}'"

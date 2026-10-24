@@ -338,10 +338,13 @@ class UnreachableProject:
     # The rendered "not on this machine" message (TCW-107 Design 6.2), the
     # manifest holding the entry that decided where the project is (None when
     # no entry decided), and the repository that entry gives. Presentation
-    # only, like `declared_in`.
+    # only, like `declared_in`. `remedy` is the message's part after its first
+    # colon, kept on its own so a message quoting it (TCW-108 Design 6.2)
+    # never parses `message`.
     message: str = ""
     decided_by: Any = None
     repository: str | None = None
+    remedy: str = ""
 
 
 @dataclass(frozen=True)
@@ -430,6 +433,58 @@ class ProjectRegistry(ABC):
             return load_order_of(start, links, missing=missing, unreadable=unreadable)
         except ValueError:
             raise ProjectGraphError(loop_message(find_loop(links, [start]))) from None
+
+    def sources(self, axis: str, project_id: str | None = None) -> list[Project]:
+        """The projects whose `axis` reaches the project (Design 5.2): its load
+        order keeping only those that pass `axis` to it (Design 5.1), in the
+        same order, ending with the project itself.
+
+        Raises `InheritedUnavailable` (Design 6.2) for the first project in
+        the load order that would pass `axis` and is not on this machine, or
+        whose own parent links could not be read, since what reaches the
+        project is then unknown. A project that passes nothing for `axis`
+        never stops it, whatever its state."""
+        from tcw.errors import InheritedUnavailable
+        order = self.load_order(project_id)
+        start = order.ids[-1]
+        absent = {*order.missing, *order.unreadable}
+        links = {pid: self.parents(pid) for pid in order.ids if pid not in absent}
+        passes = passing(axis, start, links, absent=frozenset(absent))
+        found: list[Project] = []
+        for pid in order.ids:
+            if pid not in passes:
+                continue
+            if pid in order.missing:
+                raise InheritedUnavailable(
+                    f"'{start}' inherits its {axis} from project '{pid}', which is "
+                    f"not on this machine: {self.absent_note(pid)}",
+                    project=pid, axis=axis, reason="missing")
+            if pid in order.unreadable:
+                raise InheritedUnavailable(
+                    f"'{start}' inherits its {axis} through project '{pid}', whose "
+                    f"parents could not be read: {self.link_problem(pid)}",
+                    project=pid, axis=axis, reason="unreadable")
+            found.append(self.order_project(pid))
+        return found
+
+    def order_project(self, project_id: str) -> Project:
+        """The `Project` for an ID of a load order that is available here. A
+        store whose load orders reach projects outside the family overrides
+        this; the default answers for the family."""
+        project = self.get(project_id)
+        if project is None:
+            raise KeyError(project_id)
+        return project
+
+    def absent_note(self, project_id: str) -> str:
+        """What to do about a project not on this machine, for Design 6.2's
+        first message, after its colon."""
+        return f"project '{project_id}' is not available here"
+
+    def link_problem(self, project_id: str) -> str | None:
+        """The problem that left a project's own parent links unknown (Design
+        6.6), naming its file and key, or None."""
+        return None
 
     def declared_child_ids(self, project_id: str | None = None) -> list[str]:
         """The IDs of the declared children, on this machine or not: the

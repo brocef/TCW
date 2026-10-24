@@ -40,7 +40,10 @@ from tcw.project_files import (LOCAL_CONFIG_NAME, LOCAL_SENTINEL as LOCAL_FILE, 
 
 #: The key paths a personal file may set; `*` stands for exactly one key.
 #: Anything not listed is shared, including any key TCW adds later unless it
-#: is added here. `user.name` may be set only in a personal file.
+#: is added here. `user.name` may be set only in a personal file. `children`
+#: is not here: it may be added to in the project's own personal file but not
+#: in the user-wide one, which applies to every project (TCW-108 Design 2.2),
+#: so it is in `LOCAL_ONLY_KEYS` instead.
 PERSONAL_KEYS = (
     "user.name",
     "work.stages.*.prompt",
@@ -49,6 +52,11 @@ PERSONAL_KEYS = (
     "work.jira.credentials.email-env",
     "work.jira.credentials.token-env",
 )
+
+#: The top-level keys the project's personal file `.tcw/tcw-config.local.yaml`
+#: may add to and the user-wide file may not (TCW-108 Design 2.2). The
+#: personal list is added after the committed one (Design 2.1).
+LOCAL_ONLY_KEYS = ("children",)
 
 LAYERS = ("built-in", "project", "user", "local")
 PERSONAL_LAYERS = ("user", "local")
@@ -419,6 +427,19 @@ def _allowed(mapping: dict, origin: Origin, root: Path, refused: list,
     kept: dict = {}
     for key, value in mapping.items():
         here = (*path, key)
+        if not path and key in LOCAL_ONLY_KEYS:
+            if origin.layer != "local":
+                problems.append(Problem(
+                    origin.file, here, f"{key} may be listed only in this project's own "
+                    f"files, .tcw/tcw-config.yaml or .tcw/tcw-config.local.yaml; the "
+                    f"user-wide file applies to every project", root))
+                refused.append(Setting(origin.file, here, value, "shared key"))
+            elif value is None:
+                problems.append(Problem(origin.file, here, "null has no meaning in a "
+                                        "personal file; remove the key instead", root))
+            else:
+                kept[key] = value
+            continue
         if value is None and (any(_matches(here, p) for p in _PATTERNS)
                               or _leads_to_allowed(here)):
             problems.append(Problem(origin.file, here, "null has no meaning in a "
@@ -531,7 +552,17 @@ def _merge(values: dict, origins: dict, written: dict, layer: dict,
     for key, value in layer.items():
         here = (*path, key)
         lower = values.get(key)
-        if _is_chain(here) and isinstance(value, list):
+        if here == ("children",) and origin.layer == "local" and isinstance(value, list):
+            # The personal children follow the committed ones, each once,
+            # each entry keeping the file it came from (TCW-108 Design 2.1).
+            below = lower if isinstance(lower, list) else []
+            added = [entry for entry in value if entry not in below]
+            values[key] = [*below, *added]
+            for i in range(len(below), len(below) + len(added)):
+                origins[(*here, i)] = origin
+            if not below:
+                origins[here] = origin
+        elif _is_chain(here) and isinstance(value, list):
             below = lower if isinstance(lower, list) else []
             below_origins = [origins.get((*here, i), origin) for i in range(len(below))]
             entries, entry_origins = _chain(below, below_origins, value, origin)

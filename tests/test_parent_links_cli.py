@@ -7,6 +7,7 @@ The registry's answers for the same layouts are `tests/test_parent_links.py`."""
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -358,3 +359,170 @@ def test_a_parent_passing_some_axes_is_read_by_every_command(tmp_path):
     for argv in (("projects", "list"), ("work", "list"), ("validate",)):
         ran = tcw(app, *argv)
         assert ran.code == 0, (argv, ran)
+
+
+# -- AC 5, 6, 24: children listed in the personal file (Design 2) ------------------------
+
+
+def personal_children(root: Path, children) -> None:
+    from tests.projectfiles import write_local_config
+    write_local_config(root, yaml.safe_dump({"children": children}))
+
+
+@pytest.fixture
+def five(tmp_path):
+    """AC 5: `ws` lists `a`; its personal file lists `b, a`."""
+    ws = proj(tmp_path / "ws", "ws", children=["a"])
+    personal_children(ws, ["b", "a"])
+    proj(tmp_path / "a", "a", parents=["ws"])
+    proj(tmp_path / "b", "b", parents=["ws"])
+    return ws
+
+
+def test_ac5_the_personal_children_follow_the_committed_ones(five, tmp_path):
+    env = personal_env(tmp_path)
+    assert tcw(five, "projects", "list", env=env).out.split() == ["ws", "a", "b"]
+    assert tcw(five, "projects", "list").out.split() == ["ws", "a"]
+    assert tcw(five, "validate", env=env).code == 0
+
+
+def test_ac5_children_in_the_user_wide_file_is_refused(tmp_path):
+    ws = proj(tmp_path / "ws", "ws")
+    proj(tmp_path / "b", "b", parents=["ws"])
+    env = personal_env(tmp_path)
+    user = tmp_path / "xdg" / "tcw" / "config.yaml"
+    write_config_file(user, "children: [b]\n")
+    ran, lines = findings(ws, env)
+    assert ran.code == 1, ran
+    assert any(str(user) in line and "children may be listed only in this project's "
+               "own files" in line for line in lines), lines
+
+
+@pytest.mark.parametrize("where", ["committed", "personal"])
+def test_ac5_a_child_listed_twice(tmp_path, where):
+    ws = proj(tmp_path / "ws", "ws", children=["a", "a"] if where == "committed" else None)
+    if where == "personal":
+        personal_children(ws, ["a", "a"])
+    proj(tmp_path / "a", "a", parents=["ws"])
+    ran, lines = findings(ws, personal_env(tmp_path))
+    assert ran.code == 1, ran
+    assert any("'a' is listed twice" in line for line in lines), lines
+
+
+def test_ac5_null_children_in_the_personal_file(tmp_path):
+    from tests.projectfiles import write_local_config
+    ws = proj(tmp_path / "ws", "ws")
+    write_local_config(ws, "children:\n")
+    ran, lines = findings(ws, personal_env(tmp_path))
+    assert ran.code == 1, ran
+    assert any("null has no meaning in a personal file" in line for line in lines), lines
+
+
+def test_ac6_a_personal_child_must_name_its_parent(tmp_path):
+    ws = proj(tmp_path / "ws", "ws")
+    personal_children(ws, ["a"])
+    proj(tmp_path / "a", "a")
+    env = personal_env(tmp_path)
+    ran, lines = findings(ws, env)
+    assert ran.code == 1, ran
+    assert any("'a' is listed as a child of 'ws' but does not name 'ws' among its "
+               "parents" in line for line in lines), lines
+    assert tcw(ws, "projects", "list", env=env).code == 1
+
+
+def test_ac24_a_worktree_uses_the_main_checkouts_personal_children(tmp_path):
+    ws = link(make_project(tmp_path, "ws"), children=["a"])
+    proj(tmp_path / "a", "a", parents=["ws"])
+    commit_all(ws)
+    worktree = tmp_path / "trees" / "ws"
+    git(ws, "worktree", "add", "-q", str(worktree), "-b", "side")
+    personal_children(ws, ["b"])
+    b = proj(tmp_path / "b", "b", parents=["ws"])
+    write_manifest(ws, {"b": "../b"}, local=True)
+    write_manifest(worktree, {"a": "../../a", "b": "../../b"}, local=True)
+    ran = tcw(worktree, "projects", "list", env=personal_env(tmp_path))
+    assert ran.code == 0, ran
+    assert ran.out.split() == ["ws", "a", "b"], ran
+    assert b.is_dir()
+
+
+def test_choice6_config_show_gives_each_childs_file(five, tmp_path):
+    ran = tcw(five, "config", "show", "--origin", env=personal_env(tmp_path))
+    assert ran.code == 0, ran
+    lines = [line.strip() for line in ran.out.splitlines()]
+    at = lines.index("children:")
+    assert lines[at + 1:at + 3] == ["- a  # project",
+                                    "- b  # local: .tcw/tcw-config.local.yaml"], ran.out
+
+
+def test_ac32_personal_children_do_not_change_a_gate(tmp_path):
+    from tcw.store.fs import init
+    from tests.test_capabilities_rm import write_cap
+    ws = make_project(tmp_path, "ws")
+    b = link(make_project(tmp_path, "b"), parents=["ws"])
+    init(["capabilities"], ws)
+    init(["capabilities"], b)
+    write_cap(b, "x", id="cap-x00001", Status="Supported")
+    personal_children(ws, ["b"])
+    folder = write_item(ws, "2026-10-01-a", {"title": "a", "stage": "implement"})
+    (folder / "implement").mkdir()
+    (folder / "implement" / "round-1.md").write_text("Done.\n")
+    (folder / "capabilities.yaml").write_text("changed: [b.capabilities/x]\n")
+    for root in (ws, b):
+        commit_all(root)
+    argv = ("work", "advance", "2026-10-01-a", "--dry-run")
+    with_personal = tcw(ws, *argv, env=personal_env(tmp_path))
+    without = tcw(ws, *argv)
+    assert (with_personal.code, with_personal.err) == (without.code, without.err), \
+        (with_personal, without)
+
+
+# -- AC 18, 20, 26: what a missing project stops (Design 6) ------------------------------
+
+
+def unresolved(lines):
+    return [line for line in lines if line.startswith("unresolved:")]
+
+
+def test_ac18_a_missing_parent_that_passes_nothing(tmp_path):
+    app = link(make_project(tmp_path, "app"),
+               parents=[{"id": "ws", "inherit": "none"}, "core"])
+    proj(tmp_path / "core", "core")
+    assert tcw(app, "work", "list").code == 0
+    ran, lines = findings(app)
+    assert ran.code == 0, ran
+    [finding] = unresolved(lines)
+    assert "'ws'" in finding and "could not check what it passes down to 'app'" in finding
+
+
+def test_ac20_a_missing_grandparent_is_one_finding(tmp_path):
+    app = link(make_project(tmp_path, "app"), parents=["lib"])
+    proj(tmp_path / "lib", "lib", parents=["core"])
+    ran, lines = findings(app)
+    assert ran.code == 0, ran
+    [finding] = unresolved(lines)
+    assert "'core'" in finding, lines
+
+
+def test_ac26_a_planning_workspace_in_two_repositories(tmp_path):
+    from tcw.store.project import FsProjectRegistry
+    a = link(make_project(tmp_path, "ws", name="repo-a"), children=["app"])
+    b = link(make_project(tmp_path / "repo-a", "app", name="repo-b"),
+             parents=[{"id": "ws", "inherit": "none"}])
+    (a / ".gitignore").write_text("/repo-b/\n")
+    # The search never looks downwards, so `ws`'s manifest places `app`; `app`
+    # finds `ws` enclosing it.
+    write_manifest(a, {"app": "repo-b"})
+    commit_all(a)
+    commit_all(b)
+    assert rows(a)["app"]["present"] is True
+    alone = tmp_path / "elsewhere" / "repo-b"
+    alone.parent.mkdir()
+    subprocess.run(["git", "clone", "-q", str(b), str(alone)], check=True,
+                   capture_output=True)
+    ran, lines = findings(alone)
+    assert ran.code == 0, ran
+    [finding] = unresolved(lines)
+    assert "'ws'" in finding, lines
+    assert [p.id for p in FsProjectRegistry.open(alone).sources("config")] == ["app"]
+    assert tcw(alone, "work", "list").code == 0
