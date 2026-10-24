@@ -179,6 +179,12 @@ class FakeJira:
         self._drop_comment: str | None = None      # "before" or "after"
         self._down_after_comment = False
         self.site_missing = False
+        # TCW-114 plan Step 12: a later edit that fails, a hook run before
+        # each request, and tickets nobody can see.
+        self._fail_edit: int | None = None
+        self._unreachable_after_failed_edit = False
+        self._before_request = None
+        self.hidden: set[str] = set()
         self.add_project("TCW")
 
     # -- setup -------------------------------------------------------------------
@@ -239,6 +245,23 @@ class FakeJira:
         """The next comment posted on its own drops before Jira adds it."""
         self._drop_comment = "before"
 
+    def fail_edit(self, n: int, *, then_unreachable: bool = False) -> None:
+        """The `n`-th `PUT /issue/<key>` from now answers 500 and changes
+        nothing; with `then_unreachable`, its connection drops instead and
+        every later request fails, as `drop_after_next_write` leaves it."""
+        self._fail_edit = n
+        self._unreachable_after_failed_edit = then_unreachable
+
+    def before_request(self, callback) -> None:
+        """`callback(method, path)` runs before each request is answered, so
+        a test can change a ticket between two requests of one command."""
+        self._before_request = callback
+
+    def hide(self, key: str) -> None:
+        """`key` is left out of searches and is 404 to a read, as a deleted
+        ticket or one this account cannot see is."""
+        self.hidden.add(key)
+
     def unreachable(self) -> None:
         self.down = jira.TrackerUnavailable(f"could not reach the tracker at {self.site}")
 
@@ -267,6 +290,8 @@ class FakeJira:
 
     def answer(self, client, method: str, path: str, body: Any):
         self.log.append((method, path, body))
+        if self._before_request is not None:
+            self._before_request(method, path)
         if self.down is not None:
             raise self.down
         if self.site_missing:
@@ -286,6 +311,15 @@ class FakeJira:
             self._drop_before_write = False
             raise jira.TrackerUnavailable(
                 f"could not reach the tracker at {self.site} (connection reset)")
+        if method == "PUT" and re.fullmatch(r"/rest/api/3/issue/[^/]+", route) \
+                and self._fail_edit is not None:
+            self._fail_edit -= 1
+            if self._fail_edit == 0:
+                self._fail_edit = None
+                if self._unreachable_after_failed_edit:
+                    self.unreachable()
+                    raise self.down
+                raise self._error(500, route, "the edit failed")
         payload = self._route(me, method, route, query, body)
         if comment and self._drop_comment == "after":
             self._drop_comment = None
@@ -381,7 +415,7 @@ class FakeJira:
 
     def _find(self, key: str, route: str) -> Ticket:
         ticket = self.tickets.get(urllib.parse.unquote(key))
-        if ticket is None:
+        if ticket is None or ticket.key in self.hidden:
             raise self._error(404, route, "Issue does not exist or you do not have "
                                           "permission to see it.")
         return ticket
@@ -465,9 +499,9 @@ class FakeJira:
                 named = [k.strip().strip('"') for k in keys.group(1).split(",")]
                 if any(k not in self.tickets for k in named):
                     raise self._error(400, route, "An issue with key does not exist")
-            visible = [t for t in self.tickets.values()
-                       if not self.search_lag or t.written is None
-                       or t.written <= len(self.log) - self.search_lag - 1]
+            visible = [t for t in self.tickets.values() if t.key not in self.hidden
+                       and (not self.search_lag or t.written is None
+                       or t.written <= len(self.log) - self.search_lag - 1)]
             found = fake_jql.select(query, visible, self._value,
                                     ignore_label_case=self.ignore_label_case)
         except fake_jql.JqlError as error:
