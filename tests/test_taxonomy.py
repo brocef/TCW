@@ -668,7 +668,7 @@ def test_cli_list_never_splices_an_inherited_tree_into_the_local_one(tmp_path, m
     write_term(shared, "Argument/nested", name="Nested")
     write_term(cons, "argument-local", name="Argument Local")
     monkeypatch.chdir(cons)
-    assert main(["taxonomy", "list"]) == 0
+    assert main(["taxonomy", "list", "--scope", "up"]) == 0
     assert capsys.readouterr().out == (
         "consumer.taxonomy/argument-local\n"
         "shared.taxonomy/Argument\n"

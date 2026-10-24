@@ -286,9 +286,9 @@ def test_the_override_variable_redirects_an_upstream_from_the_cli(tmp_path):
                   {"parents": [{"id": "core", "inherit": ["taxonomy"]}]},
                   {"core": "../core"})
     env = {"TCW_PROJECT_CORE": str(tmp_path / "other-core")}
-    assert _tcw(app, "taxonomy", "show", "core.taxonomy/premise", env=env).returncode == 0
-    assert _tcw(app, "taxonomy", "show", "core.taxonomy/argument", env=env).returncode != 0
-    listed = _tcw(app, "taxonomy", "list", env=env).stdout
+    assert _tcw(app, "taxonomy", "show", "core.taxonomy/premise", "--scope", "up", env=env).returncode == 0
+    assert _tcw(app, "taxonomy", "show", "core.taxonomy/argument", "--scope", "up", env=env).returncode != 0
+    listed = _tcw(app, "taxonomy", "list", "--scope", "up", env=env).stdout
     assert "premise" in listed and "argument" not in listed, listed
 
 
@@ -482,7 +482,7 @@ def test_an_absent_upstream_is_a_warning_and_a_listing_says_unreachable(tmp_path
     out = _tcw(app, "validate")
     assert out.returncode == 0, out.stdout + out.stderr
     assert "core" in out.stdout + out.stderr, out.stdout
-    listed = _tcw(app, "taxonomy", "list")
+    listed = _tcw(app, "taxonomy", "list", "--scope", "up")
     assert listed.returncode == 7
     # TCW-108 Design 6.3: a parent passing the axis, not on this machine.
     assert "from project 'core', which is not on this machine" in listed.stderr, \

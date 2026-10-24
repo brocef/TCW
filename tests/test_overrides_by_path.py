@@ -429,7 +429,7 @@ def test_ac10_show_uses_the_later_unrelated_project_whole(tcw, tmp_path):
     `dd.capabilities/X`, no `Priority` field (`cc`'s is not mixed in), and
     `overrides` `null`; it exits 0, with no ambiguity error (Design 3.6)."""
     *_, ee = ac10_family(tmp_path)
-    ran = tcw(["capabilities", "show", "X", "--json"], ee)
+    ran = tcw(["capabilities", "show", "X", "--json", "--scope", "up"], ee)
     assert ran.code == 0, ran.err
     record = json.loads(ran.out)["capability"]
     assert record["name"] == "D"
@@ -442,7 +442,7 @@ def test_ac10_list_names_the_path_once(tcw, tmp_path):
     """AC 10, sentence 4, the listing: `tcw capabilities list` in `ee` lists
     `dd.capabilities/X` once and never `cc.capabilities/X`."""
     *_, ee = ac10_family(tmp_path)
-    ran = tcw(["capabilities", "list"], ee)
+    ran = tcw(["capabilities", "list", "--scope", "up"], ee)
     assert ran.code == 0, ran.err
     lines = ran.out.splitlines()
     assert lines == ["dd.capabilities/X"]
@@ -456,7 +456,7 @@ def test_ac10_terms_at_one_path_show_the_later_projects_term(tcw, tmp_path):
     record = show(tcw, ee, "taxonomy", "t")
     assert record["full-id"] == "dd.taxonomy/t"
     assert record["name"] == "D"
-    listed = tcw(["taxonomy", "list"], ee)
+    listed = tcw(["taxonomy", "list", "--scope", "up"], ee)
     assert listed.code == 0, listed.err
     assert listed.out.splitlines() == ["dd.taxonomy/t"]
 
@@ -506,7 +506,7 @@ def test_ac10_list_prints_the_same_warning_on_standard_error(tcw, tmp_path):
     validated = tcw(["validate"], ee)
     message = next(w for w in warnings(validated) if "capabilities X" in w) \
         .split(": ", 2)[2]
-    ran = tcw(["capabilities", "list"], ee)
+    ran = tcw(["capabilities", "list", "--scope", "up"], ee)
     assert ran.code == 0, ran.err
     assert f"warning: {message}" in ran.err.splitlines()
     assert ran.out.splitlines() == ["dd.capabilities/X"]
@@ -1072,7 +1072,7 @@ def test_ac28_show_has_no_id(tcw, tmp_path):
     for target in ("cli/x", "cli/y", "cli/z"):
         record = show(tcw, app, "capabilities", target)
         assert "id" not in record and "id" not in record["fields"], record
-        text = tcw(["capabilities", "show", target], app)
+        text = tcw(["capabilities", "show", target, "--scope", "up"], app)
         assert text.code == 0, text.err
         assert not [line for line in text.out.splitlines() if line.startswith("id:")]
 

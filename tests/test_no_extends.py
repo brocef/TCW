@@ -109,7 +109,7 @@ def test_ac15_the_key_in_a_parents_file_is_ignored(tmp_path, tcw, axis):
         (core / APP_CONFIG).read_text() + f"{axis}:\n  extends:\n  - elsewhere\n")
     app = project(tmp_path, "app")
     inherits(app, core)
-    assert listed(tcw(app, "taxonomy", "list")) == [INVOICE]
+    assert listed(tcw(app, "taxonomy", "list", "--scope", "up")) == [INVOICE]
 
 
 @pytest.mark.parametrize("name", ["TCW_TAXONOMY_EXTENDS__APP",

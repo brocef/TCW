@@ -403,7 +403,7 @@ def test_ac39_list_leaves_the_unreadable_object_out_and_exits_1(newer, tcw):
     """AC 39, first sentence: `tcw capabilities list` in `app` exits 1, lists
     `core.capabilities/cli/w` and not `cli/x` in any form, and prints a
     message naming `core`'s `cli/x/tcw-capability.yaml` on standard error."""
-    ran = tcw(newer, "capabilities", "list")
+    ran = tcw(newer, "capabilities", "list", "--scope", "up")
     assert ran.code == 1, ran
     assert ran.out.splitlines() == ["core.capabilities/cli/w"], ran
     assert "cli/x" not in ran.out

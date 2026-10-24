@@ -522,12 +522,12 @@ class TestCLISmoke:
         monkeypatch.chdir(parent)
         assert main(["taxonomy", "add", "Platform"]) == 0
         # List from parent — should see local
-        assert main(["taxonomy", "list"]) == 0
+        assert main(["taxonomy", "list", "--scope", "up"]) == 0
         parent_out = capsys.readouterr().out
 
         monkeypatch.chdir(left)
         # List from left — should see the inherited term (slug + origin flag)
-        assert main(["taxonomy", "list"]) == 0
+        assert main(["taxonomy", "list", "--scope", "up"]) == 0
         left_out = capsys.readouterr().out
         assert "parent.taxonomy/platform" in left_out.split()
         assert "parent.taxonomy/platform" in parent_out

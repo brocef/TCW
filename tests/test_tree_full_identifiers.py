@@ -47,9 +47,9 @@ def demo(tmp_path) -> Path:
 
 
 def test_ac4_list_prints_full_identifiers_own_entries_first(tcw, demo):
-    assert tcw(["taxonomy", "list"], demo).out.splitlines() == [
+    assert tcw(["taxonomy", "list", "--scope", "up"], demo).out.splitlines() == [
         fid("demo", "taxonomy", "term"), fid("core", "taxonomy", "shared")]
-    assert tcw(["capabilities", "list"], demo).out.splitlines() == [
+    assert tcw(["capabilities", "list", "--scope", "up"], demo).out.splitlines() == [
         fid("demo", "capabilities", "cli/x"), fid("core", "capabilities", "cli/y")]
 
 

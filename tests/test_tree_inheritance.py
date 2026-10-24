@@ -146,8 +146,8 @@ def test_ac1_app_lists_both_of_cores_objects_through_its_parent_link(tmp_path, t
     core = core_with_invoice_and_x(tmp_path)
     app = project(tmp_path, "app")
     inherits(app, core)
-    assert listed(tcw(app, "taxonomy", "list")) == [INVOICE]
-    assert listed(tcw(app, "capabilities", "list")) == [CORE_X]
+    assert listed(tcw(app, "taxonomy", "list", "--scope", "up")) == [INVOICE]
+    assert listed(tcw(app, "capabilities", "list", "--scope", "up")) == [CORE_X]
 
 
 def test_ac1_show_of_an_inherited_term_names_core_as_owner_and_no_override(tmp_path, tcw):
@@ -156,7 +156,7 @@ def test_ac1_show_of_an_inherited_term_names_core_as_owner_and_no_override(tmp_p
     core = core_with_invoice_and_x(tmp_path)
     app = project(tmp_path, "app")
     inherits(app, core)
-    shown = record(tcw(app, "taxonomy", "show", "invoice", "--json"), "term")
+    shown = record(tcw(app, "taxonomy", "show", "invoice", "--json", "--scope", "up"), "term")
     assert shown["full-id"] == INVOICE
     assert shown["owner"] == "core"
     assert "overrides" in shown and shown["overrides"] is None
@@ -180,8 +180,8 @@ def test_ac2_each_inherit_form_passes_only_the_axes_it_names(
     core = core_with_invoice_and_x(tmp_path)
     app = project(tmp_path, "app")
     inherits(app, core, inherit=inherit)
-    assert listed(tcw(app, "taxonomy", "list")) == terms
-    assert listed(tcw(app, "capabilities", "list")) == capabilities
+    assert listed(tcw(app, "taxonomy", "list", "--scope", "up")) == terms
+    assert listed(tcw(app, "capabilities", "list", "--scope", "up")) == capabilities
 
 
 # -- AC 3: several levels ----------------------------------------------------------------
@@ -201,16 +201,16 @@ def test_ac3_app_inherits_through_two_levels(tmp_path, tcw):
     """AC 3, first sentences: `lib` inherits from `core`, `app` from `lib`;
     `app` lists `core.taxonomy/invoice` and `lib.taxonomy/money`."""
     app = _three_levels(tmp_path)
-    assert set(listed(tcw(app, "taxonomy", "list"))) == {INVOICE, "lib.taxonomy/money"}
-    assert listed(tcw(app, "capabilities", "list")) == [CORE_X]
+    assert set(listed(tcw(app, "taxonomy", "list", "--scope", "up"))) == {INVOICE, "lib.taxonomy/money"}
+    assert listed(tcw(app, "capabilities", "list", "--scope", "up")) == [CORE_X]
 
 
 def test_ac3_a_middle_link_passing_only_config_stops_cores_terms(tmp_path, tcw):
     """AC 3, last sentence: with `lib`'s link to `core` set to `inherit:
     [config]`, `app` does not list `core.taxonomy/invoice`."""
     app = _three_levels(tmp_path, lib_inherits=["config"])
-    assert listed(tcw(app, "taxonomy", "list")) == ["lib.taxonomy/money"]
-    assert listed(tcw(app, "capabilities", "list")) == []
+    assert listed(tcw(app, "taxonomy", "list", "--scope", "up")) == ["lib.taxonomy/money"]
+    assert listed(tcw(app, "capabilities", "list", "--scope", "up")) == []
 
 
 # -- AC 4: a parent with no store --------------------------------------------------------
@@ -224,8 +224,8 @@ def test_ac4_a_parent_with_no_store_contributes_nothing(tmp_path, tcw):
     core = core_with_invoice_and_x(tmp_path)
     app = project(tmp_path, "app")
     inherits(app, ws, core)
-    assert listed(tcw(app, "taxonomy", "list")) == [INVOICE]
-    assert listed(tcw(app, "capabilities", "list")) == [CORE_X]
+    assert listed(tcw(app, "taxonomy", "list", "--scope", "up")) == [INVOICE]
+    assert listed(tcw(app, "capabilities", "list", "--scope", "up")) == [CORE_X]
 
 
 # -- AC 17: a view-only parent not on this machine ---------------------------------------
@@ -244,8 +244,8 @@ def test_ac17_a_parent_passing_nothing_need_not_be_on_this_machine(tmp_path, tcw
         entries["ws"] = "../ws"                      # no folder `ws` is made
     write_manifest(app, entries)
     assert not (tmp_path / "ws").exists()
-    assert listed(tcw(app, "taxonomy", "list")) == [INVOICE]
-    assert listed(tcw(app, "capabilities", "list")) == [CORE_X]
+    assert listed(tcw(app, "taxonomy", "list", "--scope", "up")) == [INVOICE]
+    assert listed(tcw(app, "capabilities", "list", "--scope", "up")) == [CORE_X]
 
 
 # -- AC 18: a parent whose store cannot be read -------------------------------------------
@@ -278,7 +278,7 @@ def test_ac18_list_exits_7_when_a_parents_store_cannot_be_read(tmp_path, tcw):
     """AC 18, the `tcw taxonomy list` sentence: it exits 7 with a message
     containing `whose taxonomy store cannot be read here`."""
     app = core_with_unprovisioned_taxonomy(tmp_path)
-    ran = tcw(app, "taxonomy", "list")
+    ran = tcw(app, "taxonomy", "list", "--scope", "up")
     assert ran.code == 7, ran
     assert "whose taxonomy store cannot be read here" in ran.err, ran
     assert ran.out == ""
@@ -313,4 +313,4 @@ def test_ac19_a_source_store_at_its_own_configured_path(tmp_path, tcw):
     app = project(tmp_path, "app")
     inherits(app, core)
     assert (app / ".git").is_dir() and (core / ".git").is_dir()
-    assert listed(tcw(app, "capabilities", "list")) == [CORE_X]
+    assert listed(tcw(app, "capabilities", "list", "--scope", "up")) == [CORE_X]

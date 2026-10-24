@@ -506,7 +506,7 @@ def test_ac19_an_inherited_parent_not_here_stops_with_exit_7(tmp_path):
     write_cap(app, "cli/x", Status="Supported")
     (app / "docs" / "capabilities" / "cli" / "x" / "description.md").write_text(
         "See [this](tcw://app.capabilities/cli).\n")
-    listed = tcw(app, "taxonomy", "list")
+    listed = tcw(app, "taxonomy", "list", "--scope", "up")
     assert listed.code == 7, listed
     assert "'app' inherits its taxonomy from project 'core', which is not on this " \
         "machine:" in listed.err
@@ -558,7 +558,7 @@ def test_ac19_when_what_lies_above_is_unknown(tmp_path, state):
     app = tree(tmp_path, "app", parents=["lib"])
     if state == "unreadable":
         proj(tmp_path / "lib", "lib", parents="top")
-    listed = tcw(app, "taxonomy", "list")
+    listed = tcw(app, "taxonomy", "list", "--scope", "up")
     assert listed.code == 7, listed
     lead = ("from project 'lib', which is not on this machine:" if state == "missing"
             else "through project 'lib', whose parents could not be read:")
