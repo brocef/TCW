@@ -368,3 +368,15 @@ and `references/commands.md`; `skills/configure/references/work.md` and
   check and spot reads; the per-claim "checked on v4" lines their reports
   would have given are not in this round.
 - No paid eval run (spec 9.6 (c)). No cold read of the migration guide (qa).
+
+## Added by the dispatching session
+
+Rebased onto `v4` (TCW-116 completed after its review round 2, and TCW-118's
+plan) with no conflict. TCW-116's round 2 added a report, A14, for an
+absolute path a 3.x shared file held for everyone; the migration guide's
+"Some of the reports need a word more" now says what it means and what every
+other person must do, and its lead-in no longer says "Two". The document
+tests (`test_docs_describe_4_0.py`, `test_migration_guide_4_0.py`,
+`test_doc_vocabulary.py`, `test_documented_cli_surface.py`,
+`test_cli_guide.py`) give `915 passed`. The full suite on the rebased branch
+is recorded below once it has run.

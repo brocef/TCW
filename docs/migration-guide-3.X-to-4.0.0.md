@@ -133,7 +133,7 @@ In a dry run each line starts with `would `. Then come up to three lists:
 Last comes a count of the changes, and, when the run is in a family, the
 related projects still in 3.x form.
 
-Two of the reports need a word more:
+Some of the reports need a word more:
 
 - **A5** names `not_tags` in your user-wide file
   (`~/.config/tcw/config.yaml`, or `$XDG_CONFIG_HOME/tcw/config.yaml` where that
@@ -146,6 +146,12 @@ Two of the reports need a word more:
   converted project that the project already had in 3.x, such as a capability
   with no `Status`. They are not caused by the migration. A dry run cannot list
   them.
+- **A14** names an absolute or `~` path that your 3.x shared
+  `tcw-config.yaml` held for everyone. TCW 4.0 allows such a path only in the
+  personal file, so `tcw migrate` moves it to your
+  `.tcw/tcw-manifest.local.yaml`, which is not shared. Everyone else who works
+  in the project must add their own `.tcw/tcw-manifest.local.yaml` entry for
+  the project it names; their own `tcw migrate` cannot do it for them.
 - **B10** is a reference 3.x gave no single owner, including a
   `capabilities.yaml` entry 3.x could not route: one in a project that keeps no
   capabilities ledger, naming no child project. Fix the entry by hand.
