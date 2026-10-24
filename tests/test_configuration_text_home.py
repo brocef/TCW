@@ -47,18 +47,14 @@ KEY_PATHS = (
                                      "timeout", "priorities")),
     "work.jira.credentials.email-env", "work.jira.credentials.token-env",
     *(f"work.jira.fields.{key}" for key in ("project", "item", "effort", "complexity")),
-    *(f"projects.{relation}.*.{key}" for relation in ("parent", "children", "upstream")
-      for key in ("path", "repository")),
-    *(f"projects.{relation}.*.jira.{key}" for relation in ("parent", "children", "upstream")
-      for key in ("site", "project", "inbox-status", "credentials.email-env",
-                  "credentials.token-env", "fields.project")),
+    "parents", "children",
 )
 
 LABELS = ("Shared", "Overridable", "Personal only")
 
 
 def test_the_key_path_list_has_no_repeats():
-    assert len(KEY_PATHS) == len(set(KEY_PATHS)) == 55
+    assert len(KEY_PATHS) == len(set(KEY_PATHS)) == 33
 
 
 # ── criterion 6: the router and its references ───────────────────────────────

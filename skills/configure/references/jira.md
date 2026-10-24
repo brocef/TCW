@@ -8,11 +8,17 @@ a first Jira setup, and fixing their Jira workflow with them, is the `setup`
 skill's Jira reference. What each key does once items move is in the Jira
 guide, `docs/guide/jira.md`, in the TCW repository.
 
-Each project states its own `work.jira` block. Nothing is inherited from a
-parent or any other connected project. The one place this project reads
-another project's Jira settings is the `jira` block of a connected project's
-entry, used only to create a ticket in that project; it is described in
-`projects.md`.
+A project may take its `work.jira` settings from a parent whose link passes
+`config` (`projects.md`). They merge key by key: a key the project sets in its
+own `.tcw/tcw-config.yaml` wins, and every key it leaves out comes from its
+parents, so a family can keep one site, one pair of credential names and one
+pair of field names in a shared parent while each child sets only `project`.
+Two things are always the project's own: `work.backend: jira`, which each
+Jira-mode project writes itself, and the stages with their statuses. When a
+parent that could pass `work.jira` is not on this machine, a Jira-mode
+project's `tcw work` commands that read or change items stop with exit code 7,
+naming the setting and the parent. The guide [Using TCW with Jira](../../../docs/guide/jira.md)
+says more.
 
 ```yaml
 work:
@@ -43,7 +49,8 @@ work:
 ```
 
 `site`, `project`, `credentials` and `fields` (with its `project` and `item`)
-are required; every other key has a default. An unknown key is reported. With
+are required, each set in this project's file or passed down by a parent;
+every other key has a default. An unknown key is reported. With
 any problem in the block, every `tcw work` command refuses until it is fixed,
 and `tcw validate` names each problem by its key.
 
@@ -119,7 +126,9 @@ Overridable: personal configuration may set it.
 
 The name of the environment variable that holds the Jira account's email
 address. One person may name a different variable in their personal
-configuration; outside a Jira-mode project, a personal value is ignored.
+configuration, or with an override variable such as
+`TCW_WORK_JIRA_CREDENTIALS_EMAIL_ENV__MY_PROJ` for project `my-proj`
+(`personal.md`); outside a Jira-mode project, a personal value is set aside.
 
 ### `work.jira.credentials.token-env`
 
@@ -149,7 +158,8 @@ project ID a ticket belongs to. Required.
 
 Shared: personal configuration cannot set it.
 
-The name of a text field (for example `TCW Item`) that holds the item's slug.
+The name of a text field (for example `TCW Item`) that holds the item's full
+identifier, such as `shop.work/SHOP-42-refund-a-payment`.
 A ticket with this field empty is not an item yet; adopting it fills the
 field. Required.
 

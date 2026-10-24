@@ -1,6 +1,6 @@
 # Configure the work axis
 
-Everything under `work:` in `tcw-config.yaml` is described here, except two
+Everything under `work:` in `.tcw/tcw-config.yaml` is described here, except two
 keys that have their own documents: the Jira connection, `work.jira`, is in
 `jira.md`, and documentation entries, `work.documentation`, are in
 `docs-sync.md`.
@@ -8,11 +8,11 @@ keys that have their own documents: the Jira connection, `work.jira`, is in
 Each key below has its own heading, and the first line under the heading says
 who may set it:
 
-- **Shared** keys are the team's, set in `tcw-config.yaml` only.
+- **Shared** keys are the team's, set in `.tcw/tcw-config.yaml` only.
 - **Overridable** keys may also be set by one person in their personal
   configuration, a file that is never shared (see `personal.md`).
 
-`tcw-config.yaml` is a file in the user's own repository, and TCW trusts it
+`.tcw/tcw-config.yaml` is a file in the user's own repository, and TCW trusts it
 exactly as much as any other file there: the commands it names run with the
 user's permissions. This is not a sandbox.
 
@@ -20,7 +20,43 @@ After any change here, run `tcw validate`. It reports every key it does not
 know, every value of the wrong shape, and which file each problem came from.
 `tcw work lifecycle` then prints the stages and what is bound to each, and
 `tcw project config --origin` prints the configuration every command actually
-uses, with the layer each value came from.
+uses, with the project and the layer each value came from.
+
+## The format line and key names
+
+### `tcw-version`
+
+Every `tcw-*.yaml` file TCW reads starts with a line naming the version of
+TCW whose format it follows, written by `tcw project new` and by
+`tcw migrate`:
+
+```yaml
+tcw-version: 4.0.0
+id: my-app
+```
+
+It is not a setting. A configuration file without it stops every command:
+`has no tcw-version: add 'tcw-version: 4.0.0' as its first line, or, for a TCW 3.x file, run 'tcw migrate' in this project`.
+The guide [Configuration](../../../docs/guide/configuration.md) in the TCW
+repository says how the line is read. The user-wide file is not a
+`tcw-*.yaml` file and needs no such line.
+
+Every key follows one naming rule: lower-case letters and digits joined by
+single hyphens. A key that breaks it is an error naming the file and the key,
+so a binding's condition is written `not-tags`. A 3.x file writes it
+`not_tags`, which 4.0 refuses with `write 'not-tags'`; `tcw migrate` renames
+it.
+
+## What a parent passes down
+
+A parent link that passes `config` (`projects.md`) passes exactly two keys of
+this document's: `work.tags`, and `work.jira` with every key under it, which a
+project takes only when its own `work.backend` is `jira`. Every other key
+here is each project's own: `work.backend`, the stages and their bindings,
+hooks, procedures, documentation entries and the store's location never
+cross a parent link. A value the project sets itself wins over one a parent
+passes. The guide [Configuration](../../../docs/guide/configuration.md) gives
+the merge rules and what happens when that parent is not on this machine.
 
 ## Where the work store lives
 
@@ -28,11 +64,12 @@ uses, with the layer each value came from.
 
 Shared: personal configuration cannot set it.
 
-The folder holding the work items, by default `docs/work` inside the project.
-A relative path is read from the project's own folder; an absolute path and a
-symbolic link are both accepted. The folder may be inside another repository.
-Changing the path moves nothing: items already in the old folder stay there
-and TCW does not read them. `stores.md` has the rules shared by all three stores.
+The folder holding the work items, by default `docs/work` inside the project:
+a path relative to the project's folder, or a `.path` address such as
+`tcw://planning.path/docs/work/my-project`. An absolute path, or one starting
+with `~`, is refused. The folder may be inside another repository. Changing
+the path moves nothing: items already in the old folder stay there and TCW
+does not read them. `stores.md` has the rules shared by all three stores.
 
 ```yaml
 work:
@@ -78,11 +115,25 @@ Shared: personal configuration cannot set it.
 The tags this project has registered, as a list. An item may carry only
 registered tags. Tags are compared in lower case, so `CLI` and `cli` are the
 same tag. Add and remove them with `tcw work tags add <tag>` and
-`tcw work tags rm <tag>`, which change only this list in `tcw-config.yaml`.
+`tcw work tags rm <tag>`, which change only this list in
+`.tcw/tcw-config.yaml`.
 
 ```yaml
 work:
     tags: [auth, billing, docs]
+```
+
+`work.tags` is one of the two keys a parent passes down. A list the project
+writes replaces its parents' tags, unless it holds the entry
+`- inherit: true`, which stands for the tags the parents passed, at that
+position; `work.tags: null` takes none of them. `tcw work tags add` in a
+child that has no `work.tags` of its own writes that entry first:
+
+```yaml
+work:
+    tags:
+        - inherit: true
+        - mobile
 ```
 
 ## Stages
@@ -139,7 +190,7 @@ reads before it works the stage. It is a list of text bindings (see "Binding
 kinds" below), composed in order and joined by a blank line.
 
 TCW's own text for the stage is the list's starting value. A list written in
-`tcw-config.yaml` **replaces** it, unless the list holds an `inherit: true`
+`.tcw/tcw-config.yaml` **replaces** it, unless the list holds an `inherit: true`
 entry, which stands for TCW's own text at that position. Most projects want
 `inherit: true`:
 
@@ -177,13 +228,18 @@ Every entry of a `prompt`, `pre`, `post` or procedure list is a **binding**: a
 mapping that names exactly one kind, plus an optional `when:`. A bare string
 is refused, never guessed at.
 
-| Kind       | Its value                                                                                               | `prompt` and procedures | `pre` | `post`                   |
-| ---------- | ------------------------------------------------------------------------------------------------------- | ----------------------- | ----- | ------------------------ |
-| `blob`     | text, used as written; an empty `blob` says nothing                                                     | yes                     | no    | no                       |
-| `file`     | a path to a text file, read from the folder of the file that declares it, and never outside that folder | yes                     | no    | no                       |
-| `generate` | a shell command whose output is the text                                                                | yes                     | no    | no                       |
-| `skill`    | a skill name (`plugin:skill` is allowed); prints "Invoke the … skill."                                  | yes                     | no    | yes: reported, never run |
-| `command`  | a shell command                                                                                         | no: use `generate`      | yes   | yes                      |
+| Kind   | Its value                                                                                               | `prompt` and procedures | `pre` | `post` |
+| ------ | ------------------------------------------------------------------------------------------------------- | ----------------------- | ----- | ------ |
+| `blob` | text, used as written; an empty `blob` says nothing                                                     | yes                     | no    | no     |
+| `file` | a path to a text file, read from the folder of the file that declares it, and never outside that folder | yes                     | no    | no     |
+
+For `.tcw/tcw-config.yaml` and `.tcw/tcw-config.local.yaml`, "the folder of
+the file that declares it" is the project's folder, not `.tcw/`, so
+`file: docs/lifecycle/planning-rules.md` names a file from the project's
+root.
+| `generate` | a shell command whose output is the text | yes | no | no |
+| `skill` | a skill name (`plugin:skill` is allowed); prints "Invoke the … skill." | yes | no | yes: reported, never run |
+| `command` | a shell command | no: use `generate` | yes | yes |
 
 A `skill` is refused in a `pre` list: TCW cannot run a skill, so a check that
 is only reported would always pass. A `skill:` value is checked for its shape
@@ -198,18 +254,18 @@ A binding with `when:` applies only to some items:
 
 ```yaml
 - file: docs/lifecycle/spec-bug.md
-  when: { tags: [bug], not_tags: [docs] }
+  when: { tags: [bug], not-tags: [docs] }
 ```
 
 It applies to an item that carries any of the `tags` and none of the
-`not_tags`. Both are lists, and tags are read in lower case. One string
+`not-tags`. Both are lists, and tags are read in lower case. One string
 holding several tags (`"cli,docs"`) is reported, since it could never match.
 When no item is named, a `when:` that lists `tags` never matches.
 
 ### Keeping the layer below: `inherit: true`
 
 A `prompt`, `pre` or `post` list, and a procedure's list, starts from what
-the layer below set: TCW's own text, for `tcw-config.yaml`, and the team's
+the layer below set: TCW's own text, for `.tcw/tcw-config.yaml`, and the team's
 list, for a personal file. A list that is written replaces it. The entry
 `- inherit: true` keeps it, at that position. A list holds at most one such
 entry, the entry has no other key, and it is accepted only in those lists.
@@ -240,7 +296,7 @@ still refuse a move after they have run, so the next attempt runs them again.
 
 Adopting a Jira ticket with `tcw work tickets adopt` runs the `request`
 stage's `post` hooks, and no `pre` hooks. Creating an item with
-`tcw work new`, in this project or in another, runs no hooks.
+`tcw work new` runs no hooks.
 
 Each hook runs through the shell, from the project's root folder, with no
 input, and anything it prints goes to TCW's standard error. It gets these
@@ -248,14 +304,19 @@ environment variables:
 
 | Variable           | Value                                                                                      |
 | ------------------ | ------------------------------------------------------------------------------------------ |
-| `TCW_SLUG`         | the item's full slug, `project/folder`                                                     |
+| `TCW_SLUG`         | the item's full identifier, such as `my-app.work/2026-10-01-add-login`                     |
 | `TCW_STAGE`        | the stage the item is moving into                                                          |
 | `TCW_FROM_STAGE`   | the stage it is moving from (empty when it had none)                                       |
 | `TCW_ITEM_PATH`    | the item's folder                                                                          |
 | `TCW_PROJECT_ROOT` | the project's root folder                                                                  |
 | `TCW_CONFIG_DIR`   | the folder of the file that declared the hook, so a personal hook can reach its own script |
-| `TCW_FORCED`       | `1`, on a forced move only                                                                 |
-| `TCW_REASON`       | the `--reason` text, on a forced move only                                                 |
+
+`TCW_SLUG` keeps the name slug, a nickname for the full identifier. For a hook
+declared in `.tcw/tcw-config.yaml`, `.tcw/tcw-config.local.yaml` or an
+override variable, `TCW_CONFIG_DIR` is the project's folder; for one in the
+user-wide file, that file's folder.
+| `TCW_FORCED` | `1`, on a forced move only |
+| `TCW_REASON` | the `--reason` text, on a forced move only |
 
 A hook that runs longer than `work.hooks.timeout` is stopped and counts as
 failed.
@@ -277,9 +338,10 @@ becomes the text. It gets:
 
     ```json
     {
-        "schema": 1,
+        "schema": 2,
         "item": {
-            "slug": "my-app/2026-10-01-add-login",
+            "full-id": "my-app.work/2026-10-01-add-login",
+            "owner": "my-app",
             "title": "Add login",
             "...": "..."
         },
@@ -294,10 +356,12 @@ becomes the text. It gets:
     }
     ```
 
-    `item` is the item's properties (`slug`, `title`, `stage`, `created`,
-    `priority`, `effort`, `complexity`, `tags`, `assignee`, `parent`,
-    `blocked-by`, `blocks`, `children`, `path`, `untracked`), or `null` with no
-    item.
+    `item` is the item's record, as `tcw work show --json` prints it under `item`
+    (`full-id`, `owner`, `title`, `stage`, `created`, `priority`, `effort`,
+    `complexity`, `tags`, `assignee`, `parent`, `blocked-by`, `blocks`,
+    `children`, `path`, `untracked`), or `null` with no item. `full-id` is the
+    item's full identifier, and `owner` the ID of the project that owns it;
+    `parent`, `blocked-by`, `blocks` and `children` hold full identifiers too.
     `request` is the item's request, cut to 64 KiB, in which case
     `body_truncated` is `true`, or `null`.
 

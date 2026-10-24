@@ -44,6 +44,12 @@ GIT_ALLOWED = {
             "a fact: a linked worktree has no copy of the untracked personal file "
             "(TCW-75 spec, Design 6; TCW-72 spec, Risks)",
     },
+    "skills/configure/references/projects.md": {
+        "`<url>#<branch>`":
+            "the written shape of a manifest entry's `repository` value "
+            "(`tcw/store/manifest.py:42-58`), not an instruction to run git "
+            "(TCW-117 Design 5.4 (a))",
+    },
     "skills/configure/references/stores.md": {
         "opened from a linked worktree":
             "a fact: how a relative store path is read from a linked worktree "

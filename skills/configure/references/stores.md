@@ -28,20 +28,45 @@ work:
 The rules for every `<component>.path`:
 
 - The folder may be in another repository.
-- A relative path is read from the project's own folder. When the project is
+- It is one of two things: **a path relative to the project's folder**, such
+  as `../shared-docs/taxonomy`, or **a `.path` address**, a folder named
+  through a project's ID: `tcw://<id>.path/<folder>` is a folder inside that
+  project's folder, and `tcw://<id>.<component>.path/<folder>` a folder
+  inside that project's own store for that component. TCW finds the named
+  project the way it finds any related project (`projects.md`), so the
+  address keeps working where the folders are laid out differently.
+- **An absolute path, or one starting with `~`, is refused**, since every
+  machine reads `.tcw/tcw-config.yaml`. A folder that sits elsewhere on one
+  machine is placed by an entry in `.tcw/tcw-manifest.local.yaml` for the
+  project that holds it, and named here by a `.path` address:
+
+    ```text
+    tcw work path: .tcw/tcw-config.yaml: work.path: must be a path relative to the project, or a tcw:// .path address such as tcw://<project>.path/<folder>; a folder that sits elsewhere on this machine is placed by an entry in .tcw/tcw-manifest.local.yaml
+    ```
+
+- A symbolic link is followed. When the project is
   opened from a linked worktree (a second working folder of the same
-  repository), a relative path that points outside that folder is read from
-  the main checkout's copy of the project instead. Absolute paths and
-  symbolic links are accepted.
+  repository), a relative path that leads out of the repository is read from
+  the main checkout's copy of the project instead, and one that stays inside
+  the repository is read in the folder the project was opened from.
+- **Stores never nest or share a folder**, within one project or across
+  related projects, and their locations may not loop, such as `app`'s
+  `work.path` naming a folder in `core`'s work store while `core`'s names one
+  in `app`'s. `tcw validate` reports a nested or shared store as an error,
+  and every command that opens a store refuses a loop, naming it. The guide
+  [Related projects](../../../docs/guide/multi-repo.md) in the TCW repository
+  shows both messages.
 - A store path is about files only. The project's ID and its configuration
   stay with the project.
 - **Changing a path moves nothing.** Entries in the old folder stay there and
   TCW does not read them. Move them yourself, then change the path.
 
 `tcw project new` takes `--work-path <path>`, `--taxonomy-path <path>` and
-`--capabilities-path <path>`; each writes the key and creates the store
-there. Run without them, `tcw project new` uses the paths already in
-`tcw-config.yaml`.
+`--capabilities-path <path>`, each a relative path; each writes the key and
+creates the store there. A `.path` address is written into
+`.tcw/tcw-config.yaml` by hand once the project exists. Run without them in a
+project that already exists, `tcw project new` uses the paths already in
+`.tcw/tcw-config.yaml`.
 
 ### `taxonomy.path`
 
@@ -85,9 +110,13 @@ The block, the same for all three stores:
 - `checkout`: where to put the copy on this machine; by default a cache
   folder.
 
-`tcw project provision` makes the copy of every declared store and project that is
-missing, and never updates one that is already here. `tcw project provision --dry-run`
-prints what it would contact first. Keeping a copy up to date is the
+The block stays on the store: it is not a manifest entry, which says where a
+whole project is (`projects.md`). `tcw project provision --component <component>`
+makes the copy of that store when it is missing, and `tcw project provision`
+alone makes every missing store and project; neither updates one that is
+already here, and `--dry-run` prints what each would contact first. Until the
+copy is made, a command that needs the store stops with exit code 1 and names
+that command. Keeping a copy up to date is the
 project's own job: TCW never changes the copy once it exists. The
 configuration guide's
 [example](../../../docs/guide/configuration.md#example-keeping-git-in-step-with-each-stage-change-something-your-project-adds)

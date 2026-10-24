@@ -1,13 +1,24 @@
-# Connect projects, and inherit from them
+# Relate projects, and say where they are
 
-A **project** is a folder holding a `tcw-config.yaml`. Three things join one
-project to others: `projects` in `tcw-config.yaml` says which projects it is
-connected to, the environment variable `TCW_PROJECT_<ID>` says where one of
-them is on this machine, and `parents:` says whose taxonomy and capabilities
-it inherits. What an inherited term or capability looks like once it resolves is
-in the `taxonomy` and `capabilities` skills.
+A **project** is a folder holding `.tcw/tcw-config.yaml`. Two kinds of
+setting join a project to others, and they behave differently:
 
-Every key here is shared: personal configuration cannot set any of them.
+- **Relations**, in `.tcw/tcw-config.yaml`: `parents:` names the projects
+  this one builds on and takes things from, and `children:` names the
+  projects that build on it. Both name projects by ID only. They are what
+  every store keeps, whatever holds it, and they are the same on every
+  machine.
+- **Locations**, in the project's **manifests** (two files in `.tcw/` that
+  say where other projects are), or in the environment variable
+  `TCW_PROJECT_<ID>`. They are about folders on this machine only, and can
+  differ from one machine to the next. Listing a project in a manifest does
+  not relate it to this one.
+
+How TCW uses these, and the order in which it looks for a project's folder,
+are in the guide [Related projects](../../../docs/guide/multi-repo.md) in the
+TCW repository. This document gives each setting's exact shape. What an
+inherited taxonomy term or capability looks like once it resolves is in the
+`taxonomy` and `capabilities` skills.
 
 ## The project's ID
 
@@ -16,373 +27,201 @@ Every key here is shared: personal configuration cannot set any of them.
 Shared: personal configuration cannot set it.
 
 The project's ID: lower-case letters and digits joined by `-`, such as
-`my-app`. `tcw project new --id <id>` writes it once. Other projects and every item's
-full slug (`project/folder`) refer to the project by it, so it is not changed
-afterwards. Paths only say where a project is; the ID says which project it
-is.
+`my-app`. `tcw project new --id <id>` writes it once. Other projects, parent
+links, manifests and every object's **full identifier** (the name that says
+which project owns an object, such as `my-app.work/2026-10-01-add-login`)
+refer to the project by it, so it is not changed afterwards. A path only says
+where a project is; the ID says which project it is.
 
-## Connected projects: `projects`
+## Parent links
 
-```yaml
-id: planning
-projects:
-    children:
-        app: ../app
-        api:
-            path: ../api
-            repository:
-                url: https://example.com/acme/api
-                ref: main
-```
+### `parents`
+
+Shared: personal configuration cannot set it.
+
+The projects this one builds on, in order. Each entry is a project ID, or a
+mapping with `id` and `inherit`:
 
 ```yaml
+# app/.tcw/tcw-config.yaml
+tcw-version: 4.0.0
 id: app
-projects:
-    parent:
-        planning: ../planning
+parents:
+    - workspace
+    - id: core
+      inherit: [taxonomy, capabilities]
 ```
 
-- `projects` is a mapping with up to three keys: `parent`, `children` and
-  `upstream`. Any other key is reported by `tcw validate`.
-- Each maps a project ID to an entry. `parent` holds at most one entry;
-  `children` and `upstream` may hold any number.
-- An entry is either a path to the project's folder, relative to this
-  project, or a mapping with `path`, `repository` and `jira`, each optional,
-  described below.
-- A parent and its child each declare the other: the parent lists the child,
-  and the child names the parent. `tcw validate` reports a connection declared
-  on one side only, and a command that needs the connected projects refuses
-  until both sides agree.
-- `upstream` is the exception: a connection declared by one side only. See
-  below.
+`inherit` says what that parent passes down: `all` (the default when it is
+left out), `none`, or a list drawn from `taxonomy`, `capabilities` and
+`config`. `config` passes `work.tags` and `work.jira`, and never
+`work.backend`; the guide [Configuration](../../../docs/guide/configuration.md)
+says how those keys merge. A parent's own parents pass down too, through every
+level, without being listed here, as far as each link's `inherit` allows. A
+parent with `inherit: none` passes nothing and is still part of the project's
+family.
 
-`tcw project list` prints this project and every project connected to it,
-one ID per line; `--json` adds each one's relation, whether it is on this
-machine, and its path.
+- An entry may hold only `id` and `inherit`. A project listed twice, an
+  `inherit` value outside the ones above, and an unknown key are errors that
+  `tcw validate` names, such as
+  `parents[1].inherit: 'tags' is not one of taxonomy, capabilities, config`.
+- The order of the list sets the project's **load order**, the order in
+  which TCW reads its ancestors where two of them have something at the same
+  place; a parent listed later wins over one listed earlier, and the project
+  itself wins over all of them. `tcw project info` prints the load order. The
+  guide [Related projects](../../../docs/guide/multi-repo.md) gives its rules,
+  the warning when no order fits every project, and the error for a loop.
+- A parent never has to name its children. No command changes the list:
+  edit the file, then run `tcw validate`.
 
-### `projects.parent.*.path`
+To change one inherited taxonomy entry or capability, the project puts its own
+entry at the same path, holding only what it changes; the `taxonomy` and
+`capabilities` skills say how.
 
-Shared: personal configuration cannot set it.
+### `children`
 
-Where the parent project is, relative to this project. A bare string entry
-is the same as an entry with only `path`.
+Shared: set it in `.tcw/tcw-config.yaml`. The one exception is that the
+project's own personal file, `.tcw/tcw-config.local.yaml`, may also list
+children.
 
-### `projects.parent.*.repository`
-
-Shared: personal configuration cannot set it.
-
-Where to get the parent project when it is not at its `path`: the same block
-a store takes (`url`, and optionally `ref`, `path` and `checkout`; see
-`stores.md`). A project at its `path` always wins; `tcw project provision` makes the
-copy when it is not there.
-
-### `projects.children.*.path`
-
-Shared: personal configuration cannot set it.
-
-Where a child project is, relative to this project, as for the parent.
-
-### `projects.children.*.repository`
-
-Shared: personal configuration cannot set it.
-
-Where to get a child project that is not at its `path`, as for the parent.
-
-### `projects.upstream.*.path`
-
-Shared: personal configuration cannot set it.
-
-Where an upstream project is, relative to this project, as for the parent.
-
-### `projects.upstream.*.repository`
-
-Shared: personal configuration cannot set it.
-
-Where to get an upstream project that is not at its `path`, as for the
-parent.
-
-## Upstream projects
+The projects that name this one as a parent, by ID, so that commands run here
+can reach them, for example with `--scope down`. The two lists are combined,
+and a child listed in both files is accepted:
 
 ```yaml
-id: private-app
-projects:
-    upstream:
-        shared-core:
-            path: ../shared-core
-            repository:
-                url: https://example.com/acme/shared-core
+# workspace/.tcw/tcw-config.yaml
+tcw-version: 4.0.0
+id: workspace
+children:
+    - app
+    - core
 ```
 
-An **upstream** project is one this project reads without the upstream naming
-it back: its work items by full slug, such as
-`tcw work show shared-core/<folder>`. Use it for a shared library, or for a
-public project read by a private one that must not be named in the public
-project's files.
+```yaml
+# workspace/.tcw/tcw-config.local.yaml
+tcw-version: 4.0.0
+children:
+    - extra
+```
 
-- **Declared by the reader only.** The upstream's own configuration never
-  mentions its readers.
-- **Reachable from the whole family.** A project below the one that declares
-  it reaches the upstream through its parents.
-- **Read-only from here.** Creating an item in an upstream project, or
-  changing one there, is refused with exit code 3. Change it from the
-  upstream's own folder.
-- **Not part of the family.** Nothing beyond the upstream's own
-  `tcw-config.yaml` is read: its own parent, children and upstreams are not
-  followed, and a problem in them does not stop the reader.
-- **One relation per project.** A project may not declare as upstream a
-  project it also reaches as a parent, child, sibling or ancestor; `tcw
-validate` reports it.
+- Each entry is a project ID. A project listed twice in one file, or the
+  project listing itself (`children[0]: 'workspace' lists itself as a child`),
+  is an error.
+- **A listed child must name this project among its parents.** One that does
+  not is an error that `tcw validate` and every command reading the family
+  report, with exit code 1:
+  `'extra' is listed as a child of 'workspace' but does not name 'workspace' among its parents`.
+  The message names `.tcw/tcw-config.yaml` even for a child listed in the
+  personal file.
+- `tcw project info` marks a child from the personal file `(personal)`.
+- The user-wide file cannot list children, since it applies to every
+  project; the command stops with exit code 1 and says
+  `children may be listed only in this project's own files, .tcw/tcw-config.yaml or .tcw/tcw-config.local.yaml`.
+  An override variable cannot set `children` either.
 
-To turn a child into an upstream, move its entry from the parent's `children`
-to `upstream` in one edit, then remove `parent` from the former child. In
-between, `tcw validate` prints a warning, not an error, so neither project is
-blocked while the second edit is made.
+## Where a related project is: the manifests
 
-## Where a project is on this machine: `TCW_PROJECT_<ID>`
+Each project can have two manifests in its `.tcw/` folder:
 
-The paths above are written in a file every machine reads. The environment
-variable `TCW_PROJECT_<ID>` (the ID in capitals, with `-` written `_`) says
-where one project is on **this** machine, and wins over both the entry's
-`path` and its `repository`. It is the only way to say this; it is never
-written into `tcw-config.yaml`, and it is not personal configuration.
+- `.tcw/tcw-manifest.yaml`, shared with everyone who works on the project; a
+  path in it is relative to the project's folder;
+- `.tcw/tcw-manifest.local.yaml`, personal to this machine and never shared
+  (the `.tcw/.gitignore` that `tcw project new` writes leaves it out); a path
+  in it may also be absolute or start with `~`.
+
+```yaml
+# app/.tcw/tcw-manifest.yaml
+tcw-version: 4.0.0
+projects:
+    shared: packages/shared
+    core:
+        path: ../core
+        repository: https://example.com/acme/core#release
+    server:
+        path: ../platform/apps/server
+        repository: https://example.com/acme/platform
+        subfolder: apps/server
+```
+
+A manifest holds `tcw-version` and `projects`, and nothing else.
+`projects` maps a project ID to an **entry**, written as a path alone or as a
+mapping of these keys:
+
+- `path`, required: the folder holding that project's `.tcw/`.
+- `repository`, optional: the address `tcw project provision` clones the
+  project from when it is not on this machine, written `<url>` or
+  `<url>#<branch>`. The text after the first `#` names the version to
+  check out, such as `release` above; without it, the version the remote
+  repository names as its default is used. `tcw project provision --dry-run`
+  shows each one as `<url> at <name>`.
+- `subfolder`, optional and only with `repository`: where the project sits
+  inside its repository. It must be how `path` ends, since the repository is
+  cloned into `path` with `subfolder` removed: in the `server` entry, into
+  `../platform`, with the project at `../platform/apps/server`.
+
+**A manifest with any problem is not used at all**, and `tcw validate` names
+the problem, such as:
+
+```text
+error: .tcw/tcw-manifest.yaml: has no tcw-version; a manifest starts with 'tcw-version: 4.0.0'
+error: .tcw/tcw-manifest.yaml: projects.core: subfolder is where the project sits inside its repository, so it needs a repository
+```
+
+An absolute path, or one starting with `~`, in the shared manifest is refused
+with `must be relative to this project's root: this file is shared by every machine; an absolute path or one starting with '~' goes in .tcw/tcw-manifest.local.yaml`.
+
+`tcw project path <id>` prints the folder TCW found for a project, and
+`tcw project list --json` says, for each related project, whether a manifest
+(and which one), `TCW_PROJECT_<ID>` or the search found it.
+
+### `TCW_PROJECT_<ID>`
+
+The environment variable `TCW_PROJECT_<ID>` (the ID in capitals, with `-`
+written `_`, such as `TCW_PROJECT_SHARED_CORE` for `shared-core`) names one
+project's folder on this machine, and is read before any manifest:
 
 ```sh
 export TCW_PROJECT_SHARED_CORE=~/src/shared-core
 ```
 
-Reach for it when a workspace is laid out differently from what the
-configuration describes, before editing a shared file to match one machine.
-A variable naming a folder that does not exist falls through to the entry's
-`repository`; one naming a folder that exists but holds a different project
-is refused, by `tcw project provision` too. `tcw validate` lists the variables in
-effect.
-
-## A project that is declared but not on this machine
-
-A command that has to read a declared project that is not on this machine
-exits with code 5, and says that `tcw project provision` obtains it. `tcw project provision`
-clones each declared project and store that is missing, from its
-`repository`, and never updates one that is already here. A project that
-nothing here declares is exit code 4.
-
-## Creating an item in another project
-
-An item for another project is created in that project, with
-`tcw -C <folder> work new "<title>"`, where `<folder>` is its folder or
-`tcw://<id>.path/`. The `--project` option of `tcw work new`, which created it
-from here, is removed in 4.0; in 3.x, what it did depended on where that
-project was:
-
-1. **Nothing here declares it:** refused, exit code 3.
-2. **It is an upstream project:** refused, exit code 3, since upstream
-   projects are read-only from here.
-3. **It is on this machine:** with the filesystem backend, the item is created
-   in its inbox when its work store is present and has no uncommitted changes
-   (TCW reads the repository's status to check, and changes nothing). Creating
-   it is refused, exit code 3, when the work store is missing, has uncommitted
-   changes, or is not inside a repository whose status TCW can read. The files
-   it writes are left uncommitted, and named on standard error, and standard
-   output is the new item's slug. With the Jira backend, TCW creates the
-   ticket in that project's Jira inbox, using that project's own `work.jira`
-   block, never this one's. When that project's work store is present, inside
-   a repository whose status TCW can read, has no uncommitted changes, and Jira
-   offers a move to the status set for the `request` stage, TCW then moves
-   the ticket to the `request` stage and writes its item folder there, left
-   uncommitted, and standard output is the new item's slug.
-   Otherwise the ticket stays in the Jira inbox, TCW says why on standard
-   error, prints the ticket's key, and exits 0. Until the files a filing
-   wrote are recorded in that project's version control, the next filing
-   there is refused, or, with Jira, stays in the inbox.
-4. **It is declared but not on this machine, and its entry here has a `jira`
-   block:** TCW creates a ticket in the inbox status the block names, prints
-   the ticket's key, and exits 0.
-5. **It is declared but not on this machine, with no `jira` block:** refused,
-   exit code 3.
-
-The `--blocks` option of `tcw work edit`, removed in 4.0, changed an existing
-item in another project and never created one. It followed cases 1 to 3, and
-was refused, exit code 3, for a project known here only through a `jira` block.
-A blocker is recorded on the blocked item, in its own project, with
-`tcw -C <folder> work edit <item> --blocked-by <full id>`.
-
-## A connected project's `jira` block
-
-An entry may carry a `jira` block: what TCW needs to create a ticket in that
-project when the project itself is not on this machine (case 4 above). When
-the project is on this machine, its own `tcw-config.yaml` is read instead.
-The block is written in this project's file, so the site and the credential
-names always come from the same file.
-
-```yaml
-projects:
-    children:
-        billing:
-            path: ../billing
-            jira:
-                site: https://example.atlassian.net
-                project: BILL
-                inbox-status: Inbox
-                credentials:
-                    email-env: TCW_JIRA_EMAIL
-                    token-env: TCW_JIRA_TOKEN
-                fields:
-                    project: TCW Project
-```
-
-Every key of the block is required, and each follows the rule of the
-matching `work.jira` key in `jira.md`. Delegating into an upstream project is
-refused, so a `jira` block on an upstream entry is accepted but never used.
-
-### `projects.parent.*.jira.site`
-
-Shared: personal configuration cannot set it.
-
-The parent project's Jira site, `https://<host>`.
-
-### `projects.parent.*.jira.project`
-
-Shared: personal configuration cannot set it.
-
-The key of the parent project's Jira project.
-
-### `projects.parent.*.jira.inbox-status`
-
-Shared: personal configuration cannot set it.
-
-The status of the parent project's Jira inbox, where the new ticket is put.
-
-### `projects.parent.*.jira.credentials.email-env`
-
-Shared: personal configuration cannot set it.
-
-The name of the environment variable holding the email address to create the
-ticket with. Unlike `work.jira`'s credential names, it cannot be changed in a
-personal file.
-
-### `projects.parent.*.jira.credentials.token-env`
-
-Shared: personal configuration cannot set it.
-
-The name of the environment variable holding the API token, as for
-`email-env`.
-
-### `projects.parent.*.jira.fields.project`
-
-Shared: personal configuration cannot set it.
-
-The name of the parent project's TCW Project field, which TCW fills with that
-project's ID.
-
-### `projects.children.*.jira.site`
-
-Shared: personal configuration cannot set it.
-
-A child project's Jira site, as for the parent.
-
-### `projects.children.*.jira.project`
-
-Shared: personal configuration cannot set it.
-
-A child project's Jira project key, as for the parent.
-
-### `projects.children.*.jira.inbox-status`
-
-Shared: personal configuration cannot set it.
-
-A child project's Jira inbox status, as for the parent.
-
-### `projects.children.*.jira.credentials.email-env`
-
-Shared: personal configuration cannot set it.
-
-The email variable for a child project, as for the parent.
-
-### `projects.children.*.jira.credentials.token-env`
-
-Shared: personal configuration cannot set it.
-
-The token variable for a child project, as for the parent.
-
-### `projects.children.*.jira.fields.project`
-
-Shared: personal configuration cannot set it.
-
-A child project's TCW Project field, as for the parent.
-
-### `projects.upstream.*.jira.site`
-
-Shared: personal configuration cannot set it.
-
-Accepted on an upstream entry, as for the parent, and never used.
-
-### `projects.upstream.*.jira.project`
-
-Shared: personal configuration cannot set it.
-
-Accepted on an upstream entry, as for the parent, and never used.
-
-### `projects.upstream.*.jira.inbox-status`
-
-Shared: personal configuration cannot set it.
-
-Accepted on an upstream entry, as for the parent, and never used.
-
-### `projects.upstream.*.jira.credentials.email-env`
-
-Shared: personal configuration cannot set it.
-
-Accepted on an upstream entry, as for the parent, and never used.
-
-### `projects.upstream.*.jira.credentials.token-env`
-
-Shared: personal configuration cannot set it.
-
-Accepted on an upstream entry, as for the parent, and never used.
-
-### `projects.upstream.*.jira.fields.project`
-
-Shared: personal configuration cannot set it.
-
-Accepted on an upstream entry, as for the parent, and never used.
-
-## Inheriting taxonomy and capabilities: `parents:`
-
-```yaml
-id: app
-parents:
-    - shared-core
-    - id: planning
-      inherit: [capabilities]
-```
-
-A project inherits taxonomy and capabilities from the parents listed under
-`parents:` in its `.tcw/tcw-config.yaml`, and from nothing else. Each entry is
-a project ID, or a mapping with `id` and `inherit`. `inherit` says what that
-parent passes down: `all` (the default), `none`, or a list drawn from
-`taxonomy`, `capabilities` and `config`. Inheritance goes through every level:
-a parent's own parents pass down to this project too, as far as each link's
-`inherit` allows, without being listed here. The order of the list decides the
-project's load order (the order in which TCW reads its parents), which
-matters only where two parents that do not inherit from each other both have
-an entry at one path: the one later in the load order is used, and
-`tcw validate` warns.
-
-To change one inherited entry, the project puts its own entry at the same
-path, holding only what it changes; the `taxonomy` and `capabilities` skills
-say how.
-
-Before TCW 4.0, each of the taxonomy and capabilities sections kept its own
-list of the projects it inherited from, edited by commands of its own. Both
-the lists and the commands are gone. A project's own `.tcw/tcw-config.yaml`
-that still holds such a list is an error that names `parents:`: name each
-project it listed under `parents:`, with an `inherit` that includes the axis,
-and delete the list.
-
-Inheritance belongs to the project, not to the store: two projects whose
-store `path` is the same folder can inherit differently. `tcw validate` also
-reports a `docs/taxonomy/config.yaml` or `docs/capabilities/.config.yaml` left
-from before TCW 2.5.0, which is not read; delete it, and name under `parents:`
-any project it listed.
-
-After editing any of this, run `tcw validate`, then `tcw project provision` if a
-`repository` was added.
+It is not a configuration key and not personal configuration: it is never
+written in a file. Reach for it, or for an entry in
+`.tcw/tcw-manifest.local.yaml`, when this machine's folders are laid out
+differently from what the shared manifest says, before editing a shared file
+to suit one machine. With neither a variable nor an entry, TCW searches the
+folders next to the project and the folders enclosing it; the guide gives
+the search's limits.
+
+## Fetching a related project
+
+A command that needs a related project that is not on this machine says so
+and names `tcw project provision <id>` when the deciding manifest entry gives
+a `repository`. `tcw project provision` clones each missing project and store
+it can, and never updates one that is already here. A manifest other than the
+active project's own two may place a clone only in a folder directly inside
+the folder holding its owner's repository, never in a hidden folder and never
+in or above the home folder; `tcw -C <folder> project provision <id>`, run in
+the owner's folder, or an entry with a `repository` in that project's own
+`.tcw/tcw-manifest.local.yaml`, is the way out. The guide
+[Related projects](../../../docs/guide/multi-repo.md) has the cases this
+sentence leaves out and the exit codes.
+
+## A project moved over from 3.x
+
+In 3.x, related projects were written under a `projects:` key with folder
+paths, as parent, children or `upstream` entries, and each of the taxonomy
+and capabilities sections listed the projects it inherited from under
+`extends`. 4.0 refuses both as errors that name `parents:`: name each parent
+by ID under `parents:` (a library read by other projects becomes their
+parent), list the children under `children:`, and say where each project is
+in a manifest. `tcw migrate` makes these changes to a 3.x project's files;
+the migration guide, `docs/migration-guide-3.X-to-4.0.0.md` in the TCW
+repository, maps every 3.x name to its replacement.
+
+## After editing any of this
+
+Run `tcw validate`. It reports a malformed entry or manifest, a child that
+does not name its parent, and a related project it could not reach, which it
+lists as unresolved and does not count as an error. Then run
+`tcw project provision` if a `repository` was added, and `tcw project info`
+to see the parents, children and load order that resulted.

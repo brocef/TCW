@@ -4,10 +4,10 @@ Read this when a project declares no documentation entries and the user wants to
 
 ## Two forms — prefer config in a TCW project
 
-**Recommended, in a TCW project:** declare the entries in `tcw-config.yaml` under `work.documentation`. `tcw validate` checks their shape, `tcw work docs` prints them, and `tcw work stage prompt plan` / `tcw work stage prompt implement` include them inline — so the check does not depend on an agent remembering to open a file and parse prose.
+**Recommended, in a TCW project:** declare the entries in `.tcw/tcw-config.yaml` under `work.documentation`. `tcw validate` checks their shape, `tcw work docs` prints them, and `tcw work stage prompt plan` / `tcw work stage prompt implement` include them inline — so the check does not depend on an agent remembering to open a file and parse prose.
 
 ```yaml
-# tcw-config.yaml
+# .tcw/tcw-config.yaml
 work:
     documentation:
         - path: README.md
@@ -20,7 +20,7 @@ work:
           description: >-
               Developer changelog; technical, grouped by category. One file
               per work item, named after the item's folder name, never the
-              full slug, whose `/` would make a path.
+              full identifier, whose `/` would make a path.
 ```
 
 ### `work.documentation`
@@ -51,7 +51,7 @@ Then write the entries in the chosen form. For the config form, add the `work.do
 
 After adding the section, create any tracked files — **and their parent directories** — that don't already exist so the agent has somewhere to write on the first trigger fire. Use the conventional initial content for each:
 
-- **`docs/release-notes/upcoming/` and `docs/changelogs/upcoming/` folders**, each holding a `README.md` — create them if they don't exist. The `README.md` says who the document is for and how to add an entry: one file per change named after the work item's folder name, never the full slug, whose `/` would make a path (`<folder>.md`), `##` headings, no `#` title, never edit another change's file (the `documentation-sync` skill's `release-notes-and-changelogs.md` has the full convention). Entry files are added later, one per change; the version cut combines them into `v{version}.md`. Apply this only when the project's entries list the per-version structure (some projects use only GitHub Releases or a single root `CHANGELOG.md` — don't impose this layout if it isn't listed).
+- **`docs/release-notes/upcoming/` and `docs/changelogs/upcoming/` folders**, each holding a `README.md` — create them if they don't exist. The `README.md` says who the document is for and how to add an entry: one file per change named after the work item's folder name, never the full identifier, whose `/` would make a path (`<folder>.md`), `##` headings, no `#` title, never edit another change's file (the `documentation-sync` skill's `release-notes-and-changelogs.md` has the full convention). Entry files are added later, one per change; the version cut combines them into `v{version}.md`. Apply this only when the project's entries list the per-version structure (some projects use only GitHub Releases or a single root `CHANGELOG.md` — don't impose this layout if it isn't listed).
 - **Other listed files** (e.g., guides, CLI docs) — only create stubs if the user explicitly asks; otherwise leave them for the user to author.
 
 ## Deferred follow-up work → track it as work items, not a doc
