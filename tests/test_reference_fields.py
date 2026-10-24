@@ -154,10 +154,24 @@ def test_a_dangling_link_is_reported(tcw, demo):
     assert _reported(tcw, demo, "docs/capabilities/x", "tcw://demo.taxonomy/gone")
 
 
-@pytest.mark.xfail(strict=True, reason="recorded references arrive in Steps 13-15")
+from tests.work.jira.conftest import fake, jira_config  # noqa: E402,F401
+
+
 @pytest.mark.parametrize("name", ["parent", "blocked-by"])
-def test_a_dangling_jira_item_field_is_reported(name):
-    raise NotImplementedError("written with Step 15")
+def test_a_dangling_jira_item_field_is_reported(tcw, tmp_path, fake, name):
+    """A Jira item's state file records what Jira cannot link (TCW-114
+    Design 3.3); a recorded value naming no item is reported, offline."""
+    from tests.projectfiles import write_manifest
+    from tests.work.projects import make_project, write_item
+    app = make_project(tmp_path, "app", config=jira_config("app"))
+    project(tmp_path, "files", work={})
+    write_manifest(app, {"files": "../files"})
+    value = "files.work/2026-10-01-gone"
+    write_item(app, "TCW-1-a", yaml.safe_dump({
+        "ticket": "https://acme.atlassian.net/browse/TCW-1",
+        name: [value] if name == "blocked-by" else value}))
+    assert _reported(tcw, app, "TCW-1-a", name, value)
+    assert fake.log == []
 
 
 def test_a_row_added_to_the_table_is_checked_with_no_other_change(tcw, demo,

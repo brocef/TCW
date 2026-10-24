@@ -49,7 +49,7 @@ def test_a_clean_tree_is_clean(offline, monkeypatch, capsys):
 
 
 @pytest.mark.parametrize("make, words", [
-    (lambda p: folder(p, "TCW-1-x", stage="spec"), "exactly tcw-version and ticket (and may hold id); it also has stage"),
+    (lambda p: folder(p, "TCW-1-x", stage="spec"), "exactly tcw-version and ticket (and may hold id, parent and blocked-by); it also has stage"),
     (lambda p: folder(p, "TCW-1-x", ticket="https://other.atlassian.net/browse/TCW-1"),
      "is not on"),
     (lambda p: folder(p, "TCW-1-x", ticket=f"{SITE}/browse/TCW-2"), "names TCW-2"),

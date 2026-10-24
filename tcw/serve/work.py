@@ -17,7 +17,8 @@ from dataclasses import dataclass, replace
 from datetime import timezone
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, Callable
+from contextlib import contextmanager
+from typing import Any, Callable, Iterator
 
 from tcw.errors import BackendError, NotFound, TcwError, Unreachable
 from tcw.ids import FullId, MalformedId, identity, sort_input
@@ -402,6 +403,29 @@ def references(ctx: WorkContext, changes: Changes) -> tuple[Changes, list[dict]]
     return resolved, [n for n in notes if n]
 
 
+@contextmanager
+def reported(backend) -> Iterator[list[dict]]:
+    """The lines `backend` reports while one request runs, collected as the
+    answer's warnings rather than printed to the server's standard error,
+    which the person using the page never sees (TCW-114 Design 3.3). `where`
+    is the field a line names, or None."""
+    lines: list[dict] = []
+    before = getattr(backend, "report", None)
+
+    def collect(line: str) -> None:
+        where = ("parent" if "'s parent " in line else
+                 "blocked-by" if "'s blocker " in line else None)
+        lines.append({"severity": "warning", "where": where, "message": line})
+    if before is None:
+        yield lines
+        return
+    backend.report = collect
+    try:
+        yield lines
+    finally:
+        backend.report = before
+
+
 def _changed(changes: Changes) -> list[str]:
     names = [n for n in SCALAR if getattr(changes, n) is not UNSET]
     return names + [n for n, (add, remove) in LISTED.items()
@@ -434,7 +458,9 @@ def edit(request: Request):
         stale = [n for n in changed if not _same(expected[n], record[n])]
         if stale:
             raise StaleRevision(f"{', '.join(stale)} changed since the page loaded it")
-        item = ctx.backend.update(folder, changes)
+        with reported(ctx.backend) as lines:
+            item = ctx.backend.update(folder, changes)
+    notes += lines
     siblings, _ = readable(ctx.backend)
     answer = checked({"item": item_record(item, siblings, ctx.layout)}, request,
                      ValidationTarget("work", folder, item))
@@ -491,20 +517,18 @@ def create(request: Request):
         "blocked-by": {"add": props.get("blocked-by") or []}})
     changes, notes = references(ctx, changes)
     if ctx.owner == BACKEND:
-        # A parent in another project is the backend's to accept or refuse (a
-        # ticket on the same site can be one); a blocker must be an item here.
-        if any(n["where"] == "blocked-by" for n in notes):
-            raise usage("blocked-by: in this project an item can be blocked only by "
-                        "another item of this project")
+        # A parent or blocker in another project is the backend's to place:
+        # a link, or recorded in the state file (TCW-114 Design 3.3).
         assignee = changes.assignee
         if assignee not in (UNSET, None) and \
                 not request.services.is_assignable(ctx.backend, assignee):
             raise usage(f"assignee: {assignee} is not the account id of anyone "
                         f"assignable in this project; choose one from the suggestions")
-    with request.lock:
+    with request.lock, reported(ctx.backend) as lines:
         item = new_item(ctx.backend, title, changes,
                         stage=request.field("stage", required=False), request=text,
                         nest=nest)
+    notes += lines
     answer: dict[str, Any] = {"full-id": str(item.slug)}
     if notes:
         answer["warnings"] = notes

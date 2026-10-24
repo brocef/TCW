@@ -775,7 +775,9 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
         # Offline: nothing Jira owns is checked here (TCW-71 Design 9.1).
         # Rounds and declarations are files in both modes, so they are
         # checked here too.
+        from tcw.work.jira.backend import recorded_problems
         return [*jira_store_problems(backend.work_path, backend.jira, backend.project),
+                *recorded_problems(backend, reference_resolver(project_root)),
                 *round_findings(backend.work_path, backend.project, backend.layout,
                                 is_item=backend.is_item_folder),
                 *_declaration_findings(backend.layout, backend.project)], None

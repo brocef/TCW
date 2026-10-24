@@ -72,7 +72,7 @@ def test_a_state_file_with_another_key_must_hold_exactly(jira_project, tcw, vali
     path.write_text(path.read_text() + "stage: plan\n")
     checked = validate(jira_project)
     assert checked.code == 1
-    assert "must hold exactly tcw-version and ticket (and may hold id); it also has " \
+    assert "must hold exactly tcw-version and ticket (and may hold id, parent and blocked-by); it also has " \
            "stage" in checked.out
 
 

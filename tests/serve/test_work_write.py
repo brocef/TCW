@@ -250,15 +250,18 @@ def test_jira_create_carries_a_refused_tickets_key(jira, monkeypatch):
     assert answer.json["ticket"] == "ABC-9"
 
 
-def test_jira_create_blocked_by_only_this_projects_items(jira):
-    for blocker in ("TCW-9-nothing", "other.work/2026-01-01-x"):
+def test_jira_create_blocked_by_another_projects_item_is_the_backends(jira):
+    """A blocker in another project is the backend's to place, a link or a
+    recorded reference (TCW-114 Design 3.3), so the page no longer refuses
+    it; an item of this project that is not here still is."""
+    answer = jira.served.post("/api/work", {"title": "T", "properties": {
+        "blocked-by": ["TCW-9-nothing"]}})
+    assert_refused(answer, 400, "usage", "blocked-by")
+    assert not jira.backend.named("create")
+    for blocker in ("other.work/2026-01-01-x", "TCW-2-second"):
         answer = jira.served.post("/api/work", {"title": "T", "properties": {
             "blocked-by": [blocker]}})
-        assert_refused(answer, 400, "usage", "blocked-by")
-    assert not jira.backend.named("create")
-    answer = jira.served.post("/api/work", {"title": "T", "properties": {
-        "blocked-by": ["TCW-2-second"]}})
-    assert answer.status == 201, answer.body
+        assert answer.status == 201, answer.body
 
 
 def test_jira_tickets_and_adopt(jira):

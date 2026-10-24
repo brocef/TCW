@@ -34,7 +34,7 @@ from tcw.store.fs import exact_child
 from tcw.work.backend import Comment, Query, nesting_parent
 from tcw.work.config import WorkConfig
 from tcw.object_folders import (UNMADE, id_problem, is_object, length_problems, object_paths,
-                                shape_problems, walk)
+                                read_state, shape_problems, state_text, walk)
 from tcw.project_files import VERSION_KEY, version_line, version_problem
 from tcw.work.fs_backend import STATE_FILE, WORDS, refuse_nested_rename, report_mentions
 from tcw.work.jira import jql
@@ -184,10 +184,11 @@ def jira_store_problems(work_path: Path, jira: JiraConfig, project: str) -> list
     return findings
 
 
-#: The keys a Jira item's state file holds, and the one it may hold (TCW-111
-#: Design 1.2).
+#: The keys a Jira item's state file holds, and the ones it may hold (TCW-111
+#: Design 1.2): `parent` and `blocked-by` while they hold a recorded
+#: reference (TCW-114 Design 3.3).
 STATE_KEYS = frozenset({VERSION_KEY, "ticket"})
-OPTIONAL_STATE_KEYS = frozenset({"id"})
+OPTIONAL_STATE_KEYS = frozenset({"id", "parent", "blocked-by"})
 
 
 def _item_file_problems(path: Path, key: str, site: str) -> list[Finding]:
@@ -210,8 +211,11 @@ def _item_file_problems(path: Path, key: str, site: str) -> list[Finding]:
             if isinstance(data, dict) else []
         detail = f"; it also has {', '.join(extra)}" if extra else ""
         return [Finding("error", where, f"must hold exactly tcw-version and ticket "
-                                        f"(and may hold id){detail}")]
+                                        f"(and may hold id, parent and blocked-by)"
+                                        f"{detail}")]
     if (problem := id_problem(data, path.parent.name)) is not None:
+        return [Finding("error", where, problem)]
+    if (problem := _recorded_problem(data)) is not None:
         return [Finding("error", where, problem)]
     url = data["ticket"]
     prefix = f"{site}/browse/"
@@ -222,6 +226,122 @@ def _item_file_problems(path: Path, key: str, site: str) -> list[Finding]:
         return [Finding("error", where, f"ticket {url!r} names {url[len(prefix):]}, but "
                                         f"the folder's key is {key}")]
     return []
+
+
+def _recorded_problem(data: dict) -> str | None:
+    """What is wrong with the form of a state file's recorded references:
+    `parent` one full identifier, `blocked-by` a list of them."""
+    from tcw.ids import IdError, parse_stored
+    values = []
+    if "parent" in data:
+        if not isinstance(data["parent"], str):
+            return "parent must be one item's full identifier"
+        values.append(("parent", data["parent"]))
+    if "blocked-by" in data:
+        listed = data["blocked-by"]
+        if not isinstance(listed, list) or not all(isinstance(v, str) for v in listed):
+            return "blocked-by must be a list of items' full identifiers"
+        values += [("blocked-by", v) for v in listed]
+    for key, value in values:
+        try:
+            parse_stored(value, "work")
+        except IdError as error:
+            return f"{key}: {error}"
+    return None
+
+
+def recorded_references(state_path: Path) -> tuple[Slug | None, tuple[Slug, ...]]:
+    """The `parent` and `blocked-by` a Jira item's state file records
+    (TCW-114 Design 3.3), read from the file alone; a value that is not a
+    full identifier is left out, since `tcw validate` reports it."""
+    try:
+        data, _ = read_state(state_path)
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        return None, ()
+    if not isinstance(data, dict):
+        return None, ()
+
+    def slug(value: Any) -> Slug | None:
+        try:
+            return Slug.stored(value)
+        except (IdError, TypeError, ValueError):
+            return None
+    parent = slug(data.get("parent")) if data.get("parent") is not None else None
+    listed = data.get("blocked-by")
+    blocked = tuple(s for v in (listed if isinstance(listed, list) else [])
+                    if (s := slug(v)) is not None)
+    return parent, blocked
+
+
+def same_site(a: str, b: str) -> bool:
+    """Whether two Jira sites are one: their hosts equal ignoring letter
+    case, the scheme and the rest as written (TCW-114 Design 3.3)."""
+    from urllib.parse import urlsplit
+    one, two = urlsplit(str(a)), urlsplit(str(b))
+    return (one.scheme, one.netloc.lower(), one.path.rstrip("/")) == \
+        (two.scheme, two.netloc.lower(), two.path.rstrip("/"))
+
+
+def recorded_problems(backend: "JiraBackend", resolve) -> list[Finding]:
+    """`tcw validate`'s offline checks of the references Jira items' state
+    files record (TCW-114 Design 3.3): that each names an item, through
+    `reference_problems`, as for every work reference; and that it belongs
+    in the state file, since a ticket on this site belongs on the ticket."""
+    from types import SimpleNamespace
+    from tcw.reference_fields import fields_of
+    from tcw.work.references import reference_problems
+    findings: list[Finding] = []
+    triples = []
+    places: dict[str, Path] = {}
+    for id_path in backend._walked().objects:
+        path = backend.work_path / id_path / STATE_FILE
+        parent, blocked = recorded_references(path)
+        holder = SimpleNamespace(slug=Slug(backend.project, id_path))
+        places[str(holder.slug)] = path
+        held = {"parent": [parent] if parent else [], "blocked-by": list(blocked)}
+        for row in fields_of("jira-item"):
+            for ref in held[row.name]:
+                triples.append((holder, row.name, ref))
+    for problem in reference_problems([], backend.project, resolve, more=[
+            t for t in triples if t[2].project != backend.project]):
+        findings.append(Finding(problem.level, str(places[str(problem.slug)]),
+                                problem.message))
+    # Row m (TCW-111 Design 3.2) for a recorded parent: it is in the state
+    # file, so the check needs no network (TCW-114 Design 3.3).
+    from tcw.object_folders import disagreement, folder_parent
+    for holder, name, ref in triples:
+        if name != "parent":
+            continue
+        above = folder_parent(backend.work_path, "work", holder.slug.folder)
+        if above is not None and not backend.is_item_folder(above):
+            above = None
+        if (warning := disagreement(holder.slug, None if above is None
+                                    else Slug(backend.project, above), ref)):
+            findings.append(Finding("warning", str(places[str(holder.slug)]), warning))
+    for holder, name, ref in triples:
+        try:
+            placed = backend._place(ref, name)
+        except TcwError:
+            continue                    # reported above, or by its own check
+        if isinstance(placed, Linked):
+            flag = "--parent" if name == "parent" else "--blocked-by"
+            findings.append(Finding(
+                "error", str(places[str(holder.slug)]),
+                f"{name} {ref} is a ticket on {backend.jira.site}; run tcw work edit "
+                f"{holder.slug} {flag} {ref} to make it a Jira link"))
+    return findings
+
+
+@dataclass(frozen=True)
+class Linked:
+    """A parent or blocker that is a ticket on this site: a Jira link."""
+    key: str
+
+
+@dataclass(frozen=True)
+class Recorded:
+    """A parent or blocker Jira cannot link: kept in the state file."""
+    full_id: Slug
 
 
 def _unique(values: Iterable[str]) -> list[str]:
@@ -464,8 +584,12 @@ class JiraBackend:
         for slug, p in props:
             if p.created is None:
                 raise BackendError(f"Jira ticket {p.key} has no readable creation date")
-            parent = slugs.get(p.parent_key) if p.parent_key else None
-            blocked_by = tuple(_unique(slugs[k] for k in p.blocker_keys if slugs.get(k)))
+            # The recorded references join the links (TCW-114 Design 3.3).
+            noted_parent, noted_blockers = recorded_references(
+                self.work_path / slug.folder / STATE_FILE)
+            parent = slugs.get(p.parent_key) if p.parent_key else noted_parent
+            blocked_by = tuple(_unique([*(slugs[k] for k in p.blocker_keys
+                                          if slugs.get(k)), *noted_blockers]))
             untracked = _unique(
                 ([p.parent_key] if p.parent_key and parent is None else [])
                 + [k for k in p.blocker_keys if not slugs.get(k)])
@@ -547,9 +671,16 @@ class JiraBackend:
                             if s in self.statuses]
         parent = None
         if query.parent is not None:
-            parent = folder_key(query.parent.folder)
-            if parent is None:
-                return []
+            # A ticket on this site is asked of Jira; anything else is
+            # recorded, so it is found among the search's items by
+            # `query.matches` (TCW-114 Design 3.3).
+            if query.parent.project == self.project:
+                parent = folder_key(query.parent.folder)
+                if parent is None:
+                    return []
+            else:
+                placed = self._place(query.parent, "parent")
+                parent = placed.key if isinstance(placed, Linked) else None
         assignee = None
         if query.assignee is not None:
             assignee = self.account(query.assignee)
@@ -681,17 +812,34 @@ class JiraBackend:
         from tcw.work.open import open_project
         return open_project(project_id, self.root)
 
-    def ticket_key(self, value: Any, what: str) -> str:
-        """The Jira key of the item a parent or blocker names. An item that is
-        not a ticket on this site is refused before any request (Design 4.1
-        step 1, 11.4)."""
+    def _place(self, value: Any, what: str) -> "Linked | Recorded":
+        """Where a parent or blocker goes (TCW-114 Design 3.3): a ticket on
+        this site is a Jira link; anything else is recorded in the item's
+        state file. Decided without the network: the named item's project
+        is located and its configuration read. A project that cannot be
+        located stops the write with that outcome (exit 5 or 1), and one
+        whose `work.jira` is undecided with exit 7, before anything is
+        written."""
         slug = _as_slug(value, self.project, what)
-        backend = self if slug.project == self.project else self._other(slug.project)
-        if not isinstance(backend, JiraBackend) or backend.jira.site != self.jira.site \
-                or folder_key(slug.folder) is None:
-            raise Refused(f"{what} {slug} is not a Jira ticket on {self.jira.site}; "
-                          f"Jira links only tickets on one site")
-        return backend._key(slug.folder)
+        if slug.project == self.project:
+            if folder_key(slug.folder) is None:
+                raise Refused(f"{what} {slug} is not a Jira ticket of this project: its "
+                              f"folder name holds no ticket key")
+            return Linked(self._key(slug.folder))
+        if self.root is None:
+            raise Refused(f"{what} {slug} cannot be placed: this backend was opened "
+                          f"with no project to find '{slug.project}' from")
+        other = self._other(slug.project)
+        if isinstance(other, JiraBackend) and same_site(other.jira.site, self.jira.site) \
+                and folder_key(slug.folder) is not None:
+            return Linked(other._key(slug.folder))
+        return Recorded(slug)
+
+    def _recorded_note(self, item: Slug, what: str, value: Slug) -> str:
+        noun = "parent" if what == "parent" else "blocker"
+        return (f"{item}'s {noun} {value} is not a ticket on {self.jira.site}, so it "
+                f"is recorded in {shown(self.work_path / item.folder / STATE_FILE)} "
+                f"and Jira shows no link for it")
 
     def _type_of(self, issue: Mapping) -> tuple[int, str]:
         kind = issue.get("fields", {}).get("issuetype") if isinstance(
@@ -720,13 +868,11 @@ class JiraBackend:
                           f"it ({len(found)} found)")
         return found[0]
 
-    def _parent(self, value: Any) -> tuple[str, int, str]:
-        """A parent's key, hierarchy level and type name."""
-        key = self.ticket_key(value, "parent")
+    def _parent_level(self, key: str) -> tuple[int, str]:
+        """A parent ticket's hierarchy level and type name."""
         with _jira():
             issue = self.client.issue(key, ("issuetype",))
-        level, name = self._type_of(issue)
-        return key, level, name
+        return self._type_of(issue)
 
     def _validate(self, changes: Changes, item_slug: Slug | None) -> None:
         # Jira's hierarchy puts every parent one level above its child, so a
@@ -744,18 +890,50 @@ class JiraBackend:
         return replace(changes, add_tags=tuple(normalize_tag(t) for t in changes.add_tags),
                        remove_tags=tuple(normalize_tag(t) for t in changes.remove_tags))
 
-    def _item_file(self, folder: str, key: str, *, resume: bool = False) -> None:
-        """Make the folder and its state file. `resume` finishes a folder an
-        interrupted run made, and refuses nothing when it exists."""
+    def _item_file(self, folder: str, key: str, *, resume: bool = False,
+                   parent: Slug | None = None, blocked_by: Iterable[Slug] = ()) -> None:
+        """Make the folder and its state file, with the recorded `parent`
+        and `blocked-by` when given (TCW-114 Design 3.3). `resume` finishes
+        a folder an interrupted run made, and refuses nothing when it
+        exists."""
         path = self.work_path / folder
         self._forget_walk()
         if not (resume and path.is_dir()):
             path.mkdir(parents=True)
             self.report(f"created {shown(path)}/")
         document = path / STATE_FILE
-        document.write_text(f"{version_line()}ticket: {self.jira.site}/browse/{key}\n",
-                            encoding="utf-8")
+        recorded = ({"parent": str(parent)} if parent is not None else {}) | \
+            ({"blocked-by": [str(s) for s in blocked_by]} if blocked_by else {})
+        text = f"{version_line()}ticket: {self.jira.site}/browse/{key}\n"
+        if recorded:
+            text += yaml.safe_dump(recorded, sort_keys=False, allow_unicode=True)
+        document.write_text(text, encoding="utf-8")
         self.report(f"wrote {shown(document)}")
+
+    def _record(self, folder: str, *, parent: Any = UNSET,
+                add: Iterable[Slug] = (), remove: Iterable[Slug] = ()) -> None:
+        """Change the recorded references in an existing item's state file,
+        replacing only the keys that change: `parent` a full identifier, or
+        None to remove it; `add` and `remove` change `blocked-by`."""
+        document = self.work_path / folder / STATE_FILE
+        data, problem = read_state(document)
+        if problem is not None or not isinstance(data, dict):
+            raise BackendError(f"{shown(document)} cannot be read: {problem}")
+        changed = dict(data)
+        if parent is None:
+            changed.pop("parent", None)
+        elif parent is not UNSET:
+            changed["parent"] = str(parent)
+        listed = [v for v in changed.get("blocked-by") or []
+                  if v not in {str(s) for s in remove}]
+        listed += [str(s) for s in add if str(s) not in listed]
+        if listed:
+            changed["blocked-by"] = listed
+        else:
+            changed.pop("blocked-by", None)
+        if changed != data:
+            document.write_text(state_text(document, changed), encoding="utf-8")
+            self.report(f"wrote {shown(document)}")
 
     # -- create (Design 4.1) -------------------------------------------------------
 
@@ -774,9 +952,17 @@ class JiraBackend:
         # 1. Resolve, reading only.
         self._check_priority(props)
         issue_type, parent_key, under = meta.issue_type, None, None
+        noted_parent: Slug | None = None
         if props.parent not in (UNSET, None):
-            parent_key, level, type_name = self._parent(props.parent)
-            issue_type = self.child_issue_type(parent_key, level, type_name)
+            placed = self._place(props.parent, "parent")
+            if isinstance(placed, Linked):
+                parent_key = placed.key
+                level, type_name = self._parent_level(parent_key)
+                issue_type = self.child_issue_type(parent_key, level, type_name)
+            else:
+                # The project's default issue type, as with no parent: the
+                # level a child needs is this site's (TCW-114 Design 3.3).
+                noted_parent = placed.full_id
             under, note = nesting_parent(
                 self, _as_slug(props.parent, self.project, "parent"), nest)
             if note:
@@ -786,7 +972,10 @@ class JiraBackend:
         fitted_words(title, project=self.project, parent=under, prefix=PREFIX_ALLOWANCE)
         assignee = (self.account(props.assignee)
                     if props.assignee not in (UNSET, None) else None)
-        blockers = _unique(self.ticket_key(b, "blocked-by") for b in props.add_blocked_by)
+        placed_blockers = [self._place(b, "blocked-by") for b in props.add_blocked_by]
+        blockers = _unique(p.key for p in placed_blockers if isinstance(p, Linked))
+        noted_blockers = _unique(p.full_id for p in placed_blockers
+                                 if isinstance(p, Recorded))
         # 2. Create the ticket.
         fields = create_fields(title, props, request, config=self.jira,
                                field_ids=meta.field_ids, project_id=self.project,
@@ -836,12 +1025,20 @@ class JiraBackend:
                 f"finish with `tcw work tickets adopt {key}`"), key) from None
         # 5. Write the folder and its state file.
         try:
-            self._item_file(folder, key)
+            self._item_file(folder, key, parent=noted_parent, blocked_by=noted_blockers)
         except OSError as error:
+            again = "".join([*([f" --parent {noted_parent}"] if noted_parent else []),
+                             *(f" --blocked-by {b}" for b in noted_blockers)])
+            then = (f", then set again what Jira cannot link with `tcw work edit "
+                    f"{slug}{again}`" if again else "")
             raise _named(BackendError(
                 f"created Jira ticket {key} naming {slug}, but could not write its "
-                f"folder: {error}; finish with `tcw work tickets adopt {key}`"), key) \
-                from None
+                f"folder: {error}; finish with `tcw work tickets adopt {key}`{then}"),
+                key) from None
+        for what, values in (("parent", [noted_parent] if noted_parent else []),
+                             ("blocked-by", noted_blockers)):
+            for value in values:
+                self.report(self._recorded_note(slug, what, value))
         # 6. Apply the transition.
         if chosen is not None:
             self._enter_request(key, slug, chosen)
@@ -922,23 +1119,41 @@ class JiraBackend:
         meta = self.metadata()
         self._check_priority(changes)
         issue = self._issue(key, folder, read_fields(meta.field_ids))
+        # Each value to its place, Jira first (TCW-114 Design 3.3): `parent`
+        # is the Jira field's change, `noted` the state file's.
         parent: Any = UNSET
+        noted: Any = UNSET
         if changes.parent is None:
-            parent = None
+            parent = noted = None
         elif changes.parent is not UNSET:
-            parent, level, type_name = self._parent(changes.parent)
-            own_level, own_name = self._type_of(issue)
-            if level != own_level + 1:
-                raise Refused(f"{key} is a {own_name}, which cannot sit under {parent}, "
-                              f"a {type_name}; Jira cannot change an issue's type here")
+            placed = self._place(changes.parent, "parent")
+            if isinstance(placed, Linked):
+                parent, noted = placed.key, None
+                level, type_name = self._parent_level(parent)
+                own_level, own_name = self._type_of(issue)
+                if level != own_level + 1:
+                    raise Refused(f"{key} is a {own_name}, which cannot sit under "
+                                  f"{parent}, a {type_name}; Jira cannot change an "
+                                  f"issue's type here")
+            else:
+                noted = placed.full_id
+                if self._props(issue).parent_key:
+                    parent = None          # the Jira parent goes first
         assignee: Any = UNSET
         if changes.assignee is None:
             assignee = None
         elif changes.assignee is not UNSET:
             assignee = self.account(changes.assignee)
-        add = _unique(self.ticket_key(b, "blocked-by") for b in changes.add_blocked_by)
-        remove = _unique(self.ticket_key(b, "blocked-by")
-                         for b in changes.remove_blocked_by)
+        _, recorded_now = recorded_references(self.work_path / folder / STATE_FILE)
+        adding = [self._place(b, "blocked-by") for b in changes.add_blocked_by]
+        add = _unique(p.key for p in adding if isinstance(p, Linked))
+        note_add = _unique(p.full_id for p in adding if isinstance(p, Recorded))
+        # A recorded blocker is taken off the state file without being placed.
+        dropping = [_as_slug(b, self.project, "blocked-by")
+                    for b in changes.remove_blocked_by]
+        note_remove = [s for s in dropping if s in recorded_now]
+        remove = _unique(placed.key for s in dropping if s not in recorded_now
+                         if isinstance(placed := self._place(s, "blocked-by"), Linked))
         fields, update = write_fields(changes, self.jira, meta.field_ids,
                                       assignee=assignee, parent=parent,
                                       options=meta.options)
@@ -968,6 +1183,14 @@ class JiraBackend:
             raise BackendError(f"{slug}: {saved}, but not every blocked-by link: "
                                f"{_link_report(made, failed)}; running the same edit "
                                f"again is safe")
+        # Then the state file, once Jira is written: a stop between the two
+        # is finished by the same command again.
+        if noted is not UNSET or note_add or note_remove:
+            self._record(folder, parent=noted, add=note_add, remove=note_remove)
+            for what, values in (("parent", [noted] if isinstance(noted, Slug) else []),
+                                 ("blocked-by", note_add)):
+                for value in values:
+                    self.report(self._recorded_note(slug, what, value))
         return self.read(folder)
 
     def _add_links(self, key: str, blockers: Iterable[str]) -> tuple[list[str], list[str]]:

@@ -13,7 +13,7 @@ tickets (7), and TCW-69's model checks (8).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
 
@@ -23,8 +23,10 @@ from tcw.object_folders import object_paths
 from tcw.work.jira import jql
 from tcw.work.jira.backend import (
     IssueType, JiraBackend, Refusal, _chunks, _jira, choose_transition,
-    field_id, folder_key, link_exists, three_x_item, three_x_item_message,
+    field_id, folder_key, link_exists, recorded_references, three_x_item,
+    three_x_item_message,
 )
+from tcw.work.fs_backend import STATE_FILE
 from tcw.work.jira.client import (
     TrackerNotFound, TrackerPermissionError, TrackerRequestInvalid,
 )
@@ -489,6 +491,14 @@ def _items_and_tickets(run: _Run, folders: Mapping[str, list[str]],
                 run.error(where, f"its ticket's {three_x_item_message(value)}")
             elif value != str(slug):
                 run.error(where, f"its ticket's TCW Item is {value!r}, not {str(slug)!r}")
+            # A ticket with a Jira parent whose state file also records one
+            # has two answers (TCW-114 Design 3.3).
+            noted, _ = recorded_references(backend.work_path / name / STATE_FILE)
+            linked = _get(fields, "parent", "key")
+            if noted is not None and linked:
+                run.error(where, f"its ticket has the Jira parent {linked} while its "
+                                 f"state file records the parent {noted}; run `tcw work "
+                                 f"edit {slug} --parent <the one to keep>` to leave one")
             if _get(fields, "status", "name") == inbox_status:
                 run.warning(where, f"its ticket is at the inbox status "
                                    f"{inbox_status!r}; move it on with `tcw work advance "
@@ -532,14 +542,26 @@ def _model_checks(run: _Run, layout: Layout, reader: Any, resolve: Callable[[Slu
             raise
         run.say(f"{backend.project}: the model checks were skipped: {error}")
         return
-    for problem in reference_problems(items, backend.project, resolve):
+    # The recorded references are checked offline (TCW-114 Design 3.3), so
+    # here each item holds only what its ticket links.
+    noted = {item.slug: recorded_references(backend.work_path / item.slug.folder
+                                            / STATE_FILE) for item in items}
+    linked = [replace(item,
+                      parent=None if item.parent == noted[item.slug][0] else item.parent,
+                      blocked_by=tuple(b for b in item.blocked_by
+                                       if b not in noted[item.slug][1]))
+              for item in items]
+    for problem in reference_problems(linked, backend.project, resolve):
         run.findings.append(Finding(problem.level, str(problem.slug), problem.message))
     for problem in stage_problems(items, layout):
         run.findings.append(Finding(problem.level, str(problem.slug),
                                     f"stage {problem.message}"))
-    # Row m: the parent is the ticket's, so only here (TCW-111 Design 3.2).
+    # Row m: a Jira parent is the ticket's, so only here (TCW-111 Design
+    # 3.2); a recorded one is checked offline.
     from tcw.work.backend import folder_disagreement
     for item in items:
+        if noted[item.slug][0] is not None:
+            continue
         if (warning := folder_disagreement(backend, item)):
             run.findings.append(Finding("warning", str(item.slug), warning))
     for item in items:
