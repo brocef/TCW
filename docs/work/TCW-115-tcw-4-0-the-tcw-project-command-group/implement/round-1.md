@@ -1,6 +1,7 @@
 # Implement round 1 — TCW-115
 
-Built on the branch `impl-115`, from `78c88809` on `v4`, in the worktree
+Built on the branch `impl-115`, from `78c88809` on `v4` (later rebased onto
+`93b17acb`, which changed every hash below to the one given), in the worktree
 `.claude/worktrees/impl-115`. The code under test was run from that worktree's
 own virtual environment (`.venv/bin/pytest`; hand runs of `tcw` only through a
 wrapper, against scratch projects under the session's scratchpad, never this
@@ -15,20 +16,20 @@ rejection. It gives no verdict.
 
 | Commit     | Steps |
 | ---------- | ----- |
-| `8ffd25bd` | 1: the deciding manifest entry, readable as a `Placement` |
-| `ab3565ed` | 2: the `tcw project` group beside the commands it replaces |
-| `107c6f14` | 3: the tests and documents name the new commands |
-| `fc8596d1` | 4: the old commands removed; `REMOVED_COMMANDS`; synonyms first |
-| `0adb1f70` | 5: messages, help and comments |
-| `6b34ad84` | 6: `tcw project list` |
-| `278670a0` | 7: `tcw project config` and the origin label |
-| `04087732` | 8: `tcw project path` |
-| `012aa313` | 9: `tcw project info`, text |
-| `2fb7358f` | 10: `tcw project info --json` |
-| `5f415fa5` | 11 to 16: `tcw project provision`'s projects pass, and git's location variables |
-| `acf46bba` | 18: the two sweeps that list the new clone and folder checks; `--component`'s help |
-| `9ea27b26` | 17, 19: the capabilities, the taxonomy entries, the changelog and release notes |
-| (this one) | the implement round and `removed-tests.txt` |
+| `5fd94c71` | 1: the deciding manifest entry, readable as a `Placement` |
+| `135e2c4b` | 2: the `tcw project` group beside the commands it replaces |
+| `081559ac` | 3: the tests and documents name the new commands |
+| `cb4aa4d4` | 4: the old commands removed; `REMOVED_COMMANDS`; synonyms first |
+| `9667511a` | 5: messages, help and comments |
+| `8073d345` | 6: `tcw project list` |
+| `912b1492` | 7: `tcw project config` and the origin label |
+| `36e625e3` | 8: `tcw project path` |
+| `58f9c83d` | 9: `tcw project info`, text |
+| `ac7b92c7` | 10: `tcw project info --json` |
+| `34c77329` | 11 to 16: `tcw project provision`'s projects pass, and git's location variables |
+| `cc32fd4b` | 18: the two sweeps that list the new clone and folder checks; `--component`'s help |
+| `98d05ed0` | 17, 19: the capabilities, the taxonomy entries, the changelog and release notes |
+| `38f582b5` | the implement round and `removed-tests.txt` |
 
 **Steps combined, and how each per-step comparison was kept.** Steps 11 to 16
 were built together in one module, `tcw/provision.py`, and one completed
@@ -225,7 +226,7 @@ descriptions saying it was TCW 3.x's name, and the archives:
   `cap-be6d93`, `cap-3d46db`, `cap-2d83ea`, checked unique).
 - **TCW-117 (guides and skills).** Every passage below had its command names
   changed by Step 3 and nothing else; each must now say what 4.0 does (line
-  numbers at `107c6f14`):
+  numbers at `081559ac`):
   - `README.md` 232, 262, 263, 265, 266, 275, 276, 299, 363, 425 — the command
     table needs `tcw project path` and `tcw project info`; 263's "obtains the
     stores and projects" is now true and should say how far a clone may be

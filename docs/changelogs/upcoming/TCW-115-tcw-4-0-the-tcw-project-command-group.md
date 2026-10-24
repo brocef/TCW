@@ -24,6 +24,11 @@
   `require_valid(fetching=True)`, which leaves out an entry folder that holds
   files and no project so provisioning can refuse that project alone.
   (TCW-115)
+- `GraphProblems`, the `ValueError` that `require_valid` raises, carrying
+  `files`, the file each problem is about; `tcw project provision` names the
+  fetched project whose own folder holds it (`_holding`), or none. (TCW-115)
+- `tcw project provision` refuses a target folder that cannot be listed,
+  naming it and its manifest entry. (TCW-115)
 - `tcw/store/project.py` `GIT_LOCATION_VARIABLES` and `git_environment()`.
   (TCW-115)
 - `tcw/cli_suggest.py` `REMOVED_COMMANDS`; `tcw/config_cli.py`
