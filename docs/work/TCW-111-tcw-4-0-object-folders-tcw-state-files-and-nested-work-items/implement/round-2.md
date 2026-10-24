@@ -48,5 +48,8 @@ implement must do". It gives no verdict.
 
 ## The suite
 
-Not run in this round; the dispatching session runs the full suite as CI
-runs it.
+`.venv/bin/pytest -q -p no:cacheprovider`, run in full as CI runs it by the
+dispatching session at `ec858dd6` (2026-10-24), in two halves by folder:
+`1982 passed, 2 skipped` (`tests/work`, `tests/serve`) and `4126 passed,
+111 skipped` (the rest). `pnpm test` `191 passed`; `tsc --noEmit`,
+`pnpm lint` and `pnpm check:build` clean.
