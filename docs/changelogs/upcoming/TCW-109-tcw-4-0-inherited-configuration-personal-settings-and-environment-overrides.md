@@ -72,10 +72,13 @@
   after the last gap sets are still checked, apart from "required": an error
   when the active project sets them, a warning at the parent's file when a
   parent does. That includes a key TCW does not know, even inside one it
-  knows or set to an empty mapping, and an entry a parent after the gap
-  writes in a `work.tags` list holding `inherit: true`: whether a parent's
-  problem is reported is decided by the problem's own key, not by the known
-  key it is filed under. (TCW-109)
+  knows or set to an empty mapping, and an entry the active project or a
+  parent after the gap writes in a `work.tags` list holding `inherit: true`:
+  whether a problem is reported is decided by the problem's own key, not by
+  the known key it is filed under. (TCW-109)
+- A `work.tags` entry that is not a tag is reported at the entry, by its
+  place in the file that wrote it (`work.tags[1]: 5 is not a tag`), rather
+  than at `work.tags`. (TCW-109)
 - A problem the parser finds in an override variable's value starts with the
   variable's name, as the ones found while reading it do. (TCW-109)
 - `parse_jira_config` checks a credential variable name that is given when

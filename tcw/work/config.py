@@ -464,11 +464,13 @@ def _parse_tags(raw: Any, problems: _Problems) -> tuple[str, ...]:
         problems.add(where, f"expected a list of tags, got {_describe(raw)}")
         return ()
     tags: list[str] = []
-    for value in raw:
+    for i, value in enumerate(raw):
         try:
             tag = normalize_tag(value)
         except (ValueError, AttributeError):
-            problems.add(where, f"{value!r} is not a tag")
+            # Reported at the entry, which the caller names by its place in
+            # the file that wrote it.
+            problems.add((*where, i), f"{value!r} is not a tag")
             continue
         if tag not in tags:
             tags.append(tag)

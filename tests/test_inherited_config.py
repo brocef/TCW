@@ -1079,3 +1079,36 @@ def test_an_ancestors_bad_tag_entry_is_decided_by_its_place(tmp_path, parents, w
         return
     [warning] = warnings
     assert str(config_file(lib)) in warning and "work.tags[1]" in warning, ran
+
+
+@pytest.mark.parametrize("parents", [["core"], None], ids=["gap", "no-gap"])
+def test_a_bad_tag_the_project_writes_is_its_error_behind_a_gap(tmp_path, parents):
+    """`app`'s own tags hold an `inherit: true` entry, so behind the missing
+    `core` its `work.tags` is undecided, but the entry after it is `app`'s
+    own text and not a tag whatever reaches the rest of the list: an error
+    at its place in `app`'s file, as with no parent."""
+    app = made(tmp_path, "app", parents=parents, work={"tags": [INHERIT, 5]})
+    found = [p for p in problems(load_config(app)) if "is not a tag" in p]
+    assert len(found) == 1 and "work.tags[1]" in found[0], found
+    assert str(config_file(app).relative_to(app)) in found[0], found
+    ran = tcw(app, "validate")
+    assert ran.code == 1 and "work.tags[1]" in ran.out + ran.err, ran
+
+
+@pytest.mark.parametrize("parents,warned", [(["core", "lib"], True), (["lib", "core"], False)],
+                         ids=["after-the-gap", "before-the-gap"])
+def test_an_ancestors_bad_tag_is_decided_by_its_place(tmp_path, parents, warned):
+    """The same list in a parent: after the missing `core` it is `lib`'s
+    own text, a warning at its place in `lib`'s file; before `core`, what
+    reaches `app` is not known, so none."""
+    lib = made(tmp_path, "lib", work={"tags": [INHERIT, 5]})
+    app = made(tmp_path, "app", parents=parents)
+    ran = tcw(app, "validate")
+    assert ran.code == 0, ran
+    warnings = [line for line in lines_of(ran) if line.startswith("warning:")]
+    if not warned:
+        assert warnings == [], ran
+        return
+    [warning] = warnings
+    assert str(config_file(lib)) in warning and "work.tags[1]" in warning, ran
+    assert "is not a tag" in warning, ran

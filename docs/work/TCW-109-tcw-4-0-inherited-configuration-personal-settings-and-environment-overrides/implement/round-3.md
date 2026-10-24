@@ -135,6 +135,50 @@ the kept copy afterwards):
 - A list entry always known: red, the tag entry before the gap and round
   1's `test_a_broken_key_that_is_also_undecided_is_undecided` (2).
 
+## Folded in after the round
+
+Decision 3's open point, **decided by the dispatching session: folded into
+this item.** A project's own `work.tags: [{inherit: true}, 5]` behind a
+missing parent went unreported, while with no parent it is an error. Design
+3.2 keeps every check of a value the project decides itself, and an entry the
+project writes in its own list is decided by it, whatever reaches the rest of
+the list; this is the same rule as review round 1's finding 1, so it belongs
+to this change rather than a separate one.
+
+- `_parse_tags` (`tcw/work/config.py`) reports an entry that is not a tag at
+  the entry, `work.tags[<n>]`, not at `work.tags`.
+- The merge records, for each entry of a list that takes an `inherit` entry,
+  its place in the list of the file that wrote it (`_chain` and `_merge`,
+  kept in `_Fold.places`). `load_config` names a parser problem at an entry
+  by that place, so the message points at the entry in its own file, whose
+  number differs from the merged list's once an `inherit` entry pulls a
+  parent's tags in.
+- `load_config` now finds the layer a parser problem is blamed on before
+  deciding whether its value is known, and passes that layer's rank to
+  `fold.unknown`, so a list entry the active project writes is decided by its
+  place in the order, as decision 2 already did for a parent's entry.
+
+So `app`'s own `[{inherit: true}, 5]` gives one error,
+`.tcw/tcw-config.yaml: work.tags[1]: 5 is not a tag`, with the missing parent
+and with none; the same list in `lib` gives one warning at `lib`'s file when
+`lib` comes after the missing `core`, and none when it comes before
+(unchanged). No existing test read the old message; the changelog entry says
+the problem is now reported at the entry.
+
+New in `tests/test_inherited_config.py`:
+`test_a_bad_tag_the_project_writes_is_its_error_behind_a_gap` (with and
+without the gap) and `test_an_ancestors_bad_tag_is_decided_by_its_place`
+(after and before the gap). Mutation checks, each applied, run against the
+file, and reverted (the files compared equal to kept copies afterwards):
+
+- The parser reports at `work.tags` again: red, both own cases and the
+  parent after the gap (3).
+- `fold.unknown` without the layer's rank: red, the own case behind the gap
+  and the parent after the gap (2).
+- No translation to the place in the file: red, the same 3 (the message says
+  `work.tags[0]`).
+- Places recorded as the merged list's numbers: red, the same 3.
+
 ## The suite
 
 At `2342ba68`, from the worktree's root, with `-q -p no:cacheprovider`:

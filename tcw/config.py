@@ -655,29 +655,37 @@ def _stamp(origins: dict, path: KeyPath, value: Any, origin: Origin) -> None:
             origins[(*path, i)] = origin
 
 
-def _chain(below: Any, below_origins: list, value: list,
-           origin: Origin) -> tuple[list, list]:
+def _chain(below: Any, below_origins: list, below_places: list, value: list,
+           origin: Origin) -> tuple[list, list, list]:
     """A chain list as a layer sets it: its own entries, with the list the
-    layer below resolved in place of its `inherit` entry."""
+    layer below resolved in place of its `inherit` entry. With each entry,
+    its origin and its place in the list of the file that wrote it."""
     if not isinstance(below, list):
-        below, below_origins = [], []
+        below, below_origins, below_places = [], [], []
     out: list = []
     origins: list = []
+    places: list = []
     inherited = False
-    for entry in value:
+    for place, entry in enumerate(value):
         if isinstance(entry, dict) and "inherit" in entry:
             if entry.get("inherit") is True and not inherited:
                 out += copy.deepcopy(below)
                 origins += below_origins
+                places += below_places
                 inherited = True
             continue
         out.append(copy.deepcopy(entry))
         origins.append(origin)
-    return out, origins
+        places.append(place)
+    return out, origins, places
 
 
 def _merge(values: dict, origins: dict, written: dict, layer: dict,
-           origin: Origin, path: KeyPath = ()) -> None:
+           origin: Origin, path: KeyPath = (), places: dict | None = None) -> None:
+    """Merge `layer` into `values`. `places`, when given, records for each
+    entry of a list that takes an `inherit` entry its place in the list of
+    the file that wrote it, by its key path in the merged list."""
+    places = {} if places is None else places
     for key, value in layer.items():
         here = (*path, key)
         lower = values.get(key)
@@ -694,12 +702,16 @@ def _merge(values: dict, origins: dict, written: dict, layer: dict,
         elif _takes_inherit(here) and isinstance(value, list):
             below = lower if isinstance(lower, list) else []
             below_origins = [origins.get((*here, i), origin) for i in range(len(below))]
-            entries, entry_origins = _chain(below, below_origins, value, origin)
+            below_places = [places.get((*here, i), i) for i in range(len(below))]
+            entries, entry_origins, entry_places = _chain(
+                below, below_origins, below_places, value, origin)
             _clear(origins, here)
+            _clear(places, here)
             values[key] = entries
             origins[here] = origin
             for i, entry_origin in enumerate(entry_origins):
                 origins[(*here, i)] = entry_origin
+                places[(*here, i)] = entry_places[i]
             if _is_chain(here):
                 written.setdefault(here, []).append(origin)
         elif value is None and origin.layer == "project" and _inherited_key(here):
@@ -714,7 +726,7 @@ def _merge(values: dict, origins: dict, written: dict, layer: dict,
             elif not lower:
                 # Both layers write an empty mapping: the higher one speaks.
                 origins[here] = origin
-            _merge(lower, origins, written, value, origin, here)
+            _merge(lower, origins, written, value, origin, here, places)
         elif value is None and origin.layer == "project" and isinstance(lower, dict):
             # `work:` with nothing under it means "no settings", which is
             # the defaults, not "none of TCW's own text" (plan choice 6).
@@ -725,7 +737,7 @@ def _merge(values: dict, origins: dict, written: dict, layer: dict,
             # (to nothing, Design 3.2) and is recorded as written.
             _clear(origins, here)
             values[key] = {}
-            _merge(values[key], origins, written, value, origin, here)
+            _merge(values[key], origins, written, value, origin, here, places)
             if not value:
                 origins[here] = origin
         else:
@@ -924,11 +936,17 @@ def load_config(project_root: Path, *, personal: bool = True,
     undecided = fold.undecided(here, config.order_error is not None)
     for problem in parsed:
         key_path = tuple(problem.key_path)
-        if fold.unknown(key_path):
-            # No check of a value that is not known runs, "required" among
-            # them; a key decided after the gap is checked (Design 3.2).
-            continue
         origin = _origin_for(key_path, origins, project)
+        if key_path in fold.places:
+            # An entry of a merged list is named by its place in the list of
+            # the file that wrote it, whose numbers differ once an `inherit`
+            # entry pulls another layer's entries in.
+            key_path = (*key_path[:-1], fold.places[key_path])
+        if fold.unknown(key_path, origin.rank):
+            # No check of a value that is not known runs, "required" among
+            # them; a key decided after the gap is checked (Design 3.2), and
+            # so is a list entry the layer after the gap wrote.
+            continue
         found = Problem(origin.file, key_path, problem.message)
         if origin.variable is not None:
             # A variable has no file: its problem starts with its name
@@ -1124,6 +1142,9 @@ class _Fold:
         self.broken: list[tuple[KeyPath, tuple, Problem, KeyPath]] = []
         self.undecided_keys: set = set()
         self.last_gap: tuple = (-1, 0)
+        # Each entry of a merged `inherit` list, by its key path there: its
+        # place in the list of the file that wrote it.
+        self.places: dict = {}
 
     def merge(self, mapping: dict, origin: Origin) -> None:
         for path in _replacements(mapping):
@@ -1131,7 +1152,8 @@ class _Fold:
             self.written_keys.append((origin.rank, path))
         for path in _empty_mappings(mapping):
             self.written_keys.append((origin.rank, path))
-        _merge(self.values, self.origins, self.written, mapping, origin)
+        _merge(self.values, self.origins, self.written, mapping, origin,
+               places=self.places)
 
     def broke(self, key_path: KeyPath, origin: Origin, problem: Problem) -> None:
         self.broken.append((_broken_key(key_path), origin.rank, problem, tuple(key_path)))
