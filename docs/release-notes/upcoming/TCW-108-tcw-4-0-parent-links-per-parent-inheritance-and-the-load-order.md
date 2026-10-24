@@ -35,6 +35,16 @@ exits with the new code 7 and says which project it needs and how to fetch
 it. `tcw validate` reports each such project once, as could not be checked,
 and still exits 0.
 
+When a manifest places a project in one folder but the folder search finds it
+in another, TCW no longer picks one: every command stops with exit 1 and an
+error naming both folders. To settle it, add an entry for that project to your
+own `.tcw/tcw-manifest.local.yaml`, which is read first, giving the folder you
+mean (for example `lib: ../lib`).
+
+When a manifest entry's folder is missing, the "not on this machine" message
+now names the full folder that was checked, not the entry's relative path. In
+a linked git worktree, that is the folder beside the main checkout.
+
 ## What is gone
 
 - The `projects:` key, with its `parent`, `children` and `upstream` entries.

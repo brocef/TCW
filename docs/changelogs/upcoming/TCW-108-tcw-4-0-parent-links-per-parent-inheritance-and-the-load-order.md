@@ -33,6 +33,16 @@
   manifests of every parent. (TCW-108)
 - A listed child must name its parent; a parent need not list its child.
   (TCW-108)
+- `FsProjectRegistry._search_conflict` and `_recheck_search_answers`: when
+  the folder search finds a project in one folder and a manifest the lookup
+  consults places it in another, that is a graph problem (exit 1) naming both
+  folders and saying to add an entry for the project to
+  `.tcw/tcw-manifest.local.yaml` in the asking project, which the lookup reads
+  first. (TCW-108)
+- `FsProjectRegistry._not_here`: "not on this machine" for a manifest entry
+  names the full folder the entry was resolved to (`<manifest> places it at
+  <folder>`), not the entry's relative text; in a linked git worktree, that is
+  the folder beside the main checkout. (TCW-108)
 - `_extended_component_stores` and both `extends_add` methods hold `extends`
   to the parent links, through the command's registry: an ID the links do not
   pass the axis from is refused (exit 1 when read, exit 2 when added), and one
