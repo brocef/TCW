@@ -14,9 +14,11 @@ sees every item. Do not speculate about them.
 
 ## What you are given
 
-A work item slug. Everything else you find yourself, through the CLI and the
-code: `tcw work show <slug>` prints the item, its request and its comments, and
-`tcw work path <slug> <stage>` names each of its documents.
+A work item, named by its full identifier (`<project>.work/<folder>`), which
+may belong to this project or to one below it. Everything else you find
+yourself, through the CLI and the code: `tcw work show <full-id>` prints the
+item, its request and its comments, read from its own project, and
+`tcw work path <full-id> <stage>` names each of its documents.
 
 ## What to check, and how to report it
 
@@ -24,7 +26,7 @@ This project may have replaced TCW's audit procedure, so you carry no checklist
 of your own. Run:
 
 ```sh
-tcw work procedure audit-backlog <slug>
+tcw work procedure audit-backlog <full-id>
 ```
 
 It prints the whole procedure. Apply the checks it gives for a single item to

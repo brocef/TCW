@@ -4,12 +4,23 @@ Keep the unfinished items relevant, actionable, and in the right project. This
 is a review done by an agent, not a `tcw` command. Ask the `work` skill for it;
 under any harness, this document is the procedure.
 
-Start with `tcw work list`, which lists every item that has not ended. For each
-one, read what it asks for and its comments with `tcw work show <slug>`, and
-whichever of its documents exist: `tcw work path <slug> spec`,
-`tcw work path <slug> plan`, the newest round in `tcw work path <slug>
-implement`, and `capabilities.yaml` in the folder `tcw work path <slug>`
+Start with `tcw work list --scope down --json`, which lists every item that has
+not ended, in this project and in every project below it. Its `projects` names
+each project the audit covers: name every one of them in the report, and report
+each one marked `unavailable` as not audited, with the reason it gives, never as
+clean. Each item's record carries its `full-id`, and every command below names
+the item by it, so the command reads the item from its own project. For each
+item, read what it asks for and its comments with `tcw work show <full-id>`, and
+whichever of its documents exist: `tcw work path <full-id> spec`,
+`tcw work path <full-id> plan`, the newest round in `tcw work path <full-id>
+implement`, and `capabilities.yaml` in the folder `tcw work path <full-id>`
 prints.
+
+**A change to an item runs in the item's own project.** The commands below that
+change an item are written for an item of this project. For an item whose
+`owner` is another project, recommend running the same command there, naming
+the item by its folder, the last part of its full identifier:
+`tcw -C tcw://<owner>.path/ work discard <folder> --reason "…"`.
 
 ## The two checklists
 
@@ -19,21 +30,22 @@ whether a check can be handed out one item at a time.
 ### Per item: one item's documents, plus shared reads
 
 - **Already done:** the work shipped elsewhere, or outside the lifecycle.
-  Recommend `tcw work discard <slug> --reason "done in <where>"` once the
+  Recommend `tcw work discard <full-id> --reason "done in <where>"` once the
   evidence is checked.
 - **Outdated:** the spec or plan names files, interfaces, commands or
   capabilities that have since been removed or replaced. Line numbers cited
   in a plan are a common casualty.
 - **Wrong project:** the item belongs in another TCW project, or should be
   split across projects. Recommend creating each part in its own project,
-  with `tcw -C tcw://<id>.path/ work new "<title>" --parent <slug>`, and
+  with `tcw -C tcw://<id>.path/ work new "<title>" --parent <full-id>`, and
   discarding this one.
 - **Unactionable or too large:** no acceptance criteria, a vague request, no
   clear next step, or work that should be split with
-  `tcw work new "<part>" --parent <slug>`.
+  `tcw work new "<part>" --parent <full-id>`.
 - **Blocked with no next action:** blockers that have ended (look each one up
-  with `tcw work show <blocker>`), or an outside blocker that names no owner,
-  no condition to wait for, and no follow-up.
+  with `tcw work show <its full identifier>`, which reads it from its own
+  project, this one or another), or an outside blocker that names no owner, no
+  condition to wait for, and no follow-up.
 - **Capability drift:** `capabilities.yaml` lists under `changed:` or
   `removed:` a capability that does not exist, or under `new:` one whose
   wording contradicts the standing records.
@@ -49,12 +61,12 @@ projects, the capability records) that one agent can do alone.
   after moving anything useful into it.
 - **Missing blockers:** an item states a dependency in prose that was never
   recorded, so the list shows both as equally ready. Fix with
-  `tcw work edit <slug> --blocked-by <ref>`.
+  `tcw work edit <full-id> --blocked-by <ref>`.
 - **Tags:** an item with no tags despite matching a registered one, a tag that
   has stopped fitting, or a useful category missing from the registry. Read
   `tcw work tags list` first. Register with `tcw work tags add <tag>` **only**
   for categories that will be reused; apply with
-  `tcw work edit <slug> --tag <tag>`; remove with `--untag <tag>`.
+  `tcw work edit <full-id> --tag <tag>`; remove with `--untag <tag>`.
 
 Tags sit here whole: "does this item carry the right tags" reads per item, but
 "is a category missing" shows only across items, and a check that does not
@@ -70,8 +82,9 @@ lists in one session; the result is the same, only slower.
 what each item is _about_, which means reading every item, the work the
 per-item agents just did. So each per-item agent returns its findings **plus**
 two lines on what the item is about, and the across-items agent reads those
-summaries instead of every item again. It also reads `tcw work list --all`,
-because a duplicate can be finished work. It opens an item only when a summary
+summaries instead of every item again. It also reads
+`tcw work list --scope down --all`, because a duplicate can be finished work,
+in any of the projects. It opens an item only when a summary
 makes a candidate look real.
 
 Hand out **at most 8 at a time**. Sixty items must not start sixty agents.
@@ -95,10 +108,10 @@ A bad return must never silently drop an item from the across-items check.
 
 ## Reporting
 
-Per item:
+Per item, under one heading per project, in the order `projects` gives them:
 
 ```
-<slug> | <recommendation> | <severity> | <reason>
+<full-id> | <recommendation> | <severity> | <reason>
   evidence: <specific evidence>
   action: <exact next step or command>
 ```
@@ -108,14 +121,15 @@ cost of acting on the item _as it stands_, not on how interesting the finding
 is. `high` means starting it now would waste real work (a plan whose every
 reference has moved). `low` means a touch-up someone will absorb in passing.
 
-An item with nothing wrong still gets a line, `<slug> | keep as-is | none |
+An item with nothing wrong still gets a line, `<full-id> | keep as-is | none |
 <why it is healthy>`, because "audited, clean" and "not audited" must not look
-the same.
+the same. For the same reason, a project marked `unavailable` gets its heading
+and one line saying it was not audited, and why.
 
 Close with the across-items findings and the checks that found nothing: "no
 duplicates, no capability drift" is a result worth stating, for the same
 reason.
 
-Finally, confirm nothing changed: `tcw work list --all --json` read before the
-audit and after it must match. Every agent here can run commands, so read-only
+Finally, confirm nothing changed: `tcw work list --scope down --all --json` read
+before the audit and after it must match. Every agent here can run commands, so read-only
 is a rule honored rather than a wall; check it rather than assume it.
