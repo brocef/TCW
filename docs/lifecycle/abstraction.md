@@ -1,4 +1,4 @@
-<!-- Bound to the `spec` and `plan` stages of `tcw work`; see `tcw-config.yaml`.
+<!-- Bound to the `spec` and `plan` stages of `tcw work`; see `.tcw/tcw-config.yaml`.
      Read as a continuation of TCW's built-in stage instructions, not on its own. -->
 
 # The abstraction litmus test

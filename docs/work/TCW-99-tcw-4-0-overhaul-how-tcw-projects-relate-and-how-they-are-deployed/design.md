@@ -467,10 +467,13 @@ shared-libs` returns only the original, and a mixed-status summary
   original field by field, as in 3.x, so one that changes only the status
   keeps following the original's description.
 - **What an override shows, and what catches a broken one:**
-    - Listings, `show` and `tcw project info` mark each object that
-      replaces an inherited one ("overrides `shared-libs.capabilities/abc`"),
-      so an unintended clash, where a child's own object happens to sit at
-      a path a parent later uses, is visible.
+    - Each object that replaces an inherited one is marked in the records
+      a listing gives (`--json`, and the web app) and in `show`
+      ("overrides: shared-libs.capabilities/abc"), so an unintended clash,
+      where a child's own object happens to sit at a path a parent later
+      uses, is visible. Plain `list` output stays one full identifier per
+      line, with no mark. (Amended 2026-10-24 by TCW-117: the user's decision
+      of 2026-10-22, recorded in TCW-112's note on TCW-99.)
     - If the original moves, a partial override is left without required
       fields (a name, a description) and `tcw validate` fails it as
       incomplete. A full-copy override whose original moved is the one case
@@ -485,8 +488,11 @@ shared-libs` returns only the original, and a mixed-status summary
 - **Configuration:** a fixed list of keys, which TCW documents and grows
   only in a release (decided 2026-10-21), crosses the link from each
   parent whose `inherit` includes `config`. To start: `work.tags`,
-  `work.backend`, and the Jira settings (`work.jira`: site, project,
-  fields and credential variable names). Inheriting `work.jira.project`
+  and the Jira settings (`work.jira`: site, project, fields and credential
+  variable names). (Amended 2026-10-24 by TCW-117: `work.backend` left this
+  list by the user's decision, 2026-10-22: each project states its own
+  backend, and the default is filesystem; recorded in TCW-109's note on
+  TCW-99 (17:59).) Inheriting `work.jira.project`
   means a child's items go into the parent's Jira project, told apart by
   the existing "TCW Project" field. Everything else is the project's own:
   its `id`, parents, children, store locations, stages and their
@@ -517,8 +523,12 @@ shared-libs` returns only the original, and a mixed-status summary
   `TCW_<KEY>__<PROJECT>`. The key's parts are joined with a single `_`,
   the project ID follows a double `__`, everything is uppercase, and each
   hyphen becomes `_`, since shells reject hyphens in variable names. For
-  project `my-proj`, `work.path` is overridden by
-  `TCW_WORK_PATH__MY_PROJ=/other/path`. Shells accept only letters,
+  project `my-proj`, `user.name` is overridden by
+  `TCW_USER_NAME__MY_PROJ="Sam Example"`, the hyphen in `my-proj` becoming
+  `_`. (Amended 2026-10-24 by TCW-117: the user, 2026-10-22: store
+  locations cannot be overridden, so the earlier example, `work.path`,
+  contradicted the design's own rule; TCW-99 comment of 15:28, and TCW-109
+  Design 5.1.) Shells accept only letters,
   digits and underscores in a variable's name, so no other separator
   (`.`, `-`, `,`) is usable.
 - **The key part is decoded against the keys TCW knows.** A hyphen and a
@@ -532,9 +542,14 @@ shared-libs` returns only the original, and a mixed-status summary
   letters and digits in groups joined by single hyphens (no leading,
   trailing or doubled hyphen), so every name has a variable and decodes
   one way only. `tcw validate` enforces it.
-- **The more specific variable wins.** If both `TCW_WORK_JIRA__APP` (the
-  whole mapping) and `TCW_WORK_JIRA_SITE__APP` (one key in it) are set,
-  the whole mapping is applied first and the single key on top of it.
+- **The more specific variable wins.** If both
+  `TCW_WORK_JIRA_CREDENTIALS__APP` (the whole mapping) and
+  `TCW_WORK_JIRA_CREDENTIALS_TOKEN_ENV__APP` (one key in it) are set, the
+  whole mapping is applied first and the single key on top of it.
+  (Amended 2026-10-24 by TCW-117: TCW-109's departure 4, 2026-10-22, its
+  note on TCW-99, 17:59: the allowed list refuses `work.jira` and
+  `work.jira.site` from a variable, so the examples name
+  `work.jira.credentials`.)
 - **Personal files and variables keep an allowed list,** as 3.x's
   `PERSONAL_KEYS` does (`docs/use-cases.md`, S-5). Neither can change a
   project's `id`, its parents, or its store locations; a personal file can
@@ -651,15 +666,20 @@ all three axes rather than on the project's own settings.
   flag, and it is what a change to that project needs anyway.
 - **Mixed capability status** (shown when the scope includes several
   projects, `down` or `all`). Where projects in the view give a
-  capability different statuses, a list shows a short summary such as
-  "Missing(1), Supported(1), Omitted(1)". The detail view shows which
-  project has which status. To open the capability as one of those
+  capability different statuses, the records a listing gives in `--json`
+  carry every project's status (`statuses`), and the detail view shows
+  which project has which status; a plain listing shows no summary.
+  (Amended 2026-10-24 by TCW-117: the user, 2026-10-22, recorded in
+  TCW-113's note on TCW-99; the earlier text had a list show a summary
+  such as "Missing(1), Supported(1), Omitted(1)".) To open the capability as one of those
   projects sees it, run the command in that project's folder. A project that inherits a status
   without overriding it counts with that status, marked as inherited. A
-  sketch:
+  sketch (amended 2026-10-24 by TCW-117: its command gains `--scope down`,
+  since statuses from several projects need a scope that includes them;
+  TCW-113's decision, TCW-113 spec, Departures 1):
 
     ```
-    $ tcw capabilities show shared-libs.capabilities/abc
+    $ tcw capabilities show shared-libs.capabilities/abc --scope down
     full id: shared-libs.capabilities/abc
     owner: shared-libs
     status:
@@ -746,8 +766,13 @@ all three axes rather than on the project's own settings.
       the same path as its original and the pointer dropped, since in 4.0
       an override is matched by path. If that path is already taken in the
       project, the migration reports it instead of guessing.
-    - A connection's or a store's `repository` (address, branch, folder)
-      goes into the manifest entry, with the branch carried over.
+    - A connection's `repository` (address, branch, folder) goes into the
+      manifest entry, with the branch carried over; a store's `repository`
+      stays on the store. (Amended 2026-10-24 by TCW-117: decided by the
+      dispatching session, 2026-10-22, on TCW-99 (comment of 21:06), under
+      the user's instruction to settle the remaining open questions: one
+      place to declare a store's repository already exists and every 4.0
+      child uses it; no follow-up item.)
     - A store written both as a path and as a `repository` becomes one
       location: a plain path when the store is inside the project, otherwise
       a `.path` address from the root of the project whose folder holds it.

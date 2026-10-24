@@ -1,4 +1,4 @@
-<!-- Bound to the `spec` and `implement` stages of `tcw work`; see `tcw-config.yaml`.
+<!-- Bound to the `spec` and `implement` stages of `tcw work`; see `.tcw/tcw-config.yaml`.
      Read as a continuation of TCW's built-in stage instructions, not on its own. -->
 
 # Harness compatibility (Claude Code, Codex, and Pi)

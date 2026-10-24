@@ -1,4 +1,4 @@
-<!-- Bound to the `review` stage of `tcw work`; see `tcw-config.yaml`.
+<!-- Bound to the `review` stage of `tcw work`; see `.tcw/tcw-config.yaml`.
      Read as a continuation of TCW's built-in stage instructions, not on its own. -->
 
 # Review rules for this repository

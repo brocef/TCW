@@ -537,7 +537,7 @@ work folder and says so.
 this machine, by cloning their repositories into the folders the manifests
 give. A manifest fetched from someone else's repository could otherwise place
 a clone anywhere, so 4.0 limits where each manifest may place one. The
-[Related projects guide](guide/multi-repo.md)
+[Related projects guide](guide/multi-repo.md#where-a-clone-may-be-placed)
 states the rules in full; in short:
 
 1. The active project's own two manifests, `.tcw/tcw-manifest.yaml` and

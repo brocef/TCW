@@ -1,31 +1,43 @@
 # Using TCW with Jira
 
-A project whose `tcw-config.yaml` sets `work.backend: jira` keeps its work items
-on Jira tickets. This guide is for both sides of that arrangement: the people
-outside engineering who write and follow tickets in Jira, and the engineers
-and agents who work the items with `tcw`. Everything about items that does not
-depend on the backend, such as the stages, the item folder and moving an
-item, is in [the work guide](work.md).
+A project whose `.tcw/tcw-config.yaml` sets `work.backend: jira` keeps its
+work items on Jira tickets. This guide is for both sides of that arrangement:
+the people outside engineering who write and follow tickets in Jira, and the
+engineers and agents who work the items with `tcw`. It is also where every
+change a `tcw` command makes to a ticket is described. Everything about items
+that does not depend on the backend, such as the stages, the item folder,
+nested items and moving an item, is in [the work guide](work.md).
+
+An item's **full identifier** is its name everywhere: the project's ID,
+`.work/`, and the item's **id-path**, which is its folder's path inside the
+work store, such as `shop.work/SHOP-42-refund-a-payment`. How full
+identifiers are written, and the other forms a command accepts, are in
+[Linking and validation](linking-and-validation.md) and
+[the command line](cli.md).
 
 ## Who owns what
 
 Each fact about an item has one home, and nothing is copied between the two:
 
-| Jira owns                              | The repository owns                                     |
-| -------------------------------------- | ------------------------------------------------------- |
-| the request (the ticket's description) | the spec, the plan and every round                      |
-| the status, which is the item's stage  | handoffs for the stages worked in the repository        |
-| the assignee                           | the item's declared record changes, `capabilities.yaml` |
-| priority, effort and complexity        | the taxonomy and the capabilities                       |
-| labels, which are the item's tags      |                                                         |
-| the parent, and "blocks" links         |                                                         |
-| comments                               |                                                         |
+| Jira owns                                      | The repository owns                                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| the request (the ticket's description)         | the spec, the plan and every round                                                         |
+| the status, which is the item's stage          | handoffs for the stages worked in the repository                                           |
+| the assignee                                   | the item's declared record changes, `capabilities.yaml`                                    |
+| priority, effort and complexity                | the taxonomy and the capabilities                                                          |
+| labels, which are the item's tags              | a parent or blocker Jira cannot link (see [below](#parents-and-blockers-jira-cannot-link)) |
+| the parent, and "blocks" links between tickets |                                                                                            |
+| comments                                       |                                                                                            |
 
 In the repository, each item still has a folder in the work store, named with
-the ticket's key, `TCW-42-refund-a-payment`. Its `item.yaml` holds only the
-ticket's address; everything else in the folder is the technical record. The
-taxonomy and capabilities are never stored in Jira: they describe the product,
-and they live and change with its code.
+the ticket's key and then the title's words, `SHOP-42-refund-a-payment`. The
+folder may sit at the top of the work store or inside another item's folder
+(a **nested** item); TCW finds a key-named folder at any depth. The folder's
+state file, `tcw-work-item.yaml`, holds the line naming the TCW version that
+wrote it, the ticket's address, and any parent or blocker Jira cannot link;
+everything else in the folder is the technical record. The taxonomy and
+capabilities are never stored in Jira: they describe the product, and they
+live and change with its code.
 
 ## For people outside engineering
 
@@ -94,6 +106,8 @@ every optional stage turned on, `spec` at `Specifying`, `plan` at `Planning`
 and `qa` at `In QA`.
 
 ```yaml
+# .tcw/tcw-config.yaml
+tcw-version: 4.0.0
 id: shop
 work:
     backend: jira
@@ -127,14 +141,62 @@ work:
     export TCW_JIRA_TOKEN=<your Jira API token>
     ```
 
+    When they are not set, a command that needs Jira stops with exit code 1
+    and names them:
+
+    ```
+    tcw work list: Jira credentials are not set: TCW_JIRA_EMAIL, TCW_JIRA_TOKEN. Export them, or correct work.jira.credentials in .tcw/tcw-config.yaml.
+    ```
+
 - **Two custom fields** tie a ticket to an item: a text field holding the TCW
-  project's ID (`TCW Project`) and one holding the item's slug (`TCW Item`).
-  They must be on both the issue type's create screen and its edit screen.
+  project's ID (`TCW Project`) and one holding the item's full identifier
+  (`TCW Item`), nested id-path included, such as
+  `shop.work/SHOP-40-payments/SHOP-42-refund-a-payment` for an item whose
+  folder is inside its parent's. They must be on both the issue type's create
+  screen and its edit screen.
 
 Every key, its default and its rules are in the configure skill's
-[`jira.md`](../../skills/configure/references/jira.md). Each project states its
-own `work.jira` block; nothing is inherited from another project. The `setup`
-skill walks through a first setup.
+[`jira.md`](../../skills/configure/references/jira.md). The `setup` skill
+walks through a first setup.
+
+### Settings a parent passes down
+
+A project may take its Jira settings from a parent: a project it names under
+`parents:` whose link passes `config` (how parent links work is in
+[Related projects](multi-repo.md)). Its `work.jira` is then merged key by key
+with what the parents pass: a key the project sets itself wins, and every key
+it leaves out comes from its parents (when several set one, the load order
+[Related projects](multi-repo.md) describes decides which). So a family of
+projects can keep one site, one set of credential names and one pair of
+field names in a shared parent, and each child sets only `project` when its
+tickets are in another Jira project. `tcw project config --origin` names the
+project and file each value came from.
+
+Two things are always the project's own and never come from a parent:
+`work.backend: jira`, which each Jira-mode project writes in its own
+`.tcw/tcw-config.yaml`, and the stages with their Jira statuses
+(`work.stages`). A child of a Jira-mode parent that does not write
+`work.backend: jira` keeps its items in files.
+
+A credential variable's name may also come from an override variable, such
+as `TCW_WORK_JIRA_CREDENTIALS_EMAIL_ENV__SHOP=SHOP_EMAIL`, which makes the
+project `shop` read its email from `SHOP_EMAIL`. How these variables are named,
+and the other layers, are in [Configuration](configuration.md).
+
+When a parent that could pass `work.jira` is not on this machine, TCW cannot
+tell which Jira settings apply, so a Jira-mode project cannot open its work
+items: `tcw work list` and every other command that reads or changes an item
+stop with exit code 7, naming the setting and the parent, before any request
+is sent:
+
+```
+tcw work list: 'shop' inherits its configuration (work.jira) from project 'org', which is not on this machine: …
+```
+
+`tcw work lifecycle`, `tcw work docs`, `tcw work stage prompt <stage>` and
+`tcw validate` still work; `tcw validate` reports the parent as
+`unresolved`. [Related projects](multi-repo.md) says how to put the parent on
+this machine.
 
 ## Stages and statuses
 
@@ -162,26 +224,31 @@ reason recorded. A ticket in a status that no stage maps to has **no stage**:
 ## Checking the workflow
 
 `tcw validate` never contacts Jira. It checks the configuration's shape and
-what the item folders hold on their own: each folder's name and `item.yaml`, a
-ticket key used by two folders, a record folder for a stage Jira keeps, the
-latest `review` round, and each folder's `capabilities.yaml`, which it
-reports when the file cannot be read or is malformed, whatever the item's
-stage. Whether the records that file declares have been changed, and the
-other checks that need an item's properties, which Jira holds, wait for
-`--remote`.
+what the item folders hold on their own: each folder's name and
+`tcw-work-item.yaml`, a ticket key used by two folders at any depth, a record
+folder for a stage Jira keeps, the latest `review` round, each folder's
+`capabilities.yaml` (reported when the file cannot be read or is malformed,
+whatever the item's stage), and each parent or blocker recorded in a folder.
+A recorded reference that names a ticket on this site is an error, since it
+should be a Jira link, and the message gives the `tcw work edit` command that
+makes it one. Whether the records `capabilities.yaml` declares have been
+changed, and the other checks that need an item's properties, which Jira
+holds, wait for `--remote`.
 
 `tcw validate --remote` also reads Jira, and changes nothing there. It prints
 findings only, one per line: a status that does not exist, a move between two
 stages that no transition offers, a transition screen that asks for a field
 other than the comment, a configured field missing from a create or edit
-screen, and an item folder whose ticket is missing or names another item. It
-then runs the work-item checks plain `tcw validate` runs in a filesystem-mode
-project: a `parent` or `blocked-by` naming an item that does not exist, an
-item whose stage is ahead of its documents, and the records each unfinished
-item's `capabilities.yaml` declares (a file plain `tcw validate` already
-reported as malformed is not reported again). A move it could not check, such as one with no ticket at
-that status to try, is a finding too. When Jira cannot be reached it exits
-with code 5.
+screen, an item folder whose ticket is missing or whose `TCW Item` names
+another item, and each ticket that still holds a TCW 3.x `TCW Item` value
+(see [Tickets that still hold a TCW 3.x value](#tickets-that-still-hold-a-tcw-3x-value)).
+It then runs the work-item checks plain `tcw validate` runs in a
+filesystem-mode project: a `parent` or `blocked-by` naming an item that does
+not exist, an item whose stage is ahead of its documents, and the records each
+unfinished item's `capabilities.yaml` declares (a file plain `tcw validate`
+already reported as malformed is not reported again). A move it could not
+check, such as one with no ticket at that status to try, is a finding too.
+When Jira cannot be reached it exits with code 5.
 
 Fixing the workflow is done in Jira, by someone allowed to change it. The
 `setup` skill walks through it with you; TCW changes nothing in a Jira
@@ -193,9 +260,9 @@ A ticket written in Jira becomes an item when it is **adopted**.
 
 `tcw work tickets list` prints the tickets waiting, one key per line, oldest
 first; `--json` gives each one's key, summary, status, creation time,
-reporter, web address and description. By
-default these are the tickets of this Jira project at the inbox status with no
-`TCW Item` yet. A project can offer more with its own Jira query,
+reporter, web address and description. By default these are the tickets of
+this Jira project at the inbox status with no `TCW Item` yet. A project can
+offer more with its own Jira query,
 [`work.jira.inbox-query`](../../skills/configure/references/jira.md#workjirainbox-query).
 Either way, the list holds only tickets that adopting would accept: in this
 Jira project, at the inbox or request status, and not already an item.
@@ -204,17 +271,18 @@ Jira project, at the inbox or request status, and not already an item.
 
 ```sh
 tcw work tickets list
-tcw work tickets adopt SHOP-42      # prints shop/SHOP-42-refund-a-payment
+tcw work tickets adopt SHOP-42      # prints shop.work/SHOP-42-refund-a-payment
 ```
 
 It fills in the ticket's `TCW Project` and `TCW Item`, writes the item's
 folder, and moves the ticket to the request status. A ticket further along
 than the request status is refused: adopting it would skip stages with no
-trace. Adopting runs the `request` stage's `post` hooks, as a move into
-`request` would, and no `pre` hooks or gates; a project's `post` hook, such as
-the [git example](configuration.md#example-keeping-git-in-step-with-each-stage-change-something-your-project-adds),
-therefore runs for an adopted item. Creating an item with `tcw work new`, and
-creating one in another project, run no hooks.
+trace. Adopting runs the `request` stage's `post`
+hooks, as a move into `request` would, and no `pre` hooks or gates; a
+project's `post` hook, such as the
+[git example](configuration.md#example-keeping-git-in-step-with-each-stage-change-something-your-project-adds),
+therefore runs for an adopted item. Creating an item with `tcw work new` runs
+no hooks.
 
 ## QA on the ticket
 
@@ -230,30 +298,137 @@ tcw work advance SHOP-42 --to implement --reason "rejected by Dana: refunds over
 
 A rejection's reason is the comment the implementation reads next.
 
-## Creating an item in another project
+## What each command changes on a ticket
 
-An item for another connected project is created in that project, with
-`tcw -C <folder> work new "<title>"`, where `<folder>` is its folder or
-`tcw://<id>.path/`. In 3.x, the `--project` option of `tcw work new`, removed
-in 4.0, created it in that project's inbox from here. Standard output is the new item's slug, or the ticket's key
-when TCW stopped after creating the ticket. When the target is on this
-machine, TCW reads its own `tcw-config.yaml` and uses that project's Jira
-settings, never this one's. When it is declared but is not on this machine:
+- **`tcw work new "<title>"`** creates the ticket, with its summary, request,
+  properties, `TCW Project` and `TCW Item`, then writes the item's folder.
+  With `--parent <item> --nest`, the folder is made inside the parent's, and
+  `TCW Item` holds the nested full identifier. Standard output is the new
+  item's full identifier, or the ticket's key when TCW stopped after creating
+  the ticket.
+- **`tcw work edit <item>`** changes the ticket's summary, priority, effort,
+  complexity, labels and assignee, and its Jira parent and "blocks" links.
+- **`tcw work advance <item>`** and **`tcw work discard <item>`** apply a
+  transition, and post a comment when the move carries a reason.
+- **`tcw work comment <item>`** posts a comment.
+- **`tcw work tickets adopt <KEY>`** fills in `TCW Project` and `TCW Item` and
+  moves the ticket to the request status.
+- **`tcw work move <item>`** and **`tcw work rename <item> <words>`** edit the
+  `TCW Item` of the item's ticket and of the ticket of every item nested in
+  it, then move or rename the folder. They change no other field.
 
-- with a `jira` block in this project's entry for it, TCW creates the ticket in
-  that project's Jira inbox, prints the ticket's key and exits 0;
-- without one, the request is refused with exit code 3.
+### Moving and renaming an item
 
-Creating an item in an upstream project is refused with exit code 3. The
-configure skill's
-[`projects.md`](../../skills/configure/references/projects.md#creating-an-item-in-another-project)
-describes the `jira` block, and
-[Working across repositories](multi-repo.md) walks through every case.
+A move or rename changes an item's full identifier, so it changes the
+`TCW Item` of every ticket whose item's folder moves: the item's own and those
+of the items nested in it. TCW first reads each of those tickets, and stops
+before any edit when one is missing, or holds a value that is neither the old
+full identifier nor the new one. A ticket still holding a TCW 3.x value stops
+it with exit code 3, `<KEY> still holds a TCW 3.x TCW Item; run 'tcw migrate'
+in this project first`. It then sets each ticket, and moves or renames the
+folder last. A rename keeps the key at the front of the folder's name.
+
+When Jira refuses an edit, or cannot be reached part way, the command stops
+with exit code 1 or 5, leaves the folder where it was, and names the tickets
+it set and those `still to be set`, ending with `run the same command again
+to finish the move` and the command. Running it again skips each ticket that
+already names the new full identifier and finishes the rest. On success it
+prints one `<old full id> -> <new full id>` line per identifier it changed,
+as in filesystem mode ([the work guide](work.md) describes moving and
+renaming).
+
+## Parents and blockers Jira cannot link
+
+Jira links only tickets on one site. A parent or blocker given to
+`tcw work new` or `tcw work edit` becomes a Jira link when it is an item of
+this project, or an item of another Jira-mode project whose tickets are on the
+same site. Anything else, such as an item of a filesystem-mode project, or of
+a project whose tickets are on another site, is **recorded** in the item's
+`tcw-work-item.yaml` instead, and the command says so:
+
+```
+shop.work/SHOP-42-refund-a-payment's blocker app.work/2026-10-01-checkout is not a ticket on https://example.atlassian.net, so it is recorded in docs/work/SHOP-42-refund-a-payment/tcw-work-item.yaml and Jira shows no link for it
+```
+
+**Jira does not show a recorded reference**: a person reading the ticket in
+Jira sees no parent or "blocks" link for it. TCW reads it from the folder as
+the item's parent or blocker, so `tcw work show` lists it with the item's
+other references, and `tcw validate` checks it without contacting Jira.
+Setting the parent to a ticket on this site later removes the recorded one;
+`--parent ''` removes both. The web viewer's create form accepts a blocker or parent in another
+project the same way, and shows the same sentence as a warning.
+
+## Working on another project's items
+
+A command changes only the project it is run in. An item of another project,
+Jira-mode or not, is changed by running the command in that project with the
+global option `-C`, which runs `tcw` as if it had been started in that folder:
+
+```sh
+tcw project path app                           # prints app's folder
+tcw -C <folder> work new "Support refunds"
+tcw -C tcw://app.path/ work edit app.work/2026-10-01-checkout --priority high
+```
+
+`tcw://app.path/` is the address of the project `app`'s folder on this
+machine. The command then reads that project's own `.tcw/tcw-config.yaml`
+and uses that project's Jira settings, never this one's. Naming another
+project's item to a command that changes it, from here, is refused with exit
+code 3, and the message gives the `tcw -C` to run instead:
+
+```
+tcw work edit: app.work/2026-10-01-checkout belongs to project 'app'; run the command there: tcw -C <folder> …
+```
+
+In 3.x, a project's entry for another project could carry a `jira` block,
+used to create tickets in that project from here; in 4.0 there is no such
+block, and `tcw migrate` drops it from the configuration and reports it (the
+[migration guide](../migration-guide-3.X-to-4.0.0.md) has the details). The
+item is made in that project, with `tcw -C`.
+
+`-C` works only for a project on this machine. Reading another project's
+items (`tcw work show`, or `tcw work list` with `--scope`) works from here.
+[Related projects](multi-repo.md) covers parent links and finding a project's
+folder, and [the command line](cli.md) covers `-C` and `--scope`.
+
+## Several projects in one Jira project
+
+Several TCW projects may keep their tickets in one Jira project; each ticket's
+`TCW Project` field says which TCW project it belongs to. When one command
+reads several projects, such as `tcw work list --scope down` in a parent,
+projects that share one Jira site and Jira project, one account (the same
+email and the same token) and one stage mapping (the same status for each
+stage) are read with one search, and each ticket is given to the project its
+`TCW Project` names. Projects that differ in any of these are read with a
+search each. A search is kept only for the rest of that command, or, in the
+web viewer, for the rest of one request; a write to Jira in the same command
+or request makes the next search ask Jira again, so it sees the write.
+
+## Tickets that still hold a TCW 3.x value
+
+In 3.x, `TCW Item` held the project's ID and the folder name joined by a
+slash, such as `shop/SHOP-42-refund-a-payment`; in 4.0 it holds the full
+identifier. `tcw migrate`, which moves a 3.x project to 4.0, converts the
+files first and then edits the `TCW Item` of each ticket in the project's Jira
+project whose `TCW Project` names it and that still holds a 3.x value,
+whatever its status. It changes no other field of any ticket. Each edit is a
+line on standard error, `edit <KEY>: C17 TCW Item: <old> -> <new>`, and
+`--dry-run` prints the same lines starting `would` and changes nothing.
+
+Until those edits are made, such tickets are left out of `tcw work list` with
+one warning that names their keys and `tcw migrate`, and `tcw validate
+--remote` reports each one as an error. That happens between a
+`tcw migrate --no-jira` run, which converts the files only and never
+contacts Jira, and the run that finishes; and after a run that stopped part
+way through the tickets, which says `run 'tcw migrate' again to finish`.
+Running `tcw migrate` again edits the tickets still left. The
+[migration guide](../migration-guide-3.X-to-4.0.0.md) walks through the whole
+move.
 
 ## What needs the network
 
 Every command that reads or changes an item asks Jira: `new`, `list`, `show`,
-`edit`, `advance`, `discard`, `comment`, `rename`, `tickets`, and
+`edit`, `advance`, `discard`, `comment`, `move`, `rename`, `tickets`, and
 `stage prompt` or `path` for a named item. When Jira cannot be reached they
 exit with code 5. When `work.jira.site` names a host that answers but is not
 a Jira site, so Jira answers "not found" for something every site has, they
@@ -266,7 +441,7 @@ posted, TCW reads the ticket's newest comments to see whether Jira received
 it, and says nothing if it did. Otherwise the move stands and the command
 exits with code 6: either the note was not posted, or, when the comments
 cannot be read either, it may have been, and you should read them with
-`tcw work show <slug>` before adding it with `tcw work comment`.
+`tcw work show <item>` before adding it with `tcw work comment`.
 
 These work offline: `tcw validate` without `--remote`, which never calls Jira;
 `tcw work lifecycle`, `tcw work docs` and `tcw work tags`; and

@@ -1,4 +1,4 @@
-<!-- Bound to the `implement` stage of `tcw work`; see `tcw-config.yaml`.
+<!-- Bound to the `implement` stage of `tcw work`; see `.tcw/tcw-config.yaml`.
      Read as a continuation of TCW's built-in stage instructions, not on its own. -->
 
 # Implementation rules
@@ -13,15 +13,15 @@ _Applies at `implement`. The design rules that govern what you build are in
 
 ## A project's work store is often in a different git repository
 
-`work.path` in a project's `tcw-config.yaml` may point at a store outside that
-project's own repository, and in the orchestrator layout it normally does. The
-reference shape, from a planning workspace:
+`work.path` in a project's `.tcw/tcw-config.yaml` may point at a store outside
+that project's own repository, and in the orchestrator layout it normally does.
+The reference shape, from a planning workspace:
 
 ```
 workspace/                       git repo A — owns docs/ and every work store
 ├── docs/core/work/              the child's store
 ├── core/                        git repo B, nested, and gitignored by A
-│   └── tcw-config.yaml          work.path → ../docs/core/work
+│   └── .tcw/tcw-config.yaml     work.path → ../docs/core/work
 ```
 
 Planning consolidates in one repository; code lives in several. This is the
@@ -40,12 +40,15 @@ have each shipped silent bugs.
   #15–#18 were four separate instances of exactly this.
 - **"Gitignored, therefore not a project" is false.** The child projects above
   are each their own repository, gitignored by the parent so it does not track
-  sub-project files. Any gitignore-based pruning of the walk over projects
-  (`find_project_root` and `descendant_projects` in `tcw/store/fs.py`) must be
-  evaluated per repository and must never prune at a nested repository
-  boundary — cross it and re-evaluate against that repository's own ignore
-  rules. A naive top-level `git ls-files -oi` prune drops every child project
-  and makes the walk over descendants return empty.
+  sub-project files. TCW finds a related project through the manifests, which
+  say where each one is, or by searching the folders next to the project and
+  the folders enclosing it (`_search` in `tcw/store/project.py`); the current
+  project is the nearest enclosing folder holding `.tcw/tcw-config.yaml`
+  (`find_project_root` in `tcw/store/fs.py`). Neither reads git's ignore
+  rules, and neither looks below a folder it tests. Code that adds a walk over
+  folders must not skip one because a parent repository ignores it: a nested
+  repository is checked against its own rules, or not by ignore rules at
+  all.
 
 A regression test for either needs **two real git repositories** in the fixture.
 A single-repo `tmp_path` reproduces none of it, which is plausibly why all four
@@ -55,8 +58,8 @@ of those issues shipped.
 
 Evaluate this project's documentation entries by invoking the
 `documentation-sync` skill. The entries themselves come from `tcw work docs`;
-they live in `tcw-config.yaml` under `work.documentation`, where `tcw validate`
-checks them.
+they live in `.tcw/tcw-config.yaml` under `work.documentation`, where
+`tcw validate` checks them.
 
 ## Tests that cannot narrow a criterion
 

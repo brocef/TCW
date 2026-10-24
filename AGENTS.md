@@ -36,7 +36,7 @@ Every stage's instructions from `request` on start by asking for
 `git pull --ff-only`, and every move to a stage after `inbox` runs
 `docs/guide/examples/commit-item-after-move.sh`, which commits the item's
 folder when the move changed a file in it. The bindings are in
-`tcw-config.yaml`; `tcw work lifecycle` lists them.
+`.tcw/tcw-config.yaml`; `tcw work lifecycle` lists them.
 
 **Advance an item to `implement` before the first change to code.** As soon as
 its plan is written, `tcw work advance <item>` moves it from `plan` to
@@ -49,7 +49,7 @@ under modification, so its behavior is in flux: results are unreliable and it ca
 hang (`tcw work new` once blocked inside a capture script). As soon as a session
 starts editing `tcw/`, work the lifecycle by hand, and say so rather than
 silently alternating between the two: move each ticket in Jira itself, to the
-status of the stage it is going to (`work.stages` in `tcw-config.yaml` gives
+status of the stage it is going to (`work.stages` in `.tcw/tcw-config.yaml` gives
 each stage's status), and write the files in an item's folder directly. A hand
 move runs none of the checks or hooks bound to it — no `pre` checks and no
 commit — so do what they would have done yourself. A hand move that skips a
@@ -167,7 +167,7 @@ Run outputs are disposable and gitignored. The instrument is not.
 
 Before reporting any code change complete, invoke the `documentation-sync` skill
 to evaluate this project's documentation entries. They are **configuration, not
-prose**: they live in `tcw-config.yaml` under `work.documentation`, `tcw validate`
+prose**: they live in `.tcw/tcw-config.yaml` under `work.documentation`, `tcw validate`
 checks their shape, and `tcw work docs` prints them. `tcw work stage prompt plan` and
 `tcw work stage prompt implement` include them inline, so a plan should already name a
 task for every trigger expected to fire.

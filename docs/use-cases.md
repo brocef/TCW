@@ -16,12 +16,33 @@ reason.
 
 A few words used throughout:
 
-- A **family** is a project together with every project connected to it
-  through `projects:`.
+- A **parent link** is an entry under `parents:` in a project's
+  `.tcw/tcw-config.yaml`, naming another project by its ID. It is the one
+  relationship between projects: the child inherits from the parent what the
+  link's `inherit` passes (`all`, `none`, or a list drawn from `taxonomy`,
+  `capabilities` and `config`), and the parent's views can include the child.
+- A **family** is a project together with every project related to it by
+  parent links.
+- The **active project** is the one a command runs as: the project whose
+  folder the command starts in. Only the active project's own objects are
+  ever created, changed or deleted.
+- A **full identifier** names one object and its owning project, such as
+  `core.taxonomy/invoice` or `app.work/2026-10-24-add-export`.
+- A **manifest** (`.tcw/tcw-manifest.yaml`, and the personal
+  `.tcw/tcw-manifest.local.yaml`) says where other projects are on this
+  machine, by ID, and nothing else.
+- The **load order** is the order in which a project's ancestors are read,
+  each parent after its own ancestors; where two of them hold an object at
+  the same path, the later one wins.
 - An **epic** is a parent item whose parts are separate child items.
 - A **round** is a review or qa document written into an item's folder.
 - A **handoff** is the note a session writes so another session can resume
   the work.
+
+Manifests, finding a project's folder, `tcw://<id>.path/` addresses,
+provisioning and git worktrees are about folders on this machine. Parent
+links, full identifiers, ownership, inheritance, overrides and `--scope` are
+what every store keeps, whether it is a folder of files or Jira.
 
 It is written for people changing TCW. How to set up each arrangement is in the
 guides, chiefly [`guide/multi-repo.md`](guide/multi-repo.md) and
@@ -45,7 +66,7 @@ Each case is marked:
     - [UC-3 A monorepo of several projects](#uc-3-a-monorepo-of-several-projects)
     - [UC-4 Many repositories and a planning workspace](#uc-4-many-repositories-and-a-planning-workspace)
     - [UC-5 One Jira project shared by several TCW projects](#uc-5-one-jira-project-shared-by-several-tcw-projects)
-    - [UC-6 A connected project that is not on this machine](#uc-6-a-connected-project-that-is-not-on-this-machine)
+    - [UC-6 A related project that is not on this machine](#uc-6-a-related-project-that-is-not-on-this-machine)
     - [UC-7 A library published to the public, read by private projects](#uc-7-a-library-published-to-the-public-read-by-private-projects)
     - [UC-8 Several separate families on one machine](#uc-8-several-separate-families-on-one-machine)
 - Situations that cut across architectures
@@ -84,17 +105,17 @@ look.
 
 These are the dimensions. A real setup is a combination of them.
 
-| Dimension               | Values seen or expected                                                                                                         |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Repositories            | one repository; one repository holding several projects (monorepo); several repositories; a repository that holds only planning |
-| Projects per family     | one; a parent with children; children with their own children; a project read by others that names none of them (upstream)      |
-| Where each store is     | inside the project (`docs/<component>/`); elsewhere in the same repository; in a different repository; not on this machine yet  |
-| Inheritance (`extends`) | none; one level; several levels (server → shared → core); different lists for taxonomy and capabilities                         |
-| Work backend            | files; Jira, one Jira project per TCW project; Jira, one Jira project for several TCW projects                                  |
-| Who is present          | the person who decides, talking to the agent; an engineer, with the requester elsewhere (on Jira); nobody (unattended)          |
-| Harness                 | Claude Code; Codex; Pi; a person typing `tcw` themselves; a script or CI job                                                    |
-| Machine                 | everything checked out; some connected projects missing; a linked worktree; a fresh clone; CI                                   |
-| Version control         | git, which TCW reads but never changes; no version control (expected); a store in a repository other than the code's            |
+| Dimension                  | Values seen or expected                                                                                                                                               |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Repositories               | one repository; one repository holding several projects (monorepo); several repositories; a repository that holds only planning                                       |
+| Projects per family        | one; a parent with children; children with their own children; a parent that does not list its children                                                               |
+| Where each store is        | inside the project (`docs/<component>/`); elsewhere in the same repository; in a different repository, addressed as `tcw://<project>.path/…`; not on this machine yet |
+| Inheritance (parent links) | none; one level; several levels (server → shared → core); different `inherit` for different parents                                                                   |
+| Work backend               | files; Jira, one Jira project per TCW project; Jira, one Jira project for several TCW projects                                                                        |
+| Who is present             | the person who decides, talking to the agent; an engineer, with the requester elsewhere (on Jira); nobody (unattended)                                                |
+| Harness                    | Claude Code; Codex; Pi; a person typing `tcw` themselves; a script or CI job                                                                                          |
+| Machine                    | everything checked out; some related projects missing; a linked worktree; a fresh clone; CI                                                                           |
+| Version control            | git, which TCW reads but never changes; no version control (expected); a store in a repository other than the code's                                                  |
 
 ## Architectures
 
@@ -105,8 +126,9 @@ documents under `docs/work/`. The library `core` of UC-2 keeps its work in
 files.
 
 ```
-my-project/            one git repository
-├── tcw-config.yaml    no projects: section
+my-project/              one git repository
+├── .tcw/
+│   └── tcw-config.yaml  id: my-project; no parents, no children
 └── docs/
     ├── taxonomy/
     ├── capabilities/
@@ -119,16 +141,17 @@ the others: a change can work here and nowhere else.
 
 **Requirements**
 
-- With no `projects:` section, every command behaves as if the family were
-  this one project. Nothing asks for a parent, warns about missing children,
-  or reads the network for other projects.
+- With no `parents:` and no `children:`, every command behaves as if the
+  family were this one project. Nothing asks for a parent, warns about missing
+  children, or reads the network for other projects.
 - Every store defaults to `docs/<component>/` inside the project, with no
-  configuration.
-- The project works as soon as `tcw project new` has run, before any stage, hook or
-  procedure is configured (TCW's built-in stage instructions apply).
+  configuration (`store_location` in `tcw/store/fs.py`).
+- The project works as soon as `tcw project new --id <id>` has run, before any
+  stage, hook or procedure is configured (TCW's built-in stage instructions
+  apply).
 - The project root is the nearest folder above the current directory holding
-  a `tcw-config.yaml` file (`find_project_root` in `tcw/store/fs.py`), so any
-  subfolder works as a starting point.
+  a `.tcw/tcw-config.yaml` file (`find_project_root` in `tcw/store/fs.py`), so
+  any subfolder works as a starting point.
 - A feature built for families must cost a single project nothing: no extra
   configuration, no extra output, no slower commands.
 
@@ -137,14 +160,14 @@ the others: a change can work here and nowhere else.
 ### UC-2 A library other projects read
 
 **Seen.** A private library, here `core`, has its own repository and its own
-TCW project, keeping its work in files. A family of applications reads it as
-an **upstream** project, and their taxonomies inherit from it
-(`taxonomy.extends: [core]`). Its own configuration names none of them.
+TCW project, keeping its work in files. A family of applications names it as a
+parent, and their taxonomies inherit from it through that link. Its own
+configuration names none of them: it is a parent that does not list its
+children.
 
 ```
-core/                      its own repository; tcw-config.yaml with no projects:
-app/tcw-config.yaml        projects.upstream.core: ../core
-app/apps/server/...        taxonomy.extends: [shared, core]
+core/                    its own repository; .tcw/tcw-config.yaml lists no children
+app/apps/server/.tcw/    parents: app (inherit: [config]), core (inherit: [taxonomy]), shared
 ```
 
 A library is both a UC-1 project in its own right (its maintainers work it
@@ -154,27 +177,36 @@ from the readers' side.
 **Requirements**
 
 - Nothing about a reader is written into the library: not its ID, its paths,
-  or its work items. An upstream connection is declared by the reader alone
-  ([`guide/multi-repo.md`](guide/multi-repo.md), "Reading a project that does
-  not name you").
-- From the reader, the library is read-only. Creating or changing anything in
-  it (in 3.x, also through the `--project` option of `tcw work new` and the
-  `--blocks` option of `tcw work edit`, both removed in 4.0) is refused
-  with exit code 3.
-- The library's own `projects:` connections are not followed from the reader,
-  and a problem in them does not stop the reader.
+  or its work items. The parent link is declared by the reader alone
+  ([`guide/multi-repo.md`](guide/multi-repo.md)); the library lists a reader
+  under `children:` only if its maintainers choose to.
+- Only the owning project changes an object. A command run in the reader that
+  would create, change or delete one of the library's objects is refused with
+  exit code 3, naming the library's folder (`tcw/ownership.py`). Overriding a
+  library object is allowed, because the override is a new object owned by
+  the reader.
+- The library's own parent links are followed from the reader (its ancestors
+  come before it in the reader's load order), but a problem in them is the
+  library's: what the reader inherits through the library stops with exit 7,
+  naming the library's file, while the reader's own items and records still
+  work, and `tcw validate` in the reader reports it as could not check
+  (`_read_links` in `tcw/store/project.py`).
 - Renaming or removing a taxonomy term or capability in the library is a
-  breaking change for its readers. Their links (`tcw://core/T/...`)
-  break, and only the readers' `tcw validate` notices. Nothing in the library
-  can see this. A change that renames entries must say what readers see.
+  breaking change for its readers. Their links (`tcw://core.taxonomy/…`) break,
+  and only the readers' `tcw validate` notices. A change that renames entries
+  must say what readers see.
 - The library's maintainers must be able to work in it with no reader
   checked out.
 
 **Known gaps**
 
 - The library cannot know who reads it, so it cannot warn before a breaking
-  rename. This is a deliberate cost of one-sided connections; TCW-27 (a rename
-  verb) should consider readers.
+  rename. This is a deliberate cost of a parent that does not list its
+  children. `tcw taxonomy rename` and `tcw taxonomy move` (and the same
+  commands of `tcw capabilities`) print one `<old full id> -> <new full id>`
+  line for each identifier they changed, and say that references in other
+  projects are not rewritten, so the maintainers can pass the identifiers on
+  (TCW-114).
 
 ### UC-3 A monorepo of several projects
 
@@ -182,59 +214,62 @@ from the readers' side.
 TCW projects:
 
 ```
-app/                       one git repository
-├── tcw-config.yaml        id: app; children below; parent: the workspace (UC-4)
-├── packages/shared/       id: shared;  taxonomy.extends: [core]
-├── apps/server/           id: server;  taxonomy.extends: [shared, core]
-│                                       capabilities.extends: [shared]
-└── apps/mobile/           id: mobile;  same extends as the server
+app/                     one git repository
+├── .tcw/                id: app; parents: workspace (UC-4); children: shared, server, mobile
+├── packages/shared/     id: shared;  parents: app (inherit: [config]), core (inherit: [taxonomy])
+├── apps/server/         id: server;  parents: app (inherit: [config]), core (inherit: [taxonomy]), shared
+└── apps/mobile/         id: mobile;  the same parents as the server
 ```
 
-Each child declares `parent: app: ../..`, and the root declares
-each child under `children:`. All four keep their work in the same Jira
-project (UC-5), and their work stores sit in a different repository (UC-4).
+Each package names its parents by ID in its own `.tcw/tcw-config.yaml`; its
+link to `app` passes only the configuration (`inherit: [config]`), so `app`'s
+Jira settings reach it (UC-5). The root lists each package under `children:`
+and gives its folder in `.tcw/tcw-manifest.yaml`. All four keep their work in
+the same Jira project (UC-5), and their work stores sit in a different
+repository (UC-4).
 
 **Requirements**
 
 - Which project a command acts on depends on the current directory: the
-  nearest `tcw-config.yaml` above it. From `apps/server`, `tcw work list`
+  nearest `.tcw/tcw-config.yaml` above it. From `apps/server`, `tcw work list`
   lists the server's items, not the monorepo root's. Instructions that tell an
-  agent to run a command "from inside that project" depend on this. Any
-  command that changes directory, or runs a hook, must keep it in mind.
+  agent to run a command "from inside that project" depend on this, and so does
+  `tcw -C <folder>`, which changes to that folder before the command runs
+  (`tcw/cli.py`). Any command that changes directory, or runs a hook, must keep
+  it in mind.
 - A project folder can sit inside another project's folder. Nothing may treat
   "inside a project's folder" as "belongs to that project": a project's
   contents end where a nested project begins.
+- Packages do not change each other's objects: each command changes only the
+  active project's own (`tcw/ownership.py`).
 - Inheritance can be several levels deep and differ per axis: the server
-  inherits taxonomy from two projects and capabilities from one. Each
-  inherited entry must be read from exactly one project, however many routes
-  reach it. A bare reference to a name defined in two inherited projects is
-  refused as ambiguous, never resolved to one of them (`get` in
-  `tcw/store/fs.py`). A local term with the same name wins without a warning.
-- An epic in the root project can have parts in the children. In 3.x, filing a
-  part into a child went through the `--project` option of `tcw work new`,
-  which is removed in 4.0; a part is made in the child, with
-  `tcw -C <folder> work new "<title>" --parent <full id>` (the plan prompt's
-  step 6). `tcw work edit` accepts
-  a parent in another project; its check for parent cycles covers only the
-  item's own project (`tcw/work/model.py`).
+  inherits taxonomy from `core` and `shared`, and capabilities from `shared`
+  only. Each inherited object is read from exactly one project, however many
+  routes reach it: a project reached twice is loaded once. Where two parents
+  each hold an object at the same path and neither inherits it from the other,
+  the load order decides (the later one wins) and the command warns, naming
+  both (`tcw/store/base.py`). An object the project declares at an inherited
+  path is an override, marked in records (`overrides` in `--json` output).
+- An epic in the root project, or in the workspace of UC-4, can have parts in
+  the packages. A part is made in its own project, with
+  `tcw -C <folder> work new "<title>" --parent <full id>`; the parent is
+  located from the part's project. `tcw work edit` accepts a parent in another
+  project; its check for parent cycles covers only the item's own project
+  (`validate_changes` in `tcw/work/model.py`).
+- A parent sees its children's items only when asked: `tcw work show` lists
+  only the children in the item's own project, and `--scope down` adds those in
+  the descendant projects (`tcw/scope.py`).
 - A hook runs once per move, with the root of the project whose item moved
   as its current directory and with `TCW_PROJECT_ROOT` and `TCW_ITEM_PATH` set
   (`tcw/work/hooks.py`, `tcw/work/advance.py`). It may assume nothing about
   where that project sits in the repository: a project's hooks must work
-  whether it is the repository's root or a subfolder. A cross-project filing
-  runs none of the target project's hooks.
+  whether it is the repository's root or a subfolder.
 - Several projects share one git index. A hook that commits after a move must
   commit only the moved item's files, or one project's move includes
   another's unrelated changes. The shipped example,
   `docs/guide/examples/commit-item-after-move.sh`, does this.
 
-**Known gaps**
-
-- An item's `children:` line in `tcw work show` lists only children on its own
-  board, not those filed into the other projects (TCW-102).
-- `--parent` cannot be set when filing into another project (TCW-103).
-- TCW-98 (descendants on all three axes) and TCW-99 (redesigning how projects
-  relate) will change how a parent sees its children.
+**Known gaps**: none recorded.
 
 ### UC-4 Many repositories and a planning workspace
 
@@ -246,20 +281,24 @@ repositories, cloned inside it and ignored by it:
 
 ```
 workspace/                 repository A: planning only; ignores everything it does not list
-├── tcw-config.yaml        id: product; Jira APP; children: app; upstream: core
+├── .tcw/
+│   ├── tcw-config.yaml    id: workspace; Jira APP; children: app
+│   └── tcw-manifest.yaml  where app and core are
 ├── docs/
 │   ├── work/              the workspace's own work store
 │   ├── app/work/          the monorepo root's work store
 │   ├── server/work/       the server's work store
 │   ├── mobile/work/
 │   └── shared/work/
-├── app/                   repository B, its own clone (UC-3); work.path: ../docs/app/work
-└── core/                  repository C, its own clone (UC-2); keeps its own store
+├── app/                   repository B, its own clone (UC-3); parents: workspace (inherit: none)
+│                          work.path: tcw://workspace.path/docs/app/work
+└── core/                  repository C, its own clone (UC-2); keeps its own stores
 ```
 
-Planning happens in one place; code changes happen in several. A single
-piece of work often has a record in repository A and code in repository B,
-committed separately.
+The workspace is a parent that passes nothing down (`inherit: none`): it
+exists for the top-down view. Planning happens in one place; code changes
+happen in several. A single piece of work often has a record in repository A
+and code in repository B, committed separately.
 
 **Requirements**
 
@@ -267,52 +306,56 @@ committed separately.
   rebuilds a store's path from the project root plus `docs/work`, runs git in
   the project root to ask about the store, or treats "a `docs/work` folder
   exists" as "this is a project" is wrong here, usually without an error.
-  Resolve a store through `work_path` / `open_backend` (`tcw/work/open.py`)
-  and find the repository holding it with `git_root` (`tcw/store/fs.py`).
+  Resolve a store through `store_location` (`tcw/store/fs.py`), which every
+  reader calls, or `work_path` / `open_backend` (`tcw/work/open.py`), and find
+  the repository holding it with `git_root` (`tcw/store/fs.py`).
 - **"Ignored by git, therefore not a project" is false.** The workspace
-  ignores its child clones, which are projects. Any pruning of folders by
-  git's ignore rules must stop at a nested repository and re-evaluate there.
-  Projects are found from declared connections (`descendant_projects` in
-  `tcw/store/fs.py` reads the registry, not the folder tree), and that must
-  stay true.
-- **A move in one project can leave files in another repository.** Filing into
-  another project writes into that project's store, which may be in a third
-  repository. TCW names each such file as "left uncommitted" in that
-  repository (`_uncommitted_in` in `tcw/work/open.py`). It never commits:
-  committing belongs to the project's own hooks and people.
-- **A store with changes not yet committed blocks the next filing into it.**
-  For a filesystem target the filing is refused; for a Jira target the ticket
-  is created and stays in the Jira inbox (`_check_target` in
-  `tcw/work/open.py`, `_cannot_make_item` in `tcw/work/jira/tickets.py`).
-  Instructions that file several parts must say to record the changes between
-  filings (TCW-101).
+  ignores its child clones, which are projects. Nothing that locates a project
+  reads git's ignore rules: a project is found through a manifest, or by the
+  search of the folders next to and enclosing the project that names it
+  (`_answer` in `tcw/store/project.py`), and how projects relate is decided
+  only by their parent links. That must stay true.
+- **The planning workspace cannot change other projects' items.** It holds
+  their work stores, but the owning project is the one that creates, advances
+  or comments on its items; a command in the workspace that would change one
+  is refused with exit 3, and the refusal names the owning project's folder
+  (`tcw/ownership.py`). Accepted cost: the planner needs each code project
+  checked out.
+- **A command in one project can write files in another repository.** A
+  project's store may sit in a different repository, so creating or moving an
+  item writes there. TCW names every file it writes on standard error, by its
+  whole path when it is outside the project, and never commits: committing
+  belongs to the project's own hooks and people.
+- **No command writes into two projects' stores.** An epic's parts are made one
+  at a time, each from its own project (UC-3), so nothing checks a store for
+  changes not yet committed before writing into it.
 - **Hooks that commit must commit in the store's repository**, not the
-  code's. This repository's example, `commit-item-after-move.sh`, is written
-  for that.
+  code's. `TCW_ITEM_PATH` names the item's folder in the store, wherever that
+  is. This repository's example, `commit-item-after-move.sh`, is written for
+  that.
 - **A test of anything in this list needs two real git repositories in the
   fixture.** A single-repository fixture reproduces none of it
   ([`lifecycle/implementation.md`](lifecycle/implementation.md)).
 
 **Known gaps**
 
-- Two places still rebuild a store's path from the project root:
-  `tree_store_present` in `tcw/store/fs.py` checks for a literal
-  `docs/<component>` folder, and `tcw validate` falls back to `docs/work`
-  when the work store cannot be found (`tcw/validate.py`). No item yet.
-- TCW-22: the backlog audit should cover every connected work root.
-- TCW-23: `tcw project provision` cannot be scoped, and a configuration three hops
-  away can name a checkout directory.
+- `tcw validate` still rebuilds the work store's path from the project root:
+  when the work store cannot be opened, it falls back to `docs/work` in the
+  project (`_scan_roots` and `_checks_work` in `tcw/validate.py`). No item yet.
 
 ### UC-5 One Jira project shared by several TCW projects
 
-**Seen.** The five projects of UC-3 and UC-4 (`product`, `app`, `server`,
+**Seen.** The five projects of UC-3 and UC-4 (`workspace`, `app`, `server`,
 `mobile`, `shared`) all keep their items in one Jira project, here `APP`.
-Each ticket's `TCW Project` field says which
-TCW project it belongs to, and `TCW Item` holds its slug
-([`guide/jira.md`](guide/jira.md)).
+Each ticket's `TCW Project` field says which TCW project it belongs to, and
+`TCW Item` holds its full identifier ([`guide/jira.md`](guide/jira.md)).
 
 **Requirements**
 
+- Each project's `work.backend: jira` is its own, never inherited. Its
+  `work.jira` is its own or comes from a parent whose link passes `config`:
+  `work.jira` and `work.tags` are the only keys that cross a parent link
+  (`INHERITED_KEYS` in `tcw/config.py`).
 - Every list of a project's items built from a Jira search keeps only the
   tickets whose `TCW Project` is this project. The filter is applied to the
   search results, not written into the query (`tcw/work/jira/jql.py` says
@@ -326,11 +369,10 @@ TCW project it belongs to, and `TCW Item` holds its slug
   consecutive or that a key's number says which project it belongs to.
 - The inbox (Triage) is shared. A ticket with no `TCW Project` value yet
   belongs to no project, and every project sharing the inbox lists it. A
-  person decides which project takes it, unless the cross-project filing that
-  created it already set its `TCW Project`.
-- A Jira workflow change made for one project affects all of them. `tcw
-validate --remote` in any one of them must report a status that a stage
-  needs and the shared workflow no longer offers.
+  person decides which project takes it.
+- A Jira workflow change made for one project affects all of them.
+  `tcw validate --remote` in any one of them must report a status that a stage
+  needs and the shared workflow does not offer.
 - Credentials are per person, not per project. Each project's configuration
   names the environment variables that hold them, so one person's values
   serve every project only when the projects name the same variables.
@@ -338,52 +380,54 @@ validate --remote` in any one of them must report a status that a stage
 **Known gaps**
 
 - A `tcw work list` fetches every ticket in the shared Jira project before
-  keeping its own, so its cost grows with the whole family. No item yet.
+  keeping its own, so its cost grows with the whole Jira project. A listing
+  with `--scope` sends that search once for all the projects it covers that
+  share one Jira project, one account and one stage mapping
+  (`_kept_search` in `tcw/work/jira/backend.py`), so its cost does not grow
+  with the number of projects listed (TCW-113).
 
-### UC-6 A connected project that is not on this machine
+### UC-6 A related project that is not on this machine
 
 **Seen** in part: a contributor to the server need not clone the mobile app.
 **Expected** in full: a team where nobody has every repository.
 
-A connection can name a `repository` to fetch the project from
-(`projects.<relation>.<id>.repository`), and a store can name where to fetch
-it (`work.repository`). `tcw project provision` fetches what is missing. A project
-known only by a `jira` block in this project's entry for it can still receive
-filed work, as a ticket in its Jira inbox.
+A manifest entry can name the `repository` a project is fetched from, and a
+store can name where to fetch it (`work.repository`).
+`tcw project provision <id>` fetches a missing project and the projects it
+inherits from; `tcw project provision` with no ID fetches what the family
+names.
 
 **Requirements**
 
-- A missing child or upstream must not break commands that do not need it:
-  listing this project's items, moving them, reading its own records. A
-  command that does need it says which project is missing and how to get it
-  (`tcw project provision`), with a distinct exit code (5 for `tcw work show` of an
-  item in a missing project).
+- A missing parent or child must not break commands that do not need it. For
+  a project whose work is kept in files, listing, reading and moving its own
+  items, and reading its own taxonomy and capabilities, still work. A
+  Jira-mode project whose `work.jira` comes from a missing parent is the
+  exception: it cannot list its items, because its Jira settings are not
+  decided (`test_ac14_a_missing_parent_in_jira_mode` in
+  `tests/test_inherited_config.py`).
+- A command that needs something the project inherits from a missing project
+  (an inherited object, or a setting such as `work.tags` or `work.jira` the
+  missing project leaves undecided) stops with exit 7, naming the missing
+  project and how to get it (`tcw project provision <id>` when a manifest
+  entry names its repository) (`tcw/exit.py`). A command that names an object
+  of a project that is not here exits 5.
+- A view with `--scope` that covers a project that is not here reports that
+  project as unavailable on standard error and exits 0.
 - Reading another project's records over the network is never implicit.
-- `tcw validate` reports references into a missing project as unresolved, not
-  as broken.
-- Filing into a project that is not here, with a `jira` block, creates the
-  ticket and nothing else, and says so ([`guide/multi-repo.md`](guide/multi-repo.md),
-  "Creating an item in another project", case 4).
+- `tcw validate` reports references into a missing project, and what the
+  project inherits from it, as unresolved ("could not check"), not as broken,
+  so a fresh clone in CI can run it (S-4).
 
-**Known gaps**
-
-- A project named in `taxonomy.extends` or `capabilities.extends` that is not
-  on this machine stops every taxonomy or capabilities command in the reader,
-  including reading its own entries, with exit 1 rather than 5. It also makes
-  `tcw validate` fail with an error rather than report it as unresolved, so a
-  fresh clone in CI fails (S-4). No item yet.
-- In `tcw validate`, a `tcw://<id>/T/…` or `tcw://<id>/C/…` reference into a
-  project that is not on this machine is reported as an error, not as
-  unresolved. References to its work items are correctly unresolved. No item
-  yet.
-- TCW-23 (provision scoping).
+**Known gaps**: none recorded.
 
 ### UC-7 A library published to the public, read by private projects
 
 **Expected.** UC-2 with an access boundary: an open-source library whose
-readers are private company projects. TCW's upstream connection was designed
-for this ("A public library read by a private application must not carry the
-application's name in its own files", [`guide/multi-repo.md`](guide/multi-repo.md)).
+readers are private company projects. Each reader names the library as a
+parent, with whatever `inherit` it needs (`inherit: [taxonomy]` takes the
+library's vocabulary and none of its settings), and the library lists none
+of them, so its files never carry an application's name.
 
 **Requirements** (reasoned)
 
@@ -392,10 +436,12 @@ application's name in its own files", [`guide/multi-repo.md`](guide/multi-repo.m
   might be sent, or through records written into the library's store.
 - The reader must work with the library fetched read-only from a public URL,
   with no credentials for it.
-- A reader's agent instructions must not suggest filing work into the library
-  as if it were a family member; that is refused, and the right path is the
-  library's own issue tracker (as the `extras-report` skill does for TCW
-  itself: an issue on the library's public tracker).
+- A reader's agent instructions must not suggest creating work in the library.
+  No command creates an item in another project, and `tcw -C <folder>` would
+  run as the library itself, which a reader that does not maintain it has no
+  business doing. The right path for suggesting work is the library's own
+  issue tracker (as the `extras-report` skill does for TCW itself: an issue on
+  the library's public tracker).
 
 **Known gaps**: none recorded; no such setup is known yet.
 
@@ -410,8 +456,11 @@ that share one ID (copies and worktrees of the same project).
 
 - A project's family is what its configuration declares, never what happens
   to be nearby on disk. Two copies of a project with the same ID in different
-  folders must not be confused. `TCW_PROJECT_<ID>`, when it is set and names
-  a folder on this machine, decides; otherwise the declared path does.
+  folders must not be confused. The manifest decides where a project is; the
+  search only finds a project no manifest names; and two folders the search
+  finds declaring one ID are an error naming both (`_answer` in
+  `tcw/store/project.py`). `TCW_PROJECT_<ID>`, when it is set, decides before
+  either.
 - `TCW_PROJECT_<ID>` set for one family applies to every family on the
   machine that uses that ID. Anything that reads it must say where a project
   was found, so a stale variable is noticed.
@@ -421,8 +470,9 @@ that share one ID (copies and worktrees of the same project).
 
 **Known gaps**
 
-- Only `tcw validate` says where a `TCW_PROJECT_<ID>` variable placed a
-  project. Every other command uses it silently. No item yet.
+- Only `tcw validate`, and the `found` field of each project in
+  `tcw project list --json`, say where a `TCW_PROJECT_<ID>` variable placed a
+  project. Every other command uses it silently (TCW-107).
 
 ## Situations that cut across architectures
 
@@ -485,8 +535,13 @@ also run `tcw` by hand ([`lifecycle/harness.md`](lifecycle/harness.md)).
 - In Jira, the request and the QA verdict belong to Jira and its people; the
   repository holds the spec, plan and rounds. Nothing may copy a fact between
   the two.
-- A filing that crosses backends (from a file-kept project into a Jira one, or
-  the reverse) must work, and must say what it left unfinished.
+- A link that crosses backends must work, and must say what it left
+  unfinished. A parent or blocker that Jira cannot link (one in a project kept
+  in files, or a ticket on another Jira site) is recorded in the item's folder,
+  and the command says that Jira shows no link for it (`_place` in
+  `tcw/work/jira/backend.py`;
+  `test_new_records_a_parent_and_a_blocker_jira_cannot_link` in
+  `tests/work/jira/test_jira_recorded.py`).
 
 ### S-4 Copies of a checkout: worktrees, clones, other machines
 
@@ -498,32 +553,40 @@ fresh clone.
 **Requirements**
 
 - A linked worktree has no copy of untracked files, such as
-  `tcw-config.local.yaml` (S-5). TCW must behave sensibly when it is missing,
-  and say what it is missing when that matters.
+  `.tcw/tcw-config.local.yaml` (S-5). When the worktree has no personal file
+  of its own, TCW reads the main checkout's (`personal_file` in
+  `tcw/store/project.py`); when neither has one, TCW must behave sensibly, and
+  say what it is missing when that matters.
 - A store whose `path` resolves inside a worktree and one that resolves to
   the primary checkout are different stores; nothing may silently use the
   other.
-- A fresh clone in CI has no connected projects and no credentials. `tcw
-validate` there must run without them, and report what it could not check
-  rather than failing for that reason (TCW-14 asks for this as a gate). Today
-  this holds for a missing connected project, but not for a missing project
-  named in `extends` (UC-6, known gaps).
+- A fresh clone in CI has no related projects and no credentials.
+  `tcw validate` there must run without them, and report what it could not
+  check rather than failing for that reason (TCW-14 asks for this as a gate).
+  This holds for every missing related project, whatever its link passes down
+  (UC-6).
 
 ### S-5 Personal configuration
 
-**Seen.** `tcw-config.local.yaml`, beside `tcw-config.yaml` and not tracked,
-holds one person's additions, such as their own stage instructions or
-credential variable names ([`guide/configuration.md`](guide/configuration.md)).
+**Seen.** `.tcw/tcw-config.local.yaml`, beside `.tcw/tcw-config.yaml` and not
+tracked, holds one person's additions, such as their own stage instructions or
+credential variable names, and `.tcw/tcw-manifest.local.yaml` says where
+projects are on their machine
+([`guide/configuration.md`](guide/configuration.md)).
 
 **Requirements**
 
-- A personal file may set only what the allowlist permits; shared keys are
-  refused.
+- A personal file may set only what the allowed list permits; shared keys are
+  refused (`PERSONAL_KEYS` in `tcw/config.py`).
 - When personal files changed what a command composed, the command says so
   (a `note:` on standard error), so a person can tell their own additions
   from the team's.
-- Another project's personal file is never read: commands acting on another
-  project use only its shared configuration.
+- Another project's personal configuration file is never read for a project
+  read for itself, which takes only the variables naming it; an ancestor's
+  personal credential names reach its children. A related project's personal
+  manifest is read, because it says only where projects are
+  (`tcw/config.py`; `test_ac11_an_ancestors_personal_settings_flow_down` in
+  `tests/test_inherited_config.py`).
 
 ### S-6 Unattended and automated runs
 
@@ -544,8 +607,9 @@ consulting advisors (Codex and a separate read-only agent) at each checkpoint.
 - Every decision taken without a person is recorded where a person will read
   it (the round, or the findings comment).
 - Exit codes are the interface for scripts: they must stay stable and mean
-  one thing each (`tcw/exit.py`). Today a missing project gives 5 from
-  `tcw work` but 1 from `tcw taxonomy` and `tcw capabilities` (UC-6).
+  one thing each (`tcw/exit.py`). A missing related project gives the same
+  codes from every component: 7 when the command needs something the project
+  inherits from it, and 5 when the command names one of its objects (UC-6).
 
 ### S-7 Several people at once
 
@@ -555,8 +619,8 @@ together).
 **Requirements**
 
 - Two people moving the same item at once: the second move must notice the
-  item has moved, not overwrite it. A Jira transition that is no longer
-  available fails cleanly, listing what Jira offered.
+  item has moved, not overwrite it. A Jira transition that is not available
+  any more fails cleanly, listing what Jira offered.
 - Two people editing the same record through the web viewer: a save must name
   the revision it was edited from, and a stale save is refused (3.0.0 release
   notes).
@@ -575,10 +639,11 @@ together).
 
 ### S-8 Partial failure: offline, unreachable, half-finished
 
-**Seen.** A cross-project filing that created the Jira ticket but could not
-make the item (TCW-101). Jira discards a comment sent with a transition that
+**Seen.** An item creation that made the Jira ticket but could not make the
+item's folder (TCW-101). Jira discards a comment sent with a transition that
 has no screen (the form Jira can show during a transition); `set_stage` in
-`tcw/work/jira/backend.py` posts it separately.
+`tcw/work/jira/backend.py` posts it separately. A `tcw migrate` run stopped
+partway.
 
 **Requirements**
 
@@ -592,6 +657,11 @@ has no screen (the form Jira can show during a transition); `set_stage` in
   (a second ticket, a duplicated comment). Comments meet this: after a dropped
   connection, `set_stage` looks for a comment that arrived since it started
   before posting again.
+- `tcw migrate` keeps a progress record, `.tcw/tcw-migration-progress.yaml`,
+  while it runs. A run that stops is finished by running `tcw migrate` again,
+  which never repeats a change (`tcw/migrate/progress.py`;
+  `test_every_stop_is_finished_by_running_again` in
+  `tests/migrate/test_migrate_execute.py`).
 
 **Known gaps**
 
@@ -605,15 +675,20 @@ has no screen (the form Jira can show during a transition); `set_stage` in
 ### S-9 Upgrades: an old tcw, a new tcw, mixed versions
 
 **Seen.** The 2.x to 3.0 migration ([`migration-guide-2.8-to-3.0.0.md`](migration-guide-2.8-to-3.0.0.md));
-a plugin updated while the CLI on the PATH stayed old.
+the 3.x to 4.0 migration, made with `tcw migrate`
+([`migration-guide-3.X-to-4.0.0.md`](migration-guide-3.X-to-4.0.0.md)); a
+plugin updated while the CLI on the PATH stayed old.
 
 **Requirements**
 
 - New code must read every file an older version wrote, or refuse it with a
-  message naming the migration guide. Retired configuration keys are refused
-  this way (`refuse_retired_config` in `tcw/store/fs.py`).
+  message saying what to do. TCW 4.0 refuses a 3.x project, and a `tcw-*.yaml`
+  file with no `tcw-version` or one older than 4, naming `tcw migrate`
+  (`tcw/project_files.py:119`, `:150`, `:157`).
 - Old code reading files a newer version wrote is **not** a constraint. A
-  project that upgrades upgrades everyone working on it.
+  project that upgrades upgrades everyone working on it. A file written by a
+  newer TCW than the one reading it is refused, saying to upgrade TCW
+  (`version_problem` in `tcw/project_files.py`).
 - A family whose projects pin different TCW versions is expected. A command
   reading another project's configuration must refuse clearly on a key it
   does not know, rather than misreading it.
@@ -624,27 +699,31 @@ a plugin updated while the CLI on the PATH stayed old.
 
 **Known gaps**
 
-- A work store still in the 2.x layout is listed as empty by `tcw work list`,
-  with exit 0; only `tcw validate` names the migration guide. A real private
-  project on file storage is in exactly this state. No item yet.
-- Unknown keys at the top level of `tcw-config.yaml` and under `taxonomy:` are
-  accepted silently; only keys under `work:` and `projects:` are checked. No
-  item yet.
+- A work store still in the 2.x layout is not caught by the 3.x to 4.0
+  migration. `tcw migrate` converts the project's configuration, exits 0, and
+  lists each 2.x item folder under "needs attention" as missing its state
+  file, without naming the 2.x guide; afterwards `tcw work list` lists the
+  store as empty, with exit 0, and `tcw validate` reports each folder as an
+  error. A real private project on file storage is in this state. No item yet.
+- Unknown keys at the top level of `.tcw/tcw-config.yaml`, and under
+  `taxonomy:` and `capabilities:`, are accepted silently; keys under `work:`
+  are checked. No item yet.
 
 ### S-10 Things TCW does not own that sit inside a project
 
 **Expected.**
 
 - A dependency folder (`node_modules`, `vendor`, a virtual environment) can
-  contain another package's `tcw-config.yaml`, if that package itself uses
-  TCW. The current project is the nearest `tcw-config.yaml` above the current
-  directory, so a command run from inside it would treat that package as the
-  project. Connected projects are found only through declared connections,
-  never by scanning folders, and that must stay true.
+  contain another package's `.tcw/tcw-config.yaml`, if that package itself
+  uses TCW. The current project is the nearest `.tcw/tcw-config.yaml` above
+  the current directory, so a command run from inside it would treat that
+  package as the project. The search never looks inside a project, so a
+  dependency's own `.tcw/` is never taken for a project, a parent or a child
+  (`_search_candidates` in `tcw/store/project.py`), and that must stay true.
 - Generated or build output (`build/`, `web-dist/`) can contain copies of
   shipped text. Searches for wording that must be gone should exclude it.
 - A project's own `docs/` holds documents TCW does not own beside the stores.
-  TCW must touch only its stores, and treat an item folder as a bounded set
+  TCW must touch only its stores, and treat an object folder as a bounded set
   of files ([`lifecycle/abstraction.md`](lifecycle/abstraction.md)).
 
 ### S-11 Version control
@@ -654,34 +733,36 @@ another system.
 
 **Requirements**
 
-- TCW reads git (finding a repository's root, checking a store for changes
-  not yet committed, recognising a linked worktree). It never commits, pulls
-  or pushes, or changes an existing repository; `tcw project provision` makes new
-  clones. Committing, pulling and pushing belong to the project's hooks and
+- TCW reads git (finding a repository's root, checking whether a personal
+  file is tracked, recognising a linked worktree). It never commits, pulls
+  or pushes, or changes an existing repository; `tcw project provision` makes
+  new clones. Committing, pulling and pushing belong to the project's hooks and
   people.
 - TCW's shipped instructions name no git command and never tell an agent to
   commit (`test_no_shipped_text_names_git` in `tests/test_shipped_text.py`).
   Where an instruction needs it, it says "record the changes in the project's
   version control, the way that project does".
-- Where a check depends on git (cross-project filing refuses a store that is
-  not in a git repository), the refusal says so, rather than failing
-  obscurely.
+- Where a check depends on git, the message says so, rather than failing
+  obscurely: outside a git repository, `tcw project new` writes no ignore rule
+  for the personal files and says so in a `note:` on standard error
+  (`tcw/cli.py`).
 
 ## The checklist
 
 For each question, answer it in the spec or say why it does not apply.
 
 1. **Where does it look for things?** Does it locate a project, a store or a
-   file? Does it work when the store is in another repository (UC-4), the
-   project is a subfolder of a monorepo (UC-3), or the project is not on this
-   machine (UC-6)?
-2. **Whose things does it touch?** Can it write into a project other than the
-   current one? If so, is that project allowed to be written (not upstream,
-   UC-2 and UC-7), and does it name every file it left uncommitted (UC-4)?
-3. **Does it read across projects?** Does it follow connections, inherit
-   records, or list another project's items? What happens with several levels
-   of inheritance (UC-3), a missing project (UC-6), or a shared Jira project
-   (UC-5)?
+   file, and is a project located through a manifest or the search (TCW-107)?
+   Does it work when the store is in another repository (UC-4), the project is
+   a subfolder of a monorepo (UC-3), or the project is not on this machine
+   (UC-6)?
+2. **Whose things does it touch?** Can it change an object the active project
+   does not own? If so, it is wrong (TCW-114). Does it name every file it
+   writes in another repository (UC-4)?
+3. **Does it read across projects?** Does it follow parent links, inherit
+   records through parent links, or list another project's items? What
+   happens with several levels of inheritance (UC-3), a missing project
+   (UC-6), or a shared Jira project (UC-5)?
 4. **Which backends?** Does it pass the abstraction litmus test, and does it
    behave the same for files and Jira (S-3)? Does every list it builds from
    a Jira search keep only this project's tickets (UC-5)?
@@ -712,5 +793,4 @@ describe, or when a defect is traced to a setup nobody considered. Give it:
 - known gaps, by work item, or "No item yet" until one is filed.
 
 When a known gap's item is finished, remove it from the list in the same
-change. When TCW-99 changes how projects relate, the architecture cases change
-with it.
+change. The cases describe TCW 4.0.
