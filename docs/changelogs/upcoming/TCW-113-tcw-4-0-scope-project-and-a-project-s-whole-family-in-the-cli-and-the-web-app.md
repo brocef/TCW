@@ -67,6 +67,20 @@ list|show|search` and `tcw capabilities list|show|search`; `projects`,
   does not own, under `own`, print `list`'s warning when the inherited store
   cannot be read, naming what to fetch, before the not-found error;
   `tcw.output.own_only_line` builds that line for both. (TCW-113)
+- The web client reads another project's term or capability by its full
+  identifier whether or not the list shown holds it as a row, so a status
+  line's link to a project's override, or a typed address of one, opens its
+  page; a failure is shown where the page would be. The served project's
+  entries are still read only while the list holds them. (TCW-113)
+- `--project` naming an ID that no project has ends its refusal with "no
+  project with ID '<id>' is known or found near this one", rather than
+  "neither an ancestor nor a descendant". (TCW-113)
+- With `--project`, `tcw work list --json` and the web board still read
+  every covered project for `children` and `blocks`; an unavailable project
+  the filter does not keep is now warned about, and named on the board, as
+  "its items are not counted in children and blocks" rather than "its work
+  items are not listed". `Covered.warn` takes those words as `besides`, and
+  `tcw.work.scoped.COUNTED_ACROSS` holds them. (TCW-113)
 
 ## Removed
 
