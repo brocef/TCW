@@ -117,10 +117,9 @@ the same `cover`.
   warning's words, rather than drop the project as the brief proposed,
   because the JSON records really do leave its items out of `children` and
   `blocks` (Design 3.3), and 1.8 requires what is left out to be reported.
-  Decided by the implementing agent, with the reason sent to the
-  dispatching session before the change; no answer had arrived when the
-  round was written, so the dispatching session may still choose the other
-  way.
+  Proposed by the implementing agent and decided by the dispatching
+  session, 2026-10-24: qa's observation was right that the wording
+  disagreed, and wrong that the project should be dropped.
 - (c): add a third ending to 2.2's message rather than a separate error or
   another exit code, since 2.2 makes every refusal of `--project` a usage
   error before anything is read. Decided by the implementing agent.
