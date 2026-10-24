@@ -333,6 +333,18 @@ def _is_chain(key_path: KeyPath) -> bool:
             or (len(p) == 3 and p[:2] == ("work", "procedures")))
 
 
+def _takes_inherit(key_path: KeyPath) -> bool:
+    """A list that takes an `inherit: true` entry: a chain list, or
+    `work.tags`, where it stands for the tags merged before it, which
+    includes what the project's parents pass (TCW-109 Design 2.4)."""
+    return _is_chain(key_path) or tuple(key_path) == ("work", "tags")
+
+
+def _inherited_key(key_path: KeyPath) -> bool:
+    """A key of `INHERITED_KEYS`, or one under it."""
+    return tuple(key_path[:2]) in (("work", "tags"), ("work", "jira"))
+
+
 def _lists(mapping: dict, path: KeyPath = ()) -> Iterator[tuple[KeyPath, list]]:
     """Every list reachable through mappings, with its key path."""
     for key, value in mapping.items():
@@ -391,6 +403,7 @@ def _list_problems(mapping: dict, origin: Origin, root: Path) -> list[Problem]:
             # checks that list (TCW-108 Design 1).
             continue
         chain = _is_chain(path)
+        takes = _takes_inherit(path)
         inherits = 0
         seen: list = []
         for i, entry in enumerate(entries):
@@ -402,9 +415,9 @@ def _list_problems(mapping: dict, origin: Origin, root: Path) -> list[Problem]:
                           f"{MIGRATION_GUIDE}")
                 continue
             if isinstance(entry, dict) and "inherit" in entry:
-                if not chain:
-                    add(here, "'inherit' is allowed only in a stage's prompt, pre "
-                              "or post list or in a procedure's list")
+                if not takes:
+                    add(here, "'inherit' is allowed only in work.tags, a stage's "
+                              "prompt, pre or post list, or a procedure's list")
                 elif entry["inherit"] is not True:
                     add(here, "'inherit' takes only the value true; to replace "
                               "the list below, leave the entry out")
@@ -481,7 +494,9 @@ def _allowed(mapping: dict, origin: Origin, root: Path | None, refused: list,
                 kept[key] = value
             continue
         if value is None and (any(_matches(here, p) for p in _PATTERNS)
-                              or _leads_to_allowed(here)):
+                              or _leads_to_allowed(here) or _inherited_key(here)):
+            # At an inherited key `null` removes a parent's value in the shared
+            # file (TCW-109 Design 2.5); a personal layer cannot do that.
             problem(here, null)
         elif any(_matches(here, pattern) for pattern in _PATTERNS):
             if here == ("user", "name") and not _good_name(value):
@@ -599,7 +614,7 @@ def _merge(values: dict, origins: dict, written: dict, layer: dict,
                 origins[(*here, i)] = origin
             if not below:
                 origins[here] = origin
-        elif _is_chain(here) and isinstance(value, list):
+        elif _takes_inherit(here) and isinstance(value, list):
             below = lower if isinstance(lower, list) else []
             below_origins = [origins.get((*here, i), origin) for i in range(len(below))]
             entries, entry_origins = _chain(below, below_origins, value, origin)
@@ -608,7 +623,13 @@ def _merge(values: dict, origins: dict, written: dict, layer: dict,
             origins[here] = origin
             for i, entry_origin in enumerate(entry_origins):
                 origins[(*here, i)] = entry_origin
-            written.setdefault(here, []).append(origin)
+            if _is_chain(here):
+                written.setdefault(here, []).append(origin)
+        elif value is None and origin.layer == "project" and _inherited_key(here):
+            # `null` removes an inherited value: the key has none from any
+            # project before this one, nor a built-in one (TCW-109 Design 2.5).
+            _clear(origins, here)
+            values.pop(key, None)
         elif isinstance(value, dict) and isinstance(lower, dict):
             if value:
                 # An empty mapping below no longer speaks for this key.

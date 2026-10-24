@@ -100,12 +100,14 @@ def test_two_inherit_entries_are_one_problem(personal):
 
 
 def test_inherit_outside_a_chain_list_is_one_problem(personal):
-    personal.project({"work": {"tags": [INHERIT]}})
-    # The tag parser also says the entry is not a tag; this is the one
-    # problem about `inherit` itself.
+    # TCW-109 Design 2.4: `work.tags` takes the entry now, so the list that
+    # refuses it is another one, and the refusal names `work.tags`.
+    personal.project({"work": {"documentation": [INHERIT]}})
     lines = [line for line in problem_lines(load_config(personal.root))
              if "'inherit' is allowed only" in line]
-    assert len(lines) == 1 and lines[0].startswith(".tcw/tcw-config.yaml: work.tags[0]: ")
+    assert len(lines) == 1 and lines[0].startswith(
+        ".tcw/tcw-config.yaml: work.documentation[0]: ")
+    assert "work.tags" in lines[0]
 
 
 @pytest.mark.parametrize("layer", ["project", "user", "local"])
