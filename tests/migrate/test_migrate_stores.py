@@ -65,8 +65,11 @@ def test_each_state_file_is_renamed_with_only_the_listed_edits(migrated):
             assert new == V + "name: Do Y\nparent: app.capabilities/cli/x\nStatus: Supported\n"
         elif path == "cli/z":                       # C12
             assert new == V + rest + "name: Z\n"
-        elif path == "cli/x":                       # C13 (Step 7)
-            assert new == V + rest.replace("- camera.md", "- resources/camera.md")
+        elif path == "cli/x":                       # C13 (Step 7), C16 (Step 8)
+            assert new == V + rest.replace("- camera.md", "- resources/camera.md") \
+                .replace("- invoice", "- app.taxonomy/invoice") \
+                .replace("'!roles/admin'", "'!app.capabilities/roles/admin'") \
+                .replace("- conditions/online", "- app.capabilities/conditions/online")
         else:
             assert new == V + rest, path
         assert not (root / C / path / "meta.yaml").exists()
@@ -74,7 +77,8 @@ def test_each_state_file_is_renamed_with_only_the_listed_edits(migrated):
     # name is left, and reported A1.
     assert read(root, f"{T}/invoice/tcw-taxonomy.yaml") == V + old(f"{T}/invoice/meta.yaml")
     assert read(root, f"{T}/invoice/line/tcw-taxonomy.yaml") == V + (
-        "name: Line\nparent: app.taxonomy/invoice\nkind: Vocabulary\nrelatesTo:\n- invoice\n")
+        "name: Line\nparent: app.taxonomy/invoice\nkind: Vocabulary\nrelatesTo:\n"
+        "- app.taxonomy/invoice\n")
     assert read(root, f"{T}/order/tcw-taxonomy.yaml") == V + old(f"{T}/order/meta.yaml")
     assert "  A1 docs/taxonomy/order/tcw-taxonomy.yaml: id 'other' is not its folder's " \
            "name, 'order'" in done.err
@@ -260,7 +264,7 @@ def test_a_prepended_document_is_found_in_resources(migrated, tcw):
     root, _, done = migrated
     text = read(root, f"{C}/cli/x/tcw-capability.yaml")
     assert "prependedDocs:\n- resources/camera.md\n" in text
-    assert f"write {C}/cli/x/tcw-capability.yaml: C9, C10, C13" in done.err
+    assert f"write {C}/cli/x/tcw-capability.yaml: C9, C10, C13, C16" in done.err
     shown = tcw(["capabilities", "show", "cli/x", "--json"], root)
     assert shown.code == 0, shown.err
     assert json.loads(shown.out)["capability"]["body"].startswith("The camera is on.")
@@ -280,7 +284,7 @@ def test_exact_mentions_are_rewritten_and_shortened_ones_reported(tcw, tmp_path)
         f"{W}/APP-1-a/resources/design.md; only the path in full is rewritten",
         f"  A3 {W}/APP-2-b/spec/spec.md:4: names APP-1-.../design.md, which moved to "
         f"{W}/APP-1-a/resources/design.md; only the path in full is rewritten"]
-    assert f"write {W}/APP-2-b/spec/spec.md: C13" in done.err
+    assert f"write {W}/APP-2-b/spec/spec.md: C13, C16" in done.err
     assert (root / "README.md").read_bytes() == readme
 
 

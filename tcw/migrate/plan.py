@@ -16,7 +16,7 @@ from tcw.migrate import config, record, stores
 from tcw.migrate.legacy import (ROOT_CONFIG, STATE_3X, Layer3, Layers3, objects_3x,
                                 parse_mapping_3x, read_3x_layers, read_layer_3x,
                                 store_folder_3x)
-from tcw.migrate.model import PHASES, Blocker, Plan
+from tcw.migrate.model import PHASES, Blocker, Plan, not_yet
 from tcw.project_files import LOCAL_SENTINEL, SENTINEL, VERSION_KEY, without_version
 
 
@@ -62,35 +62,30 @@ def read_project(root: Path) -> Read:
 # The part-1 refusal of part-2 forms (Decided 17)
 
 
-def _not_yet(rel: str, where: str, form: str) -> Blocker:
-    return Blocker("B5", rel, f"{where}: tcw migrate does not convert {form} yet",
-                   "keep this project on TCW 3 until a TCW 4 release converts it")
-
-
 def part_two_forms(read: Read) -> list[Blocker]:
     """B5 for every 3.x form only part 2 of the build converts. Each step of
     part 2 removes the forms it converts."""
     rel, mapping = read.shared
     out = []
     if "projects" in mapping:
-        out.append(_not_yet(rel, "projects", "projects:"))
+        out.append(not_yet(rel, "projects", "projects:"))
     for component in ("taxonomy", "capabilities"):
         section = mapping.get(component)
         if isinstance(section, dict) and "extends" in section:
-            out.append(_not_yet(rel, f"{component}.extends", f"{component}.extends"))
+            out.append(not_yet(rel, f"{component}.extends", f"{component}.extends"))
     for component in ("taxonomy", "capabilities", "work"):
         section = mapping.get(component)
         store = store_folder_3x(read.root, component, section)
         configured = section.get("path") if isinstance(section, dict) else None
         if store.form == "outside":
-            out.append(_not_yet(rel, f"{component}.path",
+            out.append(not_yet(rel, f"{component}.path",
                                 f"a {component} store outside the project"))
         elif store.form == "repository":
-            out.append(_not_yet(rel, f"{component}.repository",
+            out.append(not_yet(rel, f"{component}.repository",
                                 f"a {component} store with only a repository"))
         elif isinstance(configured, str) and (os.path.isabs(configured)
                                               or configured.startswith("~")):
-            out.append(_not_yet(rel, f"{component}.path",
+            out.append(not_yet(rel, f"{component}.path",
                                 f"an absolute {component} store path"))
     for store in stores.stores_of(read.root, mapping):
         if store.namespace != "capabilities":
@@ -103,7 +98,7 @@ def part_two_forms(read: Read) -> list[Blocker]:
                 continue
             data, _ = parse_mapping_3x(text, Path(meta))
             if isinstance(data, dict) and "overrides" in data:
-                out.append(_not_yet(meta, "overrides", "an override"))
+                out.append(not_yet(meta, "overrides", "an override"))
     return out
 
 
@@ -123,7 +118,8 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
     reports = shared.reports + personal.reports
     if shared.project:
         found = stores.plan_stores(read.root, read.shared[1], shared.project,
-                                   three_x=read.three_x)
+                                   three_x=read.three_x, work_backend=read.work_backend)
+        plan.owners = found.owners
         plan.blockers += found.blockers
         reports += found.reports
         written = record.plan_record(read.root, found.ids)
