@@ -55,8 +55,9 @@ def app(tmp_path) -> Path:
 
 
 def test_ac16_list_local_prints_the_projects_own_objects(app, tcw):
-    """AC 16, first bullet: `tcw taxonomy list --local` prints
-    `app.taxonomy/money`, and `tcw capabilities list --local` prints
+    """AC 16, first bullet, which named the `--local` option TCW-113 removed:
+    a plain `tcw taxonomy list`, whose scope is the project's own, prints
+    `app.taxonomy/money`, and `tcw capabilities list` prints
     `app.capabilities/cli/x` and `app.capabilities/cli/y`."""
     assert listed(tcw(app, "taxonomy", "list")) == ["app.taxonomy/money"]
     assert sorted(listed(tcw(app, "capabilities", "list"))) == [
@@ -95,8 +96,8 @@ def test_ac16_text_show_has_a_partial_line_and_no_overrides_line(app, tcw):
 
 
 def test_ac16_every_list_local_json_record_is_partial(app, tcw):
-    """AC 16, second bullet: each record of `tcw capabilities list --local
-    --json` has `"partial": true`."""
+    """AC 16, second bullet, which named the removed `--local`: each record of
+    a plain `tcw capabilities list --json` has `"partial": true`."""
     ran = tcw(app, "capabilities", "list", "--json")
     assert ran.code == 0, ran
     records = json.loads(ran.out)["capabilities"]
@@ -185,13 +186,13 @@ def test_ac16_validate_still_checks_what_app_declares(app, tcw):
     assert "Foo" in errors[0]
 
 
-# -- AC 18: `--local` with a parent whose store cannot be read ---------------------------
+# -- AC 18: a plain list with a parent whose store cannot be read ------------------------
 
 
 def test_ac18_list_local_works_when_a_parents_store_cannot_be_read(tmp_path, tcw):
-    """AC 18, the `--local` sentence: with opening `core`'s taxonomy store
-    raising `StoreNotProvisioned`, `tcw taxonomy list --local` in `app`
-    exits 0 (and prints `app`'s own term)."""
+    """AC 18, the sentence on the removed `--local`: with opening `core`'s
+    taxonomy store raising `StoreNotProvisioned`, a plain `tcw taxonomy list`
+    in `app` exits 0 (and prints `app`'s own term)."""
     app = core_with_unprovisioned_taxonomy(tmp_path)
     assert listed(tcw(app, "taxonomy", "list")) == ["app.taxonomy/money"]
 
