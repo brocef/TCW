@@ -96,6 +96,10 @@ WRITER_CALLERS = {
     "store/project.py:FsProjectRegistry._family": (NOT_A_STORE, "`named` is a set made "
                                                    "by the enclosing function"),
     "work/generate.py:_drain": (NOT_A_STORE, "`overflow` is a threading.Event"),
+    # TCW-116 Decided 25: tcw migrate writes files through its executor,
+    # never through a backend or store.
+    "migrate/stores.py:name_blockers": (NOT_A_STORE, "`seen` is a set made by the "
+                                                     "function"),
     **{f"work/config.py:{name}": (NOT_A_STORE, _PROBLEMS) for name in (
         "_parse_when", "_parse_binding", "parse_bindings", "_parse_hooks", "_parse_stage",
         "_parse_stages", "_parse_procedures", "_parse_tags", "parse_work_config")},

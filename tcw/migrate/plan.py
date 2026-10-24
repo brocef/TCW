@@ -12,9 +12,10 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from tcw.migrate import config
-from tcw.migrate.legacy import (ROOT_CONFIG, Layer3, Layers3, read_3x_layers,
-                                read_layer_3x, store_folder_3x)
+from tcw.migrate import config, record, stores
+from tcw.migrate.legacy import (ROOT_CONFIG, STATE_3X, Layer3, Layers3, objects_3x,
+                                parse_mapping_3x, read_3x_layers, read_layer_3x,
+                                store_folder_3x)
 from tcw.migrate.model import PHASES, Blocker, Plan
 from tcw.project_files import LOCAL_SENTINEL, SENTINEL, VERSION_KEY, without_version
 
@@ -37,6 +38,11 @@ class Read:
             return ROOT_CONFIG, self.layers.shared.data or {}
         data = self.shared4.data or {}
         return SENTINEL, without_version(data) if VERSION_KEY in data else data
+
+    @property
+    def three_x(self) -> bool:
+        """The shared configuration is still in 3.x form."""
+        return self.layers.shared.present or VERSION_KEY not in (self.shared4.data or {})
 
     @property
     def work_backend(self) -> str:
@@ -86,6 +92,18 @@ def part_two_forms(read: Read) -> list[Blocker]:
                                               or configured.startswith("~")):
             out.append(_not_yet(rel, f"{component}.path",
                                 f"an absolute {component} store path"))
+    for store in stores.stores_of(read.root, mapping):
+        if store.namespace != "capabilities":
+            continue
+        for id_path in objects_3x(store.folder, "capabilities"):
+            meta = f"{store.rel}/{id_path}/{STATE_3X['capabilities']}"
+            try:
+                text = (read.root / meta).read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            data, _ = parse_mapping_3x(text, Path(meta))
+            if isinstance(data, dict) and "overrides" in data:
+                out.append(_not_yet(meta, "overrides", "an override"))
     return out
 
 
@@ -102,11 +120,18 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
     plan = Plan(shared.project, read.work_backend)
     plan.blockers = part_two_forms(read) + shared.blockers + personal.blockers
     steps = shared.steps + personal.steps
+    reports = shared.reports + personal.reports
+    if shared.project:
+        found = stores.plan_stores(read.root, read.shared[1], shared.project,
+                                   three_x=read.three_x)
+        plan.blockers += found.blockers
+        reports += found.reports
+        written = record.plan_record(read.root, found.ids)
+        steps = ([written] if written else []) + steps + found.steps
     if steps and read.git is not None:
         steps += config.plan_ignore(read.root)
     plan.steps = sorted(steps, key=lambda step: PHASES.index(step.phase))
     if plan.steps or plan.blockers:
-        plan.reports = (shared.reports + personal.reports
-                        + config.user_reports(read.layers.user)
+        plan.reports = (reports + config.user_reports(read.layers.user)
                         + config.ignore_reports(read.root))
     return plan
