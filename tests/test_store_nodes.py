@@ -1,3 +1,5 @@
+import os
+
 import yaml
 
 from pathlib import Path
@@ -10,7 +12,7 @@ from tcw.store.fs import (
     write_sentinel,
 )
 from tcw.store.project import FsProjectRegistry
-from tests.projectfiles import write_connected_config_file
+from tests.projectfiles import write_config_file, write_manifest
 
 
 def work_node(path, project_id):
@@ -21,15 +23,15 @@ def work_node(path, project_id):
 
 def connect(parent, child, parent_id, child_id, locator=None):
     parent_cfg = yaml.safe_load((parent / SENTINEL).read_text()) or {}
-    parent_cfg.setdefault("projects", {}).setdefault("children", {})[
-        child_id
-    ] = locator or str(child)
-    write_connected_config_file(parent / SENTINEL, yaml.safe_dump(parent_cfg, sort_keys=False))
+    parent_cfg.setdefault("children", []).append(child_id)
+    write_config_file(parent / SENTINEL, yaml.safe_dump(parent_cfg, sort_keys=False))
+    where = locator or str(child)
+    write_manifest(parent, {child_id: os.path.relpath(where, parent)
+                            if os.path.isabs(where) else where})
     child_cfg = yaml.safe_load((child / SENTINEL).read_text()) or {}
-    child_cfg["projects"] = {
-        "parent": {parent_id: str(parent)}
-    }
-    write_connected_config_file(child / SENTINEL, yaml.safe_dump(child_cfg, sort_keys=False))
+    child_cfg["parents"] = [parent_id]
+    write_config_file(child / SENTINEL, yaml.safe_dump(child_cfg, sort_keys=False))
+    write_manifest(child, {parent_id: os.path.relpath(parent, child)})
 
 
 def test_find_node_root_nearest(tmp_path):

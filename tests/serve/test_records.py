@@ -10,7 +10,6 @@ from tcw.cli import main
 from tcw.serve.records import RESOLVE_MAX_URIS
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
 from tests.projectfiles import config_file, write_config_file
-from tests.projectfiles import write_connected_config_file
 
 
 def detail(served, axis: str, ref: str) -> dict:
@@ -274,7 +273,7 @@ def test_the_configuration_is_read_again_while_serving(records_root, monkeypatch
     def fake_serve(root, **_):
         seen.append(resolve_address(root, "tcw://r.work/2026-01-01-x").reason)
         config = config_file(root)
-        write_connected_config_file(config, config.read_text() + "work:\n  hooks:\n    timeout: -1\n")
+        write_config_file(config, config.read_text() + "work:\n  hooks:\n    timeout: -1\n")
         seen.append(resolve_address(root, "tcw://r.work/2026-01-01-x").reason)
         return 0
 
@@ -374,7 +373,8 @@ def test_accepted_reference_values(refusing):
 
 @pytest.fixture
 def inheriting(tmp_path, serve_project):
-    """`child` extends `base`'s taxonomy and capabilities."""
+    """`child` extends `base`'s taxonomy and capabilities, so `base` is its
+    parent passing both; `base` names nothing."""
     from tcw.store.fs import init
     from tests.work.projects import connect, git
     roots = {}
@@ -384,8 +384,7 @@ def inheriting(tmp_path, serve_project):
         git(root, "init", "-q")
         init(["taxonomy", "capabilities", "work"], root, name)
         roots[name] = root
-    connect(roots["child"], roots["base"], "children")
-    connect(roots["base"], roots["child"], "parent")
+    connect(roots["child"], roots["base"], "parent")
     FsTaxonomyStore.open(roots["base"]).add("Shared", slug="shared")
     FsCapabilitiesStore.open(roots["base"]).add("shared-cap", "Shared", status="Supported")
     FsTaxonomyStore.open(roots["child"]).extends_add("base")

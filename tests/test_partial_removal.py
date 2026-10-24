@@ -12,8 +12,7 @@ import yaml
 
 from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, init
-from tests.projectfiles import write_config
-from tests.projectfiles import write_connected_config
+from tests.projectfiles import write_config, write_manifest
 
 pytestmark = pytest.mark.skipif(
     hasattr(os, "geteuid") and os.geteuid() == 0,
@@ -97,8 +96,7 @@ def test_capabilities_rm_stopped_partway(tmp_path, monkeypatch, capsys):
 
 def test_capabilities_reset_stopped_partway(tmp_path, monkeypatch, capsys):
     base = project(tmp_path)
-    write_connected_config(base,
-        "id: base\nprojects:\n  parent:\n    child: ../child\n")
+    write_config(base, "id: base\n")
     d = base / "docs" / "capabilities" / "login"
     d.mkdir()
     (d / "meta.yaml").write_text(yaml.safe_dump({"id": "cap-aaa111", "name": "Login",
@@ -107,8 +105,10 @@ def test_capabilities_reset_stopped_partway(tmp_path, monkeypatch, capsys):
     child = tmp_path / "child"
     child.mkdir()
     init(["taxonomy", "capabilities"], child, "child")
-    write_connected_config(child,
-        "id: child\nprojects:\n  children:\n    base: ../solo\n")
+    # `child` extends `base`, so `base` is its parent passing capabilities.
+    write_config(child,
+        "id: child\nparents:\n- id: base\n  inherit: [capabilities]\n")
+    write_manifest(child, {"base": "../solo"})
     FsCapabilitiesStore.open(child).extends_add("base")
     FsCapabilitiesStore.open(child).set("login", {"Status": "Missing"})
     override = child / "docs" / "capabilities" / "login"

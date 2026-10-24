@@ -11,7 +11,6 @@ from tcw.config import load_config
 from tcw.config_cli import render
 from tests.config.conftest import tcw
 from tests.projectfiles import write_config_file
-from tests.projectfiles import write_connected_config_file
 
 COMMENT = re.compile(r"  # (.*)$")
 
@@ -108,7 +107,7 @@ def test_an_unreadable_personal_file_contributes_nothing(personal):
 
 def test_an_unreadable_project_file_prints_nothing(personal):
     root = project(personal)
-    write_connected_config_file(personal.project_file, "id: [unclosed\n")
+    write_config_file(personal.project_file, "id: [unclosed\n")
     result = tcw(root, "config", "show", "--origin")
     assert (result.code, result.out) == (1, ""), result
 
@@ -207,7 +206,7 @@ def test_a_hostile_string_reads_back_as_itself(personal, value):
 def test_values_of_unknown_keys_keep_their_type(personal):
     import datetime
     root = project(personal)
-    write_connected_config_file(personal.project_file,
+    write_config_file(personal.project_file,
         "id: p\nx-extra:\n  inf: .inf\n  ninf: -.inf\n  day: 2026-10-13\n"
         "  when: 2026-10-13 01:02:03\n  big: 100000000000000000000\n  f: 1.5\n"
         "  list: [.inf, 2026-10-13, '...']\n")
@@ -235,7 +234,7 @@ def test_an_ordered_map_and_pairs_read_back_as_themselves(personal):
     """YAML reads both as a list of (key, value) tuples; written as a plain
     list, each tuple came back as a list (`[['a'], ['b']]`)."""
     root = project(personal)
-    write_connected_config_file(personal.project_file, ORDERED)
+    write_config_file(personal.project_file, ORDERED)
     config = load_config(root)
     assert config.values["x-extra"]["om"] == [("a", 1), ("b", 2)]
     assert config.values["x-extra"]["pairs"] == [("a", 1), ("a", [2, 3])]
@@ -250,7 +249,7 @@ def test_a_value_that_would_not_read_back_is_refused(personal, monkeypatch):
     one that would not is an error naming its key, and nothing is printed."""
     from tcw import config_cli
     root = project(personal)
-    write_connected_config_file(personal.project_file, "id: p\nx-extra:\n  keep: [a, b]\n")
+    write_config_file(personal.project_file, "id: p\nx-extra:\n  keep: [a, b]\n")
     real = config_cli._entry
     monkeypatch.setattr(config_cli, "_entry",
                         lambda value: "c" if value == "b" else real(value))

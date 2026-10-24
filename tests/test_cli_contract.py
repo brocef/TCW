@@ -37,7 +37,7 @@ from tcw.work.jira.backend import JiraBackend
 from tcw.work.model import Item, Slug
 from tests.work.jira.conftest import ME, fake, jira_config  # noqa: F401
 from tests.projectfiles import config_file, write_config, write_config_file, write_local_config
-from tests.projectfiles import write_connected_config, write_connected_config_file
+from tests.projectfiles import write_manifest
 
 TODAY = date.today().isoformat()
 SOURCE = str(Path(tcw.__file__).resolve().parent.parent)
@@ -200,7 +200,7 @@ def configure(root: Path, **work) -> None:
     path = config_file(root)
     document = yaml.safe_load(path.read_text())
     document.setdefault("work", {}).update(work)
-    write_connected_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
 
 
 def new(root: Path, title: str = "A b", *flags: str, stdin: str = "") -> str:
@@ -335,8 +335,9 @@ def test_extends_add_prints_nothing(tmp_path, fx):
     up.mkdir()
     ok(up, "init", "--id", "up")
     document = yaml.safe_load((fx / ".tcw/tcw-config.yaml").read_text())
-    document["projects"] = {"upstream": {"up": "../up"}}
-    write_connected_config(fx, yaml.safe_dump(document))
+    document["parents"] = [{"id": "up", "inherit": ["taxonomy"]}]
+    write_config(fx, yaml.safe_dump(document))
+    write_manifest(fx, {"up": "../up"})
     assert written(fx, "taxonomy", "extends", "add", "up").out == ""
 
 
@@ -541,24 +542,26 @@ def test_tickets_list_prints_keys_only(jira_fx, fake):  # noqa: F811
 
 @pytest.fixture
 def graph(tmp_path, fake):  # noqa: F811
-    """`fx` with a present child `other`, an upstream `up` and a declared child
-    `absent` not here."""
+    """`fx` with a present child `other`, a parent `up` that passes no axis,
+    and a declared child `absent` not here."""
     roots = {}
     for name in ("fx", "other", "up"):
         roots[name] = tmp_path / name
         roots[name].mkdir()
         ok(roots[name], "init", "--id", name)
     document = yaml.safe_load((roots["fx"] / ".tcw/tcw-config.yaml").read_text())
-    document["projects"] = {
-        "children": {"other": "../other", "absent": "../absent"},
-        "upstream": {"up": "../up"}}
-    write_connected_config(roots["fx"], yaml.safe_dump(document))
+    document["parents"] = [{"id": "up", "inherit": "none"}]
+    document["children"] = ["other", "absent"]
+    write_config(roots["fx"], yaml.safe_dump(document))
+    write_manifest(roots["fx"], {"other": "../other", "absent": "../absent", "up": "../up"})
     for name in ("other", "up"):
         path = config_file(roots[name])
         child = yaml.safe_load(path.read_text())
         if name == "other":
-            child["projects"] = {"parent": {"fx": "../fx"}}
-        write_connected_config_file(path, yaml.safe_dump(child))
+            child["parents"] = ["fx"]
+        write_config_file(path, yaml.safe_dump(child))
+        if name == "other":
+            write_manifest(roots[name], {"fx": "../fx"})
     return roots
 
 
@@ -742,8 +745,9 @@ def test_the_writing_tree_commands_in_a_project(tmp_path, fx):
     ok(up, "taxonomy", "add", "Gear")
     ok(up, "capabilities", "add", "auth/login")
     document = yaml.safe_load((fx / ".tcw/tcw-config.yaml").read_text())
-    document["projects"] = {"upstream": {"up": "../up"}}
-    write_connected_config(fx, yaml.safe_dump(document))
+    document["parents"] = [{"id": "up", "inherit": ["taxonomy", "capabilities"]}]
+    write_config(fx, yaml.safe_dump(document))
+    write_manifest(fx, {"up": "../up"})
 
     assert checked(fx, "taxonomy", "extends", "add", "up", out="").err == \
         "wrote .tcw/tcw-config.yaml\n"

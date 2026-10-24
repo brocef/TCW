@@ -1,6 +1,7 @@
 """Finding the owner of a full identifier (TCW-110 Design 6): two git
-repositories side by side, `app` naming `core` under `projects.upstream` by
-ID, with no `extends` unless a test adds one."""
+repositories side by side, `app` naming `core` as a parent passing taxonomy
+and capabilities, which `core` does not list as a child, with no `extends`
+unless a test adds one."""
 
 from __future__ import annotations
 
@@ -39,7 +40,7 @@ def pair(tmp_path):
         init(["taxonomy", "capabilities"], root)
     _entry(core, "taxonomy", "term")
     _entry(core, "capabilities", "cli/x", id="cap-x", Status="Supported")
-    connect_projects(app, "upstream", "core")
+    connect_projects(app, "parent", "core", inherit=["taxonomy", "capabilities"])
     return app.resolve(), core.resolve()
 
 
@@ -167,7 +168,7 @@ def test_read_never_reaches_what_the_owner_itself_inherits(pair, tmp_path):
     base = make_project(tmp_path, "base", config={})
     init(["taxonomy"], base)
     _entry(base, "taxonomy", "deep")
-    connect_projects(core, "upstream", "base")
+    connect_projects(core, "parent", "base", inherit=["taxonomy"])
     FsTaxonomyStore.open(core).extends_add("base")
     assert FsTaxonomyStore.open(core).get_inherited("base", "deep") is not None
     assert Locator.of(app).read(FullId("core", "taxonomy", "deep"), app).kind == MISSING

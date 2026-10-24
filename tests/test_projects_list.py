@@ -12,34 +12,64 @@ import yaml
 
 from tcw.cli import main
 from tests.work.projects import make_project
-from tests.projectfiles import config_file, write_config_file
-from tests.projectfiles import write_connected_config_file
+from tests.projectfiles import config_file, write_config_file, write_manifest
 
 
 def declare(root, relation, project_id, target):
+    """Name `project_id` in `root`'s configuration — as a parent passing every
+    axis (`relation` "parent"), a parent passing none ("upstream", what a 3.x
+    upstream became) or a child ("children") — and say in `root`'s manifest
+    that it is at `target`."""
     path = config_file(root)
     document = yaml.safe_load(path.read_text())
-    section = document.setdefault("projects", {}).setdefault(relation, {})
-    section[project_id] = os.path.relpath(target, root)
-    write_connected_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    if relation == "children":
+        document.setdefault("children", []).append(project_id)
+    else:
+        document.setdefault("parents", []).append(
+            project_id if relation == "parent" else {"id": project_id, "inherit": "none"})
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    write_manifest(root, {project_id: os.path.relpath(target, root)})
+
+
+def declare_3x(root, relation, project_id, target):
+    """`declare` in the 3.x form, for the tests below whose subject is that
+    key: `project_id` under `projects.<relation>`, with its location in the
+    manifest."""
+    path = config_file(root)
+    document = yaml.safe_load(path.read_text())
+    document.setdefault("projects", {}).setdefault(relation, {})[project_id] = None
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    write_manifest(root, {project_id: os.path.relpath(target, root)})
+
+
+# The tests whose subject is a refusal of the 3.x `projects:` key or of the
+# 2.x `connected-projects` key renamed from it: their graph keeps that key.
+GRAPH_3X = {
+    "test_the_2x_key_is_an_error_naming_the_guide",
+    "test_every_command_refuses_the_2x_key",
+    "test_work_list_refuses_the_2x_key_in_a_child",
+    "test_the_2x_key_refusal_names_the_file_from_a_sub_folder",
+    "test_projects_list_reports_a_registry_problem",
+}
 
 
 @pytest.fixture
-def graph(tmp_path):
+def graph(tmp_path, request):
     """`fx` under parent `top`, with children `c1` and `c2`, an absent child
-    `gone`, and an upstream `up`."""
+    `gone`, and a parent `up` passing no axis (a 3.x upstream)."""
+    link = declare_3x if request.node.originalname in GRAPH_3X else declare
     top = make_project(tmp_path, "top")
     fx = make_project(tmp_path, "fx")
     c1 = make_project(tmp_path, "c1")
     c2 = make_project(tmp_path, "c2")
     up = make_project(tmp_path, "up")
-    declare(top, "children", "fx", fx)
-    declare(fx, "parent", "top", top)
+    link(top, "children", "fx", fx)
+    link(fx, "parent", "top", top)
     for child in (c1, c2):
-        declare(fx, "children", child.name, child)
-        declare(child, "parent", "fx", fx)
-    declare(fx, "children", "gone", tmp_path / "gone")
-    declare(fx, "upstream", "up", up)
+        link(fx, "children", child.name, child)
+        link(child, "parent", "fx", fx)
+    link(fx, "children", "gone", tmp_path / "gone")
+    link(fx, "upstream", "up", up)
     return fx
 
 
@@ -95,7 +125,7 @@ def _rename_key(root, old, new):
     path = config_file(root)
     document = yaml.safe_load(path.read_text())
     document[new] = document.pop(old)
-    write_connected_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
 
 
 def test_the_graph_under_projects_validates(graph, monkeypatch, capsys):
@@ -167,7 +197,7 @@ def test_an_upstreams_own_2x_key_is_not_its_readers_problem(graph, monkeypatch, 
     path = config_file(up)
     document = yaml.safe_load(path.read_text())
     document["connected-projects"] = {"children": {"zz": "../zz"}}
-    write_connected_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
     code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
     assert code == 0, err
 
@@ -177,7 +207,7 @@ def test_projects_list_reports_a_registry_problem(graph, monkeypatch, capsys):
     path = config_file(graph)
     document = yaml.safe_load(path.read_text())
     document["projects"]["children"]["Bad ID"] = "../c1"
-    write_connected_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
     code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
     assert (code, out) == (1, ""), (out, err)
     # The naming rule every key follows catches it first (TCW-106 Design 5.1).

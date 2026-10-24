@@ -2,7 +2,8 @@
 identifiers (TCW-110 Design 5.1, 5.2, 5.3, 6, AC 8, 11): a project `demo`
 with the term `term`, the feature `pay-feature`, and the capabilities
 `cli/x` and `roles/admin`, beside a project `core` holding the term `term`
-that `demo` names under `projects.upstream` and does not inherit from."""
+that `demo` names as a parent passing nothing (`inherit: none`) and does not
+inherit from."""
 
 from __future__ import annotations
 
@@ -55,7 +56,7 @@ def demo(tmp_path) -> Path:
           vocabulary=[fid("demo", "taxonomy", "term")])
     entry(demo, "capabilities", "cli/x", id="cap-x", Status="Supported")
     entry(demo, "capabilities", "roles/admin", id="cap-admin", Status="Supported")
-    connect_projects(demo, "upstream", "core")
+    connect_projects(demo, "parent", "core", inherit="none")
     return demo
 
 

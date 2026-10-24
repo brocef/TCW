@@ -24,7 +24,7 @@ import yaml
 from tcw import __version__
 from tcw.ids import parse_full_id
 from tests.projectfiles import config_file, local_config_file, write_config, write_local_config
-from tests.projectfiles import write_connected_config, write_manifest
+from tests.projectfiles import write_manifest
 
 SOURCE = str(Path(__file__).resolve().parent.parent)
 
@@ -69,11 +69,15 @@ def repository(root: Path) -> Path:
     return root
 
 
-def project(root: Path, project_id: str, extra: str = "") -> Path:
+def project(root: Path, project_id: str, extra: str = "",
+            manifest: dict | None = None) -> Path:
     """A 4.0 project at `root` with a work store and one item, so that
-    `tcw work list` shows which project a command acted on."""
+    `tcw work list` shows which project a command acted on; `manifest`, when
+    given, is written to its manifest first, saying where other projects are."""
     root.mkdir(parents=True, exist_ok=True)
-    write_connected_config(root, f"id: {project_id}\n{extra}")
+    write_config(root, f"id: {project_id}\n{extra}")
+    if manifest:
+        write_manifest(root, manifest)
     (root / "docs" / "work").mkdir(parents=True, exist_ok=True)
     made = tcw(root, "work", "new", f"Item of {project_id}")
     assert made.code == 0, made
@@ -263,7 +267,7 @@ def _version_case(tmp_path: Path, which: str, value: str | None) -> tuple[Path, 
         path = config_file(root)
         path.write_text(_with_version(value, "id: p\n"))
     else:
-        write_connected_config(root, "id: p\n")
+        write_config(root, "id: p\n")
         path = local_config_file(root)
         path.write_text(_with_version(value, "user:\n  name: Someone\n"))
     return root, path, env
@@ -323,7 +327,7 @@ def test_ac7_a_lower_4x_minor_version_is_read(tmp_path, monkeypatch, capsys, whi
 
 def test_ac8_config_show_hides_the_version_and_the_allowlist_ignores_it(tmp_path):
     root = tmp_path / "p"
-    write_connected_config(root, "id: p\nwork:\n  tags: [bug]\n")
+    write_config(root, "id: p\nwork:\n  tags: [bug]\n")
     write_local_config(root, "user:\n  name: Someone\n")
     assert "tcw-version" in local_config_file(root).read_text()
     env = personal_env(tmp_path)
@@ -337,7 +341,7 @@ def test_ac8_config_show_hides_the_version_and_the_allowlist_ignores_it(tmp_path
 
 def test_ac9_init_gives_an_id_below_the_version_line(tmp_path):
     root = tmp_path / "p"
-    write_connected_config(root, "")
+    write_config(root, "")
     assert config_file(root).read_text() == f"tcw-version: {__version__}\n"
     assert tcw(root, "init", "--id", "demo").code == 0
     lines = config_file(root).read_text().splitlines()
@@ -362,7 +366,7 @@ def test_ac9_an_edit_keeps_an_older_4x_version(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("tcw.project_files.__version__", "4.3.0")
     root = repository(tmp_path / "p")
     (root / "docs" / "work").mkdir(parents=True)
-    write_connected_config(root, "tcw-version: 4.1.0\nid: demo\n")
+    write_config(root, "tcw-version: 4.1.0\nid: demo\n")
     monkeypatch.chdir(root)
     assert main(["work", "tags", "add", "bug"]) == 0, capsys.readouterr()
     assert main(["taxonomy", "list"]) in (0, 1)
@@ -400,7 +404,7 @@ def test_ac10_a_file_binding_may_not_leave_the_project_root(tmp_path):
     root = tmp_path / "p"
     root.mkdir()
     (tmp_path / "outside.md").write_text("OUTSIDE\n")
-    write_connected_config(root, "id: p\nwork:\n  stages:\n    spec:\n      prompt:\n"
+    write_config(root, "id: p\nwork:\n  stages:\n    spec:\n      prompt:\n"
                        "        - file: ../outside.md\n")
     (root / "docs" / "work").mkdir(parents=True)
     ran = tcw(root, "work", "stage", "prompt", "spec")
@@ -427,10 +431,10 @@ def test_ac11_a_key_breaking_the_naming_rule_is_a_problem(tmp_path, which, key):
     root = tmp_path / "p"
     (root / "docs" / "work").mkdir(parents=True)
     env = personal_env(tmp_path)
-    write_connected_config(root, "id: p\n")
+    write_config(root, "id: p\n")
     body = f"work:\n  hooks:\n    {key}: 1\n"
     if which == "project":
-        write_connected_config(root, f"id: p\n{body}")
+        write_config(root, f"id: p\n{body}")
         shown = ".tcw/tcw-config.yaml"
     elif which == "local":
         write_local_config(root, body)
@@ -477,7 +481,7 @@ def test_ac12_not_tags_selects_and_is_printed_under_its_new_name(tmp_path):
 def test_ac12_not_tags_with_an_underscore_says_what_to_write(tmp_path):
     root = tmp_path / "p"
     (root / "docs" / "work").mkdir(parents=True)
-    write_connected_config(root, "id: p\n" + NOT_TAGS % "not_tags")
+    write_config(root, "id: p\n" + NOT_TAGS % "not_tags")
     ran = tcw(root, "work", "list")
     assert ran.code == 1, ran
     assert ("work.stages.spec.prompt[0].when.not_tags: key 'not_tags' "
@@ -502,7 +506,7 @@ MISNAMED = {
 def _validate_errors(tmp_path: Path, body: str) -> list[str]:
     root = tmp_path / "p"
     (root / "docs" / "work").mkdir(parents=True)
-    write_connected_config(root, "id: p\n" + body)
+    write_config(root, "id: p\n" + body)
     ran = tcw(root, "validate")
     assert ran.code == 1, ran
     return [line for line in ran.out.splitlines() if line.startswith("error:")]
@@ -531,7 +535,7 @@ def test_a_file_with_no_version_gets_only_the_version_problem(tmp_path, local):
     (root / "docs" / "work").mkdir(parents=True)
     body = "work:\n  my_key: 1\n"
     if local:
-        write_connected_config(root, "id: p\n")
+        write_config(root, "id: p\n")
         local_config_file(root).write_text(body)
         shown = ".tcw/tcw-config.local.yaml"
     else:
@@ -547,7 +551,7 @@ def test_a_file_with_no_version_gets_only_the_version_problem(tmp_path, local):
 def test_ac12_a_key_yaml_reads_as_a_boolean_must_be_text(tmp_path):
     root = tmp_path / "p"
     (root / "docs" / "work").mkdir(parents=True)
-    write_connected_config(root, "id: p\nwork:\n  on: x\n")
+    write_config(root, "id: p\nwork:\n  on: x\n")
     ran = tcw(root, "work", "list")
     assert ran.code == 1, ran
     assert "work[True]: key True must be text: lowercase letters" in ran.err, ran
@@ -564,9 +568,9 @@ def test_ac13_a_3x_connection_is_reported_and_not_read(tmp_path):
     (old / "tcw-config.yaml").write_text(
         "id: old\nprojects:\n  children:\n    deeper: ../deeper\n")
     deeper = tmp_path / "deeper"
-    write_connected_config(deeper, "tcw-version: 99.0.0\nid: deeper\n")
+    write_config(deeper, "tcw-version: 99.0.0\nid: deeper\n")
     ws = tmp_path / "ws"
-    write_config(ws, "id: ws\nprojects:\n  children:\n    old:\n")
+    write_config(ws, "id: ws\nchildren:\n- old\n")
     manifest = write_manifest(ws, {"old": "../old"})
     # TCW-107 Design 2.6: the problem is the entry's, naming its file.
     entry = f"entry for 'old' in {manifest.resolve()} places it at {old.resolve()}, which {LEGACY}"
@@ -588,7 +592,8 @@ def test_ac13_a_3x_connection_is_reported_and_not_read(tmp_path):
 def test_ac13_a_variable_naming_a_3x_folder_says_so_once(tmp_path):
     old = legacy_project(tmp_path / "old")
     ws = tmp_path / "ws"
-    write_connected_config(ws, "id: ws\nprojects:\n  children:\n    old: ../missing\n")
+    write_config(ws, "id: ws\nchildren:\n- old\n")
+    write_manifest(ws, {"old": "../missing"})
     ran = tcw(ws, "validate", env={"TCW_PROJECT_OLD": str(old)})
     assert ran.code == 1, ran
     assert ran.out.splitlines() == [f"error: {old.resolve()}: TCW_PROJECT_OLD names {LEGACY.removeprefix('is ')}"], ran
@@ -602,8 +607,8 @@ def _json_projects(ran: Ran) -> list[dict]:
 
 
 def _pair(tmp_path: Path) -> tuple[Path, Path]:
-    app = project(tmp_path / "app", "app", "projects:\n  parent:\n    ws: ../ws\n")
-    ws = project(tmp_path / "ws", "ws", "projects:\n  children:\n    app: ../app\n")
+    app = project(tmp_path / "app", "app", "parents:\n- ws\n", {"ws": "../ws"})
+    ws = project(tmp_path / "ws", "ws", "children:\n- app\n", {"app": "../app"})
     return ws, app
 
 
@@ -646,7 +651,7 @@ def test_ac13a_a_connected_project_from_a_newer_tcw_is_that_connections_problem(
 
 def test_ac13a_init_writes_nothing_over_a_file_from_a_newer_tcw(tmp_path):
     root = tmp_path / "p"
-    write_connected_config(root, "tcw-version: 99.0.0\n# no id yet\n")
+    write_config(root, "tcw-version: 99.0.0\n# no id yet\n")
     before = snapshot(root)
     ran = tcw(root, "init", "--id", "demo")
     assert ran.code == 1, ran

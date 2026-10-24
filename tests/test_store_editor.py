@@ -21,8 +21,7 @@ from tcw.store.fs import (FsCapabilitiesStore, FsTaxonomyStore, _revision, _revi
 # test that needs it belongs in this file, with the other fault-injection tests.
 from test_capabilities_federation import child_of
 from tcw.errors import TcwError
-from tests.projectfiles import write_config
-from tests.projectfiles import write_connected_config
+from tests.projectfiles import write_config, write_manifest
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -210,12 +209,10 @@ def test_update_term_refuses_inherited(tmp_path):
     subprocess.run(["git", "-C", str(cons), "config", "user.name", "t"],
                    check=True)
     write_sentinel(cons, "consumer")
-    write_connected_config(cons,
-        "id: consumer\nprojects:\n  children:\n    shared: ../shared\n"
+    write_config(cons,
+        "id: consumer\nparents:\n- id: shared\n  inherit: [taxonomy]\n"
     )
-    write_connected_config(shared,
-        "id: shared\nprojects:\n  parent:\n    consumer: ../consumer\n"
-    )
+    write_manifest(cons, {"shared": "../shared"})
     FsTaxonomyStore.open(cons).extends_add("shared")
     st = FsTaxonomyStore.open(cons)
     with pytest.raises(TcwError, match="cannot update inherited"):
@@ -344,14 +341,11 @@ def _federated(tmp_path) -> tuple[Path, Path]:
     FsCapabilitiesStore.open(base).add("routes/login", name="Sign in",
                                        status="Supported", body="UPSTREAM.")
     child = _cap_node(tmp_path / "c")
-    write_connected_config(child,
-        f"id: child-project\nprojects:\n  children:\n"
-        f"    base-project: {base}\n"
+    write_config(child,
+        "id: child-project\nparents:\n- id: base-project\n  inherit: [capabilities]\n"
     )
-    write_connected_config(base,
-        f"id: base-project\nprojects:\n  parent:\n"
-        f"    child-project: {child}\n"
-    )
+    write_manifest(child, {"base-project": os.path.relpath(base, child)})
+    write_config(base, "id: base-project\n")
     FsCapabilitiesStore.open(child).extends_add("base-project")
     return base, child
 

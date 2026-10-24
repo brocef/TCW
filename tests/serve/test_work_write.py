@@ -19,7 +19,6 @@ from tests.serve.test_work_read import new, ok
 from tests.work.jira.conftest import EMAIL_ENV, TOKEN_ENV
 from tests.work.projects import commit_all, connect, git, make_project
 from tests.projectfiles import config_file, write_config_file
-from tests.projectfiles import write_connected_config_file
 
 
 def item_yaml(root: Path, folder: str) -> dict:
@@ -51,14 +50,15 @@ class Family:
 
 @pytest.fixture
 def family(tmp_path, personal_on, serve_project, tcw):
-    """`p` (served) with child `q` and upstream `r`, each its own committed
+    """`p` (served) with child `q` and a parent `r` that does not list `p`
+    and passes nothing, each its own committed
     repository; `r` holds one item."""
     p = fs_project(tmp_path, tags=("ui", "api"))
     q = make_project(tmp_path, "q")
     r = make_project(tmp_path, "r")
     connect(p, q, "children")
     connect(q, p, "parent")
-    connect(p, r, "upstream")
+    connect(p, r, "parent", inherit="none")
     upstream_item = new(tcw, r, "Upstream thing")
     for root in (p, q, r):
         commit_all(root)
@@ -108,7 +108,7 @@ def test_a_tag_since_unregistered_does_not_block_other_edits(fs, two, tcw):
     config = config_file(fs.root)
     document = yaml.safe_load(config.read_text())
     document["work"]["tags"] = ["api"]
-    write_connected_config_file(config, yaml.safe_dump(document))
+    write_config_file(config, yaml.safe_dump(document))
     ok(patch(fs, a, {"priority": "low"}, {"priority": "medium"}))
     assert item_yaml(fs.root, a)["tags"] == ["ui"]
 

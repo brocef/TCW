@@ -3,6 +3,7 @@ locator spells it in, whether its config is a symlink, and from submodules in
 linked worktrees (spec:
 2026-09-27-resolve-project-graph-paths-by-case-and-through-a-symlinked-config)."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -20,7 +21,9 @@ def test_a_locator_in_other_letter_case_loads_the_node_once(tmp_path):
     if not case_insensitive(tmp_path):
         pytest.skip("the disk is case-sensitive")
     root = repo(tmp_path / "Root")
-    spelled = str(tmp_path / "ROOT" / "kid")
+    # A manifest's locations are relative, so the folder spelled in other
+    # letters is written relative to `root`.
+    spelled = os.path.relpath(tmp_path / "ROOT" / "kid", root)
     config(root, "root", children={"kid": spelled})
     config(root / "kid", "kid", parent={"root": ".."})
     done = validate(root)

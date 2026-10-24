@@ -351,7 +351,7 @@ def test_a_term_of_a_project_not_extended_is_read_from_its_own_taxonomy(tmp_path
     core = make_project(tmp_path, "core", config={})
     init(["taxonomy"], core)
     entry(core, "taxonomy", "term")
-    connect_projects(app, "upstream", "core")
+    connect_projects(app, "parent", "core", inherit="none")
     reader = production_reader(app)
     assert reader.term("core.taxonomy/term") == Present()
     assert reader.term("core.taxonomy/missing") == ABSENT

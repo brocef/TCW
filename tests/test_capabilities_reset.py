@@ -11,8 +11,7 @@ import yaml
 from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 from tcw.errors import TcwError
-from tests.projectfiles import write_config
-from tests.projectfiles import write_connected_config
+from tests.projectfiles import write_config, write_manifest
 
 
 def repo(tmp_path: Path, name: str) -> Path:
@@ -47,20 +46,16 @@ def federated(tmp_path):
 
 
 def connect(anchor, *sources):
+    """`anchor` names each source as a parent passing its capabilities, found
+    through `anchor`'s manifest; the sources name nothing."""
     anchor_id = anchor.name.replace("_", "-")
-    children = "".join(
-        f"    {source.name.replace('_', '-')}: ../{source.name}\n"
+    parents = "".join(
+        f"- id: {source.name.replace('_', '-')}\n  inherit: [capabilities]\n"
         for source in sources
     )
-    write_connected_config(anchor,
-        f"id: {anchor_id}\nprojects:\n  children:\n{children}"
-    )
-    for source in sources:
-        source_id = source.name.replace("_", "-")
-        write_connected_config(source,
-            f"id: {source_id}\nprojects:\n  parent:\n"
-            f"    {anchor_id}: ../{anchor.name}\n"
-        )
+    write_config(anchor, f"id: {anchor_id}\nparents:\n{parents}")
+    write_manifest(anchor, {source.name.replace("_", "-"): f"../{source.name}"
+                            for source in sources})
 
 
 def store(root: Path) -> FsCapabilitiesStore:

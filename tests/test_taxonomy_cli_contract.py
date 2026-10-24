@@ -82,7 +82,7 @@ def test_extends_add_prints_nothing_and_names_the_config(tmp_path, run):
     project = make_project(tmp_path, "fx", config={})
     init(["taxonomy"], project, "fx")
     from tests.work.projects import connect
-    connect(project, base, "upstream")
+    connect(project, base, "parent", inherit=["taxonomy"])
     code, out, err = run(project, "taxonomy", "extends", "add", "base")
     assert (code, out) == (0, ""), err
     assert err.splitlines() == ["wrote .tcw/tcw-config.yaml"]

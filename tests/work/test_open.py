@@ -19,7 +19,6 @@ from tcw.work.model import Changes
 from tests.work.jira.fake import SITE
 from tests.work.projects import commit_all, connect, git, make_project
 from tests.projectfiles import config_file, write_config_file
-from tests.projectfiles import write_connected_config, write_connected_config_file
 
 
 #: A connected-project `jira` block for project q, answered by the fake.
@@ -27,11 +26,11 @@ JIRA_BLOCK = {"site": SITE, "project": "TCW", "inbox-status": "To Do",
               "credentials": {"email-env": "Q_EMAIL", "token-env": "Q_TOKEN"},
               "fields": {"project": "TCW Project"}}
 
-def write_connected_config(root, **document):
+def write_document(root, **document):
     path = config_file(root)
     data = yaml.safe_load(path.read_text())
     data.update(document)
-    write_connected_config_file(path, yaml.safe_dump(data, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(data, sort_keys=False))
 
 
 # -- open_backend (AC 20, library) ---------------------------------------------------
@@ -147,7 +146,7 @@ def test_an_undeclared_id_is_refused(pq):
 def test_an_upstream_project_is_read_only(tmp_path):
     p = make_project(tmp_path, "p")
     r = make_project(tmp_path, "r")
-    connect(p, r, "upstream")
+    connect(p, r, "parent", inherit="none")
     commit_all(r)
     assert_refused_and_nothing_written(
         r, lambda: delegate("r", "T", None, None, here=p), "read-only")
@@ -168,7 +167,7 @@ def test_a_jira_block_in_an_entry_is_refused(pq):
     entry, whatever it holds."""
     from tcw.store.project import FsProjectRegistry
     p, q = pq
-    write_connected_config(p, **{"projects": {"children": {"q": {"jira": JIRA_BLOCK}}}})
+    write_document(p, **{"projects": {"children": {"q": {"jira": JIRA_BLOCK}}}})
     problems = [f.message for f in FsProjectRegistry.open(p).check()]
     assert any("projects.children.q" in m and "jira" in m for m in problems), problems
 

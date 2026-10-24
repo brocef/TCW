@@ -21,19 +21,22 @@ from pathlib import Path
 import pytest
 
 from tcw.cli import main
-from tests.projectfiles import write_config
-from tests.projectfiles import write_connected_config
+from tests.projectfiles import write_config, write_manifest
 
 
-def _node(root: Path, body: str) -> Path:
-    """A tcw node at `root` with `body` as its config, and nothing defaulted.
+def _node(root: Path, body: str, where: dict | None = None) -> Path:
+    """A tcw node at `root` with `body` as its config, and nothing defaulted;
+    `where`, when given, is written to its manifest, saying where the
+    projects it names are.
 
     Every key the resolution ladder branches on is written by the caller. A
     helper that supplied a locator or a repository of its own would fix an axis
     these tests exist to vary.
     """
     root.mkdir(parents=True, exist_ok=True)
-    write_connected_config(root, body, encoding="utf-8")
+    write_config(root, body, encoding="utf-8")
+    if where:
+        write_manifest(root, where)
     return root
 
 
@@ -57,8 +60,8 @@ def workspace(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     orchestrator = _node(
         tmp_path / "orchestrator",
-        "id: root-project\nprojects:\n  children:\n"
-        "    core-project: ./core\n",
+        "id: root-project\nchildren:\n- core-project\n",
+        {"core-project": "./core"},
     )
     # `core` places its parent where it is on this machine. In TCW 4 a
     # manifest entry naming a folder that holds files and no project is an
@@ -66,8 +69,8 @@ def workspace(tmp_path, monkeypatch):
     # orchestrator's.
     core = _node(
         tmp_path / "core",
-        "id: core-project\nprojects:\n  parent:\n"
-        "    root-project: ../orchestrator\n",
+        "id: core-project\nparents:\n- root-project\n",
+        {"root-project": "../orchestrator"},
     )
     monkeypatch.chdir(orchestrator)
     return tmp_path, orchestrator, core
@@ -136,14 +139,16 @@ def test_validate_with_no_override_says_nothing_about_one(workspace, capsys):
 # --- provisioning, and the commands that resolve a graph ----------------------
 
 
-def _node_remote(tmp_path: Path, name: str, body: str) -> Path:
+def _node_remote(tmp_path: Path, name: str, body: str, where: dict | None = None) -> Path:
     """A git repository whose working tree *is* a tcw node, used as a remote.
 
     Git does not care that the URL is a local path, which is how these stay
     inside the "no network, ever" rule while doing a real clone.
     """
     remote = _git_repo(tmp_path / name)
-    write_connected_config(remote, body, encoding="utf-8")
+    write_config(remote, body, encoding="utf-8")
+    if where:
+        write_manifest(remote, where)
     subprocess.run(["git", "-C", str(remote), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(remote), "commit", "-qm", "seed node"], check=True)
     return remote
@@ -165,18 +170,18 @@ def provisionable(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
     remote = _node_remote(
         tmp_path, "remote-core",
-        "id: core-project\nprojects:\n  parent:\n    root-project: ..\n",
+        "id: core-project\nparents:\n- root-project\n",
+        {"root-project": ".."},
     )
     orchestrator = _node(
         tmp_path / "orchestrator",
-        "id: root-project\nprojects:\n  children:\n"
-        "    core-project:\n      path: ./core\n      repository:\n"
-        f"        url: {remote}\n        ref: main\n",
+        "id: root-project\nchildren:\n- core-project\n",
+        {"core-project": {"path": "./core", "repository": f"{remote}#main"}},
     )
     local_core = _node(
         tmp_path / "core",
-        "id: core-project\nprojects:\n  parent:\n"
-        f"    root-project: {orchestrator}\n",
+        "id: core-project\nparents:\n- root-project\n",
+        {"root-project": "../orchestrator"},
     )
     monkeypatch.chdir(orchestrator)
     return orchestrator, local_core, cache
@@ -228,12 +233,13 @@ def test_with_no_variable_set_the_nested_layout_is_untouched(tmp_path, monkeypat
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
     orchestrator = _node(
         tmp_path / "orchestrator",
-        "id: root-project\nprojects:\n  children:\n"
-        "    core-project: ./core\n",
+        "id: root-project\nchildren:\n- core-project\n",
+        {"core-project": "./core"},
     )
     _node(
         tmp_path / "orchestrator" / "core",
-        "id: core-project\nprojects:\n  parent:\n    root-project: ..\n",
+        "id: core-project\nparents:\n- root-project\n",
+        {"root-project": ".."},
     )
     from tcw.store.project import FsProjectRegistry
 

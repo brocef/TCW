@@ -32,8 +32,7 @@ from tcw.store.base import Term
 from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 from tcw.errors import TcwError
 from tests.fullids import fid
-from tests.projectfiles import write_config
-from tests.projectfiles import write_connected_config
+from tests.projectfiles import write_config, write_manifest
 
 
 def node(tmp_path, name="repo"):
@@ -358,8 +357,8 @@ def test_add_without_fields_is_unchanged(tmp_path):
 def _two_bases(tmp_path):
     """A child extending two projects that both hold the same capability path.
 
-    The child is the *anchor* with the bases as its children: a node may name at
-    most one parent, so two sources have to hang off it the other way round.
+    The child names both bases as parents passing their capabilities, and the
+    bases name nothing.
     """
     bases = []
     for name in ("alpha", "beta"):
@@ -368,13 +367,9 @@ def _two_bases(tmp_path):
             write_cap(base, path, Status="Supported")
         bases.append(base)
     child = node(tmp_path, "child")
-    children = "".join(f"    {b.name}: ../{b.name}\n" for b in bases)
-    write_connected_config(child,
-        f"id: child\nprojects:\n  children:\n{children}")
-    for base in bases:
-        write_connected_config(base,
-            f"id: {base.name}\nprojects:\n  parent:\n"
-            f"    child: ../child\n")
+    parents = "".join(f"- id: {b.name}\n  inherit: [capabilities]\n" for b in bases)
+    write_config(child, f"id: child\nparents:\n{parents}")
+    write_manifest(child, {b.name: f"../{b.name}" for b in bases})
     for name in ("alpha", "beta"):
         FsCapabilitiesStore.open(child).extends_add(name)
     return child

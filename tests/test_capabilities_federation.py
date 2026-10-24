@@ -12,8 +12,7 @@ from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 
 from nodeconfig import declare_extends
 from tcw.errors import TcwError
-from tests.projectfiles import write_config
-from tests.projectfiles import write_connected_config
+from tests.projectfiles import write_config, write_manifest
 
 
 def repo(tmp_path: Path, name: str) -> Path:
@@ -46,12 +45,10 @@ def child_of(tmp_path, base_caps: dict) -> tuple[Path, Path]:
     for path, kw in base_caps.items():
         write_cap(base, path, **kw)
     child = repo(tmp_path, "child")
-    write_connected_config(base,
-        "id: base\nprojects:\n  children:\n    child: ../child\n"
-    )
-    write_connected_config(child,
-        "id: child\nprojects:\n  parent:\n    base: ../base\n"
-    )
+    write_config(base, "id: base\nchildren:\n- child\n")
+    write_manifest(base, {"child": "../child"})
+    write_config(child, "id: child\nparents:\n- base\n")
+    write_manifest(child, {"base": "../base"})
     FsCapabilitiesStore.open(child).extends_add("base")
     return base, child
 
@@ -61,15 +58,12 @@ def store(root: Path) -> FsCapabilitiesStore:
 
 
 def connect_many(anchor: Path, *sources: Path) -> None:
-    children = "".join(f"    {p.name}: ../{p.name}\n" for p in sources)
-    write_connected_config(anchor,
-        f"id: {anchor.name}\nprojects:\n  children:\n{children}"
-    )
-    for source in sources:
-        write_connected_config(source,
-            f"id: {source.name}\nprojects:\n  parent:\n"
-            f"    {anchor.name}: ../{anchor.name}\n"
-        )
+    """`anchor` names each source as a parent passing its capabilities, found
+    in the folder next to it through `anchor`'s manifest; the sources name
+    nothing."""
+    parents = "".join(f"- id: {p.name}\n  inherit: [capabilities]\n" for p in sources)
+    write_config(anchor, f"id: {anchor.name}\nparents:\n{parents}")
+    write_manifest(anchor, {p.name: f"../{p.name}" for p in sources})
 
 
 # ── inheritance (read-through) ───────────────────────────────────────────────
@@ -218,7 +212,12 @@ def test_check_unlisted_extra_doc(tmp_path):
 def test_check_federation_cycle(tmp_path):
     a = repo(tmp_path, "a")
     b = repo(tmp_path, "b")
-    connect_many(a, b)
+    # Each extends the other, so neither link can be a parent passing the
+    # axis both ways: `a` names `b` as a parent, and `b` lists `a` as a child.
+    write_config(a, "id: a\nparents:\n- id: b\n  inherit: [capabilities]\n")
+    write_manifest(a, {"b": "../b"})
+    write_config(b, "id: b\nchildren:\n- a\n")
+    write_manifest(b, {"a": "../a"})
     FsCapabilitiesStore.open(a).extends_add("b")
     FsCapabilitiesStore.open(b).extends_add("a")     # a→b→a
     assert any("cycle in capability federation" in p for p in map(str, store(a).check()))
@@ -471,9 +470,8 @@ def test_extending_a_declared_but_absent_project_says_so(tmp_path):
     read path against a declaration no command on this machine could produce.
     """
     child = repo(tmp_path, "child")
-    write_connected_config(child,
-        "id: child\nprojects:\n  parent:\n    base: ../base\n"
-    )
+    write_config(child, "id: child\nparents:\n- base\n")
+    write_manifest(child, {"base": "../base"})
     declare_extends(child, "capabilities",
         "extends:\n  - base\n"
     )
@@ -489,7 +487,7 @@ def test_extending_a_declared_but_absent_project_says_so(tmp_path):
 
 def test_extending_a_project_that_was_never_declared_is_unchanged(tmp_path):
     child = repo(tmp_path, "child")
-    write_connected_config(child, "id: child\n")
+    write_config(child, "id: child\n")
     declare_extends(child, "capabilities",
         "extends:\n  - nowhere\n"
     )
@@ -500,9 +498,8 @@ def test_extending_a_project_that_was_never_declared_is_unchanged(tmp_path):
 
 def test_extends_add_names_a_declared_but_absent_project(tmp_path):
     child = repo(tmp_path, "child")
-    write_connected_config(child,
-        "id: child\nprojects:\n  parent:\n    base: ../base\n"
-    )
+    write_config(child, "id: child\nparents:\n- base\n")
+    write_manifest(child, {"base": "../base"})
     with pytest.raises(TcwError) as excinfo:
         FsCapabilitiesStore.open(child).extends_add("base")
     # TCW-107 Design 6.2: a project not on this machine.
@@ -523,10 +520,11 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
     elsewhere = tmp_path / "base" / "ledger"
     elsewhere.mkdir(parents=True)
     (base / "docs" / "capabilities").rmdir()
-    write_connected_config(base,
+    write_config(base,
         "id: base\ncapabilities:\n  path: ledger\n"
-        "projects:\n  children:\n    child: ../child\n"
+        "children:\n- child\n"
     )
+    write_manifest(base, {"child": "../child"})
     (base / "docs" / "capabilities").mkdir(parents=True, exist_ok=True)
     write_cap(base, "auth/login", id="cap-aaa111", Status="Supported", body="Log in.")
     import shutil
@@ -534,9 +532,8 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
     shutil.rmtree(base / "docs" / "capabilities")
 
     child = repo(tmp_path, "child")
-    write_connected_config(child,
-        "id: child\nprojects:\n  parent:\n    base: ../base\n"
-    )
+    write_config(child, "id: child\nparents:\n- base\n")
+    write_manifest(child, {"base": "../base"})
     declare_extends(child, "capabilities", "extends:\n  - base\n")
 
     caps = {str(c.full_id) for c in store(child).list_all()}
@@ -546,13 +543,11 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
 def test_a_sibling_with_no_component_names_the_project(tmp_path):
     base = repo(tmp_path, "base")
     (base / "docs" / "capabilities").rmdir()
-    write_connected_config(base,
-        "id: base\nprojects:\n  children:\n    child: ../child\n"
-    )
+    write_config(base, "id: base\nchildren:\n- child\n")
+    write_manifest(base, {"child": "../child"})
     child = repo(tmp_path, "child")
-    write_connected_config(child,
-        "id: child\nprojects:\n  parent:\n    base: ../base\n"
-    )
+    write_config(child, "id: child\nparents:\n- base\n")
+    write_manifest(child, {"base": "../base"})
     declare_extends(child, "capabilities", "extends:\n  - base\n")
     with pytest.raises(ValueError) as excinfo:
         store(child).list_all()
@@ -563,16 +558,16 @@ def test_a_sibling_whose_tree_is_declared_but_absent_says_to_provision(tmp_path,
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     base = repo(tmp_path, "base")
     (base / "docs" / "capabilities").rmdir()
-    write_connected_config(base,
+    write_config(base,
         "id: base\ncapabilities:\n"
         "  path: ledger\n"
         "  repository:\n    url: https://example.invalid/ledger.git\n"
-        "projects:\n  children:\n    child: ../child\n"
+        "children:\n- child\n"
     )
+    write_manifest(base, {"child": "../child"})
     child = repo(tmp_path, "child")
-    write_connected_config(child,
-        "id: child\nprojects:\n  parent:\n    base: ../base\n"
-    )
+    write_config(child, "id: child\nparents:\n- base\n")
+    write_manifest(child, {"base": "../base"})
     declare_extends(child, "capabilities", "extends:\n  - base\n")
     with pytest.raises(ValueError) as excinfo:
         store(child).list_all()
@@ -596,14 +591,15 @@ def _chain(tmp_path, depth: int, moved: set[int] = frozenset()):
         write_sentinel(d, f"n{i}")
     for i in range(depth):
         d = tmp_path / f"n{i}"
-        doc = {"id": f"n{i}", "projects": {}}
+        doc = {"id": f"n{i}"}
         if i in moved:
             doc["capabilities"] = {"path": "ledger"}
         if i + 1 < depth:
-            doc["projects"]["children"] = {f"n{i+1}": f"../n{i+1}"}
-        if i:
-            doc["projects"]["parent"] = {f"n{i-1}": f"../n{i-1}"}
-        write_connected_config(d, yaml.safe_dump(doc, sort_keys=False))
+            # Each node extends the next, so the next is its parent passing
+            # capabilities.
+            doc["parents"] = [{"id": f"n{i+1}", "inherit": ["capabilities"]}]
+            write_manifest(d, {f"n{i+1}": f"../n{i+1}"})
+        write_config(d, yaml.safe_dump(doc, sort_keys=False))
         if i + 1 < depth:
             # On the node, not the store dir: a moved node's `capabilities.path`
             # is already in this section and must survive the merge.
@@ -657,9 +653,9 @@ def test_a_cycle_is_reported_from_the_top_of_the_chain(tmp_path):
 def _diamond(tmp_path, levels: int):
     """`levels` pairs of nodes, each pair extending *both* nodes of the next.
 
-    Every `projects` relation goes through one hub, because a node may
-    declare only one parent — the `extends` edges are what form the DAG, which is
-    the graph this measures.
+    Every node is a child of one hub, and also names the two nodes of the
+    next pair as parents passing capabilities, because it extends them — the
+    `extends` edges are what form the DAG, which is the graph this measures.
     """
     import subprocess
     import yaml
@@ -671,17 +667,19 @@ def _diamond(tmp_path, levels: int):
         (d / "docs" / "capabilities").mkdir(parents=True)
         subprocess.run(["git", "init", "-q", str(d)], check=True)
         write_sentinel(d, name)
-    write_connected_config(tmp_path / "hub", yaml.safe_dump(
-        {"id": "hub",
-         "projects": {"children": {n: f"../{n}" for n in names}}},
-        sort_keys=False))
+    write_config(tmp_path / "hub", yaml.safe_dump(
+        {"id": "hub", "children": names}, sort_keys=False))
+    write_manifest(tmp_path / "hub", {n: f"../{n}" for n in names})
     for level in range(levels):
         for side in (0, 1):
             d = tmp_path / f"n{level}x{side}"
-            write_connected_config(d, yaml.safe_dump(
-                {"id": f"n{level}x{side}",
-                 "projects": {"parent": {"hub": "../hub"}}},
-                sort_keys=False))
+            parents = ["hub"]
+            if level + 1 < levels:
+                parents += [{"id": f"n{level+1}x{other}", "inherit": ["capabilities"]}
+                            for other in (0, 1)]
+            write_config(d, yaml.safe_dump(
+                {"id": f"n{level}x{side}", "parents": parents}, sort_keys=False))
+            write_manifest(d, {"hub": "../hub"})
             if level + 1 < levels:
                 declare_extends(d, "capabilities",
                     f"extends:\n  - n{level+1}x0\n  - n{level+1}x1\n")
@@ -728,13 +726,13 @@ def test_extends_is_read_from_the_node_config_with_no_store_file(tmp_path):
     base = repo(tmp_path, "base")
     write_cap(base, "billing/refund", body="Refund a charge.")
     child = repo(tmp_path, "child")
-    write_connected_config(base,
-        "id: base\nprojects:\n  children:\n    child: ../child\n"
-    )
-    write_connected_config(child,
-        "id: child\nprojects:\n  parent:\n    base: ../base\n"
+    write_config(base, "id: base\nchildren:\n- child\n")
+    write_manifest(base, {"child": "../child"})
+    write_config(child,
+        "id: child\nparents:\n- base\n"
         "capabilities:\n  extends:\n    - base\n"
     )
+    write_manifest(child, {"base": "../base"})
 
     assert not (child / "docs" / "capabilities" / ".config.yaml").exists()
     listed = FsCapabilitiesStore.open(child).list_all()

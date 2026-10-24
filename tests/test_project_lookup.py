@@ -1,6 +1,6 @@
 """Finding a project's folder from its ID (TCW-107 Design 2), at the library
 level: `FsProjectRegistry.project_folder` called directly, and the graph walk
-that uses the same lookup for every `projects:` entry that holds only an ID.
+that uses the same lookup for every parent and child named only by its ID.
 
 The commands built on it are tested in `tests/test_manifest_cli.py`, and the
 git worktree rules in `tests/test_manifest_worktree.py`.
@@ -22,12 +22,17 @@ from tests.projectfiles import write_config, write_config_file, write_manifest
 
 
 def proj(root: Path, project_id: str, **relations) -> Path:
-    """A 4.0 project at `root` declaring `project_id`; each relation is a
-    list of IDs written under `projects:` with no location."""
+    """A 4.0 project at `root` declaring `project_id`, naming other projects
+    by ID only: `parent=[...]` as parents passing every axis, `upstream=[...]`
+    as parents passing none (what a 3.x upstream became), after them, and
+    `children=[...]` as children."""
     data: dict = {"id": project_id}
-    if relations:
-        data["projects"] = {name: {i: None for i in ids}
-                            for name, ids in relations.items()}
+    parents = list(relations.get("parent", ())) + [
+        {"id": i, "inherit": "none"} for i in relations.get("upstream", ())]
+    if parents:
+        data["parents"] = parents
+    if relations.get("children"):
+        data["children"] = list(relations["children"])
     write_config(root, yaml.safe_dump(data, sort_keys=False))
     return root.resolve()
 
@@ -457,8 +462,7 @@ def test_next_to_and_enclosing(tmp_path):
     assert registry.found("app") == {"by": "search"}
     assert registry.get("other") is None          # next to an enclosing folder
     pkg = proj(tmp_path / "app" / "a" / "b" / "pkg", "pkg", parent=["app"])
-    write_config(app, yaml.safe_dump({"id": "app", "projects": {
-        "children": {"shared": None, "pkg": None}}}))
+    write_config(app, yaml.safe_dump({"id": "app", "children": ["shared", "pkg"]}))
     write_manifest(app, {"pkg": "a/b/pkg"})
     registry = FsProjectRegistry.open(pkg)
     assert Path(registry.get("app").locator) == app
@@ -472,8 +476,8 @@ def test_never_downwards(tmp_path):
     proj(tmp_path / "app" / "node_modules" / "dep", "dep")
     registry = FsProjectRegistry.open(app)
     assert registry.get("shared") is None
-    write_config(app, yaml.safe_dump({"id": "app", "projects": {
-        "children": {"shared": None}, "upstream": {"dep": None}}}))
+    write_config(app, yaml.safe_dump({"id": "app", "parents": [
+        {"id": "dep", "inherit": "none"}], "children": ["shared"]}))
     write_manifest(app, {"shared": "packages/shared"})
     for active in (app, shared):
         assert FsProjectRegistry.open(active).get("dep") is None
@@ -651,7 +655,7 @@ def test_ac27_each_candidate_is_read_once_by_the_registry(tmp_path, monkeypatch,
 def test_a_write_drops_the_registry_within_the_command(tmp_path, command):
     from tcw.store.fs import _atomic_write_all, write_sentinel
     root = tmp_path / "p"
-    write_config(root, "projects:\n  upstream:\n    lib:\n")
+    write_config(root, "parents:\n- {id: lib, inherit: none}\n")
     first = FsProjectRegistry.open(root)
     assert FsProjectRegistry.open(root) is first
     assert write_sentinel(root, "fresh")

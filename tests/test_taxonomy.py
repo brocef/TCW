@@ -11,9 +11,8 @@ from tcw.store.fs import FsTaxonomyStore, write_sentinel
 from nodeconfig import declare_extends, set_component_key
 from tcw.errors import TcwError
 from tests.fullids import fid
-from tests.projectfiles import config_file, write_config_file
-from tests.projectfiles import write_connected_config, write_connected_config_file
-from tests.projectfiles import write_connected_config as write_project_config
+from tests.projectfiles import config_file, write_config_file, write_manifest
+from tests.projectfiles import write_config as write_project_config
 
 
 def node(tmp_path: Path, name: str) -> Path:
@@ -46,7 +45,7 @@ def write_term(root: Path, slug: str, name=None, relates_to=None, description=""
     (d / "description.md").write_text(description)
 
 
-def write_connected_config(root: Path, text: str):
+def declare_taxonomy_extends(root: Path, text: str):
     """Declare `extends` for this node. Takes the same `extends:`-rooted text
     these fixtures always passed, now merged into `taxonomy.extends` in
     `tcw-config.yaml` instead of written to a file inside the store."""
@@ -54,15 +53,13 @@ def write_connected_config(root: Path, text: str):
 
 
 def connect_sources(consumer: Path, *sources: Path) -> None:
-    children = "".join(f"    {source.name}: ../{source.name}\n" for source in sources)
-    write_project_config(consumer,
-        f"id: {consumer.name}\nprojects:\n  children:\n{children}"
-    )
-    for source in sources:
-        write_project_config(source,
-            f"id: {source.name}\nprojects:\n  parent:\n"
-            f"    {consumer.name}: ../{consumer.name}\n"
-        )
+    """`consumer` names each source as a parent passing its taxonomy, found
+    in the folder next to it through `consumer`'s manifest; the sources name
+    nothing."""
+    parents = "".join(f"- id: {source.name}\n  inherit: [taxonomy]\n"
+                      for source in sources)
+    write_project_config(consumer, f"id: {consumer.name}\nparents:\n{parents}")
+    write_manifest(consumer, {source.name: f"../{source.name}" for source in sources})
 
 
 # ── add / identity ──────────────────────────────────────────────────────────
@@ -193,7 +190,7 @@ def consumer_with_shared(tmp_path, alias="shared", local_dup=False):
     write_term(shared, "Argument", name="Argument")
     cons = node(tmp_path, "consumer")
     connect_sources(cons, shared)
-    write_connected_config(cons, "extends:\n  - shared\n")
+    declare_taxonomy_extends(cons, "extends:\n  - shared\n")
     if local_dup:
         write_term(cons, "Argument", name="Local Argument")
     return cons, shared
@@ -204,17 +201,16 @@ def transitive_taxonomy(tmp_path):
     b = node(tmp_path, "bravo")
     c = node(tmp_path, "charlie")
     write_project_config(a,
-        "id: alpha\nprojects:\n  children:\n    bravo: ../bravo\n"
+        "id: alpha\nparents:\n- id: bravo\n  inherit: [taxonomy]\n"
     )
+    write_manifest(a, {"bravo": "../bravo"})
     write_project_config(b,
-        "id: bravo\nprojects:\n  parent:\n    alpha: ../alpha\n"
-        "  children:\n    charlie: ../charlie\n"
+        "id: bravo\nparents:\n- id: charlie\n  inherit: [taxonomy]\n"
     )
-    write_project_config(c,
-        "id: charlie\nprojects:\n  parent:\n    bravo: ../bravo\n"
-    )
-    write_connected_config(a, "extends:\n  - bravo\n")
-    write_connected_config(b, "extends:\n  - charlie\n")
+    write_manifest(b, {"charlie": "../charlie"})
+    write_project_config(c, "id: charlie\n")
+    declare_taxonomy_extends(a, "extends:\n  - bravo\n")
+    declare_taxonomy_extends(b, "extends:\n  - charlie\n")
     write_term(b, "shared", name="B Shared", description="from project b")
     write_term(c, "shared", name="C Shared", description="from project c")
     write_term(c, "deep", name="Deep", description="transitive needle")
@@ -266,17 +262,17 @@ def test_transitive_extends_deduplicates_a_diamond_by_project_id(tmp_path):
     a, _, c = transitive_taxonomy(tmp_path)
     d = node(tmp_path, "delta")
     write_project_config(a,
-        "id: alpha\nprojects:\n  children:\n"
-        "    bravo: ../bravo\n    delta: ../delta\n"
+        "id: alpha\nparents:\n- id: bravo\n  inherit: [taxonomy]\n"
+        "- id: delta\n  inherit: [taxonomy]\n"
     )
+    write_manifest(a, {"delta": "../delta"})
     write_project_config(d,
-        "id: delta\nprojects:\n  parent:\n    alpha: ../alpha\n"
+        "id: delta\nparents:\n- id: charlie\n  inherit: [taxonomy]\n"
     )
-    write_project_config(c,
-        "id: charlie\nprojects:\n  parent:\n    bravo: ../bravo\n"
-    )
-    write_connected_config(a, "extends:\n  - bravo\n  - delta\n")
-    write_connected_config(d, "extends:\n  - charlie\n")
+    write_manifest(d, {"charlie": "../charlie"})
+    write_project_config(c, "id: charlie\n")
+    declare_taxonomy_extends(a, "extends:\n  - bravo\n  - delta\n")
+    declare_taxonomy_extends(d, "extends:\n  - charlie\n")
 
     full_ids = [str(term.full_id) for term in FsTaxonomyStore.open(a).list_all()]
     assert full_ids.count("charlie.taxonomy/deep") == 1
@@ -298,14 +294,14 @@ def test_transitive_extends_crosses_a_second_hop_through_a_moved_tree(tmp_path):
     for entry in (b / "docs" / "taxonomy").iterdir():
         entry.rename(b / "ledger" / entry.name)
     write_project_config(b,
-        "id: bravo\ntaxonomy:\n  path: ledger\nprojects:\n"
-        "  parent:\n    alpha: ../alpha\n  children:\n    charlie: ../charlie\n"
+        "id: bravo\ntaxonomy:\n  path: ledger\n"
+        "parents:\n- id: charlie\n  inherit: [taxonomy]\n"
     )
     # This rewrite replaces the whole node config, and `extends` now lives in it
     # rather than in a file inside the tree, so bravo's hop to charlie has to be
     # re-declared. The `path: ledger` above is what the test is really about;
     # losing the hop silently would make it assert a weaker thing.
-    write_connected_config(b, "extends:\n  - charlie\n")
+    declare_taxonomy_extends(b, "extends:\n  - charlie\n")
 
     st = FsTaxonomyStore.open(a)
     assert {(str(term.full_id), term.origin) for term in st.list_all()} == {
@@ -337,7 +333,7 @@ def test_resolution_ambiguous_errors(tmp_path):
     b = node(tmp_path, "b"); write_term(b, "Term", name="B")
     cons = node(tmp_path, "consumer")
     connect_sources(cons, a, b)
-    write_connected_config(cons, "extends:\n  - a\n  - b\n")
+    declare_taxonomy_extends(cons, "extends:\n  - a\n  - b\n")
     st = FsTaxonomyStore.open(cons)
     with pytest.raises(AmbiguousRef, match=r"<project>\.taxonomy/Term$"):
         st.get_view("Term")
@@ -552,7 +548,7 @@ def test_check_reports_a_3x_relatesto_naming_tcw_migrate(tmp_path):
     b = node(tmp_path, "b"); write_term(b, "Term")
     cons = node(tmp_path, "consumer")
     connect_sources(cons, a, b)
-    write_connected_config(cons, "extends:\n  - a\n  - b\n")
+    declare_taxonomy_extends(cons, "extends:\n  - a\n  - b\n")
     write_term(cons, "host", relates_to=["Term"])
     problems = [str(f) for f in FsTaxonomyStore.open(cons).check()]
     assert any("relatesTo 'Term' is a TCW 3.x reference" in p and "tcw migrate" in p
@@ -563,7 +559,7 @@ def test_check_duplicate_project_id(tmp_path):
     cons = node(tmp_path, "consumer")
     other = node(tmp_path, "other")
     connect_sources(cons, other)
-    write_connected_config(cons, "extends:\n  - other\n  - other\n")
+    declare_taxonomy_extends(cons, "extends:\n  - other\n  - other\n")
     with pytest.raises(ValueError, match="duplicate project IDs"):
         FsTaxonomyStore.open(cons)
 
@@ -578,16 +574,21 @@ def test_check_alias_collides_with_local_top_level(tmp_path):
 def test_check_cycle(tmp_path):
     a = node(tmp_path, "a")
     b = node(tmp_path, "b")
-    connect_sources(a, b)
-    write_connected_config(a, "extends:\n  - b\n")
-    write_connected_config(b, "extends:\n  - a\n")
+    # Each extends the other, so neither link can be a parent passing the
+    # axis both ways: `a` names `b` as a parent, and `b` lists `a` as a child.
+    write_project_config(a, "id: a\nparents:\n- id: b\n  inherit: [taxonomy]\n")
+    write_manifest(a, {"b": "../b"})
+    write_project_config(b, "id: b\nchildren:\n- a\n")
+    write_manifest(b, {"a": "../a"})
+    declare_taxonomy_extends(a, "extends:\n  - b\n")
+    declare_taxonomy_extends(b, "extends:\n  - a\n")
     problems = [str(f) for f in FsTaxonomyStore.open(a).check()]
     assert any("cycle" in p for p in problems)
 
 
 def test_check_unknown_extends_project(tmp_path):
     cons = node(tmp_path, "consumer")
-    write_connected_config(cons, "extends:\n  - ghost\n")
+    declare_taxonomy_extends(cons, "extends:\n  - ghost\n")
     with pytest.raises(ValueError, match="not reachable"):
         FsTaxonomyStore.open(cons)
 
@@ -798,14 +799,16 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
     shutil.rmtree(base / "docs" / "taxonomy")
     write_project_config(base,
         "id: base\ntaxonomy:\n  path: vocabulary\n"
-        "projects:\n  children:\n    consumer: ../consumer\n"
+        "children:\n- consumer\n"
     )
+    write_manifest(base, {"consumer": "../consumer"})
 
     cons = node(tmp_path, "consumer")
     write_project_config(cons,
-        "id: consumer\nprojects:\n  parent:\n    base: ../base\n"
+        "id: consumer\nparents:\n- base\n"
     )
-    write_connected_config(cons, "extends:\n  - base\n")
+    write_manifest(cons, {"base": "../base"})
+    declare_taxonomy_extends(cons, "extends:\n  - base\n")
 
     st = FsTaxonomyStore.open(cons)
     assert {str(term.full_id) for term in st.list_all()} == {"base.taxonomy/argument"}
@@ -826,7 +829,7 @@ def test_extends_is_read_from_the_node_config_with_no_store_file(tmp_path):
     cfg = config_file(cons)
     raw = yaml.safe_load(cfg.read_text())
     raw["taxonomy"] = {"extends": ["shared"]}
-    write_connected_config_file(cfg, yaml.safe_dump(raw, sort_keys=False))
+    write_config_file(cfg, yaml.safe_dump(raw, sort_keys=False))
 
     assert not (cons / "docs" / "taxonomy" / "config.yaml").exists()
     st = FsTaxonomyStore.open(cons)
@@ -839,7 +842,7 @@ def test_a_non_mapping_taxonomy_section_is_no_configuration_not_a_crash(tmp_path
     reading `extends` in the constructor has to agree, or `taxonomy: docs/tax`
     becomes an AttributeError on a path resolve_store answers calmly."""
     root = node(tmp_path, "scalar")
-    write_connected_config(root, "id: scalar\ntaxonomy: docs/taxonomy\n")
+    declare_taxonomy_extends(root, "id: scalar\ntaxonomy: docs/taxonomy\n")
     write_term(root, "local", name="Local")
     assert [t.slug for t in FsTaxonomyStore.open(root).list_all()] == ["local"]
 
@@ -879,7 +882,7 @@ def test_every_extends_refusal_names_the_key_path(tmp_path, declared, expected):
     shared = node(tmp_path, "shared")
     cons = node(tmp_path, "consumer")
     connect_sources(cons, shared)
-    write_connected_config(cons, declared)
+    declare_taxonomy_extends(cons, declared)
     with pytest.raises(ValueError) as excinfo:
         FsTaxonomyStore.open(cons).list_all()
     message = str(excinfo.value)
@@ -924,7 +927,7 @@ def test_two_projects_sharing_one_tree_inherit_independently(tmp_path):
         n = node(tmp_path, name)
         connect_sources(n, source)
         set_component_key(n, "taxonomy", "path", os.path.relpath(shared_tree, n))
-        write_connected_config(n, f"extends:\n  - {source.name}\n")
+        declare_taxonomy_extends(n, f"extends:\n  - {source.name}\n")
 
     left_origins = {t.origin for t in FsTaxonomyStore.open(tmp_path / "left").list_all()}
     right_origins = {t.origin for t in FsTaxonomyStore.open(tmp_path / "right").list_all()}
@@ -954,7 +957,7 @@ def test_a_shared_tree_may_now_be_composed_with_itself(tmp_path):
     connect_sources(alpha, bravo)
     for n in (alpha, bravo):
         set_component_key(n, "taxonomy", "path", os.path.relpath(shared_tree, n))
-    write_connected_config(alpha, "extends:\n  - bravo\n")
+    declare_taxonomy_extends(alpha, "extends:\n  - bravo\n")
 
     st = FsTaxonomyStore.open(alpha)
     assert {(str(term.full_id), term.origin) for term in st.list_all()} == {
@@ -1028,7 +1031,7 @@ def test_writing_extends_refuses_a_non_mapping_section_rather_than_replacing_it(
     raw = _yaml.safe_load(cfg.read_text())
     raw["taxonomy"] = "docs/taxonomy"
     original = _yaml.safe_dump(raw, sort_keys=False)
-    write_connected_config_file(cfg, original)
+    write_config_file(cfg, original)
 
     with pytest.raises(TcwError) as excinfo:
         FsTaxonomyStore.open(cons).extends_add("shared")

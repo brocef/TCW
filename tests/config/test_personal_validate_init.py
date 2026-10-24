@@ -190,13 +190,12 @@ def test_validate_outside_a_repository_does_not_warn(tmp_path, monkeypatch):
 
 import pytest
 from tests.projectfiles import write_config_file, write_local_config
-from tests.projectfiles import write_connected_config_file
 
 
 @pytest.mark.parametrize("text", [b"id: p\nid: q\n", b"id: [p\n", b"- p\n", b"id: p\xff\n"])
 def test_a_broken_project_file_is_one_validate_error(personal, text):
     (personal.root / "docs" / "work").mkdir(parents=True)
-    write_connected_config_file(personal.project_file, text)
+    write_config_file(personal.project_file, text)
     result = tcw(personal.root, "validate")
     assert result.code == 1, result
     errors = [l for l in result.out.splitlines() if l.startswith("error: ")]

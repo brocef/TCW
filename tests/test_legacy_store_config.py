@@ -19,9 +19,8 @@ from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
 from tcw.validate import ValidationTarget, validate
 
 from nodeconfig import declare_extends, set_component_key
-from test_validate import connect, node
-from tests.projectfiles import write_config_file
-from tests.projectfiles import write_connected_config_file
+from test_validate import node
+from tests.projectfiles import config_file, write_config_file, write_manifest
 
 LEFTOVER = {"taxonomy": "config.yaml", "capabilities": ".config.yaml"}
 STORE = {"taxonomy": FsTaxonomyStore, "capabilities": FsCapabilitiesStore}
@@ -54,7 +53,12 @@ def _federated(tmp_path: Path) -> Path:
     _write_term(shared, "Argument")
     _write_cap(shared, "auth", "cap-shared1")
     consumer = node(tmp_path, "consumer", "consumer", ["taxonomy", "capabilities"])
-    connect(consumer, shared)
+    # `shared` is the consumer's parent, passing both axes, because the tests
+    # extend it in either; `shared` names nothing.
+    document = yaml.safe_load(config_file(consumer).read_text())
+    document["parents"] = ["shared"]
+    write_config_file(config_file(consumer), yaml.safe_dump(document, sort_keys=False))
+    write_manifest(consumer, {"shared": "../shared"})
     _write_term(consumer, "Local")
     _write_cap(consumer, "local/thing", "cap-local1")
     return consumer
@@ -348,7 +352,7 @@ def test_no_command_touches_the_leftover(tmp_path, monkeypatch, capsys):
     before = {}
     for component, name in LEFTOVER.items():
         path = consumer / "docs" / component / name
-        write_connected_config_file(path, b"# kept by hand\nextends:\n  - shared\n")
+        write_config_file(path, b"# kept by hand\nextends:\n  - shared\n")
         before[path] = path.read_bytes()
 
     monkeypatch.chdir(consumer)

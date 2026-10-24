@@ -42,16 +42,22 @@ def make_project(tmp_path: Path, project_id: str, *, config: dict | None = None,
     return root
 
 
-def connect(a: Path, b: Path, relation: str) -> None:
-    """Declare `b` in `a`'s projects under `relation` (parent or
-    children), by its ID, and place it in `a`'s manifest by a path relative
-    to `a` (TCW-107)."""
+def connect(a: Path, b: Path, relation: str, *, inherit="all") -> None:
+    """Name `b` in `a`'s configuration by its ID, as a parent (`relation`
+    "parent", passing `inherit`: "all", "none" or a list of axes) or as a
+    child ("children"), and place it in `a`'s manifest by a path relative to
+    `a` (TCW-107, TCW-108)."""
     import os
     path = config_file(a)
     document = yaml.safe_load(path.read_text())
     b_id = yaml.safe_load((b / ".tcw/tcw-config.yaml").read_text())["id"]
-    section = document.setdefault("projects", {}).setdefault(relation, {})
-    section[b_id] = None
+    if relation == "children":
+        document.setdefault("children", []).append(b_id)
+    elif relation == "parent":
+        document.setdefault("parents", []).append(
+            b_id if inherit == "all" else {"id": b_id, "inherit": inherit})
+    else:
+        raise ValueError(f"relation must be 'parent' or 'children', not {relation!r}")
     write_config_file(path, yaml.safe_dump(document, sort_keys=False))
     write_manifest(a, {b_id: os.path.relpath(b, a)})
 

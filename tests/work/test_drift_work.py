@@ -85,7 +85,7 @@ def test_an_inherited_capability_never_ruled_on(tmp_path, monkeypatch, capsys):
     base = project(tmp_path, "base")
     FsCapabilitiesStore.open(base).add("auth/login", status="Supported")
     child = project(tmp_path, "child")
-    connect(child, base, "upstream")
+    connect(child, base, "parent", inherit=["capabilities"])
     FsCapabilitiesStore.open(child).extends_add("base")
     code, out, _ = drift(child, monkeypatch, capsys)
     assert code == 1

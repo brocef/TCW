@@ -16,7 +16,7 @@ Four environments are scaffolded on ``tmp_path``:
 
 4. **Linked git worktree** — a node checked out in a linked worktree
    (``git worktree add``) rather than its primary checkout.  A relative
-   ``projects`` locator was authored against the node's primary
+   location in its manifest was authored against the node's primary
    position on disk, so inside the worktree it is off by the worktree's nesting
    depth; the registry re-anchors it against the main worktree root and folds
    the two on-disk copies of the current node into one graph entry.  The
@@ -28,6 +28,7 @@ capabilities, work) plus the node-relation operations (``nodes``,
 ``reconcile``, ``delegate``, ``escalate``).
 """
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -61,8 +62,7 @@ def _descendant_folders(root):
 
 
 from nodeconfig import declare_extends
-from tests.projectfiles import config_file, write_config, write_config_file
-from tests.projectfiles import write_connected_config, write_connected_config_file
+from tests.projectfiles import config_file, write_config, write_config_file, write_manifest
 
 
 def _git_init(path: Path) -> None:
@@ -120,17 +120,17 @@ def nested_monorepo(tmp_path: Path) -> tuple[Path, Path, Path]:
     init(["taxonomy", "capabilities", "work"], child_a, "child-a")
     init(["taxonomy", "capabilities", "work"], child_b, "child-b")
 
-    write_connected_config(root, yaml.safe_dump({
+    write_config(root, yaml.safe_dump({
         "id": "root",
-        "projects": {
-            "children": {"child-a": "a", "child-b": "b"}
-        },
+        "children": ["child-a", "child-b"],
     }, sort_keys=False))
+    write_manifest(root, {"child-a": "a", "child-b": "b"})
     for child, child_id in ((child_a, "child-a"), (child_b, "child-b")):
-        write_connected_config(child, yaml.safe_dump({
+        write_config(child, yaml.safe_dump({
             "id": child_id,
-            "projects": {"parent": {"root": ".."}},
+            "parents": ["root"],
         }, sort_keys=False))
+        write_manifest(child, {"root": ".."})
 
     # Both children extend the root via relative paths
     declare_extends(child_a, "taxonomy",
@@ -167,17 +167,20 @@ def sibling_nodes(tmp_path: Path) -> tuple[Path, Path, Path]:
     _git_init(right)
     init(["taxonomy", "capabilities", "work"], right, "right")
 
-    write_connected_config(parent, yaml.safe_dump({
+    # A manifest's locations are relative, so each absolute folder is written
+    # relative to the project whose manifest names it.
+    write_config(parent, yaml.safe_dump({
         "id": "parent",
-        "projects": {
-            "children": {"left": str(left.resolve()), "right": str(right.resolve())}
-        },
+        "children": ["left", "right"],
     }, sort_keys=False))
+    write_manifest(parent, {"left": os.path.relpath(left.resolve(), parent),
+                            "right": os.path.relpath(right.resolve(), parent)})
     for child, child_id in ((left, "left"), (right, "right")):
-        write_connected_config(child, yaml.safe_dump({
+        write_config(child, yaml.safe_dump({
             "id": child_id,
-            "projects": {"parent": {"parent": str(parent.resolve())}},
+            "parents": ["parent"],
         }, sort_keys=False))
+        write_manifest(child, {"parent": os.path.relpath(parent.resolve(), child)})
 
     # Both siblings extend parent using *absolute* paths
     declare_extends(left, "taxonomy",
@@ -202,16 +205,20 @@ def two_node_graph(tmp_path: Path, absolute: bool = False) -> tuple[Path, Path]:
     server.mkdir()
     init(["taxonomy", "capabilities", "work"], workspace, "example-app")
     init(["taxonomy", "capabilities", "work"], server, "example-server")
-    up = str(workspace.resolve()) if absolute else ".."
-    down = str(server.resolve()) if absolute else "example-server"
-    write_connected_config(workspace, yaml.safe_dump({
+    # A manifest's locations are relative: an absolute folder is written
+    # relative to the project whose manifest names it.
+    up = os.path.relpath(workspace.resolve(), server) if absolute else ".."
+    down = os.path.relpath(server.resolve(), workspace) if absolute else "example-server"
+    write_config(workspace, yaml.safe_dump({
         "id": "example-app",
-        "projects": {"children": {"example-server": down}},
+        "children": ["example-server"],
     }, sort_keys=False))
-    write_connected_config(server, yaml.safe_dump({
+    write_manifest(workspace, {"example-server": down})
+    write_config(server, yaml.safe_dump({
         "id": "example-server",
-        "projects": {"parent": {"example-app": up}},
+        "parents": ["example-app"],
     }, sort_keys=False))
+    write_manifest(server, {"example-app": up})
     return workspace, server
 
 
@@ -385,15 +392,15 @@ class TestNestedMonorepo:
         init(["work"], deep, "deep")
         child_a = root / "a"
         child_cfg = yaml.safe_load((child_a / ".tcw/tcw-config.yaml").read_text()) or {}
-        child_cfg.setdefault("projects", {}).setdefault("children", {})[
-            "deep"
-        ] = "deep"
-        write_connected_config(child_a,
+        child_cfg.setdefault("children", []).append("deep")
+        write_config(child_a,
             yaml.safe_dump(child_cfg, sort_keys=False)
         )
-        write_connected_config(deep,
-            "id: deep\nprojects:\n  parent:\n    child-a: ..\n"
+        write_manifest(child_a, {"deep": "deep"})
+        write_config(deep,
+            "id: deep\nparents:\n- child-a\n"
         )
+        write_manifest(deep, {"child-a": ".."})
         _commit_all(deep)
         found = _descendant_folders(root)
         deep_path = deep.resolve()
@@ -673,7 +680,7 @@ def test_init_refuses_a_malformed_config_and_leaves_it_alone(
     root.mkdir()
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     config = config_file(root)
-    write_connected_config_file(config, text, encoding="utf-8")
+    write_config_file(config, text, encoding="utf-8")
     before = hashlib.sha256(config.read_bytes()).hexdigest()
     monkeypatch.chdir(root)
 

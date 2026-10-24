@@ -11,7 +11,6 @@ from tcw.work.resolve import packaged_text
 from tests.config.conftest import tcw
 from tests.work.projects import commit_all, connect, make_project
 from tests.projectfiles import config_file, write_config_file, write_local_config
-from tests.projectfiles import write_connected_config_file
 
 
 def packaged_lines(name: str) -> list[str]:
@@ -107,7 +106,7 @@ def test_identity_is_only_the_acting_projects(family, tmp_path):
     parent, child = family
     user = tmp_path / "xdg-config" / "tcw" / "config.yaml"
     user.parent.mkdir(parents=True)
-    write_connected_config_file(user, "user:\n  name: Brian\n")
+    write_config_file(user, "user:\n  name: Brian\n")
     assert open_backend(parent).current_user() == "Brian"
     assert open_project("child", parent).current_user() is None
 
@@ -117,7 +116,7 @@ def test_graph_readers_tolerate_what_the_loader_refuses(family, monkeypatch):
     path = config_file(child)
     document = yaml.safe_load(path.read_text())
     document["work"] = {"lifecycle": {"spec": {"prompt": []}}}
-    write_connected_config_file(path, yaml.safe_dump(document))
+    write_config_file(path, yaml.safe_dump(document))
     write_local_config(parent, "work: [unclosed\n")
     monkeypatch.setenv("TCW_NO_PERSONAL_CONFIG", "1")
     listed = tcw(parent, "projects", "list")

@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, write_sentinel
-from tests.projectfiles import write_connected_config
+from tests.projectfiles import write_config, write_manifest
 
 
 def _repo(tmp_path: Path, name: str) -> Path:
@@ -38,8 +38,10 @@ def demo_inheriting_core(tmp_path: Path) -> Path:
     entry(core, "capabilities", "cli/y", id="cap-y", Status="Supported")
     entry(demo, "taxonomy", "term")
     entry(demo, "capabilities", "cli/x", id="cap-x", Status="Missing")
-    write_connected_config(core, "id: core\nprojects:\n  children:\n    demo: ../demo\n")
-    write_connected_config(demo, "id: demo\nprojects:\n  parent:\n    core: ../core\n")
+    write_config(core, "id: core\nchildren:\n- demo\n")
+    write_manifest(core, {"demo": "../demo"})
+    write_config(demo, "id: demo\nparents:\n- core\n")
+    write_manifest(demo, {"core": "../core"})
     FsTaxonomyStore.open(demo).extends_add("core")
     FsCapabilitiesStore.open(demo).extends_add("core")
     return demo

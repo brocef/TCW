@@ -10,7 +10,7 @@ from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tcw.validate import validate
 from tests.projectfiles import config_file, write_config, write_config_file
-from tests.projectfiles import write_connected_config, write_connected_config_file
+from tests.projectfiles import write_manifest
 
 
 def node(
@@ -35,14 +35,12 @@ def connect(parent: Path, child: Path) -> None:
     child_config = yaml.safe_load(child_config_path.read_text())
     parent_id = parent_config["id"]
     child_id = child_config["id"]
-    parent_config.setdefault("projects", {}).setdefault("children", {})[
-        child_id
-    ] = str(child)
-    child_config.setdefault("projects", {})["parent"] = {
-        parent_id: str(parent)
-    }
-    write_connected_config_file(parent_config_path, yaml.safe_dump(parent_config, sort_keys=False))
-    write_connected_config_file(child_config_path, yaml.safe_dump(child_config, sort_keys=False))
+    parent_config.setdefault("children", []).append(child_id)
+    child_config["parents"] = [parent_id]
+    write_config_file(parent_config_path, yaml.safe_dump(parent_config, sort_keys=False))
+    write_config_file(child_config_path, yaml.safe_dump(child_config, sort_keys=False))
+    write_manifest(parent, {child_id: os.path.relpath(child, parent)})
+    write_manifest(child, {parent_id: os.path.relpath(parent, child)})
 
 
 def _vocabless_feature(root: Path, slug: str) -> None:
@@ -263,10 +261,9 @@ def test_an_absent_connected_project_is_reported_and_not_fatal(tmp_path, monkeyp
     root = node(tmp_path)
     config_path = config_file(root)
     config = yaml.safe_load(config_path.read_text())
-    config.setdefault("projects", {})["children"] = {
-        "gone-project": str(tmp_path / "gone")
-    }
-    write_connected_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
+    config["children"] = ["gone-project"]
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
+    write_manifest(root, {"gone-project": os.path.relpath(tmp_path / "gone", root)})
     monkeypatch.chdir(root)
     assert main(["validate"]) == 0
     [line] = capsys.readouterr().out.splitlines()
@@ -279,14 +276,13 @@ def test_a_real_graph_error_still_fails(tmp_path, monkeypatch, capsys):
     root = node(tmp_path)
     other = tmp_path / "other"
     other.mkdir()
-    write_connected_config(other, "id: other-project\nid: dupe\n")
+    write_config(other, "id: other-project\nid: dupe\n")
     config_path = config_file(root)
     config = yaml.safe_load(config_path.read_text())
-    config.setdefault("projects", {})["children"] = {
-        "other-project": str(other),
-        "gone-project": str(tmp_path / "gone"),
-    }
-    write_connected_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
+    config["children"] = ["other-project", "gone-project"]
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
+    write_manifest(root, {"other-project": os.path.relpath(other, root),
+                          "gone-project": os.path.relpath(tmp_path / "gone", root)})
     monkeypatch.chdir(root)
     assert main(["validate"]) == 1
     assert "duplicate key" in capsys.readouterr().out
@@ -300,7 +296,7 @@ def _bare_node(tmp_path: Path, name: str, project_id: str) -> Path:
     root = tmp_path / name
     root.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", "-q", str(root)], check=True)
-    write_connected_config(root, f"id: {project_id}\n")
+    write_config(root, f"id: {project_id}\n")
     return root
 
 
@@ -324,7 +320,7 @@ def test_a_node_that_claims_a_board_it_cannot_open_still_says_so(tmp_path):
     config_path = config_file(root)
     config = yaml.safe_load(config_path.read_text())
     config["work"] = {"path": "nowhere"}
-    write_connected_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     problems = [str(f) for f in validate(root)]
     assert any("work.path is not a directory" in p for p in problems)
 
@@ -336,7 +332,7 @@ def test_a_node_declaring_only_tags_is_not_claiming_a_board(tmp_path):
     config_path = config_file(root)
     config = yaml.safe_load(config_path.read_text())
     config["work"] = {"tags": ["bug", "docs"]}
-    write_connected_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     assert validate(root) == []
 
 
@@ -366,7 +362,7 @@ def _node_with(tmp_path: Path, *, work: dict) -> Path:
     config_path = config_file(root)
     config = _yaml.safe_load(config_path.read_text()) or {}
     config.setdefault("work", {}).update(work)
-    write_connected_config_file(config_path, _yaml.safe_dump(config, sort_keys=False))
+    write_config_file(config_path, _yaml.safe_dump(config, sort_keys=False))
     return root
 
 

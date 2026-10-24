@@ -1,8 +1,8 @@
 """Resolving a `tcw://` address (TCW-110 Design 2, 6): `resolve_address` is
 thin glue over `tcw.locate` that never propagates a store exception to a
 caller scanning many links. Two git repositories side by side, `app` naming
-`core` under `projects.upstream` by ID, with no `extends` unless a test adds
-one. The grammar itself is tested in `tests/test_ids.py`."""
+`core` as a parent passing capabilities, which `core` does not list as a
+child, with no `extends` unless a test adds one. The grammar itself is tested in `tests/test_ids.py`."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def app(tmp_path) -> Path:
     entry(app, "capabilities", "auth/login", id="cap-login", Status="Supported")
     entry(core, "taxonomy", "term")
     entry(core, "capabilities", "cli/y", id="cap-y", Status="Supported")
-    connect_projects(app, "upstream", "core")
+    connect_projects(app, "parent", "core", inherit=["capabilities"])
     return app
 
 

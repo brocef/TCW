@@ -9,8 +9,7 @@ from tcw.store.fs import (
 
 
 from nodeconfig import declare_extends
-from tests.projectfiles import write_config
-from tests.projectfiles import write_connected_config
+from tests.projectfiles import write_config, write_manifest
 
 
 def _monorepo(tmp_path: Path) -> Path:
@@ -21,14 +20,13 @@ def _monorepo(tmp_path: Path) -> Path:
         root = tmp_path / name
         root.mkdir()
         init(["taxonomy", "capabilities"], root, name)
-    write_connected_config(tmp_path / "project-b",
-        "id: project-b\nprojects:\n  children:\n"
-        "    project-a: ../project-a\n"
+    # project-b extends project-a's taxonomy, so project-a is project-b's
+    # parent passing that axis.
+    write_config(tmp_path / "project-b",
+        "id: project-b\nparents:\n- {id: project-a, inherit: [taxonomy]}\n"
     )
-    write_connected_config(tmp_path / "project-a",
-        "id: project-a\nprojects:\n  parent:\n"
-        "    project-b: ../project-b\n"
-    )
+    write_manifest(tmp_path / "project-b", {"project-a": "../project-a"})
+    write_config(tmp_path / "project-a", "id: project-a\n")
     return tmp_path
 
 
@@ -88,18 +86,18 @@ def _routing_graph(tmp_path):
     write_sentinel(b, "b-project")
     init(["work"], c, "c-project")
 
-    def config(path, doc):
-        write_connected_config(path, yaml.safe_dump(doc, sort_keys=False))
+    def config(path, doc, where):
+        write_config(path, yaml.safe_dump(doc, sort_keys=False))
+        write_manifest(path, where)
 
     a_doc = yaml.safe_load((a / ".tcw/tcw-config.yaml").read_text())
-    a_doc["projects"] = {"children": {"b-project": "b"}}
-    config(a, a_doc)
-    config(b, {"id": "b-project",
-               "projects": {"parent": {"a-project": ".."},
-                                      "children": {"c-project": "c"}}})
+    a_doc["children"] = ["b-project"]
+    config(a, a_doc, {"b-project": "b"})
+    config(b, {"id": "b-project", "parents": ["a-project"], "children": ["c-project"]},
+           {"a-project": "..", "c-project": "c"})
     c_doc = yaml.safe_load((c / ".tcw/tcw-config.yaml").read_text())
-    c_doc["projects"] = {"parent": {"b-project": ".."}}
-    config(c, c_doc)
+    c_doc["parents"] = ["b-project"]
+    config(c, c_doc, {"b-project": ".."})
     return a, b, c
 
 
@@ -150,8 +148,9 @@ def _child_missing_its_parent(tmp_path):
     subprocess.run(["git", "-C", str(child), "config", "user.name", "t"], check=True)
     init(["work"], child, "child-project")
     doc = yaml.safe_load((child / ".tcw/tcw-config.yaml").read_text())
-    doc["projects"] = {"parent": {"away-project": str(tmp_path / "away")}}
-    write_connected_config(child, yaml.safe_dump(doc, sort_keys=False))
+    doc["parents"] = ["away-project"]
+    write_config(child, yaml.safe_dump(doc, sort_keys=False))
+    write_manifest(child, {"away-project": "../away"})
     return child
 
 
@@ -180,8 +179,9 @@ def test_nodes_names_a_child_this_checkout_does_not_have(tmp_path, monkeypatch,
     subprocess.run(["git", "-C", str(parent), "config", "user.name", "t"], check=True)
     init(["work"], parent, "parent-project")
     doc = yaml.safe_load((parent / ".tcw/tcw-config.yaml").read_text())
-    doc["projects"] = {"children": {"away-project": str(tmp_path / "away")}}
-    write_connected_config(parent, yaml.safe_dump(doc, sort_keys=False))
+    doc["children"] = ["away-project"]
+    write_config(parent, yaml.safe_dump(doc, sort_keys=False))
+    write_manifest(parent, {"away-project": "../away"})
 
     assert _projects(monkeypatch, capsys, parent)["away-project"] == "child"
 

@@ -32,11 +32,24 @@ def gone(tmp_path: Path, name: str = "gone") -> str:
 
 
 def proj(root: Path, project_id: str, **relations) -> Path:
+    """A project at `root` declaring `project_id`. Relations given as lists
+    name other projects by ID only: `parent=[...]` as parents passing every
+    axis, `upstream=[...]` as parents passing none, after them, and
+    `children=[...]` as children. A relation given as a mapping is written
+    under the 3.x `projects:` key as it is, for the tests whose subject is
+    what 4.0 does with that key."""
     data: dict = {"id": project_id}
-    if relations:
+    if any(not isinstance(ids, list) for ids in relations.values()):
         data["projects"] = {name: ({i: None for i in ids} if isinstance(ids, list)
                                    else ids)
                             for name, ids in relations.items()}
+    else:
+        parents = list(relations.get("parent", ())) + [
+            {"id": i, "inherit": "none"} for i in relations.get("upstream", ())]
+        if parents:
+            data["parents"] = parents
+        if relations.get("children"):
+            data["children"] = list(relations["children"])
     write_config(root, yaml.safe_dump(data, sort_keys=False))
     return root.resolve()
 

@@ -13,8 +13,7 @@ import yaml
 from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tests.work.projects import connect, make_project, write_item
-from tests.projectfiles import write_config
-from tests.projectfiles import write_connected_config
+from tests.projectfiles import write_config, write_manifest
 
 
 @pytest.fixture
@@ -104,8 +103,9 @@ def test_malformed_records_on_a_completed_item_come_from_the_file_scan(project, 
 def test_an_absent_declared_project_is_unresolved_not_exit_5(tmp_path, run):
     p = make_project(tmp_path, "p")
     config = yaml.safe_load((p / ".tcw/tcw-config.yaml").read_text())
-    config["projects"] = {"children": {"gone": "../gone"}}
-    write_connected_config(p, yaml.safe_dump(config))
+    config["children"] = ["gone"]
+    write_config(p, yaml.safe_dump(config))
+    write_manifest(p, {"gone": "../gone"})
     code, out, _ = run(p)
     [line] = about(out, "'gone'")
     assert line.startswith("unresolved: ") and code == 0
@@ -222,7 +222,7 @@ def test_the_removed_spellings(project, monkeypatch, argv):
 @pytest.mark.parametrize("config", ["id: p\nwork: [\n", "id: p\nconnected-projects: {}\n",
                                     "id: p\nwork:\n  stages: 5\n"])
 def test_a_config_finding_names_the_file_relative_to_the_project(project, run, config):
-    write_connected_config(project, config)
+    write_config(project, config)
     code, out, _ = run(project / "docs")
     assert code == 1
     assert out and all(line.startswith("error: .tcw/tcw-config.yaml: ") for line in out), out

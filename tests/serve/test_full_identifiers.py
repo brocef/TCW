@@ -96,6 +96,6 @@ def test_ac20_a_link_into_a_project_not_inherited_from_is_other_project(tmp_path
     core = make_project(tmp_path, "core", config={})
     init(["taxonomy", "capabilities"], core)
     entry(core, "taxonomy", "term")
-    connect_projects(app, "upstream", "core")
+    connect_projects(app, "parent", "core", inherit="none")
     found = _resolve(serve_project(app), "tcw://core.taxonomy/term")
     assert found == {"ok": False, "reason": "other-project", "project": "core"}

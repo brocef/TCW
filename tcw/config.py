@@ -358,6 +358,10 @@ def _list_problems(mapping: dict, origin: Origin, root: Path) -> list[Problem]:
         problems.append(Problem(origin.file, path, message, root))
 
     for path, entries in _lists(mapping):
+        if path == ("parents",):
+            # A parent's `inherit` names the axes it passes; the registry
+            # checks that list (TCW-108 Design 1).
+            continue
         chain = _is_chain(path)
         inherits = 0
         seen: list = []

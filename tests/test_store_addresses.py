@@ -273,7 +273,7 @@ def _workspace_and_app(tmp_path: Path) -> tuple[Path, Path]:
     from tests.projectfiles import connect_projects
     workspace = _project(tmp_path, "workspace")
     app = _project(tmp_path, "app")
-    connect_projects(app, "upstream", "workspace")
+    connect_projects(app, "parent", "workspace", inherit="none")
     return workspace, app
 
 

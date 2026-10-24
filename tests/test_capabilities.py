@@ -10,8 +10,7 @@ from tcw.store.base import AmbiguousRef, RefError, Term
 from tcw.store.fs import FsCapabilitiesStore, heading_slug, write_sentinel
 from tcw.errors import TcwError
 from tests.fullids import fid
-from tests.projectfiles import write_config
-from tests.projectfiles import write_connected_config
+from tests.projectfiles import write_config, write_manifest
 
 
 def node(tmp_path: Path, name: str = "repo") -> Path:
@@ -25,14 +24,10 @@ def node(tmp_path: Path, name: str = "repo") -> Path:
 
 
 def connect(parent: Path, child: Path) -> None:
-    write_connected_config(parent,
-        f"id: {parent.name}\nprojects:\n  children:\n"
-        f"    {child.name}: ../{child.name}\n"
-    )
-    write_connected_config(child,
-        f"id: {child.name}\nprojects:\n  parent:\n"
-        f"    {parent.name}: ../{parent.name}\n"
-    )
+    write_config(parent, f"id: {parent.name}\nchildren:\n- {child.name}\n")
+    write_manifest(parent, {child.name: f"../{child.name}"})
+    write_config(child, f"id: {child.name}\nparents:\n- {parent.name}\n")
+    write_manifest(child, {parent.name: f"../{parent.name}"})
 
 
 def write_cap(root: Path, path: str, body: str = "", **meta) -> None:
@@ -683,14 +678,13 @@ def test_cli_set_ambiguous_ref_reports_ambiguity(tmp_path, monkeypatch, capsys):
         FsCapabilitiesStore.open(node(tmp_path, name)).add("x/thing", name="Thing")
     child = node(tmp_path, "child")
     st = FsCapabilitiesStore.open(child)
-    write_connected_config(child,
-        "id: child\nprojects:\n  children:\n"
-        "    one: ../one\n    two: ../two\n"
+    # `child` extends both, so each is a parent passing capabilities.
+    write_config(child,
+        "id: child\nparents:\n"
+        "- id: one\n  inherit: [capabilities]\n"
+        "- id: two\n  inherit: [capabilities]\n"
     )
-    for name in ("one", "two"):
-        write_connected_config(tmp_path / name,
-            f"id: {name}\nprojects:\n  parent:\n    child: ../child\n"
-        )
+    write_manifest(child, {"one": "../one", "two": "../two"})
     st = FsCapabilitiesStore.open(child)
     st.extends_add("one")
     st.extends_add("two")
