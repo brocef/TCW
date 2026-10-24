@@ -214,6 +214,25 @@ def test_blocks_into_an_upstream_is_refused(family, tcw):
     assert state(family.r) == before
 
 
+def test_ac33_the_project_answer_marks_a_read_only_project(tmp_path, personal_on,
+                                                            serve_project, tcw):
+    """AC 21's layout: `app: [lib, ws]`, and only `ws` lists `app`."""
+    app = fs_project(tmp_path)
+    lib = make_project(tmp_path, "lib")
+    ws = make_project(tmp_path, "ws")
+    connect(app, lib, "parent")
+    connect(app, ws, "parent")
+    connect(ws, app, "children")
+    for root in (app, lib, ws):
+        commit_all(root)
+    projects = ok(serve_project(app).get("/api/project"))["projects"]
+    assert {row["id"]: row["readOnly"] for row in projects} == {"lib": True, "ws": False}
+    assert not [row for row in projects if "upstream" in row]
+    listed = tcw(["projects", "list", "--json"], app).json["projects"]
+    assert {row["id"]: row["read-only"] for row in listed if row["relation"] != "current"} \
+        == {"lib": True, "ws": False}
+
+
 # -- comments ----------------------------------------------------------------------------------
 
 

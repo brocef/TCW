@@ -202,7 +202,7 @@ test("blocks are added one request per link, stopping at the first refusal", asy
             statusText: "",
             json: async () =>
                 refused
-                    ? { error: "q is upstream", code: "refused" }
+                    ? { error: "q is read-only from here", code: "refused" }
                     : { target },
         }
     })
@@ -227,7 +227,7 @@ test("blocks are added one request per link, stopping at the first refusal", asy
     fireEvent.click(screen.getByRole("button", { name: "Add" }))
     expect(
         await screen.findByText(
-            "Added p.work/a. q.work/2026-01-01-z was not added: q is upstream"
+            "Added p.work/a. q.work/2026-01-01-z was not added: q is read-only from here"
         )
     ).toBeInTheDocument()
     expect(sent).toEqual(["p.work/a", "q.work/2026-01-01-z"])
@@ -642,6 +642,47 @@ test("loading the file again after a conflict keeps the draft when the read fail
     } finally {
         confirm.mockRestore()
     }
+})
+
+test("the new item form marks a project that is read-only from here", async () => {
+    wrap(
+        <NewItemForm
+            project={project({
+                projects: [
+                    {
+                        id: "lib",
+                        relation: "parent",
+                        present: true,
+                        readOnly: true,
+                    },
+                    {
+                        id: "ws",
+                        relation: "parent",
+                        present: true,
+                        readOnly: false,
+                    },
+                    {
+                        id: "gone",
+                        relation: "child",
+                        present: false,
+                        readOnly: null,
+                    },
+                ],
+            })}
+            references={references}
+            onCreated={() => undefined}
+            onCancel={() => undefined}
+            onDirty={() => undefined}
+        />
+    )
+    fireEvent.click(screen.getByRole("combobox", { name: "Project" }))
+    expect(
+        await screen.findByRole("option", { name: "lib (read-only from here)" })
+    ).toBeInTheDocument()
+    expect(screen.getByRole("option", { name: "ws" })).toBeInTheDocument()
+    expect(
+        screen.getByRole("option", { name: "gone (not on this machine)" })
+    ).toBeInTheDocument()
 })
 
 test("the new item form sends single values trimmed", async () => {

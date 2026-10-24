@@ -143,10 +143,11 @@ def _axes(root: Path) -> dict[str, bool]:
 
 def _projects(root: Path) -> list[dict[str, Any]]:
     """The projects this one is connected to, as `tcw projects list` names
-    them, for the create form's target."""
+    them, for the create form's target; `readOnly` is that command's
+    `read-only` (TCW-108 Design 8.5)."""
     from tcw.projects_cli import connected
     return [{"id": row["id"], "relation": row["relation"], "present": row["present"],
-             "upstream": row["relation"] == "upstream"}
+             "readOnly": row["read-only"]}
             for row in connected(root) if row["relation"] != "current"]
 
 

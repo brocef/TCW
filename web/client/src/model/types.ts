@@ -27,8 +27,9 @@ export interface TConnectedProject {
     relation: string
     /** Declared, and found on this machine. */
     present: boolean
-    /** An upstream project: creating into it is refused. */
-    upstream: boolean
+    /** Creating into it is refused, as the CLI decides; null when it is not
+     * on this machine. */
+    readOnly: boolean | null
 }
 
 export interface TProject {

@@ -586,8 +586,7 @@ export function NewItemForm({
     const describe = (id: string) => {
         if (id === project.id) return `${id} (this project)`
         const other = project.projects.find((entry) => entry.id === id)
-        if (other?.upstream)
-            return `${id} (upstream: creating there is refused)`
+        if (other?.readOnly) return `${id} (read-only from here)`
         if (other && !other.present) return `${id} (not on this machine)`
         return id
     }
