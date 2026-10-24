@@ -282,7 +282,9 @@ describe("the new item form", () => {
             target: { value: "New" },
         })
         await choose("Effort", "low")
-        fireEvent.click(screen.getByRole("checkbox", { name: /Start at the first stage/ }))
+        fireEvent.click(
+            screen.getByRole("checkbox", { name: /Start at the first stage/ })
+        )
         fireEvent.click(screen.getByRole("button", { name: "Save" }))
         await waitFor(() =>
             expect(onCreated).toHaveBeenCalledWith(
@@ -370,7 +372,9 @@ describe("the new item form", () => {
         expect(
             screen.queryByRole("combobox", { name: "Complexity" })
         ).toBeNull()
-        expect(screen.queryByRole("checkbox", { name: /Start at the first stage/ })).toBeNull()
+        expect(
+            screen.queryByRole("checkbox", { name: /Start at the first stage/ })
+        ).toBeNull()
     })
 
     test("in Jira mode another project's parent is kept with a warning, a blocker is not", async () => {
