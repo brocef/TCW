@@ -401,7 +401,7 @@ def _show(args) -> int:
         every = _readable(backend)
     else:
         from tcw.work.scoped import every_item
-        every, bad = every_item(covered, active)
+        every, bad = every_item(covered, active, backend if named is not None else None)
         covered.warn("its items are not counted in children and blocks", _say)
         if bad:
             _say("warning: these items could not be read, so blocks and children "

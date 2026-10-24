@@ -284,3 +284,52 @@ def test_the_shared_items_are_the_ones_listed(in_jira, serve_project):
     owners = [i["owner"] for i in answer.json["items"]]
     assert owners == ["shared", "desktop", "server"]
     assert all(item_folder(o) in i["full-id"] for o, i in zip(owners, answer.json["items"]))
+
+
+# -- children and blocks of another project's item (review round 1, finding 1) ---------
+
+DESKTOP_ITEM = f"desktop.work/{item_folder('desktop')}"
+OTHER_ITEM = f"other.work/{item_folder('other')}"
+
+
+def _family_of(family, owner: str, target: str) -> tuple[list[str], list[str]]:
+    """A child and a blocked item of `target` in `owner`, in `shared` (the
+    served project) and in `desktop` (its child); the children and the
+    blocked items' full identifiers, sorted."""
+    children, blocked = [], []
+    for project_id in dict.fromkeys((owner, "shared", "desktop")):
+        family.item(project_id, f"2026-10-07-{project_id}-part", parent=target)
+        family.item(project_id, f"2026-10-08-{project_id}-after", **{"blocked-by": [target]})
+        children.append(f"{project_id}.work/2026-10-07-{project_id}-part")
+        blocked.append(f"{project_id}.work/2026-10-08-{project_id}-after")
+    return sorted(children), sorted(blocked)
+
+
+def _cli_record(family, full_id: str, scope: str) -> dict:
+    shown = family.run("shared", "work", "show", full_id, "--scope", scope, "--json")
+    assert shown.code == 0, shown.err
+    return shown.json["item"]
+
+
+@pytest.mark.parametrize("scope", ["down", "all"])
+def test_a_covered_owners_item_counts_each_covered_project_once(family, shared, scope):
+    children, blocked = _family_of(family, "desktop", DESKTOP_ITEM)
+    answer = shared.get(f"/api/work/{quote(DESKTOP_ITEM, safe='')}?scope={scope}")
+    assert answer.status == 200, answer.body
+    record = answer.json["item"]
+    assert sorted(record["children"]) == children
+    assert sorted(record["blocks"]) == blocked
+    cli = _cli_record(family, DESKTOP_ITEM, scope)
+    assert (record["children"], record["blocks"]) == (cli["children"], cli["blocks"])
+
+
+def test_an_owner_the_scope_does_not_cover_counts_its_own_items_once(family, shared):
+    # `other` is `shared`'s sibling: `down` from `shared` does not cover it.
+    children, blocked = _family_of(family, "other", OTHER_ITEM)
+    answer = shared.get(f"/api/work/{quote(OTHER_ITEM, safe='')}?scope=down")
+    assert answer.status == 200, answer.body
+    record = answer.json["item"]
+    assert sorted(record["children"]) == children
+    assert sorted(record["blocks"]) == blocked
+    cli = _cli_record(family, OTHER_ITEM, "down")
+    assert (record["children"], record["blocks"]) == (cli["children"], cli["blocks"])

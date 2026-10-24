@@ -401,8 +401,16 @@ def detail(request: Request):
         # Under a scope, from every covered project's items, as `tcw work
         # show --scope` computes them (TCW-113 Design 3.3); a project that
         # cannot be read is named among the warnings.
-        siblings = degrading(ctx, lambda: readable(ctx.backend) if covered is None
-                             else every_item(covered, ctx.backend))
+        # `every_item` takes the served project's backend, which is not
+        # `ctx`'s when the item is another project's; it adds the owner's
+        # items once when the scope does not cover the owner. The read
+        # degrades when either project's backend owns the record.
+        if covered is None:
+            siblings = degrading(ctx, lambda: readable(ctx.backend))
+        else:
+            here = ctx if key.project == covered.active else context(request)
+            siblings = degrading(here if here.owner == BACKEND else ctx,
+                                 lambda: every_item(covered, here.backend, ctx.backend))
         if isinstance(siblings, dict):
             siblings, warnings = ([], []), [f"every other item ({siblings['unavailable']})"]
         else:

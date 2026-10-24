@@ -121,12 +121,22 @@ def list_scope(covered: Covered, query: Query, *, active: WorkBackend,
     return found
 
 
-def every_item(covered: Covered, active: WorkBackend) -> tuple[list[Item], list[str]]:
+def every_item(covered: Covered, active: WorkBackend, owner: WorkBackend | None = None
+               ) -> tuple[list[Item], list[str]]:
     """The readable items of every covered project that is not unavailable,
     the active project's first and outside any catch, for `children` and
-    `blocks` (Design 3.3); and the items that could not be read."""
+    `blocks` (Design 3.3); and the items that could not be read. `owner` is
+    the backend of the item they are computed for, when that item is named
+    by its full identifier: when the scope does not cover its project, that
+    project's items are added once, outside any catch, so a wider scope
+    never loses the children and blocked items `own` would count."""
     from tcw.work.open import open_backend
     every, bad = readable(active)
+    if owner is not None and owner.project != covered.active \
+            and owner.project not in covered.ids:
+        more, more_bad = readable(owner)
+        every += more
+        bad += more_bad
     for member in covered.members:
         if member.id == covered.active:
             continue
