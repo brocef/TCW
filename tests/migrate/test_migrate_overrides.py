@@ -269,3 +269,92 @@ def test_a_run_stopped_after_the_override_moved_is_finished(tcw, tmp_path, monke
     done = migrate(tcw, root)
     assert "  B9 " not in done.err
     assert tree(root) == tree(whole)
+
+
+# ── criterion 64: TCW 4's move keeps the record correct (plan Step 23) ──────
+
+LIB = {"tcw-config.yaml": "id: lib\n",
+       f"{C}/auth/login/meta.yaml": "id: cap-ddd444\nname: Login\nStatus: Supported\n"}
+M = {"tcw-config.yaml": "id: core\nprojects:\n  upstream:\n    lib: ../lib\n"
+                        "capabilities:\n  extends:\n  - lib\n",
+     f"{C}/cli/meta.yaml": "id: cap-eee555\nname: CLI\nStatus: Supported\n",
+     f"{C}/cli/x/meta.yaml": "id: cap-aaa111\nname: X\nStatus: Supported\n",
+     f"{C}/ov/login/meta.yaml": "Status: Experimental\noverrides: cap-ddd444\n"}
+
+
+def migrated_m(tcw, base: Path) -> Path:
+    migrate(tcw, make(base / "lib", LIB))
+    root = make(base / "core", M)
+    migrate(tcw, root)
+    assert record(root)["capability-ids"] == {"cap-eee555": "cli", "cap-aaa111": "cli/x"}
+    assert record(root)["moved"] == {"ov/login": "auth/login"}
+    return root
+
+
+def test_a_rename_in_a_migrated_source_rewrites_its_record(tcw, tmp_path):
+    m = migrated_m(tcw, tmp_path)
+    done = tcw(["capabilities", "rename", "cli/x", "y"], m)
+    assert done.code == 0, done.err
+    assert record(m)["capability-ids"] == {"cap-eee555": "cli", "cap-aaa111": "cli/y"}
+    assert "rewrote " in done.err and "capability-ids.cap-aaa111 cli/x -> cli/y" in done.err
+    reader = app(tmp_path, {f"{C}/ov/x/meta.yaml": OV.format(pointer="core/cap-aaa111")})
+    make(tmp_path / "core", {f"{T}/auth/meta.yaml": "name: Auth\nkind: Vocabulary\n"})
+    migrate(tcw, reader)
+    assert state(reader, "cli/y")["Status"] == "Experimental"
+
+
+def test_a_value_below_the_moved_path_is_rewritten_too(tcw, tmp_path):
+    m = migrated_m(tcw, tmp_path)
+    done = tcw(["capabilities", "rename", "cli", "tool"], m)
+    assert done.code == 0, done.err
+    assert record(m)["capability-ids"] == {"cap-eee555": "tool", "cap-aaa111": "tool/x"}
+
+
+def test_a_reader_s_reference_to_m_s_override_follows_m_s_moved(tcw, tmp_path):
+    """M's own `ov/login -> auth/login` is under `moved:`, and a reader's
+    `M/ov/login` becomes `M.capabilities/auth/login`. (TCW 4 refuses to
+    rename an override, so a `moved:` value changes by a rename only in a
+    project whose record outlived the override; the every-stop test below
+    has one.)"""
+    migrated_m(tcw, tmp_path)
+    reader = app(tmp_path, {f"{C}/cli/r/meta.yaml": "name: R\nStatus: Supported\n"
+                                                     "Blocked by: core/ov/login\n"})
+    migrate(tcw, reader)
+    assert state(reader, "cli/r")["Blocked by"] == "core.capabilities/auth/login"
+
+
+def test_a_project_with_no_record_is_unchanged_by_the_record_rule(tcw, tmp_path):
+    from tests.objectcli import obj, project
+    root = project(tmp_path / "p", "demo", work={})
+    obj(root, "capabilities", "cli", name="CLI", Status="Supported")
+    done = tcw(["capabilities", "rename", "cli", "tool"], root)
+    assert done.code == 0, done.err
+    assert not (root / ".tcw/tcw-migration.yaml").exists()
+
+
+def test_every_stop_of_a_capabilities_move_with_a_record(tcw, tmp_path):
+    """TCW-114's every-stop test once more, on a project holding a record:
+    the record's write is one more counted write, and a stop at any write is
+    finished by running the move again."""
+    from tests.move_stops import Fixture, every_stop
+    from tests.objectcli import obj, project
+    made = []
+
+    def make_one():
+        folder = tmp_path / f"run-{len(made)}"
+        folder.mkdir()
+        root = project(folder, "demo", work={})
+        made.append(root)
+        obj(root, "capabilities", "cli", name="CLI", Status="Supported")
+        obj(root, "capabilities", "cli/y", name="Y", Status="Supported",
+            parent="demo.capabilities/cli")
+        (root / ".tcw/tcw-migration.yaml").write_text(
+            "tcw-version: 4.0.0\ncapability-ids:\n  cap-aaa111: cli/y\n"
+            "moved:\n  ov/y: cli/y\n")
+        return Fixture(root)
+    total = every_stop(pytest.MonkeyPatch.context, make_one,
+                       lambda f: tcw(["capabilities", "rename", "cli", "tool"], f.root))
+    # cli/y's parent, the record, the folder.
+    assert total == 3
+    assert record(made[0])["capability-ids"] == {"cap-aaa111": "tool/y"}
+    assert record(made[0])["moved"] == {"ov/y": "tool/y"}

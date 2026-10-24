@@ -340,11 +340,20 @@ def rewrite_references(active_root: Path, changes: Changes) -> list[Rewritten]:
     names a changed identifier (Design 6.1), each file replaced in one step
     (Design 6.6). Returns, per file read, what it changed and what was
     already done; a file with neither is left out. A file that cannot be
-    written raises `RewriteStopped`, carrying the files before it."""
+    written raises `RewriteStopped`, carrying the files before it.
+
+    The one file outside the stores it reads is the project's migration
+    record, `.tcw/tcw-migration.yaml` (TCW-116 Design 7, 8.5): for a change
+    of a capability, every `capability-ids` and `moved` value that is the
+    old id-path, or lies below it, is given the new one, so that a project
+    migrated later still finds the capability its override names."""
     from tcw.store.fs import _atomic_write_all
     changes = list(changes)
     roots = store_roots(active_root)
     plans: dict[Path, tuple[str, Rewritten]] = {}
+    record = _migration_record(Path(active_root), changes)
+    if record is not None:
+        plans[record[1].path] = record
     for path, rows in _records(roots):
         try:
             text = path.read_text(encoding="utf-8")
@@ -372,6 +381,46 @@ def rewrite_references(active_root: Path, changes: Changes) -> list[Rewritten]:
                 raise RewriteStopped(error, path, results) from error
         results.append(result)
     return results
+
+
+#: The migration record and the sections of it that hold id-paths.
+MIGRATION_RECORD = ".tcw/tcw-migration.yaml"
+_RECORD_SECTIONS = ("capability-ids", "moved")
+
+
+def _migration_record(active_root: Path, changes: list[tuple[FullId, FullId]]
+                      ) -> tuple[str, Rewritten] | None:
+    """The record's new text and what changed in it, or None when the
+    project keeps no record or no value in it changes."""
+    moves = sorted(((old.id_path, new.id_path) for old, new in changes
+                    if old.namespace == "capabilities" and new.namespace == "capabilities"),
+                   key=lambda pair: -len(pair[0]))
+    path = active_root / MIGRATION_RECORD
+    if not moves or not path.is_file():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+        found = list(_scalars(text))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        return None
+    edits, changed = [], []
+    for key_path, event in found:
+        if len(key_path) != 2 or key_path[0] not in _RECORD_SECTIONS \
+                or not isinstance(event.value, str):
+            continue
+        value = event.value
+        for old, new in moves:
+            if value == old or value.startswith(old + "/"):
+                now = new + value[len(old):]
+                edits.append((event.start_mark.index, event.end_mark.index,
+                              _scalar_text(now, event.style)))
+                changed.append(f"{key_path[0]}.{key_path[1]} {value} -> {now}")
+                break
+    if not edits:
+        return None
+    for start, end, new_text in sorted(edits, reverse=True):
+        text = text[:start] + new_text + text[end:]
+    return text, Rewritten(path, changed)
 
 
 def field_problems(active_root: Path, changes: Changes) -> list[str]:
