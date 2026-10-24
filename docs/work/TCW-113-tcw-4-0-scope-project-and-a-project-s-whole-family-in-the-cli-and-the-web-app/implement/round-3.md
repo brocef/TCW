@@ -170,3 +170,9 @@ tests/test_capabilities_federation.py`: `230 passed`; the taxonomy and
 
 The full Python suite was not run by the implementing agent; the
 dispatching session runs it, as CI runs it, before the next review.
+
+The full suite as CI runs it, `.venv/bin/pytest -q -p no:cacheprovider`, run by
+the dispatching session at `79ece028` (2026-10-24), with TCW-115 landed, in two
+halves by folder: `2183 passed, 2 skipped` and `5110 passed, 111 skipped`.
+`pnpm test` `233 passed`; `tsc --noEmit`, `pnpm lint` and `pnpm check:build`
+clean.
