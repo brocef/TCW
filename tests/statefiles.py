@@ -62,3 +62,21 @@ def read_state(path) -> dict:
 #: Each store's state file, by the store's folder name under `docs/`.
 STATE_OF = {"taxonomy": TAXONOMY_STATE, "capabilities": CAPABILITY_STATE,
             "work": ITEM_STATE}
+
+#: The 3.x name of a taxonomy or capability record's state file.
+LEGACY_RECORD = "meta.yaml"
+
+
+def record_file(folder, namespace: str) -> Path:
+    """The state file of the record in `folder`: its TCW 4 one when present,
+    else its 3.x `meta.yaml` (TCW-116 Design 8.4), so a test of this
+    repository's own records reads them in either form."""
+    folder = Path(folder)
+    four = folder / STATE_OF[namespace]
+    return four if four.is_file() else folder / LEGACY_RECORD
+
+
+def record_files(root, namespace: str) -> list[Path]:
+    """Every record state file below `root`, in either form."""
+    names = (STATE_OF[namespace], LEGACY_RECORD)
+    return sorted(p for p in Path(root).rglob("*") if p.name in names and p.is_file())

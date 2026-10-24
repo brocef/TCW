@@ -286,6 +286,23 @@ def seed_tickets(fake, project: str = JIRA_PROJECT) -> dict[str, dict]:
     return made
 
 
+def as_4_0_records(src: Path, dst: Path) -> Path:
+    """A copy of a `docs/` folder at `dst` with every taxonomy and capability
+    `meta.yaml` renamed to its TCW 4 name and the version line put first
+    (plan Step 12): what this repository's records will be after TCW-118."""
+    import shutil
+    from tcw.project_files import version_line
+    from tests.statefiles import STATE_OF
+    shutil.copytree(src, dst)
+    for namespace in ("taxonomy", "capabilities"):
+        for meta in sorted((dst / namespace).rglob("meta.yaml")):
+            text = meta.read_text(encoding="utf-8")
+            (meta.parent / STATE_OF[namespace]).write_text(version_line() + text,
+                                                           encoding="utf-8")
+            meta.unlink()
+    return dst
+
+
 # ---------------------------------------------------------------------------
 # Comparing trees
 
