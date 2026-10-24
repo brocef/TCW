@@ -45,7 +45,7 @@ def cap_path(total: int) -> str:
 def made_parent(root, total: int) -> str:
     path = nested_parent(total)
     item(root, path.split("/")[0], title="Outer")
-    item(root, path, title="Parent")
+    item(root, path, title="Parent", parent=f"demo.work/{path.split('/')[0]}")
     return path
 
 
@@ -120,7 +120,7 @@ def test_a_capability_folder_of_256_characters_is_reported_and_still_listed(tcw,
 def test_a_nested_item_of_256_characters_is_reported_and_still_listed(tcw, demo):
     path = nested_parent(256)
     item(demo, path.split("/")[0])
-    item(demo, path)
+    item(demo, path, parent=f"demo.work/{path.split('/')[0]}")
     checked = tcw(["validate"], demo)
     assert checked.code == 1
     assert findings(checked) == [
@@ -135,6 +135,6 @@ def test_the_same_layouts_at_255_characters_pass(tcw, demo):
         id="cap-aaaaaa", name="Long", Status="Missing")
     path = nested_parent(255)
     item(demo, path.split("/")[0])
-    item(demo, path)
+    item(demo, path, parent=f"demo.work/{path.split('/')[0]}")
     checked = tcw(["validate"], demo)
     assert (checked.code, findings(checked)) == (0, [])

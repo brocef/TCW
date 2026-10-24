@@ -15,7 +15,7 @@ import sys
 from tcw import exit as codes
 from tcw.cli_help import command, group
 from tcw.errors import BackendError, UsageError
-from tcw.ids import identity
+from tcw.ids import identity, parent_text
 from tcw.locate import find_tree, find_tree_writable
 from tcw.output import changed, left_out, print_json
 from tcw.stdin import read_piped_stdin
@@ -38,7 +38,9 @@ def _store() -> FsCapabilitiesStore:
 
 
 def _record(cap: Capability) -> dict:
-    return {**identity(cap.full_id), "name": cap.name, "status": cap.status}
+    # `parent` after `owner` (TCW-111 Design 3.1): its text, or null.
+    return {**identity(cap.full_id), "parent": parent_text(cap.parent),
+            "name": cap.name, "status": cap.status}
 
 
 def _detail(cap: Capability) -> dict:
@@ -76,7 +78,9 @@ def _show(args: argparse.Namespace) -> int:
     if args.json:
         print_json("capability", _detail(cap))
         return codes.OK
-    lines = [f"full-id: {cap.full_id}", f"owner: {cap.owner}", f"name: {cap.name}"]
+    lines = [f"full-id: {cap.full_id}", f"owner: {cap.owner}",
+             *([f"parent: {cap.parent}"] if cap.parent is not None else []),
+             f"name: {cap.name}"]
     if cap.id:
         lines.append(f"id: {cap.id}")
     lines += [f"{k}: {_fmt(v)}" for k, v in cap.fields.items()]
@@ -94,13 +98,22 @@ def _path(args: argparse.Namespace) -> int:
 
 def _add(args: argparse.Namespace) -> int:
     st = _store()
-    cap = st.add(args.path, name=args.name, status=args.status, body=read_piped_stdin())
+    cap = st.add(args.path, name=args.name, status=args.status, body=read_piped_stdin(),
+                 parent=args.parent)
     changed(st.changed)
+    _warn_folder(st, cap)
     print(cap.full_id)
     return codes.OK
 
 
-def _fields(args: argparse.Namespace) -> dict:
+def _warn_folder(st: FsCapabilitiesStore, cap: Capability) -> None:
+    """Design 3.2's warning on standard error, when the capability's folder
+    sits in another's that its `parent` does not name (TCW-111 Design 3.3)."""
+    if cap.origin == "local" and (warning := st.folder_disagreement(cap)):
+        print(f"warning: {warning}", file=sys.stderr)
+
+
+def _fields(args: argparse.Namespace, *, alone: bool = False) -> dict:
     """`--status` and each `--field K=V`, one field per use. A key given twice,
     `--status` together with `--field Status=`, or a `--field` with no `=` is
     a usage error; the value is kept whole, as the record file writes it."""
@@ -115,16 +128,18 @@ def _fields(args: argparse.Namespace) -> dict:
         if k in fields:
             raise UsageError(f"field '{k}' given more than once")
         fields[k] = v
-    if not fields:
-        raise UsageError("give --status or at least one --field")
+    if not fields and not alone:
+        raise UsageError("give --status, --parent or at least one --field")
     return fields
 
 
 def _set(args: argparse.Namespace) -> int:
-    fields = _fields(args)
+    fields = _fields(args, alone=args.parent is not None)
     st = _store()
-    st.set(find_tree_writable(st, args.id).full_id, fields)
+    cap = st.set(find_tree_writable(st, args.id).full_id, fields, parent=args.parent)
     changed(st.changed)
+    if args.parent is not None:
+        _warn_folder(st, cap)
     return codes.OK
 
 
@@ -268,6 +283,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                     help="display name (default: titled from the last path segment)")
     pa.add_argument("--status", default="Missing", choices=sorted(CAP_STATUSES),
                     help="initial status (default: Missing)")
+    pa.add_argument("--parent", help="the capability this one belongs under; its full "
+                                     "identifier or its path here")
     pa.set_defaults(func=_add)
 
     pset = command(g, "set", help="change a capability's status or fields",
@@ -282,6 +299,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pset.add_argument("--field", action="append", metavar="K=V",
                       help="set one metadata field; repeat for more fields "
                            "(a list field such as Subject takes a,b,c)")
+    pset.add_argument("--parent", help="the capability this one belongs under; its full "
+                                       "identifier or its path here; an empty value "
+                                       "clears it")
     pset.set_defaults(func=_set)
 
     prst = command(g, "reset", help="drop a local override, inheriting again",

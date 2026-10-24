@@ -537,6 +537,11 @@ def _model_checks(run: _Run, layout: Layout, reader: Any, resolve: Callable[[Slu
     for problem in stage_problems(items, layout):
         run.findings.append(Finding(problem.level, str(problem.slug),
                                     f"stage {problem.message}"))
+    # Row m: the parent is the ticket's, so only here (TCW-111 Design 3.2).
+    from tcw.work.backend import folder_disagreement
+    for item in items:
+        if (warning := folder_disagreement(backend, item)):
+            run.findings.append(Finding("warning", str(item.slug), warning))
     for item in items:
         if item.stage is None or table_stage(item.stage).kind == TERMINAL:
             continue

@@ -32,10 +32,10 @@ from tcw.findings import Finding
 from tcw.ids import (SCHEME, FolderAddress, FullId, IdError, MalformedId, id_path_problem,
                      length_problem, parse_address, parse_stored, sort_input)
 from tcw.object_folders import (EXTRA, LEGACY, MISPLACED, RESERVED, RESOURCES, STATE_FILES,
-                                Walk, exact_child, exact_path, id_problem, is_object,
-                                length_problems,
-                                is_reserved, object_paths, read_state, removal_blockers,
-                                shape_problems, state_text, walk)
+                                Walk, disagreement, exact_child, exact_path, folder_parent,
+                                id_problem, is_object, is_reserved, length_problems,
+                                object_paths, read_state, removal_blockers, shape_problems,
+                                state_text, walk)
 from tcw.output import shown as _shown
 from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
 from tcw.store.base import (
@@ -1352,6 +1352,80 @@ class FsTreeStore:
         return self.get_local(full_id.id_path) if full_id.project == self.project_id \
             else None
 
+    def find_parent(self, text) -> "Term | Capability":
+        """The object a `--parent` names, read as command input is (TCW-110
+        Design 3.1): this store's own, an inherited one, or another
+        project's. Raises `NotFound` (exit 4) when there is none."""
+        from tcw.locate import find_tree
+        return find_tree(self, str(text))
+
+    def folder_disagreement(self, obj) -> str | None:
+        """Design 3.2's warning for a local object of this store whose folder
+        sits in another object's folder that its `parent` does not name, or
+        None (TCW-111 row m)."""
+        id_path = getattr(obj, "slug", None) or obj.path
+        above = folder_parent(self.root, self.COMPONENT, id_path)
+        return disagreement(obj.full_id, None if above is None else
+                            FullId(self.project_id, self.COMPONENT, above), obj.parent)
+
+    def _parent_findings(self, objects, selected: str | None = None) -> list[Finding]:
+        """Rows l and m of TCW-111 Design 2.6 for this store's own `objects`:
+        a `parent` that is malformed, of another namespace, names the object
+        itself or nothing, or forms a loop among this project's own objects,
+        is an error; one in a project not on this machine is `unresolved`;
+        a folder parent that `parent` does not name is a warning. With
+        `selected`, only that object's are kept."""
+        out: list[Finding] = []
+        own: dict[str, str] = {}
+        for obj in objects:
+            id_path = getattr(obj, "slug", None) or obj.path
+            where = self._where(id_path)
+            keep = selected is None or id_path == selected
+            parent = obj.parent
+            if isinstance(parent, FullId) and parent.project == self.project_id:
+                own[id_path] = parent.id_path
+            if not keep:
+                continue
+            if parent is not None:
+                if isinstance(parent, FullId) and parent == obj.full_id:
+                    out.append(Finding("error", where, "parent names the object itself"))
+                else:
+                    outcome = self._stored_ref(str(parent), self.COMPONENT)
+                    problem = _ref_finding("parent", parent, outcome)
+                    if problem:
+                        out.append(Finding(problem[0], where, problem[1]))
+            warning = self.folder_disagreement(obj)
+            if warning:
+                out.append(Finding("warning", self._where(self.root / id_path /
+                                                          self.STATE_FILE), warning))
+        def parent_of(id_path: str) -> str | None:
+            # A scoped check reads only the objects up the selected one's
+            # chain, never the whole store, which may hold a broken file.
+            if id_path not in own and selected is not None:
+                try:
+                    obj = self.get_local(id_path)
+                except (TcwError, OSError, ValueError, yaml.YAMLError):
+                    obj = None
+                parent = getattr(obj, "parent", None)
+                own[id_path] = (parent.id_path if isinstance(parent, FullId)
+                                and parent.project == self.project_id else None)
+            return own.get(id_path)
+        # A loop among this project's own objects (choice 13), each member
+        # named once, at every member.
+        for start in sorted(own):
+            chain, at = [start], parent_of(start)
+            while at is not None and at not in chain:
+                chain.append(at)
+                at = parent_of(at)
+            if at != start or len(chain) == 1:      # one naming itself is said above
+                continue
+            if selected is not None and selected not in chain:
+                continue
+            loop = " -> ".join(str(FullId(self.project_id, self.COMPONENT, p))
+                               for p in [*chain, start])
+            out.append(Finding("error", self._where(start), f"parent forms a loop: {loop}"))
+        return out
+
     def _input_ref(self, text, label: str):
         """The entry a reference value given to a write names, read as command
         input is (TCW-110 Design 3.1), for the full identifier the write
@@ -1867,6 +1941,17 @@ class _RefInputProblem(UsageError):
     `check` words it; collected, never raised out of the store."""
 
 
+def _stored_parent(value, namespace: str) -> "FullId | str | None":
+    """A state file's `parent` (TCW-111 Design 3.1): its full identifier, the
+    text as written when it is none, which `check` reports, or None."""
+    if value is None:
+        return None
+    try:
+        return parse_stored(value, namespace)
+    except IdError:
+        return str(value)
+
+
 def _ref_finding(label: str, ref, outcome) -> "tuple[str, str] | None":
     """`(level, message)` for a stored reference that was not found, worded
     as `check` reports it, or None when it was."""
@@ -1932,6 +2017,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                 [d / self.STATE_FILE, d / "description.md"]
             ),
             owner=self.owner_of(origin),
+            parent=_stored_parent(meta.get("parent"), "taxonomy"),
         )
 
     def get_local(self, slug: str) -> Term | None:
@@ -2052,17 +2138,16 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         if slug and not is_slug(leaf):
             raise NotASlug(f"{slug!r} is not a slug: use lowercase letters, "
                            f"digits and single hyphens")
-        if parent:
-            parent = _safe_store_id(parent, "parent")
-            _check_id_path(parent.strip("/"), "parent")
-        full = f"{parent.strip('/')}/{leaf}" if parent else leaf
+        # The parent is any term TCW can find (TCW-111 Design 3.3): the
+        # folder goes inside it when it is this store's own, else at the root,
+        # and `parent:` is written either way. Not found is exit 4.
+        parent_term = self.find_parent(parent) if parent else None
+        inside = (parent_term.slug if parent_term is not None
+                  and parent_term.owner == self.project_id else None)
+        full = f"{inside}/{leaf}" if inside else leaf
         _check_id_path(full, "slug")
         _check_reserved(full, "taxonomy", "slug")
         _check_length(self.project_id, "taxonomy", full)
-        # A term, not merely a folder: an organising folder holds no state
-        # file and is no term (Design 2.3).
-        if parent and not is_object(self.root, "taxonomy", parent.strip("/")):
-            raise UsageError(f"parent term does not exist: {parent}")
         kind = _normalize_taxonomy_kind(kind)
         if kind not in TAXONOMY_KINDS:
             raise UsageError(f"invalid taxonomy kind '{kind}' "
@@ -2081,6 +2166,8 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         if kind == "Feature" and not vocabulary:
             raise UsageError("Feature requires at least one vocabulary ref")
         meta = {"name": name, "kind": kind, "relatesTo": []}
+        if parent_term is not None:
+            meta["parent"] = str(parent_term.full_id)
         if vocabulary:
             meta["vocabulary"] = [self._resolve_vocab_ref(r) for r in vocabulary]
         self._write_entry(d, meta, description)
@@ -2305,6 +2392,9 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                     found("Feature requires at least one vocabulary ref")
                 for ref in term.vocabulary:
                     report(self._ref_problem(ref, "vocabulary", expect_vocabulary=True)[1])
+        problems += self._parent_findings(
+            [t for t in terms if t.origin == "local"],
+            None if identifier is None else selected.slug)
         return problems
 
     def _validation_resources(self, identifier: str) -> list[Path]:
@@ -2430,7 +2520,7 @@ _REF_FIELDS = ("Subject", "Feature", "Superseded by", "Blocked by", "Roles", "Wh
 _NO_TAXONOMY = object()
 
 # Meta keys that are structural (not part of the locked CAP_FIELDS vocabulary).
-_CAP_STRUCTURAL = {"id", "name", "overrides", "prependedDocs", "appendedDocs"}
+_CAP_STRUCTURAL = {"id", "name", "overrides", "prependedDocs", "appendedDocs", "parent"}
 
 
 def heading_slug(text: str) -> str:
@@ -2582,6 +2672,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             origin=origin,
             modified=_modified_timestamp(_capability_resources(d, meta)),
             owner=self.owner_of(origin),
+            parent=_stored_parent(meta.get("parent"), "capabilities"),
         )
 
     def _apply_override(self, base: Capability, alias: str,
@@ -2740,11 +2831,14 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     # -- writes --
 
     def add(self, identifier, name=None, status="Missing", body="",
-            fields=None) -> Capability:
+            fields=None, parent=None) -> Capability:
         path = _safe_store_id(identifier, "path")
         _check_id_path(path, "path")
         _check_reserved(path, "capabilities", "path")
         _check_length(self.project_id, "capabilities", path)
+        # Any capability TCW can find; the folder is made where `identifier`
+        # says, whatever the parent (TCW-111 Design 3.3).
+        parent_id = str(self.find_parent(parent).full_id) if parent else None
         if status not in CAP_STATUSES:
             raise UsageError(f"invalid Status '{status}' "
                              f"(choose: {', '.join(sorted(CAP_STATUSES))})")
@@ -2759,6 +2853,8 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         norm = self._validate_fields(fields or {})
         display = name or path.rsplit("/", 1)[-1].replace("-", " ").title()
         meta = {"id": _mint_cap_id(), "name": display, "Status": status}
+        if parent_id is not None:
+            meta["parent"] = parent_id
         # Field values win over the `status` parameter — what create-then-set
         # did. A None clears, rather than being skipped: there *is* something to
         # clear, the Status seeded a line above, and `_merge_meta` pops the key
@@ -3040,9 +3136,24 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 meta[k] = v
         return meta
 
-    def set(self, identifier: "FullId | str", fields: dict) -> Capability:
+    def set(self, identifier: "FullId | str", fields: dict,
+            parent: str | None = None) -> Capability:
         norm = self._validate_fields(fields)           # validate before touching disk
+        if parent is not None:
+            # Before `_write_target`, which would make an override folder for
+            # an inherited one: none of this command is written (Design 3.4).
+            cap = self._found(identifier)
+            if cap is None:
+                raise NotFound(f"no such capability: {identifier}")
+            if cap.origin != "local":
+                raise Refused(f"the parent of {cap.full_id} is set in project "
+                              f"'{cap.owner}'")
+            parent = str(self.find_parent(parent).full_id) if parent.strip() else ""
         d, meta, is_override = self._write_target(identifier)
+        if parent == "":
+            meta.pop("parent", None)
+        elif parent is not None:
+            meta["parent"] = parent
         # `_write_meta` owns the mkdir and the rollback: `_write_target` can
         # materialize a fresh override directory, and a refused write must not
         # leave an empty one behind.
@@ -3194,6 +3305,10 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             if unchecked and (f.get("Subject") or f.get("Feature")):
                 found(unchecked)
                 unchecked = ""
+
+        problems += self._parent_findings(
+            [c for c in caps if c.origin == "local"],
+            None if selected is None else selected.path)
 
         # Override + attachment validation (every meta dir, incl. override folders).
         meta_dirs = self._object_dirs()

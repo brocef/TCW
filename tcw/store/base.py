@@ -613,6 +613,10 @@ class Term:
     origin: str = "local"
     modified: str = ""
     owner: str = ""
+    # The object this one belongs under (TCW-111 Design 3.1): a full
+    # identifier, or the text as written when it is not one, which `check`
+    # reports; None when the state file names no parent.
+    parent: "FullId | str | None" = None
 
     @property
     def full_id(self) -> FullId:
@@ -657,7 +661,10 @@ class TaxonomyStore(ABC):
     def add(self, name: str, slug: str | None = None, parent: str | None = None,
             description: str = "", kind: str = "Vocabulary",
             vocabulary: list[str] | None = None) -> Term:
-        """Create a local term under `parent` (root by default). Refuse a collision."""
+        """Create a local term with `parent` (TCW-111 Design 3.3): command
+        input naming a term, written as its full identifier; the folder is
+        made inside the parent's when it is a term of this project's own
+        store, else at the root. Refuse a collision."""
 
     @abstractmethod
     def remove(self, ref: "FullId | str") -> None:
@@ -796,6 +803,8 @@ class Capability:
     origin: str = "local"
     modified: str = ""
     owner: str = ""
+    # As `Term.parent` (TCW-111 Design 3.1).
+    parent: "FullId | str | None" = None
 
     @property
     def status(self) -> str | None:
@@ -848,9 +857,11 @@ class CapabilitiesStore(ABC):
 
     @abstractmethod
     def add(self, identifier: str, name: str | None = None, status: str = "Missing",
-            body: str = "", fields: dict[str, Any] | None = None) -> Capability:
-        """Create a local capability folder at `identifier` (a path). Refuse a
-        collision. `fields` are validated as `set` validates them, before
+            body: str = "", fields: dict[str, Any] | None = None,
+            parent: str | None = None) -> Capability:
+        """Create a local capability folder at `identifier` (a path), with
+        `parent` (command input naming a capability) written as its full
+        identifier when given. Refuse a collision. `fields` are validated as `set` validates them, before
         anything is written, so a create carrying a bad field writes nothing."""
 
     @abstractmethod
@@ -881,9 +892,12 @@ class CapabilitiesStore(ABC):
         matches multiple extended stores. Never mutates an extended store."""
 
     @abstractmethod
-    def set(self, identifier: "FullId | str", fields: dict[str, Any]) -> Capability:
+    def set(self, identifier: "FullId | str", fields: dict[str, Any],
+            parent: str | None = None) -> Capability:
         """Update/insert metadata fields on the capability at `identifier`;
-        return it. Keys must be in CAP_FIELDS; a Status value must be in
+        return it. `parent`, when given, is command input naming a capability,
+        or `''` to clear it; it is refused for an inherited capability before
+        anything is written (TCW-111 Design 3.4). Keys must be in CAP_FIELDS; a Status value must be in
         CAP_STATUSES. `Subject` accepts a list (or a comma string). Other
         field-value semantics are `check`'s job (Spec 3)."""
 

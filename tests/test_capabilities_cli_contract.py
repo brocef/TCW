@@ -116,8 +116,8 @@ def test_list_and_search_print_one_path_per_line(thing, run):
     data = json.loads(run(thing, "capabilities", "list", "--json")[1])
     assert data["schema"] == 2
     assert data["capabilities"][0] == {"full-id": "fx.capabilities/ns/do-a-thing",
-                                       "owner": "fx", "name": "Do A Thing",
-                                       "status": "Missing"}
+                                       "owner": "fx", "parent": None,
+                                       "name": "Do A Thing", "status": "Missing"}
     shown = json.loads(run(thing, "capabilities", "show", "ns/do-a-thing", "--json")[1])
     assert shown["capability"]["fields"]["Status"] == "Missing"
 

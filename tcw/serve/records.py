@@ -11,9 +11,9 @@ from dataclasses import asdict, is_dataclass
 from http import HTTPStatus
 from typing import Any
 
-from tcw.errors import TcwError
+from tcw.errors import NotFound, TcwError
 from tcw.findings import Finding
-from tcw.ids import identity
+from tcw.ids import identity, parent_text
 from tcw.locate import find_tree
 from tcw.refs import resolve_address
 from tcw.serve.server import Request, not_found, read_only, route, usage
@@ -30,7 +30,9 @@ def jsonable(value: Any) -> Any:
         # Named by its full identifier and owner (TCW-110 Design 4.5); the
         # path, the store's own `origin` and the owner field it came from
         # are not sent.
-        data = {**identity(value.full_id), **asdict(value)}
+        data = {**identity(value.full_id), "parent": parent_text(value.parent),
+                **asdict(value)}
+        data["parent"] = parent_text(value.parent)    # text, never its parts
         for attr in ("slug", "path", "origin"):
             data.pop(attr, None)
         if isinstance(value, Capability):
@@ -107,9 +109,17 @@ def create_term(request: Request):
     name = request.field("name", required=False, default="")
     if not name:
         raise usage("name is required")
+    parent = request.field("parent", required=False)
     with request.lock:
+        if parent:
+            # A parent naming nothing is a bad field in the request, not a
+            # missing resource: 400, as every other refused value is.
+            try:
+                store.find_parent(parent)
+            except NotFound as missing:
+                raise usage(f"parent: {missing}") from None
         term = store.add(name=name, slug=request.field("slug", required=False),
-                         parent=request.field("parent", required=False),
+                         parent=parent,
                          description=request.field("description", required=False,
                                                    default=""),
                          kind=request.field("kind", required=False, default="Vocabulary"),

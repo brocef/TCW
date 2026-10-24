@@ -43,7 +43,8 @@ def test_an_organising_capabilities_folder_is_no_capability(tcw, demo):
 def test_a_parent_that_is_an_organising_folder_is_no_term(tcw, demo):
     obj(demo, "taxonomy", "group/refund", name="Refund")
     added = tcw(["taxonomy", "add", "Child", "--parent", "group"], demo)
-    assert added.code == 2 and "parent term does not exist" in added.err
+    # Not found, exit 4 (TCW-111 choice 9): an organising folder is no term.
+    assert added.code == 4 and "no such term: 'group'" in added.err
     assert not (store(demo, "taxonomy") / "group" / "child").exists()
 
 

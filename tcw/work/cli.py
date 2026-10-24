@@ -22,7 +22,7 @@ from tcw.store.base import normalize_tag
 from tcw.store.fs import FsProjectRegistry, find_project_root
 from tcw.stdin import read_piped_stdin
 from tcw.work.advance import advance as advance_item, discard as discard_item
-from tcw.work.backend import Query, WorkBackend
+from tcw.work.backend import Query, WorkBackend, folder_disagreement
 from tcw.work.jira.backend import JiraBackend
 from tcw.work.jira.tickets import adopt, inbox, user_name
 from tcw.work.gates import project_reader
@@ -376,7 +376,11 @@ def _edit(args) -> int:
         other, _ = blocks_target(slug, target, backend, root)
         blocked.append((other, target))
     if changes != Changes():
-        own.update(slug.folder, changes)
+        updated = own.update(slug.folder, changes)
+        if changes.parent is not UNSET:
+            # Changing a parent never moves a folder (TCW-111 Design 3.4).
+            if (warning := folder_disagreement(own, updated)):
+                print(f"warning: {warning}", file=sys.stderr)
     for other, target in blocked:
         other.update(target.folder, Changes(add_blocked_by=(slug,)))
     return codes.OK

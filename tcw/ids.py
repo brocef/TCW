@@ -432,6 +432,12 @@ def _breaks_part_rule(id_path: str) -> bool:
     return any(part and id_part_problem(part) for part in id_path.split("/"))
 
 
+def parent_text(parent: "FullId | str | None") -> str | None:
+    """A record's `parent` as JSON carries it (TCW-111 Design 3.1): the text
+    of its full identifier, or of what the state file holds, or None."""
+    return None if parent is None else str(parent)
+
+
 def identity(full_id: FullId) -> dict[str, str]:
     """The two keys every record carries (Design 4.3), built one way for the
     CLI and the web."""

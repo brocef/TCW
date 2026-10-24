@@ -338,3 +338,27 @@ def test_an_epic_with_a_nested_item_is_not_renamed_in_jira_mode(jira_project, tc
     assert refused.code == 3 and "TCW-114" in refused.err
     assert jira_project.fake.writes() == []
     assert jira_project.fake.tickets[key].custom[ITEM] == "tcw.work/TCW-1-epic"
+
+
+# -- AC 12 in Jira mode: under --remote only -----------------------------------------
+
+def test_a_nested_items_ticket_parent_that_disagrees_warns_under_remote(jira_project,
+                                                                         validate):
+    ticket(jira_project, "Epic", "TCW-1-epic")
+    part = ticket(jira_project, "Part", "TCW-1-epic/TCW-2-part")
+    other = ticket(jira_project, "Other", "TCW-3-other")
+    jira_project.fake.tickets[part].parent = other
+    offline = validate(jira_project)
+    assert "sits in the folder" not in offline.out, offline.out
+    remote = validate(jira_project, "--remote")
+    assert ("warning: tcw.work/TCW-1-epic/TCW-2-part: tcw.work/TCW-1-epic/TCW-2-part sits "
+            "in the folder of tcw.work/TCW-1-epic, but its parent is tcw.work/TCW-3-other; "
+            "parent: decides") in remote.out, remote.out
+
+
+def test_a_nested_items_ticket_parent_that_agrees_does_not_warn(jira_project, validate):
+    epic = ticket(jira_project, "Epic", "TCW-1-epic")
+    part = ticket(jira_project, "Part", "TCW-1-epic/TCW-2-part")
+    jira_project.fake.tickets[part].parent = epic
+    remote = validate(jira_project, "--remote")
+    assert "sits in the folder" not in remote.out, remote.out

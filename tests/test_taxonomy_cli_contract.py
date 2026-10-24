@@ -98,7 +98,9 @@ def test_list_and_search_print_one_path_per_line(project, run):
     data = json.loads(run(project, "taxonomy", "list", "--json")[1])
     assert data["schema"] == 2
     assert data["terms"][1] == {"full-id": "fx.taxonomy/widget/gear", "owner": "fx",
+                                "parent": "fx.taxonomy/widget",
                                 "name": "Gear", "kind": "Vocabulary"}
+    assert data["terms"][0]["parent"] is None
 
 
 def test_show_json(project, run):

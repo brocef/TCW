@@ -133,3 +133,18 @@ def nesting_parent(backend: WorkBackend, parent: Slug | None,
     if not backend.is_item_folder(parent.folder):
         return None, None
     return parent.folder, None
+
+
+def folder_disagreement(backend: WorkBackend, item: Item) -> str | None:
+    """Design 3.2's warning when `item`'s folder sits directly in another item's
+    folder that its `parent` does not name, or None (TCW-111 row m). Reads only
+    the work path; the parent is the one `item` carries, read by its backend."""
+    from tcw.object_folders import disagreement, folder_parent
+    work_path = getattr(backend, "work_path", None)
+    if work_path is None:              # a backend with no work path has no folders
+        return None
+    above = folder_parent(work_path, "work", item.slug.folder)
+    if above is not None and not backend.is_item_folder(above):
+        above = None
+    return disagreement(item.slug, None if above is None else Slug(backend.project, above),
+                        item.parent)

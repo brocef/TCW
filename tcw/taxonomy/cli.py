@@ -12,7 +12,7 @@ import argparse
 from tcw import exit as codes
 from tcw.cli_help import command, group
 from tcw.errors import BackendError, UsageError
-from tcw.ids import identity
+from tcw.ids import identity, parent_text
 from tcw.locate import find_tree, find_tree_writable
 from tcw.output import changed, left_out, print_json
 from tcw.stdin import read_piped_stdin
@@ -31,7 +31,9 @@ def _store() -> FsTaxonomyStore:
 
 
 def _record(term: Term) -> dict:
-    return {**identity(term.full_id), "name": term.name, "kind": term.kind}
+    # `parent` after `owner` (TCW-111 Design 3.1): its text, or null.
+    return {**identity(term.full_id), "parent": parent_text(term.parent),
+            "name": term.name, "kind": term.kind}
 
 
 def _detail(term: Term) -> dict:
@@ -76,8 +78,9 @@ def _show(args: argparse.Namespace) -> int:
     if args.json:
         print_json("term", detail)
         return codes.OK
-    lines = [f"full-id: {term.full_id}", f"owner: {term.owner}", f"name: {term.name}",
-             f"kind: {term.kind}"]
+    lines = [f"full-id: {term.full_id}", f"owner: {term.owner}",
+             *([f"parent: {term.parent}"] if term.parent is not None else []),
+             f"name: {term.name}", f"kind: {term.kind}"]
     for key in ("vocabulary", "relatesTo", "attachments"):
         if detail[key]:
             lines.append(f"{key}: {', '.join(detail[key])}")
@@ -152,7 +155,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                            "taxonomy add 'Pay an invoice' --kind feature --vocab invoice"])
     pa.add_argument("name", help="display name of the entry (source of the default slug)")
     pa.add_argument("--slug", help="leaf slug (default: the name, slugified)")
-    pa.add_argument("--parent", help="parent term path (default: the root)")
+    pa.add_argument("--parent", help="the term this one belongs under: its full "
+                                     "identifier or its path here; the folder is made "
+                                     "inside it when it is this project's own")
     pa.add_argument("--kind", choices=("vocabulary", "feature"), default="vocabulary",
                     help="taxonomy object kind (default: vocabulary)")
     pa.add_argument("--vocab", action="append", metavar="REF",

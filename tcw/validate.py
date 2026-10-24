@@ -738,6 +738,10 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
     for problem in stage_problems(items, layout):
         findings.append(Finding(problem.level, item_file(problem.slug),
                                 f"stage {problem.message}"))
+    from tcw.work.backend import folder_disagreement
+    for item in items:
+        if (warning := folder_disagreement(backend, item)):
+            findings.append(Finding("warning", item_file(item.slug), warning))
     reader = None
     for item in items:
         if item.stage is None or table_stage(item.stage).kind == TERMINAL:

@@ -182,7 +182,9 @@ def test_taxonomy_add_through_a_symlinked_parent_writes_nothing_outside(tmp_path
     root = _repo(tmp_path)
     secret = _plant(root)
     store = FsTaxonomyStore.open(root)
-    with pytest.raises(TcwError, match="parent term does not exist"):
+    # A symbolic link is never a term, so the parent is not found (TCW-111
+    # choice 9: exit 4).
+    with pytest.raises(TcwError, match="no such term"):
         store.add("Planted", slug="planted", parent="alpha/link")
     assert not (secret / "planted").exists()
 

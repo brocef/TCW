@@ -263,3 +263,62 @@ def test_a_rename_beyond_255_characters_moves_nothing(tcw, demo):
     refused = tcw(["work", "rename", path, "c" * (len(old_words) + 6)], demo)
     assert refused.code == 2 and "at most 255" in refused.err
     assert state_bytes(demo) == before
+
+
+# -- AC 12 and 16a: the folder and parent disagree ------------------------------------
+
+DISAGREE = ("sits in the folder of demo.work/{epic}, but its parent is {named}; "
+            "parent: decides (set it to demo.work/{epic}, or move the folder)")
+
+
+def test_a_nested_item_whose_parent_is_another_warns(tcw, demo):
+    item(demo, EPIC, title="Epic")
+    item(demo, "2026-10-05-other", title="Other")
+    item(demo, f"{EPIC}/{PART}", title="Part", parent="demo.work/2026-10-05-other")
+    item(demo, "2026-10-06-flat", title="Flat", parent=f"demo.work/{EPIC}")
+    checked = tcw(["validate"], demo)
+    assert (checked.code, findings(checked)) == (0, [
+        f"warning: docs/work/{EPIC}/{PART}/tcw-work-item.yaml: demo.work/{EPIC}/{PART} "
+        + DISAGREE.format(epic=EPIC, named="demo.work/2026-10-05-other")])
+
+
+def test_edit_parent_prints_the_warning(tcw, demo):
+    item(demo, EPIC, title="Epic")
+    item(demo, "2026-10-05-other", title="Other")
+    item(demo, f"{EPIC}/{PART}", title="Part", parent=f"demo.work/{EPIC}")
+    edited = tcw(["work", "edit", f"{EPIC}/{PART}", "--parent", "2026-10-05-other"], demo)
+    assert edited.code == 0, edited.err
+    assert DISAGREE.format(epic=EPIC, named="demo.work/2026-10-05-other") in edited.err
+    again = tcw(["work", "edit", f"{EPIC}/{PART}", "--parent", EPIC], demo)
+    assert "sits in the folder" not in again.err
+
+
+def test_a_parent_in_another_project_never_warns(tcw, tmp_path):
+    from tests.work.projects import connect, make_project, write_item
+    here, other = make_project(tmp_path, "p"), make_project(tmp_path, "q")
+    connect(here, other, "parent")
+    write_item(other, "2026-10-01-theirs", {"title": "Theirs", "stage": "spec"})
+    write_item(here, "2026-10-02-flat", {"title": "Flat", "stage": "spec",
+                                        "parent": "q.work/2026-10-01-theirs"})
+    checked = tcw(["validate"], here)
+    assert "sits in the folder" not in checked.out
+
+
+def test_the_merge_case_is_reported_and_mended_by_hand(tcw, demo):
+    """S-7: the epic renamed by hand, its part left behind in the old folder."""
+    import shutil
+    old, new = "2026-10-01-old-words", "2026-10-01-new-words"
+    item(demo, new, title="Epic")
+    part = item(demo, f"{old}/{PART}", title="Part", parent=f"demo.work/{old}")
+    checked = tcw(["validate"], demo)
+    assert checked.code == 1
+    found = findings(checked)
+    assert any(f.startswith(f"error: docs/work/{old}/tcw-work-item.yaml: is missing")
+               for f in found), found
+    assert any(f"demo.work/{old}" in f and PART in f and "parent" in f for f in found), found
+    assert tcw(["work", "show", f"{old}/{PART}"], demo).code == 0
+    shutil.move(str(part), str(store(demo, "work") / new / PART))
+    (store(demo, "work") / old).rmdir()
+    assert tcw(["work", "edit", f"{new}/{PART}", "--parent", new], demo).code == 0
+    checked = tcw(["validate"], demo)
+    assert (checked.code, findings(checked)) == (0, [])
