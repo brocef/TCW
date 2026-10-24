@@ -405,17 +405,22 @@ def references(ctx: WorkContext, changes: Changes) -> tuple[Changes, list[dict]]
 
 @contextmanager
 def reported(backend) -> Iterator[list[dict]]:
-    """The lines `backend` reports while one request runs, collected as the
-    answer's warnings rather than printed to the server's standard error,
-    which the person using the page never sees (TCW-114 Design 3.3). `where`
-    is the field a line names, or None."""
+    """The lines `backend` reports while one request runs that name a parent
+    or a blocker, collected as the answer's warnings rather than printed to
+    the server's standard error, which the person using the page never sees
+    (TCW-114 Design 3.3). Every other line, such as which files were
+    written, still goes where the backend reports it: it is not a problem
+    with the item, and the page would show it as one."""
     lines: list[dict] = []
     before = getattr(backend, "report", None)
 
     def collect(line: str) -> None:
-        where = ("parent" if "'s parent " in line else
-                 "blocked-by" if "'s blocker " in line else None)
-        lines.append({"severity": "warning", "where": where, "message": line})
+        where = ("parent" if "'s parent " in line or line.startswith("not nested: ")
+                 else "blocked-by" if "'s blocker " in line else None)
+        if where is None:
+            before(line)
+        else:
+            lines.append({"severity": "warning", "where": where, "message": line})
     if before is None:
         yield lines
         return

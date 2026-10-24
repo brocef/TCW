@@ -74,8 +74,8 @@ _REMOVED_PROCEDURES = {
                    f"text under `work.stages.{_SIDE_STAGE}.prompt`",
     "decompose": f"it is now part of the {_PLANNING_STAGE} stage prompt; bind "
                  f"replacement text under `work.stages.{_PLANNING_STAGE}.prompt`",
-    "delegation": "its rule is now fixed text in the work skill, and "
-                  "delegating to another project is `tcw work new --project`",
+    "delegation": "a part in another project is now made in that project, "
+                  "with `tcw -C <folder> work new \"<title>\" --parent <full id>`",
     "consolidate-plans": "it was deleted; move a planning document kept "
                          "outside TCW into an item with `tcw work new`",
 }

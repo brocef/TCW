@@ -57,7 +57,7 @@ def test_a_removed_procedure_id_is_a_problem_naming_the_known_ids(tmp_path):
 @pytest.mark.parametrize("pid, says", [
     ("post-mortem", "work.stages.postmortem.prompt"),
     ("decompose", "work.stages.plan.prompt"),
-    ("delegation", "tcw work new --project"),
+    ("delegation", 'tcw -C <folder> work new "<title>" --parent <full id>'),
     ("consolidate-plans", "tcw work new"),
 ])
 def test_a_removed_procedure_id_says_where_its_text_went(pid, says):

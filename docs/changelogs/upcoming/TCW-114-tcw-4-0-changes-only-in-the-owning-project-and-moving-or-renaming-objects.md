@@ -35,8 +35,11 @@ before_folder)`, returning the old and new identifiers. The files backend
 - `tcw validate` checks recorded Jira references offline, and `--remote`
   reports a ticket with both a Jira parent and a recorded one. Jira sites are
   compared by host, ignoring letter case. (TCW-114)
-- The web create and edit answers carry the backend's notes as warnings, and a
-  Jira-mode create accepts blockers in other projects. (TCW-114)
+- The web create and edit answers carry, as warnings, the backend's lines
+  about a parent or blocker: one Jira records rather than links, and a nested
+  folder not made under another project's parent. The backend's other lines,
+  such as which files it wrote, go to the server's standard error as before.
+  A Jira-mode create accepts blockers in other projects. (TCW-114)
 - The plan stage prompt's step 6, the `audit-backlog` procedure and
   `docs/lifecycle/abstraction.md` describe making a part in its own project
   and the `move` operation. (TCW-114)

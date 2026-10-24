@@ -425,3 +425,63 @@ def test_a_failed_adopt_hook_keeps_the_item_and_says_what_failed(adopting):
     problem = answer.json["problem"]
     assert problem.startswith(f"adopted {key} as tcw.work/{key}-adopt-me, but"), problem
     assert (served.root / "docs" / "work" / f"{key}-adopt-me").is_dir()
+
+
+# -- TCW-114 review round 1: only a reference line is a warning --------------------------------
+
+
+def test_a_plain_edit_answers_no_warnings(fs, two, capsys):
+    """What the backend reports about the files it wrote is not a validation
+    issue; it goes to the server's standard error, as the CLI prints it, and
+    the answer has no warnings (TCW-114 Design 3.3)."""
+    a, _ = two
+    capsys.readouterr()
+    answer = ok(patch(fs, a, {"priority": "high"}, {"priority": "medium"}))
+    assert "warnings" not in answer, answer
+    assert f"docs/work/{a}/" in capsys.readouterr().err
+
+
+def test_a_plain_create_answers_no_warnings(fs, capsys):
+    capsys.readouterr()
+    answer = fs.post("/api/work", {"title": "Plain", "properties": {"priority": "high"}})
+    assert answer.status == 201, answer.body
+    assert "warnings" not in answer.json, answer.json
+    assert "created " in capsys.readouterr().err
+
+
+def test_a_jira_create_answers_a_recorded_blocker_and_not_what_it_wrote(jira, monkeypatch):
+    """The sentence saying Jira shows no link for another project's blocker
+    is a warning; the line about the state file written beside it is not,
+    and goes where the backend reports otherwise. (The page edits no Jira
+    item's properties, so a create is the Jira write that can carry one.)"""
+    said: list[str] = []
+    jira.backend.report = said.append
+    recorded = ("tcw.work/TCW-3-t's blocker other.work/2026-01-01-x is not a ticket "
+                "on the site, so it is recorded in docs/work/TCW-3-t/tcw-work-item.yaml "
+                "and Jira shows no link for it")
+    create = jira.backend.create
+
+    def reporting(*args, **kwargs):
+        jira.backend.report(recorded)
+        jira.backend.report("wrote docs/work/TCW-3-t/tcw-work-item.yaml")
+        return create(*args, **kwargs)
+    monkeypatch.setattr(jira.backend, "create", reporting)
+    answer = jira.served.post("/api/work", {"title": "T", "properties": {
+        "blocked-by": ["other.work/2026-01-01-x"]}})
+    assert answer.status == 201, answer.body
+    messages = [(w["where"], w["message"]) for w in answer.json["warnings"]]
+    assert ("blocked-by", recorded) in messages
+    assert not any(m.startswith("wrote ") for _, m in messages), messages
+    assert said == ["wrote docs/work/TCW-3-t/tcw-work-item.yaml"]
+
+
+def test_nest_under_another_projects_parent_answers_why_it_is_not_nested(fs):
+    """The note that the folder is made at the top, not inside the parent's,
+    names the parent and answers the `nest` the person asked for, so it is a
+    warning on the parent; what was created is not."""
+    answer = fs.post("/api/work", {"title": "Part", "nest": True, "properties": {
+        "parent": "other.work/2026-01-01-x"}})
+    assert answer.status == 201, answer.body
+    messages = [(w["where"], w["message"]) for w in answer.json["warnings"]]
+    assert any(where == "parent" and m.startswith("not nested: ") for where, m in messages)
+    assert not any(m.startswith(("created ", "wrote ")) for _, m in messages), messages
