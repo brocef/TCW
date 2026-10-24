@@ -18,8 +18,9 @@ that checks it. References to a sibling's rule are written "TCW-1nn Design m";
 the merge procedure this item carries out. Every other bare number, such as
 "Design 3.2", "4.3 (b)" or "section 9", is a rule of this spec's own Design.
 File and line references are at `v4` commit `82cdb4f9` on 2026-10-24, before
-every child is completed (TCW-116 and TCW-117 were still being built); the
-plan re-finds each one by its words.
+every child is completed (TCW-116 and TCW-117 were still being built), and
+were checked again at `f41f91af` for the second revision (the only commit
+between them changes this spec); the plan re-finds each one by its words.
 
 Terms used throughout:
 
@@ -44,8 +45,9 @@ Terms used throughout:
   it keeps the files the ways back need (section 9), which must outlive any one
   session's scratch folder.
 - **M0** is the commit `origin/main` (GitHub's `main`) points to when the
-  release starts; **V** is the commit `v4` points to when it is merged; **T**
-  is the commit tagged `v4.0.0`.
+  release starts; **V** is the commit `v4` points to when it is merged; **A**
+  is the merge clone's `main` after the migration commit (4.4), the commit
+  the user accepts at gate 1; **T** is the commit tagged `v4.0.0`.
 - **"Run as CI runs it"** means, for the Python suite: in a fresh clone, a new
   virtual environment (a private Python installation in a folder),
   `pip install -e '.[dev]'`, then bare `pytest`, not `python -m pytest`
@@ -62,13 +64,18 @@ Terms used throughout:
   5.8, 6.2 (a)); a run that leaves any of it out is not one. Bare `pytest` and
   `python -m pytest` put different folders on Python's search path, which
   once made CI collect no tests while local runs passed (`pyproject.toml:36-44`).
-- **A go** is the user's explicit permission, in their own words, for one
-  named step. The dispatching session asks for it, quotes the user's words,
-  and records them with the date and time (UTC) in the item's folder before
-  the step runs. A go covers only the step and the commits it names; nothing
-  else stands in for it, including this repository's standing rule on
-  pushing releases (Design 2.4). The three gates of this release, (a), (b)
-  and (c), are in Design 10.
+- **A go** is the user's explicit permission, in their own words, for the
+  steps a gate names. The dispatching session asks for it, quotes the user's
+  words, and records them with the date and time (UTC) in
+  `docs/work/TCW-118-tcw-4-0-release/gates.md`, committed before the first
+  of those steps runs (Design 10). A go covers only the steps and the
+  commits it names; nothing else stands in for it, including this
+  repository's standing rule on pushing releases (Design 2.4). The three
+  gates of this release are gate 1 (acceptance), gate 2 (live writes) and
+  gate 3 (publishing), in that order (Design 10).
+- **The acceptance tarball** is the source archive `tcw_cli-4.0.0.tar.gz`
+  built from the merge clone's `main` after 4.4 (Design 4.5), the 4.0 the
+  user reviews and tests at gate 1.
 
 ## Capability changes
 
@@ -173,9 +180,12 @@ branches on 2026-10-24, and no `3.x`), while `release.yml` publishes whatever `v
    the two move together in this and every later release.
 6. Keep a stop and a way back ready at every step, and say which steps have
    none.
-7. Take no step that writes to the live Jira board, publishes, or changes
-   GitHub's `main` without the user's go for it (Design 10), and keep the 3.x
-   line a branch of its own.
+7. Let nothing leave this machine, other than pushes of `v4`, before the
+   user has reviewed and tested 4.0 and accepted it (gate 1); take no step
+   that writes to a live Jira site or installs 4.0 as this machine's shared
+   `tcw` without gate 2's go, and none that publishes or changes GitHub's
+   `main` without gate 3's (Design 10); and keep the 3.x line a branch of its
+   own.
 8. After publication: retire the other checkouts, answer the one GitHub issue
    4.0 settles, and complete TCW-118. The user's two setups (success
    criterion 2) and TCW-99 itself are the user's (Design 8.2, 8.4).
@@ -203,6 +213,10 @@ branches on 2026-10-24, and no `3.x`), while `release.yml` publishes whatever `v
 - **The cloud-session examples in `README.md`** (`:160`, `:218`): they are
   hooks a user writes in their own repository, not the plugin's install
   path, and stay as they are.
+- **A 3.x patch release that pins the 3.x plugin's install.** The Claude
+  marketplace reads `main` (Problem 4), so a 3.x plugin with a pinned
+  install could reach no one through it; this item cuts no 3.x release
+  (Notes, "Follow-ups", keeps it optional).
 - **GitHub issue #25** (a `tcw://` reference written as a Markdown link is
   reported missing). No TCW-99 child names it; it stays open, untouched.
 - **Naming the user's setups.** They are private; this repository is public.
@@ -214,19 +228,22 @@ branches on 2026-10-24, and no `3.x`), while `release.yml` publishes whatever `v
 
 | Phase | Steps | Where | Lifecycle `tcw` | What leaves this machine | Stage of TCW-118 |
 | --- | --- | --- | --- | --- | --- |
-| A. Ready on `v4` | 3.1-3.12 | `v4` worktree | 3.0.2 | `v4` pushed and its CI run; after gate (a), the live Jira scenario's tickets on the test project | implement |
-| B. Merge and migrate the files | 4.0-4.4 (Design 9.3 steps 0-4) | the merge clone | 3.0.2 (not run: rule 4.0) | the dry run reads the board | implement |
-| C. Switch the CLI, convert the tickets | 5.5-5.7 (steps 5-7) | primary checkout | 4.0 from 5.5 | ticket edits on the live board (gate (a)) | implement |
+| A. Ready on `v4` | 3.1-3.10 | `v4` worktree | 3.0.2 | `v4` pushed and its CI run | implement |
+| B. Merge, migrate the files, accept | 4.0-4.4 (Design 9.3 steps 0-4), 4.5, then gate 1 (4.6) | the merge clone | 3.0.2 (not run: rule 4.0) | the dry run reads the board | implement |
+| C. Live writes | gate 2 (5.0), 5.1-5.2, 5.5-5.7 (steps 5-7) | a scratch folder, then the primary checkout | 4.0 from 5.5 | the scenario's and the rehearsal's tickets on the test project, then ticket edits on the live board | implement |
 | Review | 5.8 | primary checkout | 4.0 | nothing | review |
-| D. Cut and check | 6.1-6.3 | primary checkout, a fresh clone | 4.0 | a branch, not `main`, for CI | qa |
-| E. Publish | 7.1-7.4 | primary checkout | 4.0 | the tag (gate (b)), then `3.x` and `main` (gate (c)) | qa |
-| F. After publication | 8.1-8.4 | this machine, GitHub | 4.0 | an issue reply | qa, then completed |
+| D. Cut and check | 6.1-6.3, then gate 3 asked (6.4) | primary checkout, a fresh clone | 4.0 | `v4` pushed again, at T, for CI | qa |
+| E. Publish | 7.1-7.4, under gate 3 | primary checkout | 4.0 | the tag, then `3.x` and `main` | qa |
+| F. After publication | 8.1-8.4 | this machine, GitHub | 4.0 | an issue reply; commits to `main` in TCW-118's and TCW-99's folders (gate 3) | qa, then completed |
 
 Each phase starts only when the previous one's last check has passed. Every
 step has a stop: a check that fails stops the release at that step, and
 section 9 says what undoes what was done so far. At each of the three gates
 of Design 10 the release stops until the user's go is recorded: agents may
-prepare everything up to a gate, and stop there.
+prepare everything up to a gate, and stop there. **Nothing leaves this
+machine before gate 1 except pushes of `v4`:** no write to any Jira site
+(the dry run of 4.2 only reads), no install of 4.0 as this machine's shared
+`tcw`, no push of any other branch or of a tag.
 
 ### 2. TCW-118's own lifecycle
 
@@ -237,6 +254,13 @@ Design 3.2.
 2.2. From rule 4.0 to the end of 5.7, no `tcw` command runs anywhere in this
 repository (Design 9.3 step 0), TCW-118's included. It stays at `implement`;
 the implement round records what each step did, written as files after 5.7.
+That stretch now holds gates 1 and 2, which wait on the user, so it lasts as
+long as the user's review and test of 4.0 takes. It cannot be shortened by
+letting lifecycle commands run during the wait: a command in this repository
+commits to the primary checkout's `main` or edits a ticket, after which 5.5's
+`git pull --ff-only` no longer applies and the dry run of 4.2 no longer lists
+the board as 5.6 finds it. The user's own testing at gate 1 runs outside
+this repository and off the `TCW` board (4.6).
 
 2.3. After 5.7 the 4.0 lifecycle `tcw` moves TCW-118 to `review` (5.8). The
 accepted review is the gate for phase D, which, with E and F, is TCW-118's
@@ -248,7 +272,13 @@ accepted review is the gate for phase D, which, with E and F, is TCW-118's
 2.4. Every move after `inbox` runs `docs/guide/examples/commit-item-after-move.sh`,
 which commits the item's folder on `main` in the primary checkout. Those
 commits land on top of the migrated `main` and are pushed with it (7.3) or
-afterwards; they never land between the merge and the migration.
+afterwards; they never land between the merge and the migration. So do the
+commits of `gates.md` (Design 10): the goes of gates 1 and 2 are committed
+on the merge clone's `main`, after the migration commit, and reach the
+primary checkout with it at 5.5; gate 3's is committed on the primary
+checkout's `main` after T. A push to `main` after 7.3 that touches only
+`docs/work/TCW-118-tcw-4-0-release/` and `docs/work/TCW-99-…/` (these
+commits, and the qa record) is covered by gate 3's go.
 
 Decided by the dispatching session, 2026-10-24 (replacing the decision of
 2026-10-22, which had this item push the tag without asking under the
@@ -258,22 +288,33 @@ run, "After then, I will review and test it myself to decide if I'm
 accepting the epic as a whole"; and TCW-99's ticket keeps the release's tag
 push among the outward actions that stay the user's. The standing rule was
 written for routine releases, not for one the user said they would test
-first. So this item prepares every step and carries them out, but three of
-them run only after the user's go, recorded in the item's folder with its
-date (Design 10): (a) before 5.6, the first write to the live Jira board;
-(b) before 7.1, after the user has reviewed and tested the merged 4.0
-themselves; (c) before 7.3, the push of `3.x` and `main`. The publishing
-steps stay inside this item's scope, as qa, carried out at the user's word.
-The user completes TCW-99; this item never moves the epic.
+first. So this item prepares every step and carries them out, but they
+pass three gates, each at the user's go, recorded in `gates.md` with its
+date (Design 10). That decision's order (live writes first, the user's test
+second) is replaced by the next one. The publishing steps stay inside this
+item's scope, as qa, carried out at the user's word. The user completes
+TCW-99; this item never moves the epic.
+
+Decided by the dispatching session, 2026-10-24 (second revision): the gates
+are reordered so that nothing leaves this machine before the user has
+accepted 4.0. Gate 1, acceptance, comes first, after the merge clone is
+built and checked and the acceptance tarball built from it (4.5, 4.6);
+gate 2, live writes, covers the live Jira scenario, the rehearsal of the
+ticket conversion on the test project, the install of 4.0 as this
+machine's shared `tcw` and the conversion of the live board (5.0-5.7);
+gate 3, publishing, is one go for the tag, the confirmation of the upload,
+and the pushes of `3.x` and `main` (6.4, 7.1-7.3). Reason: the user said
+"I will review and test it myself to decide if I'm accepting the epic as a
+whole"; if they decline, nothing has left the machine that needs undoing,
+whereas in the first revision's order the live board had been converted
+before they tested anything.
 
 ### 3. Phase A: ready on `v4`
 
 The steps run in this order: 3.1, the two code changes (3.2 and 3.9), 3.3,
-the combined review (3.4), 3.5, 3.6, 3.7, CI on `v4` (3.10), gate (a)
-(3.11), the live Jira scenario (3.12), and last the message to the user
-(3.8), just before 4.0. A fix that 3.4, 3.10 or 3.12 makes on `v4` sends the
-steps after it round again: CI runs on the new commit, and the scenario is
-run again if the fix touches `tcw/work/jira/` or anything the scenario runs.
+the combined review (3.4), 3.5, 3.6, 3.7, CI on `v4` (3.10), and last the
+message to the user (3.8), just before 4.0. A fix that 3.4 or 3.10 makes on
+`v4` sends the steps after it round again: CI runs on the new commit.
 
 3.1. **Every other child is completed.** `tcw work show` gives
 `stage: completed` for each of TCW-106 to TCW-117, and every agent working
@@ -332,7 +373,16 @@ the alternative, a warning, would not stop a commit and a tag.
   - that, from 4.0, the plugin installs the CLI of its own version
     (`tcw-cli==<the plugin's version>`), so a plugin update brings the
     matching CLI, and that the way to stay on 3.x is to keep the plugin below
-    4.0. One case is named: a 3.x plugin's own install still takes the
+    4.0, with, for each harness the notes name (Claude Code, Codex and Pi),
+    how a user does that in that harness, or a plain statement that the
+    harness offers no way. **This is an open item that blocks writing those
+    notes:** the plan finds each harness's way (from the harness's own
+    documentation or by trying it), and until it is found for all three the
+    point cannot be written and criterion 7 cannot pass. The Claude
+    marketplace reads `main` (Problem 4), so a Claude Code user whose
+    plugin updates itself gets the 4.0 plugin, and with it the 4.0 CLI, as
+    soon as `main` is pushed (7.3), unless that harness's way is used. One
+    case is named: a 3.x plugin's own install still takes the
     newest CLI when it installs on a machine for the first time (Problem 4),
     so on such a machine `pipx install --force 'tcw-cli<4'` is run once,
     after which the 3.x plugin leaves it alone;
@@ -399,11 +449,11 @@ refusal. At `82cdb4f9` that entry
 (`docs/release-notes/upcoming/TCW-115-tcw-4-0-the-tcw-project-command-group.md`)
 holds three of 6.2 (e)'s four statements: the bound (`:44-46`), the
 `.git`-only refusal (`:39-40`) and the `ref` that names nothing (`:51-52`).
-The fourth, that projects already on the machine are never moved by a
-manifest fetched during the run, is not there in those words; the nearest is
-"It never overwrites anything" (`:39`). The check stays: the preview decides,
-and TCW-118's entry adds the fourth sentence if the shipped text still lacks
-it.
+The third, that a project already on the machine is never fetched again and
+that a manifest fetched during the run that would place it elsewhere stops
+the run, is not there in those words; the nearest is "It never overwrites
+anything" (`:39`). The check stays: the preview decides, and TCW-118's
+entry adds that sentence if the shipped text still lacks it.
 
 3.7. **The user-wide personal file.** If `$XDG_CONFIG_HOME/tcw/config.yaml`
 or `~/.config/tcw/config.yaml` exists and holds `not_tags`, it is changed to
@@ -418,9 +468,11 @@ it that runs that `tcw` is refused until migrated. Decided by the
 dispatching session, 2026-10-22: TCW-116 already orders the switch at step 5,
 before publication, and keeping a second, 3.x `tcw` on this machine would put
 two programs under one name; the window is kept short instead, by running
-phases B to E in one sitting. The window now also holds gates (b) and (c),
-which wait on the user, and it ends only when the user migrates their setups
-(8.2); the message says so.
+phases C to E in one sitting once gate 2 is given. The window now holds
+gate 3, which waits on the user, and it ends only when the user migrates
+their setups (8.2); the message says so. It also says that rule 4.0 lasts
+through gates 1 and 2, however long the user's review and test takes (2.2),
+and that the shared `tcw` stays 3.0.2 until gate 2's go.
 
 3.9. **The plugin installs the CLI of its own version.** A change to the
 published install path, made in this item (Problem 4).
@@ -454,9 +506,15 @@ published install path, made in this item (Problem 4).
   the CLI is newer (`:94`): a pipx install made with a pinned version may not
   move on `pipx upgrade`, and the explicit form works either way.
 - (e) The passages that describe the floating install change with it: the
-  comment at `session_bootstrap.sh:85-92`; `skills/setup/references/install.md`
-  (`:3-8`, and step 3 at `:39-44`, "the installed CLI floats"); `README.md`
-  (`:77-86`); and the two capability records of "Capability changes". Codex
+  comment at `session_bootstrap.sh:85-92`, whose `:88` also advises
+  `pipx upgrade tcw-cli`; `skills/setup/references/install.md` (`:3-8`, and
+  step 3 at `:39-44`, which advises `pipx upgrade tcw-cli` and says "the
+  installed CLI floats"); `README.md` (`:77-86`); and the two capability
+  records of "Capability changes". Every `pipx upgrade` among them is
+  replaced with the pinned `pipx install --force tcw-cli==<version>`, for the
+  reason (d) gives. On 2026-10-24 `README.md` holds no `pipx upgrade`; it is
+  searched anyway (criterion 45), so that one added before the release is
+  found. Codex
   and Pi run the same script through the `setup` skill
   (`skills/setup/references/install.md:9-13`), so the pin reaches all three
   harnesses.
@@ -478,9 +536,11 @@ back by holding the plugin back. It changes the published install path, and
 is done in this item because 4.0 is the first release where an unpinned
 install breaks a user's project.
 
-3.10. **CI on `v4`, before gate (a).** This machine has no Python 3.11
+3.10. **CI on `v4`, before the merge.** This machine has no Python 3.11
 (`pyenv versions` lists 3.12.13 and 3.14.6), and a push to `v4` starts no CI
-(`.github/workflows/test.yml:32-34`), so 4.0 has never been tested on the
+(`.github/workflows/test.yml:32-34`: `push` runs only for `main`; a pull
+request from `v4` would start one only if labelled `run-ci`, `:35-40`,
+`:49-52`), so 4.0 has never been tested on the
 lowest Python it supports. After 3.1-3.7, with `v4` not moving:
 `git push origin v4` (the user allowed pushing `v4`; running a workflow on it
 is within that), then `git ls-remote origin v4` equals `git rev-parse v4`,
@@ -495,35 +555,10 @@ conclusion `success`. V, recorded at 4.0, is that commit or differs from it
 only in files under `docs/work/TCW-118-tcw-4-0-release/`
 (`git diff --name-only <the run's commit> V`); otherwise CI is run again.
 
-3.11. **Gate (a): the go for writing to live Jira.** The dispatching session
-asks the user for a go for two writes: 3.12's scenario on the Jira test
-project, and 5.6, the conversion of this repository's tickets on the live
-`TCW` board. It gives the user 3.10's result, and says what 5.6 will change
-(every ticket's `TCW Item` field, after the dry run of 4.2 has been read) and
-how it is undone (section 9). The go is recorded, with the user's words and
-its date and time, in the implement round, and committed on `v4` before 3.12
-runs and before 4.0 records V, so V's tree holds it. Without it the release
-stops here.
+3.11. **Moved.** The go for writing to Jira is gate 2, asked at 5.0, after
+the user has accepted 4.0 at gate 1 (Design 2.4, second revision).
 
-3.12. **The live Jira scenario, after gate (a)** (TCW-114's comment of
-2026-10-24: the scenario now expects `rename` to print `<old> -> <new>` and
-has run only against the fake). On `v4`'s tip, the code that merges, in a
-virtual environment of the `v4` worktree (`CLAUDE.md`, "Working in a git
-worktree"): `TCW_JIRA_LIVE=1` with `TCW_JIRA_EMAIL` and `TCW_JIRA_API_KEY`
-set, `pytest -s tests/work/jira/test_jira_scenario.py::test_the_scenario_live`.
-The test runs only when those three are set
-(`tests/work/jira/test_jira_scenario.py:51-55`) and works on the Jira project
-`TCWTEST` of the site its `LIVE` configuration names (`:19-40`), with the
-epic `TCWCLAIM-7` as its other parent (`:16`); it builds its own project in a
-scratch folder (`:60`) and touches no ticket of the `TCW` board. The user runs
-it, or an agent does under gate (a)'s go. Its output, with `date -u` first,
-is saved as `~/.tcw-4.0-release/live-scenario.txt`; it passes when pytest
-exits 0 and reports `1 passed`, not `skipped`, and its printed
-`validate --remote exited 0`. The `TCWTEST` board is assumed to be set up as
-the test's comment says ("exactly as `tcwtest-checklist.md` ends"), a file not
-in this repository: an assumption, checked by the run itself. A failure is a
-4.0 defect, fixed on `v4` as a 3.4 finding is, followed by 3.10 and 3.12
-again.
+3.12. **Moved.** The live Jira scenario is 5.1, under gate 2.
 
 ### 4. Phase B: merge and migrate the files (Design 9.3 steps 0-4)
 
@@ -581,18 +616,130 @@ files only and exits 0.
 then, in the clone, fast-forward `main` to it (`git checkout main` and
 `git merge --ff-only release-4.0.0`), so the merge and the migration reach
 `main` together. Nothing is pushed: `git ls-remote origin main` still prints
-M0.
+M0. The clone's `main` is now A (Terms), recorded in
+`~/.tcw-4.0-release/refs.txt`.
 
-### 5. Phase C: switch the CLI and convert the tickets (steps 5-7)
+4.5. **The acceptance tarball, checked.** In the merge clone at A,
+`python -m build` writes `dist/tcw_cli-4.0.0.tar.gz` (the version files
+already read `4.0.0`, Problem 1), copied to `~/.tcw-4.0-release/acceptance/`
+with its SHA-256 digest (a fingerprint of the file's bytes) beside it. A new
+virtual environment in that folder installs it, and the commands of 6.2 (f)
+and the comparison of 6.2 (g) are run with it, as they will be again on T:
+the new project, the work item, `tcw validate`, and the 3.0.2 project
+migrated with `--no-jira`. These are scratch projects in that folder, with
+no Jira backend. A failure is a 4.0 defect, handled as 4.6 says for a
+defect the user finds.
+
+4.6. **Gate 1: the user accepts 4.0.** The dispatching session tells the
+user where the acceptance tarball, its digest and its ready virtual
+environment are, that A is the commit it was built from, and what 3.4, 3.5,
+3.10, 4.3 and 4.5 found, and stops. The user reviews and tests 4.0
+themselves, in their own environment. What they do there is theirs; the
+release's own rules for the wait are that rule 4.0 still holds in this
+repository (2.2), so their testing runs outside it and off the `TCW` board,
+and that the release installs nothing as this machine's shared `tcw` before
+gate 2 (the user installing the tarball elsewhere is their choice, and is
+not 5.5). Their answer is recorded in `gates.md` (Design 10) and committed on
+the merge clone's `main`, and it has one of three outcomes:
+
+- **Accepted.** The go names A. The release goes on to gate 2 (5.0).
+- **Declined.** Nothing has left the machine that needs undoing: `v4`'s
+  pushes are the only things on GitHub, and the board was only read (4.2).
+  The release stops; the merge clone and `~/.tcw-4.0-release/` are kept
+  until the user says otherwise; rule 4.0 is lifted, and the agents and the
+  user are told so; and the items the user names go back to `implement` as
+  the user directs. TCW-118 stays at `implement`.
+- **A defect found.** It is fixed on `v4` in the child's area, by an agent
+  briefed as 3.4 briefs, which runs no `tcw` command (rule 4.0 still holds);
+  then 3.10 (CI on the new commit), and phase B again from 4.1 in a new
+  merge clone (the old one deleted, V and A recorded again), 4.5, and gate 1
+  is asked again. A go given for one A does not cover another.
+
+Decided by the dispatching session, 2026-10-24: the user tests from a
+tarball built from the merge clone, the commit that `main` will become apart
+from the cut and the item's own records, rather than from `v4`, because A
+holds the migrated records and V does not; the tarball is what PyPI would
+serve (6.2 (f)'s reason).
+
+### 5. Phase C: live writes, the CLI switched, the tickets converted (steps 5-7)
+
+5.0. **Gate 2: the go for the live writes.** After gate 1's go, the
+dispatching session asks for one go covering, in this order, 5.1 and 5.2 on
+the Jira test project, then 5.5 (4.0 installed as this machine's shared
+`tcw`, which refuses every 3.x project on the machine, 3.8) and 5.6-5.7 (the
+conversion of every ticket's `TCW Item` on the live `TCW` board). It gives
+the user the dry run of 4.2, what 5.6 will change, and how it is undone
+(section 9), and says plainly:
+
+- **TCW-116's way back for the tickets has never run against a live
+  board.** TCW-116 decided that the first live write rests on its in-process
+  fake (a stand-in for Jira inside the test run) and on the request `rename`
+  already sends, "not on a throwaway Jira project"
+  (`docs/work/TCW-116-…/spec/spec.md:2254-2257`), and its plan runs the way
+  back once, against the fake only (`docs/work/TCW-116-…/plan/plan.md:1762-1769`).
+  On 2026-10-24 the method it calls, `restore_tickets` (plan `:1151`), is
+  not yet on the branch `impl-116`, whose one commit adds the command
+  alone. That is why 5.2 exists.
+
+The go is recorded in `gates.md` and committed on the merge clone's `main`
+before 5.1 runs. If the user declines, or any step of gate 2 fails, the
+release stops there and section 9's row for the last step done is run: a
+decline, or a failure at 5.1 or 5.2, leaves only the test project's own
+tickets behind (row "5.1-5.2"); a failure at 5.5 runs row "5.5"; one at 5.6
+or 5.7 runs row "5.6-5.7". A failure at 5.1 or 5.2 is a 4.0 defect, fixed
+as 4.6 says, which means gate 1 is asked again before gate 2 is.
+
+5.1. **The live Jira scenario** (TCW-114's comment of 2026-10-24: the
+scenario now expects `rename` to print `<old> -> <new>` and has run only
+against the fake). In the merge clone at A, the code that is released, with
+the clone's own environment: `TCW_JIRA_LIVE=1` with `TCW_JIRA_EMAIL` and
+`TCW_JIRA_API_KEY` set,
+`.venv/bin/pytest -s tests/work/jira/test_jira_scenario.py::test_the_scenario_live`.
+The test runs only when those three are set
+(`tests/work/jira/test_jira_scenario.py:51-55`) and works on the Jira project
+`TCWTEST` of the site its `LIVE` configuration names (`:19-40`), with the
+epic `TCWCLAIM-7` as its other parent (`:16`); it builds its own project in a
+scratch folder (`:60`) and touches no ticket of the `TCW` board. The user runs
+it, or an agent does under gate 2's go. Its output, with `date -u` first,
+is saved as `~/.tcw-4.0-release/live-scenario.txt`; it passes when pytest
+exits 0 and reports `1 passed`, not `skipped`, and its printed
+`validate --remote exited 0`. The `TCWTEST` board is assumed to be set up as
+the test's comment says ("exactly as `tcwtest-checklist.md` ends"), a file not
+in this repository: an assumption, checked by the run itself.
+
+5.2. **The ticket conversion and its way back, rehearsed on the test
+project.** In a scratch folder under `~/.tcw-4.0-release/rehearsal/`,
+outside every repository: a virtual environment with `tcw-cli==3.0.2` from
+PyPI makes a 3.x project whose work backend is Jira on `TCWTEST` (the
+settings of 5.1's `LIVE`, in 3.x's form) and files two work items, moving
+one a stage. Then, with the merge clone's `.venv/bin/tcw` by its full path:
+`tcw migrate --dry-run`, then `tcw migrate`, each output saved, with
+`date -u` first, as `rehearsal-dry-run.txt` and `rehearsal-step6.txt`; then
+TCW-116's way-back script (Step 27's comment, 3.1) on those two files, with
+a client built for `TCWTEST` from that project's configuration. It passes
+when the migration converts both tickets' `TCW Item`, and after the way
+back each ticket's `TCW Item` reads as the 3.x value the dry run listed and
+3.0.2's `tcw work list` lists both items with no warning. The two tickets
+are then moved to `Won't Do`. Decided by the dispatching session,
+2026-10-24: TCW-116's own acceptance rests on the fake, which this item does
+not reopen; but the release is the first time the way back would be run
+for real, against the one board this repository has, so it is run once
+first where a failure costs nothing. Assumption, checked by the run: the
+`TCWTEST` project accepts the 3.x configuration's fields as it accepts
+5.1's.
+
+5.3, 5.4. Not used: the numbers 5.5-5.7 follow TCW-116's steps 5-7.
 
 5.5. **(Step 5)** In the primary checkout, which is on `main` with no changes
 and at M0: `git pull --ff-only <merge clone folder> main`, then
 `pip install -e '.[dev]'` again, since 4.0 may change its dependencies. The
-lifecycle `tcw` is now 4.0: `tcw --version` prints `tcw 4.0.0`. An untracked
-root `tcw-config.local.yaml`, if any, is still 3.x; 5.6 converts it.
+lifecycle `tcw` is now 4.0: `tcw --version` prints `tcw 4.0.0`; that output,
+after a first line from `date -u` taken before the `pip install`, is saved as
+`~/.tcw-4.0-release/install.txt`. An untracked root `tcw-config.local.yaml`,
+if any, is still 3.x; 5.6 converts it.
 
-5.6. **(Step 6)** The first write to the live Jira board, run only under
-gate (a)'s go (3.11): `tcw migrate` in the primary checkout with the
+5.6. **(Step 6)** The first write to the live `TCW` board, run only under
+gate 2's go (5.0), after 5.1 and 5.2 have passed: `tcw migrate` in the primary checkout with the
 credentials set. It reads its Jira settings from
 `.tcw/tcw-config.yaml`'s `work.jira` (TCW-116 Design 5.1), converts the
 personal file and then every ticket's `TCW Item`. Its whole output is saved as
@@ -628,17 +775,30 @@ tags that commit, T, locally. Nothing is pushed.
   folder; the suite as CI runs it (Terms: every `TCW_` variable unset,
   scratch `HOME` and XDG folders) with Python 3.14; and `pnpm check:build`.
   Both exit 0.
-- (b) **The suite in CI itself, before the tag.** T is pushed to a branch,
-  never `main`: `git push origin T:refs/heads/release-4.0.0`; then
-  `gh workflow run test.yml --ref release-4.0.0` (the workflow accepts a
-  manual start, `test.yml:42`; a branch push alone starts nothing,
-  `test.yml:32-33`). The run's commit is T, and its three jobs, `pytest` on
-  3.11, `pytest` on 3.14 and `web-build`, all succeed. Decided by the
-  dispatching session, 2026-10-22: this machine has no Python 3.11
-  (`pyenv versions` lists 3.12.13 and 3.14.6), and the release's gate is this
-  same workflow (`release.yml:10-14`), so running it before the tag is the
-  only way to know the gate will open before the tag is on GitHub. A branch
-  other than `main` is not what the plugin marketplace reads (Problem 4).
+- (b) **The suite in CI itself, before the tag, on `v4` at T.** T contains
+  V (the merge commit's second parent), so moving GitHub's `v4` to T is a
+  fast-forward. First, the commit `git ls-remote origin v4` prints is an
+  ancestor of T (`git merge-base --is-ancestor <it> T`); if not, someone
+  pushed to `v4` during the release, and the session stops and brings it to
+  the user. Then `git push origin T:refs/heads/v4`, and
+  `gh workflow run test.yml --ref v4`. That push starts no run by itself:
+  `test.yml`'s `push` trigger names only `main` (`test.yml:32-34`), and the
+  `workflow_dispatch` start (`:42`) is what runs it, whatever paths the
+  commit touches, since GitHub applies a `paths-ignore` filter only to push
+  and pull request events (its documentation; the comment at `:19-24` says
+  the same of `workflow_call`). (A pull request from `v4` labelled `run-ci`
+  would also start a run on the push, `:35-40`, `:49-52`; the plan checks
+  with `gh pr list --head v4` whether one is open.) The run's commit is T,
+  and its three jobs, `pytest` on 3.11, `pytest` on 3.14 and `web-build`,
+  all succeed. Decided by the dispatching session, 2026-10-22: this machine
+  has no Python 3.11 (`pyenv versions` lists 3.12.13 and 3.14.6), and the
+  release's gate is this same workflow (`release.yml:10-14`), so running it
+  before the tag is the only way to know the gate will open before the tag
+  is on GitHub. Decided by the dispatching session, 2026-10-24 (second
+  revision): on `v4` rather than a new `release-4.0.0` branch, because the
+  user's permission covers pushing `v4` only; `v4` is not what the plugin
+  marketplace reads (Problem 4). Should a separate branch ever be truly
+  needed, pushing it falls under gate 3.
 - (c) **`tcw validate` with the 4.0 CLI.** In the primary checkout at T,
   `tcw validate` and `tcw validate --remote` exit 0.
 - (d) **The five version files agree.** Each of the five files of `CLAUDE.md`
@@ -659,8 +819,18 @@ tags that commit, T, locally. Nothing is pushed.
     placed only directly beside that project, never at or above the home
     folder, and never inside a hidden folder below it;
   - a folder holding only `.git` is refused;
-  - projects already on the machine are never moved by a manifest fetched
-    during the run;
+  - a project already on the machine is never fetched again, and a
+    manifest fetched during the run that would place it elsewhere stops the
+    run (TCW-115 Design 7.4, `docs/work/TCW-115-…/spec/spec.md:663-706`;
+    in the code, `_changed_answer` in `tcw/provision.py:405-426`, called
+    after each round's clones at `:547-551`, refuses with
+    `<id>: was at <folder> when this run started, but …`, and the run exits
+    1; tested by `test_ac35_a_kept_answer_that_changes_stops_the_run`,
+    `tests/test_project_provision.py:782`). Decided by the dispatching
+    session, 2026-10-24 (second revision): this replaces the first
+    revision's wording, "never moved by a manifest fetched during the run",
+    which said less than the code does and could be read as a promise that
+    nothing stops;
   - a store whose `ref` names no branch, tag or commit now fails rather
     than being read as a file.
 
@@ -711,26 +881,46 @@ tags that commit, T, locally. Nothing is pushed.
 6.3. **A failed check.** No tag is pushed. The fix is a new commit on `main`
 in the primary checkout (in the child's area, briefed as 3.4 does); while the
 tag is not on GitHub, it is moved to the new commit with
-`git tag -f v4.0.0 HEAD`, the branch `release-4.0.0` is pushed again, and
-every check of 6.2 runs again on the new T, not only the one that failed.
+`git tag -f v4.0.0 HEAD`, `v4` is pushed again at the new T (a fast-forward,
+as in 6.2 (b)), and every check of 6.2 runs again on the new T, not only the
+one that failed.
 
-6.4. **Gate (b): the user reviews and tests 4.0.** Once every check of 6.2 has
-passed on T, the dispatching session tells the user where the merged 4.0 is
-(the primary checkout at T, and the tarball and its virtual environment of
-6.2 (f)), gives them 6.2's results, and stops. The user reviews and tests it
-themselves. Their go for 7.1 names T, and is recorded with its date and time
-in TCW-118's qa round (`qa/round-1.md`, which qa writes as it goes and ends
-with the verdict) and committed before 7.1. A defect the user finds is fixed
-as 6.3 says, and the go is asked again for the new T; a go given for one T
-does not cover another.
+6.4. **Gate 3 asked: the go for publishing.** Once every check of 6.2 has
+passed on T, the dispatching session gives the user 6.2's results and
+`git diff --name-only A T`, the files changed since the commit they
+accepted at gate 1. That list is expected to hold only files under
+`docs/work/TCW-118-tcw-4-0-release/` (the lifecycle hook's commits and
+`gates.md`), `docs/changelogs/` and `docs/release-notes/` (the cut). Any
+other file is a fix made after gate 1 (6.3); each is named to the user, who
+decides whether to test again, and the go covers it only if the user's
+words say so. It also tells the user two things in plain words:
 
-### 7. Phase E: publish
+- **A plugin that updates itself gets 4.0 when `main` is pushed** (7.3),
+  pin or no pin: the Claude marketplace reads `main` (Problem 4), and from
+  4.0 the plugin installs the CLI of its own version (3.9), so such a user's
+  next session installs `tcw-cli==4.0.0`, and their 3.x projects are
+  refused until migrated. Only a user who has kept the plugin below 4.0, by
+  the harness's own way that the release notes name (3.3), stays on 3.x.
+- **The one go covers, with no wait between them:** pushing the tag (7.1),
+  which is the publish; confirming the upload (7.2); and, as soon as 7.2
+  passes, checking that GitHub's `main` is M0 and pushing `3.x` and `main`
+  (7.3). It also covers every later push to `main` that touches only
+  `docs/work/TCW-118-tcw-4-0-release/` and `docs/work/TCW-99-…/` (the
+  lifecycle hook's commits and the qa record, 2.4).
 
-7.1. **Push the tag alone, after gate (b):** `git push origin v4.0.0`. This
-is the publish: `release.yml` runs the suite and, only if it passes, builds and
-uploads (`release.yml:5-7`, `:13-14`, `:45-50`). It is pushed only once the
-go of 6.4 for this T is recorded. `main` is not pushed yet. Right before and
-right after the push, `date -u` and `git ls-remote origin main` are saved to
+The go names T, is recorded in `gates.md`, and is committed on the primary
+checkout's `main` before 7.1. A go given for one T does not cover another:
+after a fix under 6.3, it is asked again. If the user declines, nothing is
+pushed; the release waits at this point, with section 9's row "6.1-6.4"
+describing what can be undone.
+
+### 7. Phase E: publish, under gate 3
+
+7.1. **Push the tag alone:** `git push origin v4.0.0`. This is the publish:
+`release.yml` runs the suite and, only if it passes, builds and uploads
+(`release.yml:5-7`, `:13-14`, `:45-50`). It is pushed only once gate 3's go
+for this T is committed. `main` is not pushed yet. Right before and right
+after the push, `date -u` and `git ls-remote origin main` are saved to
 `~/.tcw-4.0-release/pushes.txt`; both print M0.
 
 7.2. **Confirm the upload landed.** `gh run watch` on the release run for
@@ -739,10 +929,8 @@ right after the push, `date -u` and `git ls-remote origin main` are saved to
 `info.version` `4.0.0`. The versioned address is used because the package's
 top-level address keeps reporting the previous version for a while.
 
-7.3. **Gate (c), then `3.x`, then `main`.** After 7.2, the dispatching
-session gives the user 7.2's results and asks for a go to push `3.x` and
-`main`; the go is recorded with its date and time in the qa round and
-committed before anything below is pushed. Then:
+7.3. **Then, at once, `3.x` and `main`.** As soon as 7.2 passes, under the
+same go and with no further question to the user:
 
 - first, `date -u` and `git ls-remote origin main` are saved to
   `~/.tcw-4.0-release/pushes.txt`, and the hash must equal M0. If it does
@@ -757,16 +945,18 @@ committed before anything below is pushed. Then:
 
 `origin/main` then contains T, the plugin marketplace reads the 4.0 plugin,
 and a session that installs the CLI because the plugin changed finds 4.0.0
-on PyPI (Problem 4). Then the branch `release-4.0.0` is deleted from GitHub
-(`git push origin --delete release-4.0.0`). Decided by the dispatching
-session, 2026-10-22: the tag first and `main` after PyPI has the release,
-rather than `git push origin main --tags` (`docs/releasing.md:12`), because
-the usual order lets the plugin reach users before the CLI does; the cost is
-a while in which PyPI has 4.0.0 and the marketplace still has 3.0.2, as long
-as gate (c) takes. In it nothing installs a mismatched CLI that would not be
-installed anyway: a 3.0.2 plugin installing on a machine for the first time
-takes 4.0.0 from 7.2 on, before and after `main` is pushed (Problem 4; the
-release notes name the one command that fixes it).
+on PyPI (Problem 4). Decided by the dispatching session, 2026-10-22: the tag
+first and `main` after PyPI has the release, rather than
+`git push origin main --tags` (`docs/releasing.md:12`), because the usual
+order lets the plugin reach users before the CLI does. Decided by the
+dispatching session, 2026-10-24 (second revision): one go for 7.1 to 7.3,
+with no wait between them, replacing the first revision's separate go for
+the tag and for `main`. Reason: the user's decision to publish is made
+once, at gate 3, and a wait between the upload and `main` only lengthens
+the stretch in which PyPI has 4.0.0 and the marketplace still has 3.0.2,
+in which a 3.0.2 plugin installing on a machine for the first time already
+takes 4.0.0 (Problem 4; the release notes name the one command that fixes
+it).
 
 7.4. **If the release run fails:**
 
@@ -777,7 +967,8 @@ release notes name the one command that fixes it).
   this unlikely, since it ran the same workflow on the same commit.
 - (b) `publish` fails before uploading (for example a Trusted Publishing
   mismatch, `docs/releasing.md:20-27`): the configuration is corrected and
-  the job re-run on the same tag.
+  the job re-run on the same tag, under gate 3's go, since it publishes the
+  same T; 7.3 follows as soon as it passes.
 - (c) anything fails after the upload: 4.0.0 is spent; the fix ships as
   4.0.1 (`docs/releasing.md:29-31`).
 
@@ -818,8 +1009,10 @@ exact text, and only then is it posted (`gh issue comment 24`) and the issue
 closed. Nothing is posted to an issue without the user approving the exact
 words (`CLAUDE.md`).
 
-8.4. **Completing.** TCW-118's qa round records the QA plan's results and the
-three gates' goes, then the move to `completed`, which runs `tcw validate`,
+8.4. **Completing.** TCW-118's qa findings, a comment on its Jira ticket
+(this project keeps qa there), record the QA plan's results and point to
+`gates.md` for the three gates' goes; then the move to `completed`, which
+runs `tcw validate`,
 after publication (7.2) and issue #24's answer (8.3), posted only with text
 the user approved. Before that move, a comment on TCW-99 gives success
 criteria 1 and 3 with their evidence (3.5's output, 6.2 (g)'s comparison)
@@ -833,31 +1026,44 @@ handoff of 2026-10-22.
 
 | After | What has left the machine | The way back |
 | --- | --- | --- |
-| Phase A | `v4` and its CI run; after 3.12, the scenario's tickets on the `TCWTEST` project | Ordinary commits on `v4`. The scenario's tickets are its own, in a test project, and it moves the item it files to `Won't Do` itself (the fake run checks that it does, `tests/work/jira/test_jira_scenario.py:48`); nothing on the `TCW` board was touched. |
+| Phase A | `v4` and its CI run | Ordinary commits on `v4`. Nothing on any Jira board was touched. |
 | 4.1-4.3 | the dry run read the board | Delete the merge clone. |
-| 4.4 | nothing | Delete the merge clone; the primary checkout is untouched. |
+| 4.4-4.6 (gate 1 declined, or a defect found) | nothing | Delete the merge clone and the acceptance folder when the user says so; the primary checkout and the board are untouched (4.6). |
+| 5.1-5.2 (gate 2 declined, or the scenario or the rehearsal failed) | tickets on the `TCWTEST` project only | The scenario moves the item it files to `Won't Do` itself (the fake run checks that it does, `tests/work/jira/test_jira_scenario.py:48`); the rehearsal's two tickets are moved to `Won't Do` by hand if the run stopped before doing it. Nothing on the `TCW` board was touched, and this machine's `tcw` is still 3.0.2. |
 | 5.5 | nothing | In the primary checkout, `git reset --keep M0` (the commits are on no other machine) and `pip install -e '.[dev]'` again: the lifecycle `tcw` is 3.0.2. |
-| 5.6-5.7 | ticket edits | The files as for 5.5. The tickets: the way-back script of TCW-116's Step 27 reads the `C17` lines of `tcw116-step6.txt` into pairs, stops on any key found in only one of it and `tcw116-dry-run.txt` until a person has read it, and calls the Jira backend's restore method with the pairs the other way round and a Jira client built by hand from `.tcw/tcw-config.yaml` only on the day it is needed (TCW-116 Design 5.4, its handoffs). It puts every 3.x value back and edits no other field. |
-| 6.1-6.3 | the branch `release-4.0.0` | Delete the local tag (`git tag -d v4.0.0`) and the branch on GitHub; then as for 5.6. |
+| 5.6-5.7 | ticket edits on the `TCW` board | The files as for 5.5. The tickets: the way-back script of TCW-116's Step 27, rehearsed at 5.2, reads the `C17` lines of `tcw116-step6.txt` into pairs, stops on any key found in only one of it and `tcw116-dry-run.txt` until a person has read it, and calls the Jira backend's restore method with the pairs the other way round and a Jira client built by hand from `.tcw/tcw-config.yaml` only on the day it is needed (TCW-116 Design 5.4, its handoffs). It puts every 3.x value back and edits no other field. |
+| 6.1-6.4 (gate 3 declined, or a check failed) | `v4` at T | Delete the local tag (`git tag -d v4.0.0`); `v4` at T is harmless to leave, since nothing reads it; then as for 5.6, if the release is abandoned. |
 | 7.1 | the tag | 7.4. Withdrawing 4.0 entirely means the user deleting the tag on GitHub; nothing was published if 7.2 failed. |
 | 7.2-7.3 | the release on PyPI, `3.x`, `main` | None that unpublishes. The branch `3.x` is harmless to leave, and deleting it on GitHub undoes it. The fix is 4.0.1. Hiding 4.0.0 from installers (PyPI's "yank") is done only on pypi.org, logged in as the user, with their two-factor login. `main` is reverted with new commits (the migration and then the merge), never rewritten. |
 
 ### 10. What the user does
 
-- **Gives three goes**, each recorded with its date and time in the item's
-  folder before its step runs; agents prepare everything up to each gate and
-  stop there (Decided by the dispatching session, 2026-10-24, Design 2.4):
-  - **(a)** before 5.6, the first write to the live Jira board; the same go
-    covers 3.12's live scenario on the test project (3.11; recorded in the
-    implement round);
-  - **(b)** before 7.1, the tag's push, which is the publish, after the user
-    has reviewed and tested the merged 4.0 themselves (6.4; recorded in the
-    qa round, naming T);
-  - **(c)** before 7.3, the push of `3.x` and `main` (7.3; recorded in the qa
-    round).
+- **Gives three goes, in this order**; agents prepare everything up to each
+  gate and stop there (Decided by the dispatching session, 2026-10-24,
+  second revision, Design 2.4):
+  - **Gate 1, acceptance** (4.6): after reviewing and testing 4.0 from the
+    acceptance tarball, the user accepts commit A, declines, or names a
+    defect. Before it, nothing leaves the machine but pushes of `v4`.
+  - **Gate 2, live writes** (5.0): the live Jira scenario and the rehearsal
+    on the test project (5.1, 5.2), 4.0 installed as this machine's shared
+    `tcw` (5.5), and the conversion of the `TCW` board (5.6-5.7).
+  - **Gate 3, publishing** (6.4): one go, naming T, for the tag's push, the
+    confirmation of the upload, then at once the pushes of `3.x` and `main`
+    (7.1-7.3), and the later pushes to `main` that touch only TCW-118's and
+    TCW-99's folders.
+
+  **Where the goes are recorded.** Each answer, accepted or not, is written
+  as it is given to `~/.tcw-4.0-release/gates.md` (so that it survives a
+  merge clone being deleted) and copied, by the commit that records it, to
+  `docs/work/TCW-118-tcw-4-0-release/gates.md`, committed before the first
+  step it covers: gates 1 and 2 on the merge clone's `main`, gate 3 on the
+  primary checkout's `main`. Each entry gives the gate, the commit it names
+  (A for gate 1 and 2, T for gate 3), the date and time (UTC), and the
+  user's words quoted exactly. The qa findings, on TCW-118's Jira ticket,
+  point to that file rather than repeating it.
 - **For PyPI: no login.** CI publishes with Trusted Publishing, which needs no
   password, token or login (`release.yml:16-21`, `docs/releasing.md:15-19`);
-  the user's part is gate (b).
+  the user's part is gate 3.
 - **For the plugins: nothing.** No marketplace needs a separate publish: the
   Claude marketplace is `.claude-plugin/marketplace.json` in this repository,
   read from `main`; Codex reads `.agents/plugins/marketplace.json` from the
@@ -866,7 +1072,8 @@ handoff of 2026-10-22.
   registry, so there is no npm step and no two-factor login.
 - **Approve** the exact text of the reply to issue #24 (8.3).
 - **Migrate, or let an agent migrate,** their two setups, recording it on
-  TCW-99 (8.2), and run no `tcw` command during 4.0-5.7 (3.8).
+  TCW-99 (8.2), and run no `tcw` command in this repository during
+  4.0-5.7, which spans gates 1 and 2 (2.2, 3.8).
 - **Complete TCW-99**, when they accept the epic as a whole (8.4).
 - **Decide** only if 7.4 (a) happens (move the tag or cut 4.0.1), if 3.4's
   second round ends `NOT DONE`, or if 4.0 must ever be hidden from installers
@@ -901,16 +1108,19 @@ the children's specs, which 3.5 checks.
 - **UC-5 (a shared Jira project).** The dry run lists only tickets in the
   `TCW` project (4.2), and the conversion edits only this project's tickets'
   `TCW Item` (TCW-116 Design 5).
-- **S-1 (who decides).** The user is present and decides three steps: the
-  goes of gates (a), (b) and (c) (Design 10). An agent that reaches a gate
-  stops; nothing stands in for the go.
+- **S-1 (who decides).** The user is present and gives three goes, in
+  order: gate 1, acceptance; gate 2, live writes; gate 3, publishing
+  (Design 10). An agent that reaches a gate stops; nothing stands in for the
+  go.
 - **S-2 (harness).** The plugin check runs under Claude (6.2 (h)); Codex and
   Pi read the same skills from the same release, checked by the manifests
   test, and install the CLI by the same script through the `setup` skill, so
   the pin of 3.9 holds in all three. Nothing required of a user is carried by
-  a Claude-only feature.
-- **S-3 (backend).** The files store is exercised by 6.2 (f)'s new project,
-  Jira by 4.2 and 5.6.
+  a Claude-only feature. How a user keeps the plugin below 4.0 differs by
+  harness, and the plan finds it for each of the three before the release
+  notes are written (3.3).
+- **S-3 (backend).** The files store is exercised by 4.5's and 6.2 (f)'s
+  new projects, Jira by 4.2, 5.1, 5.2 and 5.6.
 - **S-4 (copies of a checkout).** The merge clone is a clone, not a worktree
   (4.1); other worktrees are removed or migrated (8.1).
 - **S-6 (unattended runs).** CI publishes on the tag (7.1); automation that
@@ -918,8 +1128,10 @@ the children's specs, which 3.5 checks.
 - **S-7 (several people at once).** Rule 4.0 stops every agent and session
   while the format changes underneath them.
 - **S-8 (partial failure).** A stopped `tcw migrate` is run again to finish
-  (5.6); a failed check stops the release before anything is published
-  (6.3); a failed release run is handled by 7.4.
+  (5.6); a declined or failed gate leaves only what section 9 lists for it,
+  and before gate 1 nothing outward but `v4` (4.6, 5.0); a failed check stops
+  the release before anything is published (6.3); a failed release run is
+  handled by 7.4.
 - **S-9 (upgrades).** The plugin and CLI are released together at one
   version, and ordered so the CLI reaches PyPI before the plugin reaches
   `main` (7.3). From 4.0 the plugin installs the CLI of its own version
@@ -932,7 +1144,7 @@ the children's specs, which 3.5 checks.
 The checklist of `docs/use-cases.md`: 1 (where it looks) — no lookup changes;
 2 (whose things) — only this repository, and the user's setups only at the
 user's word (8.2); 3 (reading across projects) — no change; 4 (backends) —
-S-3 above; 5 (who decides) — the user gives the three goes, and decides 7.4 (a), 8.2,
+S-3 above; 5 (who decides) — the user gives the three goes, in order, and decides 7.4 (a), 8.2,
 8.3, a `NOT DONE` second review, and TCW-99's completion (10); 6 (harness) — S-2 above; 7 (stopping halfway)
 — section 9 and 7.4; 8 (single project) — 6.2 (g); 9 (older and newer TCW) —
 S-9 above and Problem 5; 10 (testing the setup claimed) — the real repository,
@@ -963,7 +1175,9 @@ Phase A
    that a relative bump is refused while the current version has no tag.
 7. `docs/release-notes/upcoming/TCW-118-tcw-4-0-release.md` exists, with a
    leading paragraph and an `## Upgrading` section holding the six points
-   of 3.3; `docs/changelogs/upcoming/TCW-118-tcw-4-0-release.md` has the
+   of 3.3, the fifth naming, for each of Claude Code, Codex and Pi, how a
+   user keeps the plugin below 4.0, or that the harness offers no way;
+   `docs/changelogs/upcoming/TCW-118-tcw-4-0-release.md` has the
    entries of 3.3 under `## Changed`, `## Removed` and `## Internal`. No
    other item's entry file is changed by this item (`git log` of
    `docs/*/upcoming/` shows TCW-118's commits touching only its own files).
@@ -982,7 +1196,10 @@ Phase A
     line changed).
 43. (3.9 (a)-(c), (f)) `tests/test_session_bootstrap.py` has tests in which,
     with a fixture plugin whose `tcw/__init__.py` reads
-    `__version__ = "X.Y.Z"`: an install calls the stub `pipx` with exactly
+    `__version__ = "X.Y.Z"` and which holds no `scripts/check_versions.sh`,
+    so that the version check on exit (`session_bootstrap.sh:81`) prints
+    nothing, as the fixture of `_clone` (`:31-36`) does for the one-line
+    assertion at `:198`: an install calls the stub `pipx` with exactly
     `install --force tcw-cli==X.Y.Z` and then writes the sentinel; a failed
     install exits 0, prints exactly one line, containing
     `pipx install tcw-cli==X.Y.Z`, leaves the sentinel's bytes unchanged, and
@@ -992,9 +1209,11 @@ Phase A
 44. (3.9 (d)) `tests/test_check_versions.py`: when the CLI is older than the
     skills, the advice contains `pipx install --force tcw-cli==<skills>`, and
     `grep -n 'pipx upgrade' scripts/check_versions.sh` prints nothing.
-45. (3.9 (e)) `grep -rn 'floats\|newest release' scripts/session_bootstrap.sh
+45. (3.9 (e)) `grep -rn 'floats\|newest release\|pipx upgrade' scripts/session_bootstrap.sh
     skills/setup/references/install.md README.md docs/capabilities/plugin/bootstrap-the-cli`
-    prints nothing; `docs/capabilities/cli/install-from-pypi/description.md`
+    prints nothing (on 2026-10-24 it finds `pipx upgrade` at
+    `session_bootstrap.sh:88` and `install.md:39`, each corrected by this
+    item); `docs/capabilities/cli/install-from-pypi/description.md`
     and `docs/capabilities/plugin/bootstrap-the-cli/description.md` say the
     plugin installs `tcw-cli` at the plugin's own version; and
     `docs/work/TCW-118-tcw-4-0-release/capabilities.yaml` lists exactly
@@ -1004,15 +1223,17 @@ Phase A
     `pytest (3.11)`, `pytest (3.14)` and `web-build` each with conclusion
     `success`; and `git diff --name-only <that headSha> V` lists only files
     under `docs/work/TCW-118-tcw-4-0-release/`.
-47. (3.11, gate (a)) The implement round holds the user's go for 3.12 and
-    5.6, in their words, with a date and time; `git show V:<that round>`
-    contains it; and that time is earlier than the `date -u` line at the top
-    of `~/.tcw-4.0-release/live-scenario.txt` and of
-    `~/.tcw-4.0-release/tcw116-step6.txt`.
-48. (3.12) `~/.tcw-4.0-release/live-scenario.txt` shows
+47. (4.6, gate 1) `docs/work/TCW-118-tcw-4-0-release/gates.md` on `main`
+    holds gate 1's go: the user's words quoted, a date and time (UTC), and
+    the commit A it names, equal to the merge clone's `main` after 4.4 (the
+    one recorded in `refs.txt`). That time is earlier than the `date -u`
+    line at the top of each of `~/.tcw-4.0-release/live-scenario.txt`, the
+    rehearsal's two files (5.2), `install.txt`, `tcw116-step6.txt` and
+    `pushes.txt`. A gate 1 answer that was a decline or a defect is in the
+    file too, with what followed (4.6).
+48. (5.1) `~/.tcw-4.0-release/live-scenario.txt` shows
     `test_the_scenario_live` passed (`1 passed`, not `skipped`), and its
-    printed `validate --remote exited 0`, on a commit that 3.10's run also
-    covers (the rule of 46).
+    printed `validate --remote exited 0`, run in the merge clone at A.
 49. (3.5, Known gaps) The implement round has one line for each row of
     TCW-117 Design 6.4's table, giving the gap's state in
     `docs/use-cases.md` at V (gone, or the item it names), and every line
@@ -1021,7 +1242,7 @@ Phase A
 Phase B
 
 12. The implement round records when the messages of 4.0 and 3.8 were sent,
-    and to whom; and `~/.tcw-4.0-release/refs.txt` holds M0 and V.
+    and to whom; and `~/.tcw-4.0-release/refs.txt` holds M0, V and A.
 13. In the merge clone, `.git` is a folder, the clone's folder is outside
     `/Users/brian/Projects/TCW`, and the commit after M0 on
     `release-4.0.0` is a merge whose parents are M0 and V.
@@ -1042,9 +1263,24 @@ Phase B
 18. The private-name search of `git diff M0` in the clone prints nothing.
 19. After 4.4, the clone's `main` is one commit after the merge commit, and
     `git ls-remote origin main` prints M0.
+54. (4.5) `~/.tcw-4.0-release/acceptance/` holds `tcw_cli-4.0.0.tar.gz`
+    and its SHA-256 digest; the commands of 6.2 (f) and the comparison of
+    6.2 (g), run with it, passed, as recorded in the implement round, before
+    gate 1 was asked.
 
 Phase C
 
+52. (5.0, gate 2) `gates.md` holds gate 2's go, quoted, dated, naming A,
+    later than gate 1's and earlier than the `date -u` line at the top of
+    `live-scenario.txt`, the rehearsal's two files, `install.txt` and
+    `tcw116-step6.txt`; and the request for it, as recorded in the implement
+    round, says that TCW-116's way back for the tickets had never run
+    against a live board.
+53. (5.2) `rehearsal-dry-run.txt` and `rehearsal-step6.txt` exist; the
+    migration converted both test tickets' `TCW Item`; after the way-back
+    script ran, each ticket's `TCW Item` equals the 3.x value the dry run
+    listed for it, and 3.0.2's `tcw work list` in the rehearsal project
+    lists both items with no warning; both tickets end in `Won't Do`.
 20. After 5.5, the primary checkout's `git rev-parse main` equals the clone's,
     and `tcw --version` prints `tcw 4.0.0`.
 21. `~/.tcw-4.0-release/tcw116-step6.txt` exists and `tcw migrate` exited 0
@@ -1064,9 +1300,11 @@ Phase D
 25. 6.2 (a): in a fresh clone of T, with Python 3.14 and the suite run as CI
     runs it (Terms, recorded as for 17), bare `pytest` exits 0 and
     `pnpm check:build` exits 0.
-26. 6.2 (b): `gh run view` of the `test` workflow started on
-    `release-4.0.0` shows head commit T, and `pytest (3.11)`,
-    `pytest (3.14)` and `web-build` all with conclusion `success`.
+26. 6.2 (b): before the push, the commit GitHub's `v4` held is an ancestor
+    of T (recorded in the qa findings); `gh run view` of the
+    `workflow_dispatch` run of `test.yml` on `v4` shows head commit T, and
+    `pytest (3.11)`, `pytest (3.14)` and `web-build` all with conclusion
+    `success`.
 27. 6.2 (c): at T, `tcw validate` and `tcw validate --remote` exit 0.
 28. 6.2 (d): `grep` finds `4.0.0` as the version in each of the five files;
     `.agents/plugins/marketplace.json` has no `version` key; the tag name
@@ -1084,11 +1322,16 @@ Phase D
     `scripts/check_versions.sh` prints nothing.
 33. If a check of 6.2 failed, the qa record shows the fix commit, the moved
     local tag, and every check of 6.2 run again on the new T.
-50. (6.4, gate (b)) The qa round holds the user's go for 7.1, in their words,
-    with a date and time, naming a commit equal to
-    `git rev-parse v4.0.0^{commit}`; that time is earlier than the `date -u`
-    line saved right before the tag's push in
-    `~/.tcw-4.0-release/pushes.txt`.
+50. (6.4, gate 3) `gates.md` on `main` holds gate 3's go, quoted, with a
+    date and time, naming a commit equal to `git rev-parse v4.0.0^{commit}`;
+    that time is earlier than the first `date -u` line of
+    `~/.tcw-4.0-release/pushes.txt` (right before the tag's push); the
+    commit that added it is an ancestor of `origin/main` and not of T; and
+    the request for it, as recorded in the qa findings, gave
+    `git diff --name-only A T`, named every file in that list outside
+    `docs/work/TCW-118-tcw-4-0-release/`, `docs/changelogs/` and
+    `docs/release-notes/`, and said that a plugin which updates itself gets
+    4.0 when `main` is pushed.
 
 Phase E
 
@@ -1102,11 +1345,16 @@ Phase E
     `info.version` `4.0.0`.
 36. After 35, `git merge-base --is-ancestor T origin/main` succeeds,
     `git ls-remote origin refs/heads/3.x` prints M0, and
-    `git ls-remote origin release-4.0.0` prints nothing.
-51. (7.3, gate (c)) The qa round holds the user's go for pushing `3.x` and
-    `main`, in their words, with a date and time earlier than the `date -u`
-    line saved right before 7.3's pushes in `~/.tcw-4.0-release/pushes.txt`;
-    and that saved `git ls-remote origin main` equals M0 (34).
+    `git ls-remote origin release-4.0.0` prints nothing (no branch but `v4`,
+    `3.x` and `main` was pushed).
+51. (7.3, under gate 3) `gates.md` holds no separate go for 7.3: gate 3's
+    covers it. In `pushes.txt`, the line saved right before 7.3's pushes
+    follows 7.2's successful run, its `git ls-remote origin main` equals M0
+    (34), and no question to the user is recorded between 7.2 and 7.3. Every
+    push to `main` after 7.3 and before TCW-118's completion changes only
+    files under `docs/work/TCW-118-tcw-4-0-release/` and
+    `docs/work/TCW-99-…/` (`git diff --name-only <main as pushed at 7.3>
+    origin/main`).
 37. If the release run failed, the record shows 7.4 followed: for a failed
     `test` job, the user's decision before any tag was moved.
 38. A clean install from PyPI works: `pipx run --spec tcw-cli==4.0.0 tcw --version`
@@ -1133,9 +1381,10 @@ Phase F
     after TCW-118's completion as before it: this item never moves the
     epic.
 
-Criteria 43 to 51 were added on 2026-10-24 and are listed beside the
-criteria of their phase; the numbers of 1 to 42 are kept so that every
-reference to them still holds.
+Criteria 43 to 51 were added on 2026-10-24, and 52 to 54 in the second
+revision of the same day, which also rewrote 47, 48, 50 and 51 for the
+reordered gates; each is listed beside the criteria of its phase, and the
+numbers of 1 to 42 are kept so that every reference to them still holds.
 
 ### Coverage
 
@@ -1144,12 +1393,12 @@ a criterion number, or `n/a` with the line that makes it so.
 
 | Design rule | Criteria |
 | --- | --- |
-| 1 the order | 1, 12, 23, 24, 34, 36 (each phase's gate); 47, 50, 51 (the user's gates) |
+| 1 the order; nothing but `v4` leaves before gate 1 | 1, 12, 23, 24, 34, 36 (each phase's gate); 47, 52, 50, 51 (the user's gates, in order: 47's times precede every outward step's file) |
 | 2.1 lifecycle to implement before code | n/a: a lifecycle move, checked by `tcw work advance`'s own gate (`CLAUDE.md:41-44`) |
-| 2.2 no `tcw` from 4.0 to 5.7 | 12, 22 |
+| 2.2 no `tcw` from 4.0 to 5.7, through gates 1 and 2 | 12, 22 |
 | 2.3 review gates D; qa holds D-F; completion waits for 7.2 and 8.3 only | 23, 42 |
-| 2.4 hook commits after the migration | 19 (one commit after the merge), 36 |
-| 2.4 decision (2026-10-24): three steps only at the user's go; the epic is the user's | 47, 50, 51, 42 |
+| 2.4 hook and `gates.md` commits after the migration; later pushes under gate 3 | 19 (one commit after the merge), 36, 50 (gate 3's commit after T), 51 (later pushes) |
+| 2.4 decisions (2026-10-24, both revisions): three gates, acceptance first; the epic is the user's | 47, 52, 50, 51, 42 |
 | 3.1 children completed, TCW-116's records | 1, 10 |
 | 3.2 (a) | 2 |
 | 3.2 (b) | 3 |
@@ -1171,8 +1420,7 @@ a criterion number, or `n/a` with the line that makes it so.
 | 3.9 (e) passages and records | 45 |
 | 3.9 (f) tests | 43, 44 |
 | 3.10 CI on `v4` | 46 |
-| 3.11 gate (a) | 47 |
-| 3.12 live Jira scenario | 48 |
+| 3.11, 3.12 moved | n/a: pointers to 5.0 and 5.1 |
 | 4.0 step 0 | 12 |
 | 4.1 step 1 | 13 |
 | 4.2 step 2 | 14, 15 |
@@ -1183,8 +1431,13 @@ a criterion number, or `n/a` with the line that makes it so.
 | 4.3 (e) | 17 |
 | 4.3 (f) | 18 |
 | 4.4 step 4 | 19 |
+| 4.5 acceptance tarball | 54 |
+| 4.6 gate 1 and its three outcomes | 47 |
+| 5.0 gate 2, and what the user is told of the way back | 52 |
+| 5.1 live Jira scenario | 48 |
+| 5.2 rehearsal on the test project | 53 |
 | 5.5 step 5 | 20 |
-| 5.6 step 6 | 21, 47 (only after gate (a)) |
+| 5.6 step 6 | 21, 52 (only after gate 2) |
 | 5.7 step 7 | 22 |
 | 5.8 review | 23 |
 | 6.1 cut | 24 |
@@ -1197,17 +1450,17 @@ a criterion number, or `n/a` with the line that makes it so.
 | 6.2 (g) | 31 |
 | 6.2 (h) | 32 |
 | 6.3 failed check | 33 |
-| 6.4 gate (b) | 50 |
-| 7.1 tag alone, after gate (b) | 34, 50 |
+| 6.4 gate 3 asked | 50 |
+| 7.1 tag alone, under gate 3 | 34, 50 |
 | 7.2 upload confirmed | 35, 38 |
-| 7.3 gate (c), `3.x`, `main` checked at M0 then pushed | 34, 36, 51 |
+| 7.3 at once after 7.2, same go: `main` checked at M0, then `3.x` and `main` pushed | 34, 36, 51 |
 | 7.4 (a)-(c) | 37 |
 | 8.1 other checkouts | 39 |
 | 8.2 user's setups, handed to TCW-99 | 40 |
 | 8.3 issue #24 | 41 |
 | 8.4 completing; TCW-99 not moved | 42 |
 | 9 ways back | n/a as criteria: a way back is run only when a step fails; each row's inputs are checked to exist by 12 (M0), 14 (dry-run file), 21 (step-6 file) and 10 (the way-back script) |
-| 10 what the user does | 47, 50, 51 (the three goes); 37, 40, 41 (the decisions that can arise) |
+| 10 what the user does; where goes are recorded | 47, 52, 50 (the three goes, each in `gates.md`); 37, 40, 41 (the decisions that can arise) |
 
 ## Risks
 
@@ -1218,9 +1471,9 @@ a criterion number, or `n/a` with the line that makes it so.
   tickets hold 4.0 values while `origin/main` is 3.x; anyone pulling
   `origin/main` and using 3.0.2 on this board in that window would see items
   it cannot read. Assumption, not checked: no one but the user and this
-  machine's agents works on the `TCW` board. Rule 4.0 keeps the window
-  short, but gates (b) and (c) wait on the user, so it lasts as long as the
-  user's review and test of 4.0 (6.4) takes.
+  machine's agents works on the `TCW` board. The user's review and test of
+  4.0 now comes before the board is converted (gate 1), so the window holds
+  only the review, phase D and gate 3's wait.
 - **A remote tag with a red release run** (7.4 (a)). Made unlikely by 6.2 (b)
   running the same workflow on the same commit.
 - **A merge conflict with a late 3.x patch on `main`** (4.1). Today `main` has
@@ -1239,19 +1492,26 @@ a criterion number, or `n/a` with the line that makes it so.
   could carry the pin to a 3.x patch (Notes, "Follow-ups").
 - **How a user keeps a plugin below 4.0 is the harness's matter.** The
   release notes tell a user who must stay on 3.x to keep the plugin below
-  4.0; the Claude marketplace reads `main`, so this depends on the
+  4.0; the Claude marketplace reads `main`, so this depends on each
   harness's own way of holding a plugin's version or turning off its
-  updates. Assumption, not checked here: the plan finds each harness's
-  documented way and the notes name it, or say plainly that the harness
-  offers none.
+  updates. Not yet known for any of the three: the plan finds it for Claude
+  Code, Codex and Pi, and until it has, the release notes' fifth point
+  cannot be written (3.3, an open item). If a harness offers no way, the
+  notes say so plainly, and that harness's users who must stay on 3.x are
+  told to stop using the plugin's automatic install until they migrate.
+- **The way back for the tickets has never run against a live board**
+  (5.0). Met by the rehearsal on the test project (5.2) before the live
+  conversion. Were the way back ever needed on the `TCW` board itself, that
+  would still be its first run on that board.
 - **A failed pinned install with an older pipx.** If an older pipx release
   removed the existing environment when a `pipx install --force` fails,
   a session started while the plugin's version is not yet on PyPI would
   leave the user with no `tcw` until the next session. pipx 1.17.2 resolves
   first (3.9 (b)); older releases are not checked. The release order keeps
   that window closed for 4.0.0 itself (the tag, and PyPI, before `main`).
-- **The live scenario writes to a real Jira site** (3.12). It runs only
-  under gate (a), in the `TCWTEST` project, with tickets it makes itself.
+- **The live scenario writes to a real Jira site** (5.1). It runs only
+  under gate 2, in the `TCWTEST` project, with tickets it makes itself; so
+  does the rehearsal (5.2).
 - **The plugin check reads fields of Claude Code's `init` event**
   (`plugins`, each with `path` and `version`), which the eval runner already
   reads (`evals/run_evals.py:195-201`, `:261`); if the fields change, the
@@ -1262,15 +1522,20 @@ a criterion number, or `n/a` with the line that makes it so.
 ### Decisions, each decided by the dispatching session
 
 Decisions 2 to 13 were made on 2026-10-22; decision 1 was replaced, and 14 to
-19 added, on 2026-10-24.
+19 added, on 2026-10-24; in the second revision of 2026-10-24, decisions 1,
+8, 9 and 17 were replaced and 20 to 25 added.
 
-1. Decided by the dispatching session, 2026-10-24, replacing the 2026-10-22
-   text: three steps run only at the user's go, recorded with its date in the
-   item's folder: (a) before 5.6, (b) before 7.1, after the user has reviewed
-   and tested 4.0, (c) before 7.3 (2.4, 10). Reason: the request keeps
-   publishing a person's step, the user said they would review and test 4.0
-   before accepting the epic, and TCW-99's ticket keeps the tag's push as the
-   user's.
+1. Decided by the dispatching session, 2026-10-24 (second revision),
+   replacing both earlier texts: three gates, each at the user's go,
+   recorded in `gates.md` and committed before its first step, in this
+   order: gate 1, acceptance, after the merge clone and the acceptance
+   tarball are built and checked (4.5, 4.6), before which nothing leaves the
+   machine but pushes of `v4`; gate 2, live writes (5.0-5.7); gate 3,
+   publishing, one go for 7.1-7.3 (6.4) (2.4, 10). Reason: the user said "I
+   will review and test it myself to decide if I'm accepting the epic as a
+   whole", and if they decline nothing outward needs undoing; the request
+   keeps publishing a person's step, and TCW-99's ticket keeps the tag's
+   push as the user's.
 2. `cut_version.py` refuses a relative bump while the current version has no
    tag (3.2 (c)): it prevents cutting 5.0.0 by mistake.
 3. One reviewer, two rounds, for the combined review (3.4).
@@ -1283,10 +1548,14 @@ Decisions 2 to 13 were made on 2026-10-22; decision 1 was replaced, and 14 to
 7. Before 7.3, the files' way back is `git reset --keep M0`, not a revert,
    because no other machine has those commits; after 7.3, only reverts
    (section 9).
-8. CI is run on a `release-4.0.0` branch before the tag (6.2 (b)): no
-   Python 3.11 here, and the marketplace does not read that branch.
-9. The tag is pushed before `main`, and `main` only after PyPI has 4.0.0
-   (7.3); since 2026-10-24, each after its own gate.
+8. Replaced in the second revision: CI is run before the tag on `v4`, moved
+   to T by a fast-forward, with `gh workflow run test.yml --ref v4`
+   (6.2 (b)): no Python 3.11 here, the user's permission covers pushing `v4`
+   only, and the marketplace does not read `v4`. A separate branch, if ever
+   truly needed, is pushed under gate 3.
+9. Replaced in the second revision: the tag is pushed before `main`, and
+   `main` only after PyPI has 4.0.0 (7.3), all three under gate 3's one go,
+   with no wait between 7.2 and 7.3.
 10. The tarball rule of the user's npm publishing instructions is applied to
     PyPI (6.2 (f)).
 11. No live Codex or Pi session in the release (6.2 (h)).
@@ -1304,18 +1573,42 @@ Decisions 2 to 13 were made on 2026-10-22; decision 1 was replaced, and 14 to
     completes TCW-99. Reason: the setups and the epic are the user's to
     decide, and the release does not do that work.
 16. Decided by the dispatching session, 2026-10-24: a branch `3.x` is
-    pushed at M0 as part of gate (c), so 3.x patches keep a home; one is cut
+    pushed at M0 as part of gate 3, so 3.x patches keep a home; one is cut
     on that branch and published by its tag (7.3, 3.3).
-17. Decided by the dispatching session, 2026-10-24: CI runs on `v4` before
-    gate (a) (3.10), so Python 3.11 is tested before anything is written to
-    a live board; the live Jira scenario runs after gate (a), on `v4`'s tip
-    (3.12), as TCW-114 asked.
+17. Replaced in the second revision: CI runs on `v4` before the merge
+    (3.10), so Python 3.11 is tested before the user is asked to accept
+    4.0; the live Jira scenario runs under gate 2, in the merge clone at A
+    (5.1), as TCW-114 asked.
 18. Decided by the dispatching session, 2026-10-24: every suite run unsets
     every `TCW_` variable and uses scratch `HOME` and XDG folders (Terms), so
     no setting of this machine reaches a run that is meant to be CI's.
 19. Decided by the dispatching session, 2026-10-24: `tests/families.py`
     serves the combined review's multi-project slice (3.4), not the tarball
     check of 6.2 (f), which stays a single new project.
+
+Added in the second revision, each decided by the dispatching session,
+2026-10-24:
+
+20. The user tests 4.0 from a tarball built from the merge clone at A
+    (4.5, 4.6), since A holds the migrated records and is what `main`
+    becomes apart from the cut and the item's own records.
+21. Rule 4.0 lasts through gates 1 and 2 (2.2), since a lifecycle command
+    during the wait would move the primary checkout's `main` or the board
+    out from under 5.5 and 5.6.
+22. The ticket conversion and its way back are rehearsed on the test
+    project before the live board (5.2), since TCW-116's way back has run
+    only against its fake; TCW-116's own acceptance is not reopened.
+23. 6.2 (e)'s third statement follows TCW-115 Design 7.4: a project already
+    on the machine is never fetched again, and a manifest fetched during the
+    run that would place it elsewhere stops the run; confirmed against
+    `tcw/provision.py`'s `_changed_answer` and its test.
+24. Criterion 45 also searches for `pipx upgrade`, across
+    `skills/setup/references/install.md`, `README.md` and
+    `scripts/session_bootstrap.sh`, and this item corrects each one found.
+25. How a user keeps the plugin below 4.0 in Claude Code, Codex and Pi is an
+    open item for the plan that blocks writing the release notes' fifth
+    point (3.3); no 3.x pinned patch release is made in this item
+    (Non-goals), since the marketplace reads `main`.
 
 ### Handoffs answered
 
@@ -1343,7 +1636,7 @@ without a date are on 2026-10-22.
 | TCW-116 (21:53) | step 3 deletes `UNMIGRATED_RECORDS`, fixes in `docs/taxonomy/` and `docs/capabilities/`, credentials unset, the proof's count | 4.3 (b)-(d), 3.1 | 10, 16, 17 |
 | TCW-116 (21:53) | save step 6's output as `tcw116-step6.txt` | 5.6 | 21 |
 | TCW-116 (21:53) | the way back undoes step 6's `C17` edits; the dry run is a cross-check; a key in one file only is read | 5.6, 9 | 21 |
-| TCW-114 (2026-10-24 12:06) | the live Jira scenario expects `rename` to print `<old> -> <new>` and has run only against the fake; run it against a real site before the release | 3.12, after gate (a) | 48 |
+| TCW-114 (2026-10-24 12:06) | the live Jira scenario expects `rename` to print `<old> -> <new>` and has run only against the fake; run it against a real site before the release | 5.1, under gate 2 | 48 |
 | TCW-115 (2026-10-24 15:15) | its release-note entry already names the group, the four removed commands, the bound and the `.git`-only refusal | 3.6, 6.2 (e): three of the four statements are there, the check stays | 29 |
 | TCW-115 (2026-10-24 15:15) | a Ctrl-C during any `tcw` command prints a Python traceback; worth a ticket of its own | Notes, "Follow-ups" | n/a: a separate item, by the comment's own words |
 | The dispatching session's brief | the plugin marketplace version; any marketplace or MFA step | 6.2 (d), 10 | 28 |
@@ -1388,6 +1681,10 @@ For the dispatching session to file; none is part of 4.0.
 Revised after the spec review, with the dispatching session's decisions of
 2026-10-24 (Notes, "Decisions", 1 and 14 to 19).
 
+(The gate order and lettering below, gates (a) to (c), are those of this
+first revision; the second revision, at the end of this section, replaces
+them with gates 1 to 3.)
+
 - **Publishing waits for the user.** Decision 1's 2026-10-22 text, which had
   this item push the tag without asking, is replaced: three steps run only at
   the user's go, recorded with its date in the item's folder: gate (a)
@@ -1424,3 +1721,49 @@ Revised after the spec review, with the dispatching session's decisions of
   that TCW-115's entry holds three of 6.2 (e)'s four statements; the fourth,
   that projects already on the machine are never moved, is not there in those
   words, so the check stays. Line references re-checked at `82cdb4f9`.
+
+### Second revision, 2026-10-24
+
+Revised after spec review round 2, with the dispatching session's decisions
+of 2026-10-24 (Notes, "Decisions", 1, 8, 9 and 17 replaced, 20 to 25 added).
+
+- **The gates are reordered so that nothing leaves the machine before the
+  user accepts 4.0.** Gate 1, acceptance (4.6), comes after the merge clone
+  is built and checked and the acceptance tarball built from it (4.5);
+  before it, nothing leaves the machine but pushes of `v4`. Its three
+  outcomes are written out: accepted, declined (nothing outward to undo;
+  the items the user names go back to `implement` as the user directs), and
+  a defect (fixed on `v4`, phase B again, gate 1 asked again). Gate 2, live
+  writes (5.0), covers the live Jira scenario (moved from 3.12 to 5.1), a new
+  rehearsal of the ticket conversion and its way back on the test project
+  (5.2), the install of 4.0 as this machine's shared `tcw` (5.5) and the
+  board's conversion (5.6-5.7), with a decline or failure running section
+  9's rows. It says plainly that TCW-116's way back has never run against a
+  live board. Gate 3, publishing (6.4), is one go for the tag, the upload's
+  confirmation and, at once after it, the pushes of `3.x` and `main`, and
+  covers later pushes to `main` that touch only TCW-118's and TCW-99's
+  folders; at it the user is told that a plugin which updates itself gets
+  4.0 when `main` is pushed.
+- **The goes are recorded in `gates.md`** in the item's folder, committed
+  before each gate's first step (Design 10); qa findings stay on the Jira
+  ticket. Criteria 47, 48, 50 and 51 are rewritten for this, and 52 (gate 2),
+  53 (the rehearsal) and 54 (the acceptance tarball) added.
+- **Rule 4.0 lasts through gates 1 and 2** (2.2), and the message of 3.8
+  says so.
+- **CI before the tag runs on `v4`** moved to T by a fast-forward, started
+  with `gh workflow run test.yml --ref v4` (6.2 (b)); no `release-4.0.0`
+  branch is pushed. `test.yml`'s triggers are cited: its `push` names only
+  `main`, and `workflow_dispatch` is what starts the run.
+- **6.2 (e)'s third statement** now says what TCW-115 Design 7.4 and the
+  code say: a project already on the machine is never fetched again, and a
+  manifest fetched during the run that would place it elsewhere stops the
+  run (`tcw/provision.py:405-426`, `:547-551`;
+  `tests/test_project_provision.py:782`).
+- **Criterion 45 also searches for `pipx upgrade`**, found today at
+  `scripts/session_bootstrap.sh:88` and `skills/setup/references/install.md:39`;
+  3.9 (e) corrects both. **Criterion 43** says its fixture keeps
+  `check_versions.sh` silent, as the test asserting one line at
+  `tests/test_session_bootstrap.py:198` does.
+- **Holding back** in each of Claude Code, Codex and Pi is an open item for
+  the plan, blocking the release notes' fifth point (3.3, criterion 7, Risks);
+  no 3.x pinned patch release is made here (Non-goals).
