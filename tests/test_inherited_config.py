@@ -713,6 +713,7 @@ def test_ac14_capabilities_drift_in_filesystem_mode_is_not_stopped(tmp_path):
 
 def test_ac14_references_into_the_project_are_answered_from_its_folders(tmp_path, run):
     from tests.test_capabilities_rm import write_cap
+    from tests.statefiles import ITEM_STATE, read_state, write_state_data
     from tests.work.projects import write_item
     from tcw.store.fs import init
     app = made(tmp_path, "app", parents=["core"], work=jira_mode(jira={"project": "APP"}))
@@ -727,10 +728,10 @@ def test_ac14_references_into_the_project_are_answered_from_its_folders(tmp_path
     lib = made(tmp_path, "lib")
     item = run(lib, "work", "new", "lib thing").out.strip()
     folder = item.partition("/")[2]
-    path = lib / "docs" / "work" / folder / "item.yaml"
-    document = yaml.safe_load(path.read_text())
+    path = lib / "docs" / "work" / folder / ITEM_STATE
+    document = read_state(path)
     document["blocked-by"] = ["app.work/APP-1-thing"]
-    path.write_text(yaml.safe_dump(document))
+    write_state_data(path, document)
     ran = tcw(lib, "validate")
     assert ran.code == 0, ran
     assert "APP-1" not in ran.out, ran
