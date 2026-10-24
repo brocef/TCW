@@ -53,6 +53,10 @@ ROWS: dict[str, tuple[list[str], int]] = {
     "serve": (["serve", "--no-open", "--port", "1"], 1),
     "projects list": (["projects", "list"], 1),
     "config show": (["config", "show"], 1),
+    "project new": (["project", "new", "--id", "fx"], 0),
+    "project list": (["project", "list"], 1),
+    "project config": (["project", "config"], 1),
+    "project provision": (["project", "provision", "--dry-run"], 1),
     "taxonomy list": (["taxonomy", "list"], 1),
     "taxonomy add": (["taxonomy", "add", "Widget"], 1),
     "taxonomy show": (["taxonomy", "show", "widget"], 1),
@@ -228,7 +232,7 @@ def test_a_command_without_a_row_is_caught():
 # -- AC 10: outside a project ------------------------------------------------------
 
 
-@pytest.mark.parametrize("command", sorted(set(ROWS) - {"init"}))
+@pytest.mark.parametrize("command", sorted(set(ROWS) - {"init", "project new"}))
 def test_every_command_outside_a_project(tmp_path, command):
     argv, expected = ROWS[command]
     result = run(tmp_path, *argv)

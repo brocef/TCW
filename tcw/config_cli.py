@@ -285,7 +285,7 @@ def _show(args: argparse.Namespace) -> int:
     sys.stdout.write(render(config, origin=args.origin))
     if config.problems:
         for problem in config.problems:
-            print(f"tcw config show: {problem}", file=sys.stderr)
+            print(f"{args._command}: {problem}", file=sys.stderr)
         return codes.ERROR
     return codes.OK
 

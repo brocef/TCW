@@ -13,7 +13,7 @@ from pathlib import Path
 from tcw.cli_suggest import SuggestingParser, attach_index
 from tcw.errors import ConfigError, TcwError
 from tcw import __version__
-from tcw import config_cli, projects_cli
+from tcw import config_cli, project_cli, projects_cli
 from tcw.capabilities import cli as capabilities_cli
 from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
@@ -100,7 +100,8 @@ def run_init(components: list[str], project_id: str | None = None,
     return 0
 
 
-def run_provision(components: list[str], *, dry_run: bool = False) -> int:
+def run_provision(components: list[str], *, dry_run: bool = False,
+                  prefix: str = "tcw project provision") -> int:
     """Make this project's declared component stores usable here.
 
     The only command in `tcw` that clones a repository, and it does so only
@@ -125,7 +126,7 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
     try:
         load_config(project_root / SENTINEL)
     except ValueError as error:
-        print(f"tcw provision: {error}", file=sys.stderr)
+        print(f"{prefix}: {error}", file=sys.stderr)
         return 1
 
     # An override that is present and wrong refuses here too, and it has to be
@@ -148,7 +149,7 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
         failed_overrides = []
     if failed_overrides:
         for override in failed_overrides:
-            print(f"tcw provision: {override.problem}", file=sys.stderr)
+            print(f"{prefix}: {override.problem}", file=sys.stderr)
         return 1
 
     declared: list[tuple[str, object]] = []
@@ -164,7 +165,7 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
     # a store and would be told everything is fine.
     if problems:
         for problem in problems:
-            print(f"tcw provision: {problem}", file=sys.stderr)
+            print(f"{prefix}: {problem}", file=sys.stderr)
         return 1
 
     # Connected projects are not fetched here: where one goes is its deciding
@@ -196,7 +197,7 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
         try:
             result = provisioner.ensure_available(dry_run=dry_run)
         except (ValueError, OSError) as error:
-            print(f"tcw provision: {error}", file=sys.stderr)
+            print(f"{prefix}: {error}", file=sys.stderr)
             failed = True
             continue
         print(f"  {result.detail}", file=sys.stderr)
@@ -204,8 +205,9 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
 
 
 def _cmd_provision(args: argparse.Namespace) -> int:
+    # The error lines name the command as it was typed (TCW-115 plan, choice 23).
     return run_provision(args.component or list(PROVISION_COMPONENTS),
-                         dry_run=args.dry_run)
+                         dry_run=args.dry_run, prefix=args._command)
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
@@ -440,6 +442,9 @@ def build_parser() -> argparse.ArgumentParser:
     config_cli.add_subparser(sub)
     for mod in _BUILT:
         mod.add_subparser(sub)
+    # After `work`: the suggester names commands in the order the groups are
+    # registered (TCW-115 Design 1.1, 1.3).
+    project_cli.add_subparser(sub)
     for name in _STUBBED:
         p = sub.add_parser(name, help=f"{name} commands (not yet implemented)")
         p.set_defaults(func=_not_yet(name))
