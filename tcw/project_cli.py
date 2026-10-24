@@ -298,6 +298,45 @@ def render_text(info: ProjectInfo) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_json(info: ProjectInfo) -> dict:
+    """Design 6.4's document, under `project`."""
+    from tcw.config_cli import origin_json
+    settings = {}
+    for key, shown in info.settings.items():
+        if shown[0] == "value":
+            _, value, origin = shown
+            settings[key] = {"value": value, "origin": origin_json(origin, info.id),
+                             "inherited": origin.layer != "built-in"
+                             and (origin.project or info.id) != info.id}
+        else:
+            settings[key] = {shown[0]: shown[1]}
+    overrides, counts = {}, {}
+    for axis, shown in info.overrides.items():
+        if shown[0] == "unavailable":
+            overrides[axis], counts[axis] = {"unavailable": shown[1]}, None
+        else:
+            overrides[axis] = [{"id": full_id, "overrides": overridden}
+                               for full_id, overridden in shown[1]]
+            counts[axis] = shown[2]
+    order = info.order
+    return {
+        "id": info.id, "path": str(info.path),
+        "parents": [{"id": r["id"], "inherit": r["inherit"], "present": r["present"],
+                     "path": r["path"]} for r in info.parents],
+        "children": [{"id": r["id"], "personal": r["personal"], "present": r["present"],
+                      "path": r["path"]} for r in info.children],
+        "load-order": list(order.ids), "load-order-complete": order.complete,
+        "load-order-missing": list(order.missing),
+        "load-order-unreadable": list(order.unreadable),
+        "load-order-warning": order.warning,
+        "settings": settings,
+        "stores": {axis: {"path": str(where)} if kind == "path" else {"unavailable": where}
+                   for axis, (kind, where) in info.stores.items()},
+        "overrides": overrides,
+        "same-path-warnings": counts,
+    }
+
+
 def _info(args: argparse.Namespace) -> int:
     import sys
     from tcw import exit as codes
@@ -307,5 +346,9 @@ def _info(args: argparse.Namespace) -> int:
     if root is None:
         raise BackendError(NO_PROJECT)
     info = project_info(root)
-    sys.stdout.write(render_text(info))
+    if args.json:
+        from tcw.output import print_json
+        print_json("project", render_json(info))
+    else:
+        sys.stdout.write(render_text(info))
     return codes.OK

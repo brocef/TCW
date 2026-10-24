@@ -215,3 +215,43 @@ def test_ac18_info_takes_no_project(tmp_path):
 def test_outside_a_project(tmp_path):
     done = run(tmp_path, "project", "info")
     assert (done.code, done.out) == (1, "") and "no TCW project here" in done.err, done
+
+
+# -- AC 17: `--json` ---------------------------------------------------------------------
+
+def test_ac17_the_document(tmp_path):
+    app = ac12(tmp_path)
+    data = json.loads(info(app, "--json", env=personal_env(tmp_path)))
+    assert data["schema"] == 2 and list(data) == ["schema", "project"]
+    project = data["project"]
+    assert {"id": "ws", "inherit": [], "present": False, "path": None} in project["parents"]
+    assert {"id": "p", "personal": True, "present": False, "path": None} in \
+        project["children"]
+    assert project["load-order-missing"] == ["ws"]
+    assert project["load-order-complete"] is False
+    assert project["load-order-unreadable"] == [] and project["load-order-warning"] is None
+    assert project["settings"] == {"work.backend": {
+        "value": "filesystem", "origin": {"layer": "built-in"}, "inherited": False}}
+    assert project["stores"]["work"] == {"path": str(app.resolve() / "docs" / "work")}
+    assert set(project["stores"]["taxonomy"]) == {"unavailable"}
+    assert project["overrides"] == {"taxonomy": [], "capabilities": []}
+    assert project["same-path-warnings"] == {"taxonomy": 0, "capabilities": 0}
+
+
+def test_ac17_an_inherited_setting(tmp_path):
+    core, app = ac13(tmp_path)
+    site = json.loads(info(app, "--json"))["project"]["settings"]["work.jira.site"]
+    assert site["inherited"] is True
+    assert site["origin"] == {"project": "core", "layer": "project",
+                              "file": str(config_file(core))}
+    shutil.rmtree(core)
+    settings = json.loads(info(app, "--json"))["project"]["settings"]
+    assert list(settings["work.jira.project"]) == ["undecided"]
+
+
+def test_ac17_an_axis_that_could_not_be_checked(tmp_path):
+    core, app = _caps(tmp_path)
+    shutil.rmtree(core)
+    project = json.loads(info(app, "--json"))["project"]
+    assert list(project["overrides"]["capabilities"]) == ["unavailable"]
+    assert project["same-path-warnings"]["capabilities"] is None
