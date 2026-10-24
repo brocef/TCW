@@ -47,5 +47,8 @@ verdict.
 
 ## The suite
 
-The full suite, as CI runs it, is the dispatching session's to run; it was
-not run in this round.
+`.venv/bin/pytest -q -p no:cacheprovider`, run in full as CI runs it by the
+dispatching session at `6d25a69d` (2026-10-23), in two halves by folder:
+`1912 passed, 2 skipped` (`tests/work`, `tests/serve`) and `3987 passed,
+111 skipped` (the rest), `5899 passed, 113 skipped` in all. `pnpm test`
+`190 passed`; `tsc --noEmit`, `pnpm lint` and `pnpm check:build` clean.
