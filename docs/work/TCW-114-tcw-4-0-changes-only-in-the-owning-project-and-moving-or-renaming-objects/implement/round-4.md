@@ -29,3 +29,8 @@ tests/work/test_cli_items.py`: `48 passed`.
 ## The suite
 
 The dispatching session runs the full suite as CI runs it.
+
+The full suite as CI runs it, `.venv/bin/pytest -q -p no:cacheprovider`, run by
+the dispatching session at `685d7ea5` (2026-10-24) in two halves by folder:
+`2076 passed, 2 skipped` and `4750 passed, 111 skipped`. `pnpm test`
+`198 passed`; `tsc --noEmit`, `pnpm lint` and `pnpm check:build` clean.
