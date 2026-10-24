@@ -163,8 +163,12 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
     links, family = _links(read, mapping)
     relations = links.relations
     project_id = mapping.get("id") if isinstance(mapping.get("id"), str) else None
-    manifests = config.plan_manifests(read.root, links.located, project_id) \
-        if project_id else config.ManifestPlan()
+    if project_id and read.three_x:
+        manifests = config.plan_manifests(read.root, links.located, project_id)
+    elif project_id:
+        manifests = config.clone_entries(read.root)                 # Design 2.11
+    else:
+        manifests = config.ManifestPlan()
     locations = config.plan_locations(read.root, mapping, project_id, manifests) \
         if project_id and read.three_x else config.LocationPlan()
     config.finish_manifests(read.root, manifests)

@@ -574,16 +574,111 @@ def fixture_digest(root: Path) -> str:
 
 
 #: Each fixture the goldens are recorded from: its builder's arguments.
+# ---------------------------------------------------------------------------
+# The monorepo (UC-3; criterion 46)
+
+#: Each monorepo project's folder, relative to the fixture's base folder.
+MONOREPO_PROJECTS = {"mono": "mono", "api": "mono/packages/api",
+                     "web": "mono/packages/web", "jobs": "mono/packages/jobs"}
+
+_A_JIRA = f"""\
+work:
+  backend: jira
+  jira:
+    site: {SITE}
+    project: {JIRA_PROJECT}
+    credentials:
+      email-env: APP_EMAIL
+      token-env: APP_TOKEN
+    fields:
+      project: TCW Project
+      item: TCW Item
+  stages:
+    inbox:
+      status: Triage
+    request:
+      status: To Do
+    spec:
+      status: Specifying
+    plan:
+      status: Planning
+    implement:
+      status: In Progress
+    review:
+      status: In Review
+    qa:
+      status: In QA
+    completed:
+      status: Done
+    discarded:
+      status: Won't Do
+"""
+
+_MONOREPO_FILES = {
+    "mono/tcw-config.yaml": (
+        "id: mono\nprojects:\n  children:\n    api: packages/api\n"
+        "    web: packages/web\n    jobs: packages/jobs\nwork:\n  tags:\n  - bug\n"),
+    "mono/docs/taxonomy/money/meta.yaml": "name: Money\nkind: Vocabulary\nrelatesTo: []\n",
+    "mono/docs/taxonomy/money/description.md": "Money.\n",
+    "mono/docs/taxonomy/party/meta.yaml": "name: Party\nkind: Vocabulary\nrelatesTo: []\n",
+    "mono/docs/taxonomy/party/description.md": "A party.\n",
+    "mono/docs/capabilities/shared/meta.yaml": (
+        "id: cap-30a001\nname: Shared\nStatus: Supported\n"),
+    "mono/docs/capabilities/shared/description.md": "Shared by the packages.\n",
+    # api keeps its work in Jira, with only the keys 3.x requires.
+    "mono/packages/api/tcw-config.yaml": (
+        "id: api\nprojects:\n  parent:\n    mono: ../..\ntaxonomy:\n  extends:\n  - mono\n"
+        + _A_JIRA),
+    "mono/packages/api/docs/capabilities/api-thing/meta.yaml": (
+        "id: cap-a00001\nname: Api thing\nStatus: Supported\nSubject:\n- mono/money\n"),
+    "mono/packages/api/docs/capabilities/api-thing/description.md": "api's own.\n",
+    "mono/packages/api/docs/taxonomy/route/meta.yaml": (
+        "name: Route\nkind: Vocabulary\nrelatesTo: []\n"),
+    "mono/packages/api/docs/taxonomy/route/description.md": "A route.\n",
+    # The folder of api's items' documents, none yet.
+    "mono/packages/api/docs/work/.gitkeep": "",
+    # web reads api's capabilities, a sibling (E4).
+    "mono/packages/web/tcw-config.yaml": (
+        "id: web\nprojects:\n  parent:\n    mono: ../..\ntaxonomy:\n  extends:\n  - mono\n"
+        "capabilities:\n  extends:\n  - api\n"),
+    "mono/packages/web/docs/capabilities/web-thing/meta.yaml": (
+        "id: cap-3eb001\nname: Web thing\nStatus: Supported\nBlocked by: api/api-thing\n"),
+    "mono/packages/web/docs/capabilities/web-thing/description.md": "web's own.\n",
+    "mono/packages/web/docs/taxonomy/page/meta.yaml": (
+        "name: Page\nkind: Vocabulary\nrelatesTo: []\n"),
+    "mono/packages/web/docs/taxonomy/page/description.md": "A page.\n",
+    # jobs reads nothing through extends, and has a term the root has too (D2).
+    "mono/packages/jobs/tcw-config.yaml": (
+        "id: jobs\nprojects:\n  parent:\n    mono: ../..\n"),
+    "mono/packages/jobs/docs/taxonomy/party/meta.yaml": (
+        "name: Party, as jobs has it\nkind: Vocabulary\nrelatesTo: []\n"),
+    "mono/packages/jobs/docs/taxonomy/party/description.md": "jobs' party.\n",
+    "mono/packages/jobs/docs/capabilities/run/meta.yaml": (
+        "id: cap-30b001\nname: Run\nStatus: Supported\n"),
+    "mono/packages/jobs/docs/capabilities/run/description.md": "Runs jobs.\n",
+}
+
+
+def build_monorepo(base: Path, *, git: bool = True) -> dict[str, Path]:
+    """The monorepo below `base`: one repository holding the root `mono` and
+    its packages `api`, `web` and `jobs`. Returns each project's folder by ID."""
+    write_files(base, _MONOREPO_FILES)
+    if git:
+        git_init(base / "mono")
+    return {pid: base / rel for pid, rel in MONOREPO_PROJECTS.items()}
+
+
 FIXTURES = {
     "f-single": {"backend": "jira"},
     "f-single-files": {"backend": "files"},
     "f-full": {},
+    "monorepo": {},
 }
 
 #: The projects of a fixture that holds several, each 3.x's answers are
 #: recorded in, by ID: its folder relative to the folder the fixture is
 #: built in. A fixture not named here is one project, at that folder.
-FIXTURE_PROJECTS = {"f-full": F_FULL_PROJECTS}
+FIXTURE_PROJECTS = {"f-full": F_FULL_PROJECTS, "monorepo": MONOREPO_PROJECTS}
 
 
 def build_fixture(name: str, root: Path, *, config_home: Path | None = None,
@@ -592,6 +687,9 @@ def build_fixture(name: str, root: Path, *, config_home: Path | None = None,
     `lib`'s clone goes below `cache_home`."""
     if name == "f-full":
         build_f_full(root, config_home=config_home, cache_home=cache_home, git=git)
+        return root
+    if name == "monorepo":
+        build_monorepo(root, git=git)
         return root
     return build_f_single(root, config_home=config_home, git=git, **FIXTURES[name])
 

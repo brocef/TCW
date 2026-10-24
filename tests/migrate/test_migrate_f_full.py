@@ -214,3 +214,49 @@ def test_tcw_4_reads_the_migrated_family(tcw, tmp_path, monkeypatch):
         for path, entry in three.items():
             assert path in four, (axis, path)
             assert four[path]["name"] == entry["name"], (axis, path)
+
+
+# ── criterion 50: the second person (Design 2.11) ──────────────────────────
+
+PERSONAL = (".tcw/tcw-config.local.yaml", ".tcw/tcw-manifest.local.yaml")
+
+
+def second_person(app: Path) -> None:
+    """The app as someone else's clone has it after the first person's
+    migration was committed: their own 3.x personal file at the root, and
+    no personal file of the first person's."""
+    personal = (app / ".tcw/tcw-config.local.yaml").read_text()
+    for rel in PERSONAL:
+        (app / rel).unlink()
+    (app / "tcw-config.local.yaml").write_text(personal.split("\n", 1)[1])
+
+
+def tracked(root: Path) -> dict:
+    return {k: v for k, v in tree(root).items()
+            if not k.endswith(("tcw-config.local.yaml", "tcw-manifest.local.yaml"))}
+
+
+@pytest.mark.parametrize("first", ["with Jira", "--no-jira"])
+def test_a_second_person_s_run(tcw, fake, tmp_path, first):
+    projects = family(tmp_path / "f")
+    app = projects["app"]
+    argv = ["migrate"] + (["--no-jira"] if first == "--no-jira" else [])
+    assert tcw(argv, app).code == 0
+    second_person(app)
+    before = tracked(projects["ws"])
+    fake.log.clear()
+    done = tcw(["migrate"], app)
+    assert done.code == 0, done.err
+    assert "move tcw-config.local.yaml" in done.err or \
+        "write .tcw/tcw-config.local.yaml: C1" in done.err
+    assert not (app / "tcw-config.local.yaml").exists()
+    assert (app / ".tcw/tcw-config.local.yaml").is_file()
+    personal = (app / ".tcw/tcw-manifest.local.yaml").read_text()
+    assert str(lib_clone(cache())) in personal
+    assert tracked(projects["ws"]) == before
+    edited = [p for m, p, _ in fake.log if m == "PUT"]
+    if first == "with Jira":
+        assert edited == []
+    else:
+        assert sorted(p.split("?")[0].rsplit("/", 1)[1] for p in edited) == \
+            ["APP-1", "APP-2", "APP-3"]

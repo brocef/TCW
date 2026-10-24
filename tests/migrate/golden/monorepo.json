@@ -1,0 +1,104 @@
+{
+  "tcw-version": "tcw 3.0.2",
+  "pip-freeze": [
+    "PyYAML==6.0.3",
+    "-e git+ssh://git@github.com/brocef/TCW.git@64042c2b70c52804cbc3020b0ee9244c35d1afe6#egg=tcw_cli"
+  ],
+  "date": "2026-10-24",
+  "fixture-digest": "5c7515c7ad0ed678ea90f035f4c6b0db8cf5f2e49836340dbeb59dc5835cb6a0",
+  "projects": {
+    "mono": {
+      "taxonomy list --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"terms\": [\n    {\n      \"path\": \"money\",\n      \"name\": \"Money\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"party\",\n      \"name\": \"Party\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"local\"\n    }\n  ]\n}\n",
+        "stderr": ""
+      },
+      "capabilities list --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capabilities\": [\n    {\n      \"path\": \"shared\",\n      \"name\": \"Shared\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    }\n  ]\n}\n",
+        "stderr": ""
+      },
+      "capabilities show shared --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"shared\",\n    \"name\": \"Shared\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-30a001\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Shared by the packages.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "validate": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "0 errors, 0 warnings, 0 unresolved\n"
+      }
+    },
+    "api": {
+      "taxonomy list --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"terms\": [\n    {\n      \"path\": \"route\",\n      \"name\": \"Route\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"mono/money\",\n      \"name\": \"Money\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"mono\"\n    },\n    {\n      \"path\": \"mono/party\",\n      \"name\": \"Party\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"mono\"\n    }\n  ]\n}\n",
+        "stderr": ""
+      },
+      "capabilities list --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capabilities\": [\n    {\n      \"path\": \"api-thing\",\n      \"name\": \"Api thing\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    }\n  ]\n}\n",
+        "stderr": ""
+      },
+      "capabilities show api-thing --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"api-thing\",\n    \"name\": \"Api thing\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-a00001\",\n    \"fields\": {\n      \"Status\": \"Supported\",\n      \"Subject\": [\n        \"mono/money\"\n      ]\n    },\n    \"body\": \"api's own.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "validate": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "0 errors, 0 warnings, 0 unresolved\n"
+      }
+    },
+    "web": {
+      "taxonomy list --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"terms\": [\n    {\n      \"path\": \"page\",\n      \"name\": \"Page\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"mono/money\",\n      \"name\": \"Money\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"mono\"\n    },\n    {\n      \"path\": \"mono/party\",\n      \"name\": \"Party\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"mono\"\n    }\n  ]\n}\n",
+        "stderr": ""
+      },
+      "capabilities list --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capabilities\": [\n    {\n      \"path\": \"web-thing\",\n      \"name\": \"Web thing\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"api/api-thing\",\n      \"name\": \"Api thing\",\n      \"status\": \"Supported\",\n      \"origin\": \"api\"\n    }\n  ]\n}\n",
+        "stderr": ""
+      },
+      "capabilities show web-thing --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"web-thing\",\n    \"name\": \"Web thing\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-3eb001\",\n    \"fields\": {\n      \"Status\": \"Supported\",\n      \"Blocked by\": \"api/api-thing\"\n    },\n    \"body\": \"web's own.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "capabilities show api/api-thing --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"api/api-thing\",\n    \"name\": \"Api thing\",\n    \"status\": \"Supported\",\n    \"origin\": \"api\",\n    \"id\": \"cap-a00001\",\n    \"fields\": {\n      \"Status\": \"Supported\",\n      \"Subject\": [\n        \"mono/money\"\n      ]\n    },\n    \"body\": \"api's own.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "validate": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "0 errors, 0 warnings, 0 unresolved\n"
+      }
+    },
+    "jobs": {
+      "taxonomy list --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"terms\": [\n    {\n      \"path\": \"party\",\n      \"name\": \"Party, as jobs has it\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"local\"\n    }\n  ]\n}\n",
+        "stderr": ""
+      },
+      "capabilities list --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capabilities\": [\n    {\n      \"path\": \"run\",\n      \"name\": \"Run\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    }\n  ]\n}\n",
+        "stderr": ""
+      },
+      "capabilities show run --json": {
+        "exit": 0,
+        "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"run\",\n    \"name\": \"Run\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-30b001\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Runs jobs.\"\n  }\n}\n",
+        "stderr": ""
+      },
+      "validate": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "0 errors, 0 warnings, 0 unresolved\n"
+      }
+    }
+  }
+}

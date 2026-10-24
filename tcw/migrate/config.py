@@ -944,11 +944,12 @@ def plan_links(root: Path, project_id: str, mapping: dict, family) -> Links:
     if order.warning:
         relations.reports.append(Report("D8", rel, order.warning))
     relations.reports += _d1(rel, project_id, mapping, graph, family, converter)
-    relations.reports += still_3x_reports(family, order.ids)
     out.ancestors = {axis: [pid for pid in order.ids if pid != project_id
                             and pid in passing(axis, project_id, graph)]
                      for axis in EXTENDED_AXES}
     out.below = _below(project_id, family, converter, relations.children)
+    # After `_below`, which has placed every project the 3.x walk reaches.
+    relations.reports += still_3x_reports(family, order.ids)
     out.extends_edits = [Remove(axis, "extends") for axis in EXTENDED_AXES
                          if isinstance(mapping.get(axis), dict)
                          and "extends" in mapping[axis]]
@@ -1146,3 +1147,47 @@ def finish_manifests(root: Path, manifests: ManifestPlan) -> None:
                                        manifests.personal)
     manifests.steps = steps
     manifests.blockers += blockers
+
+
+def clone_entries(root: Path) -> ManifestPlan:
+    """Design 2.11, for a project already in 4.0 form: each entry of its
+    shared manifest that names a repository, whose folder is not there, and
+    for which TCW 3's per-machine clone is on this machine and holds the
+    project, gets the personal entry M5 gives the first person, with A6. An
+    entry the personal manifest already has is left. The other per-machine
+    paths (M1, M4) came from the 3.x shared file and are not recoverable
+    from the converted one, so the person writes those by hand."""
+    import os
+    from tcw.migrate import legacy
+    from tcw.migrate.family import manifest_entries_4
+    from tcw.project_files import LOCAL_MANIFEST, MANIFEST
+    from tcw.store.manifest import parse_manifest
+    out = ManifestPlan()
+    path = Path(root) / MANIFEST
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        return out
+    entries, problems = parse_manifest(data, path, personal=False)
+    if problems:
+        return out
+    personal = {pid for pid, (_, entry) in manifest_entries_4(root).items()
+                if entry.file is not None and Path(str(entry.file)).name ==
+                Path(LOCAL_MANIFEST).name}
+    for pid, entry in entries.items():
+        if entry.url is None or pid in personal:
+            continue
+        target = Path(os.path.normpath(Path(root) / Path(entry.path).expanduser()))
+        if legacy.holds_project(target):
+            continue
+        repository = legacy.RepoDecl3(entry.url, entry.branch, entry.subfolder or "")
+        clone = legacy.cache_folder_3x(Path(root), repository)
+        if not legacy.holds_project(clone):
+            continue
+        out.personal[pid] = {"path": str(clone)}
+        out.reports.append(Report(
+            "A6", ".tcw/tcw-manifest.local.yaml",
+            f"projects.{pid}.path: names TCW 3's clone of '{pid}' at {clone}, a cache "
+            f"folder that cleaning tools may empty; moving the clone to {target} and "
+            f"deleting this entry keeps it safe"))
+    return out
