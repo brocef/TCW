@@ -26,6 +26,7 @@ import yaml
 from tcw.errors import InheritedUnavailable, ProjectGraphError, Unreachable
 from tcw.ids import FullId, IdError, parse_stored
 from tcw.locate import FOUND, MISSING as MISSING_OBJECT, UNRESOLVED
+from tcw.reference_fields import names as ref_names
 from tcw.store.base import RefError
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
 from tcw.work.layout import ACCEPTED, Layout
@@ -86,8 +87,11 @@ class RecordsReader(Protocol):
 # ---------------------------------------------------------------------------
 # The declaration file
 
-_KINDS = ("new", "changed", "removed")
 _TAXONOMY = "taxonomy"
+# The kinds of change a declaration lists, from the one table of reference
+# fields (TCW-114 Design 6.1): its capability rows, which the taxonomy rows
+# repeat under `taxonomy:`.
+_KINDS = ref_names("capabilities-yaml", namespace="capabilities")
 
 
 @dataclass(frozen=True)

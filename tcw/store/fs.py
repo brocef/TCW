@@ -33,6 +33,7 @@ from tcw.errors import (BackendError, InheritedUnavailable, NotFound, Refused,
 from tcw.findings import Finding
 from tcw.ids import (SCHEME, FolderAddress, FullId, IdError, MalformedId, id_path_problem,
                      length_problem, parse_address, parse_stored, sort_input)
+from tcw.reference_fields import field as ref_field, fields_of as ref_rows, names as ref_names
 from tcw.object_folders import (EXTRA, LEGACY, MISPLACED, RESERVED, RESOURCES, STATE_FILES,
                                 Walk, disagreement, exact_child, exact_path, folder_parent,
                                 id_path_refused, id_problem, is_object, is_reserved,
@@ -2406,7 +2407,8 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
                 if hit is not None and _in_folder(self.root / hit, target, self.root):
                     named.add(field)
             out += [f"capability {path} ({field})"
-                    for field in ("Subject", "Feature") if field in named]
+                    for field in ref_names("capability", namespace="taxonomy")
+                    if field in named]
         return out
 
     def _referrers(self, target: Path) -> list[str]:
@@ -2426,8 +2428,9 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             vocabulary = fields.get("vocabulary") or [] \
                 if declared_kind is None or \
                 _normalize_taxonomy_kind(declared_kind) == "Feature" else []
-            for field, refs in (("relatesTo", fields.get("relatesTo") or []),
-                                ("vocabulary", vocabulary)):
+            for field, refs in ((name, vocabulary if name == "vocabulary"
+                                 else fields.get(name) or [])
+                                for name in ref_names("term", parent=False)):
                 for ref in refs:
                     hit = self._local_ref(ref)
                     if hit is not None and _in_folder(self.root / hit, target, self.root):
@@ -2701,8 +2704,12 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
 
 # ── FsCapabilitiesStore ──────────────────────────────────────────────────────
 
-# The capability fields that hold references (TCW-110 Design 5.1).
-_REF_FIELDS = ("Subject", "Feature", "Superseded by", "Blocked by", "Roles", "When")
+def _cap_ref_rows():
+    """The capability fields naming another capability, `parent` aside
+    (TCW-110 Design 5.1), read from the one table of reference fields
+    (TCW-114 Design 6.1) when they are needed, so a row added there is
+    checked here."""
+    return ref_rows("capability", namespace="capabilities", parent=False)
 # `_stored_forms`' answer when the project has no taxonomy store to read.
 _NO_TAXONOMY = object()
 
@@ -2952,9 +2959,10 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         other form names nothing here, and `check` reports it.
         """
         def tokens(field: str, raw) -> list[str]:
-            if field in ("Superseded by", "Blocked by"):
+            row = ref_field("capability", field)
+            if not row.many:
                 return [str(raw)]
-            ns = "roles" if field == "Roles" else "conditions"
+            ns = row.group
             toks = raw if isinstance(raw, list) else str(raw).split(",")
             refs = [str(s).strip().lstrip("!") for s in toks if str(s).strip()]
             return [r for r in refs
@@ -2970,7 +2978,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             if same(folder):
                 continue
             meta = self._state(folder)
-            for field in ("Superseded by", "Blocked by", "Roles", "When"):
+            for field in (row.name for row in _cap_ref_rows()):
                 if field not in meta or meta[field] is None:
                     continue
                 for ref in tokens(field, meta[field]):
@@ -2989,7 +2997,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         for path, decl in self._declarations().items():
             if decl is None or path == full_id.id_path:
                 continue
-            for field in ("Superseded by", "Blocked by", "Roles", "When", "parent"):
+            for field in ref_names("capability", namespace="capabilities"):
                 raw = decl.fields.get(field)
                 if raw is None:
                     continue
@@ -3078,17 +3086,17 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         out, problems = dict(fields), []
         taxonomy = None
         for key, value in fields.items():
-            if value is None or key not in _REF_FIELDS:
+            if value is None or key not in ref_names("capability", parent=False):
                 continue
             if key in ("Subject", "Feature") and taxonomy is None:
                 taxonomy = self._taxonomy() or _NO_TAXONOMY
-            single = key in ("Superseded by", "Blocked by", "Feature")
+            single = not ref_field("capability", key).many
             tokens = [str(value).strip()] if single else [
                 str(t).strip() for t in (value if isinstance(value, list)
                                          else str(value).split(",")) if str(t).strip()]
             stored = []
             for token in tokens:
-                negated = key in ("Roles", "When") and token.startswith("!")
+                negated = ref_field("capability", key).negatable and token.startswith("!")
                 text = token[1:] if negated else token
                 try:
                     full_id = self._ref_input(key, text, token, taxonomy)
@@ -3382,7 +3390,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         because there is only one place that says it.
         """
         out = []
-        for key in ("Superseded by", "Blocked by"):
+        for key in (row.name for row in _cap_ref_rows() if not row.many):
             if key in f and (e := self._ref_error(str(f[key]))):
                 out.append((e[0], f"{key} → {e[1]}"))
         return (out + self._check_globals(f)
@@ -3400,7 +3408,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
 
     def _check_globals(self, f) -> list[tuple[str, str]]:
         out = []
-        for ns, field in (("roles", "Roles"), ("conditions", "When")):
+        for ns, field in ((row.group, row.name) for row in _cap_ref_rows() if row.group):
             raw = f.get(field, "")
             toks = raw if isinstance(raw, list) else str(raw).split(",")
             for tok in (str(s).strip() for s in toks if str(s).strip()):
@@ -3424,9 +3432,12 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         `str(...)`, as the other four ref fields already do: a ref resolver
         takes a string, and a non-string here used to escape as AttributeError
         out of `taxonomy.get` rather than as a refusal the caller can read."""
-        refs = [("Subject", str(s)) for s in _as_list(f.get("Subject"))]
-        if f.get("Feature"):
-            refs.append(("Feature", str(f["Feature"])))
+        refs = []
+        for row in ref_rows("capability", namespace="taxonomy"):
+            if row.many:
+                refs += [(row.name, str(s)) for s in _as_list(f.get(row.name))]
+            elif f.get(row.name):
+                refs.append((row.name, str(f[row.name])))
         return refs
 
     def _term_problem(self, ref: str, taxonomy) -> "tuple[Term | None, tuple | None]":

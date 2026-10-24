@@ -81,3 +81,92 @@ def test_values_reads_a_dotted_name_inside_a_mapping():
                                          "taxonomy": {"changed": ["t"]}})
     assert [(f.name, v) for f, v, _ in found] == [("new", "a/b"),
                                                   ("taxonomy.changed", "t")]
+
+
+# -- AC 26, the second half: every row's values are checked ----------------------------
+
+from tests.objectcli import findings, item, obj, project, tcw  # noqa: E402,F401
+
+import yaml  # noqa: E402
+
+TERM_ROWS = {"relatesTo": ["demo.taxonomy/gone"], "vocabulary": ["demo.taxonomy/gone"],
+             "parent": "demo.taxonomy/gone"}
+CAP_ROWS = {"Subject": ["demo.taxonomy/gone"], "Feature": "demo.taxonomy/gone",
+            "Superseded by": "demo.capabilities/gone",
+            "Blocked by": "demo.capabilities/gone",
+            "Roles": "demo.capabilities/roles/gone",
+            "When": "demo.capabilities/conditions/gone", "parent": "demo.capabilities/gone"}
+
+
+@pytest.fixture
+def demo(tmp_path):
+    root = project(tmp_path, "demo", work={})
+    obj(root, "taxonomy", "v", name="V", kind="Vocabulary")
+    return root
+
+
+def _reported(tcw, root, where: str, *words: str) -> list[str]:
+    result = tcw(["validate"], root)
+    return [line for line in findings(result)
+            if where in line and all(w in line for w in words)]
+
+
+@pytest.mark.parametrize("name", sorted(TERM_ROWS))
+def test_a_dangling_term_field_is_reported(tcw, demo, name):
+    obj(demo, "taxonomy", "t", name="T", kind="Feature" if name == "vocabulary"
+        else "Vocabulary", **{name: TERM_ROWS[name]},
+        **({"vocabulary": ["demo.taxonomy/v"]} if name != "vocabulary" else {}))
+    assert _reported(tcw, demo, "docs/taxonomy/t", name, "demo.taxonomy/gone")
+
+
+@pytest.mark.parametrize("name", sorted(CAP_ROWS))
+def test_a_dangling_capability_field_is_reported(tcw, demo, name):
+    obj(demo, "capabilities", "x", name="X", Status="Missing", **{name: CAP_ROWS[name]})
+    assert _reported(tcw, demo, "docs/capabilities/x", name, "gone")
+
+
+@pytest.mark.parametrize("name", ["parent", "blocked-by"])
+def test_a_dangling_work_item_field_is_reported(tcw, demo, name):
+    value = "demo.work/2026-10-01-gone"
+    item(demo, "2026-10-01-a", **{name: [value] if name == "blocked-by" else value})
+    assert _reported(tcw, demo, "2026-10-01-a", name, value)
+
+
+@pytest.mark.parametrize("name", ["new", "changed", "removed", "taxonomy.new",
+                                  "taxonomy.changed", "taxonomy.removed"])
+def test_a_capabilities_yaml_field_is_checked(tcw, demo, name):
+    """Mid-work, a declared change not made yet is not reported until the
+    gate (`records_problems`), so a value no reader accepts shows that the
+    field is read: a 3.x name."""
+    namespace = "taxonomy" if name.startswith("taxonomy.") else "capabilities"
+    kind = name.split(".")[-1]
+    declared = {kind: ["gone"]} if namespace == "capabilities" else \
+        {"taxonomy": {kind: ["gone"]}}
+    folder = item(demo, "2026-10-01-a")
+    (folder / "capabilities.yaml").write_text(yaml.safe_dump(declared))
+    said = "term gone:" if namespace == "taxonomy" else "capabilities.yaml: gone:"
+    assert _reported(tcw, demo, "capabilities.yaml", said)
+
+
+def test_a_dangling_link_is_reported(tcw, demo):
+    folder = obj(demo, "capabilities", "x", name="X", Status="Missing")
+    (folder / "description.md").write_text("See [it](tcw://demo.taxonomy/gone).\n")
+    assert _reported(tcw, demo, "docs/capabilities/x", "tcw://demo.taxonomy/gone")
+
+
+@pytest.mark.xfail(strict=True, reason="recorded references arrive in Steps 13-15")
+@pytest.mark.parametrize("name", ["parent", "blocked-by"])
+def test_a_dangling_jira_item_field_is_reported(name):
+    raise NotImplementedError("written with Step 15")
+
+
+def test_a_row_added_to_the_table_is_checked_with_no_other_change(tcw, demo,
+                                                                  monkeypatch):
+    import tcw.reference_fields as table
+    from tcw.reference_fields import Field
+    monkeypatch.setattr(table, "FIELDS", (*table.FIELDS, Field(
+        "capability", "Reviewed by", False, "capabilities")))
+    obj(demo, "capabilities", "x", name="X", Status="Missing",
+        **{"Reviewed by": "demo.capabilities/gone"})
+    assert _reported(tcw, demo, "docs/capabilities/x", "Reviewed by",
+                     "demo.capabilities/gone")

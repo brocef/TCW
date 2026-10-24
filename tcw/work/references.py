@@ -33,43 +33,60 @@ class Problem:
     message: str
 
 
+#: The `Item` attribute each work item reference field is read from.
+_ATTRIBUTES = {"parent": "parent", "blocked-by": "blocked_by"}
+
+
+def item_references(item: Item) -> list[tuple[Item, str, Slug]]:
+    """`(item, field, reference)` for each reference `item` holds, in the
+    fields the one table names for a work item (TCW-114 Design 6.1)."""
+    from tcw.reference_fields import fields_of
+    out = []
+    for row in fields_of("work-item"):
+        value = getattr(item, _ATTRIBUTES[row.name])
+        for ref in (value if row.many else [value] if value else []):
+            out.append((item, row.name, ref))
+    return out
+
+
 def reference_problems(items: Iterable[Item], current_project: str,
-                       resolve: Callable[[Slug], "str | GraphError"]) -> list[Problem]:
+                       resolve: Callable[[Slug], "str | GraphError"],
+                       more: Iterable[tuple[Item, str, Slug]] = ()) -> list[Problem]:
     """Every `parent` and `blocked-by` that points at nothing.
 
     Pass **every** item, finished ones included, or a reference to a completed
     blocker looks missing. A reference into another project goes through
     `resolve`, which answers `found`, `missing`, `unresolved` (that project
     cannot be reached from here), `broken` (it is here, and its work store
-    cannot be read) or a `GraphError` (it cannot be looked up).
+    cannot be read) or a `GraphError` (it cannot be looked up). `more` adds
+    `(item, field, reference)` triples kept somewhere other than the items'
+    own properties.
     """
     items = list(items)
     known = {item.slug for item in items}
     problems = []
-    for item in items:
-        refs = ([("parent", item.parent)] if item.parent else []) + \
-               [("blocked-by", ref) for ref in item.blocked_by]
-        for field, ref in refs:
-            if ref.project == current_project:
-                answer = FOUND if ref in known else MISSING
-            else:
-                answer = resolve(ref)
-            if isinstance(answer, GraphError):
-                problems.append(Problem(ERROR, item.slug,
-                                        f"{field} {ref} cannot be looked up: "
-                                        f"{answer.message}"))
-            elif answer == MISSING:
-                problems.append(Problem(WARNING, item.slug,
-                                        f"{field} references a missing item, {ref}"))
-            elif answer == UNRESOLVED:
-                problems.append(Problem(UNRESOLVED, item.slug,
-                                        f"{field} {ref} is in a project that "
-                                        f"cannot be reached from here"))
-            elif answer == BROKEN:
-                problems.append(Problem(WARNING, item.slug,
-                                        f"{field} {ref} could not be checked, because "
-                                        f"project '{ref.project}' cannot be read; run "
-                                        f"`tcw validate` there"))
+    triples = [t for item in items for t in item_references(item)] + list(more)
+    for item, field, ref in triples:
+        if ref.project == current_project:
+            answer = FOUND if ref in known else MISSING
+        else:
+            answer = resolve(ref)
+        if isinstance(answer, GraphError):
+            problems.append(Problem(ERROR, item.slug,
+                                    f"{field} {ref} cannot be looked up: "
+                                    f"{answer.message}"))
+        elif answer == MISSING:
+            problems.append(Problem(WARNING, item.slug,
+                                    f"{field} references a missing item, {ref}"))
+        elif answer == UNRESOLVED:
+            problems.append(Problem(UNRESOLVED, item.slug,
+                                    f"{field} {ref} is in a project that "
+                                    f"cannot be reached from here"))
+        elif answer == BROKEN:
+            problems.append(Problem(WARNING, item.slug,
+                                    f"{field} {ref} could not be checked, because "
+                                    f"project '{ref.project}' cannot be read; run "
+                                    f"`tcw validate` there"))
     return problems
 
 
