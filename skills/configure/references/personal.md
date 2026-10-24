@@ -107,22 +107,23 @@ not used, and why. This excerpt is from a project whose team file adds a
 local file shown above (the other stages and the procedures are left out, and
 the user-wide file's path is shortened):
 
+<!-- prettier-ignore -->
 ```yaml
 work:
-    backend: filesystem # built-in
-    hooks:
-        timeout: 300 # built-in
-        output-cap: 65536 # built-in
-    stages:
-        spec:
-            prompt:
-                - blob: Read the team notes first. # local: tcw-config.local.yaml
-                - builtin: true # built-in, tcw/work/prompts/spec.md
-            post:
-                - command: echo team # project
-id: demo # project
+  backend: filesystem  # built-in
+  hooks:
+    timeout: 300  # built-in
+    output-cap: 65536  # built-in
+  stages:
+    spec:
+      prompt:
+        - blob: Read the team notes first.  # local: tcw-config.local.yaml
+        - builtin: true  # built-in, tcw/work/prompts/spec.md
+      post:
+        - command: echo team  # project
+id: demo  # project
 user:
-    name: Sam # user: ~/.config/tcw/config.yaml
+  name: Sam  # user: ~/.config/tcw/config.yaml
 ```
 
 The built-in entry stands for TCW's own text, and its comment names the
