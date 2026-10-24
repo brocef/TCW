@@ -208,6 +208,14 @@ exits 0 (the reason is shortened here):
 warning: 'core' is unavailable, so its work items are not listed: project 'core' is not on this machine: …
 ```
 
+The words after "so" say what was left out. A listing or search says "its
+taxonomy entries are not listed" or "its capabilities are not listed";
+`tcw taxonomy show` says "its taxonomy entries are not included",
+`tcw capabilities show` "its status is not shown", and `tcw work show` "its
+items are not counted in children and blocks"; `tcw work list --project <id>`
+says the same of a covered project it does not keep, which it reads only for
+those counts.
+
 The project the command runs in is different. When something it inherits
 cannot be read, such as a parent's capabilities, a listing shows only its own
 declarations with a warning (and marks them `partial`, below), and a command
