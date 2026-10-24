@@ -10,10 +10,16 @@
   files, `cap-…` ids into `.tcw/tcw-migration.yaml`, loose files into
   `resources/`, overrides moved to their original's path), `references.py`
   (C16), `jira.py` (C17, and `edited_tickets` and `restore_tickets`, the way
-  back for the tickets), `execute.py` and `progress.py` (phases B to F, the
+  back for the tickets: `edited_tickets` reads the joined output of every
+  run, including the tickets a stopped run listed as not done, and when
+  `restore_tickets` leaves a ticket out, its error's `pending` names those
+  left out and its `restored` those put back), `execute.py` and `progress.py` (phases B to F, the
   progress record, a stopped run finished by running again), `report.py`,
   `editors.py`, `loose.py`, `model.py` and `record.py`. Exit codes 0, 1, 3
-  and 5. (TCW-116)
+  and 5. An absolute or `~` path that the 3.x shared file held for a
+  related project goes only into the migrating person's
+  `.tcw/tcw-manifest.local.yaml`, and the run reports it as A14, saying
+  that every other person must add their own entry. (TCW-116)
 - `JiraBackend.item_values` and `set_item_values`: the search for every
   ticket's `TCW Item` and the edit of it, each checked against the value it
   replaces; used only by `tcw migrate`, and not backend operations. (TCW-116)

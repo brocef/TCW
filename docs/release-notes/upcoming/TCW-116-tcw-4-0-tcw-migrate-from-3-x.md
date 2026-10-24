@@ -34,3 +34,12 @@ each. Everyone working on a project upgrades together; when someone else
 has already migrated and committed, your own `tcw migrate` converts what
 is still yours: your personal settings and, for a project TCW 3 cloned
 for you, an entry pointing at that clone.
+
+TCW 4.0 does not let the shared files name a related project by an
+absolute path (or one starting with `~`), since such a path is only right
+on one machine. When the TCW 3 configuration did, the person who migrates
+gets that path in their own `.tcw/tcw-manifest.local.yaml`, which is not
+committed, and the run lists it under "needs attention" (A14). Everyone
+else adds their own entry to their own `.tcw/tcw-manifest.local.yaml`;
+their `tcw migrate` cannot do it for them, because the path is no longer
+in any shared file.

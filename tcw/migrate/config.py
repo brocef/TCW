@@ -593,6 +593,7 @@ def _plan_entry(root: Path, item: Located, out: ManifestPlan, legacy, family_mod
     locator = relation.locator
     subfolder = repo.path if repo is not None and repo.path else None
     m5 = None
+    only_here = None
     if repo is not None:
         if "#" in repo.url:
             out.blockers.append(Blocker(
@@ -609,6 +610,7 @@ def _plan_entry(root: Path, item: Located, out: ManifestPlan, legacy, family_mod
     if locator is not None:
         if _absolute_text(locator):
             personal["path"] = locator                                      # M1
+            only_here = _only_here(root, base, relation, locator)
             if m5 is not None:
                 shared["path"] = m5
         else:
@@ -619,6 +621,7 @@ def _plan_entry(root: Path, item: Located, out: ManifestPlan, legacy, family_mod
         if _absolute_text(repo.checkout):                                   # M4
             personal["path"] = written
             shared["path"] = m5
+            only_here = _only_here(root, base, relation, written)
         else:
             shared["path"] = written if base == root else _relative(root, base / written)
     elif repo is not None:                                                  # M5
@@ -650,7 +653,25 @@ def _plan_entry(root: Path, item: Located, out: ManifestPlan, legacy, family_mod
     if shared:
         out.shared.setdefault(pid, shared)
     if personal:
+        if only_here is not None and pid not in out.personal:
+            out.reports.append(only_here)
         out.personal.setdefault(pid, personal)
+
+
+def _only_here(root: Path, base: Path, relation, path: str) -> Report:
+    """A14: an absolute or `~` path (M1, M4) that TCW 3's shared file held
+    for everyone, now only in this person's untracked personal manifest. No
+    other person's run can recover it, since the shared file it came from
+    is converted, so each must write their own entry."""
+    source = ROOT_CONFIG if base == root else _posix(Path(_relative(root, base)) /
+                                                     ROOT_CONFIG)
+    pid = relation.id
+    return Report(
+        "A14", ".tcw/tcw-manifest.local.yaml",
+        f"projects.{pid}.path: {path}, which {source}'s projects.{relation.kind}.{pid} "
+        f"held for everyone, is now only in this file, which is not shared; every "
+        f"other person must add their own .tcw/tcw-manifest.local.yaml entry for "
+        f"'{pid}'")
 
 
 def _variable(project_id: str) -> str:
@@ -1156,7 +1177,8 @@ def clone_entries(root: Path) -> ManifestPlan:
     project, gets the personal entry M5 gives the first person, with A6. An
     entry the personal manifest already has is left. The other per-machine
     paths (M1, M4) came from the 3.x shared file and are not recoverable
-    from the converted one, so the person writes those by hand."""
+    from the converted one, so the person writes those by hand, as the
+    first person's run said in its A14 lines."""
     import os
     from tcw.migrate import legacy
     from tcw.migrate.family import manifest_entries_4

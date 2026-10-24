@@ -99,7 +99,7 @@ class TicketEdit:
 
 @dataclass(frozen=True)
 class Report:
-    """A report: `code` A1-A13 or D1-D8, where it is, and what it says.
+    """A report: `code` A1-A14 or D1-D8, where it is, and what it says.
     `predicts` is the 4.0 finding the report stands for, as `(file, kind)`,
     so the check after the run can tell it from an A12 (Decided 13)."""
 

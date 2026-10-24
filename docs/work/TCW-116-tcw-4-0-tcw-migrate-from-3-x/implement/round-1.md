@@ -190,7 +190,11 @@ B7, A8, D2, and the way back's swap.
 - **Design 2.11, the second person.** M1 and M4's per-machine paths come
   from the 3.x shared file, which the first person's run converted; they
   cannot be recovered, so only M5's cache clone gets a personal entry, and
-  the person writes the others by hand.
+  the person writes the others by hand. (Corrected in round 2: this round's
+  run said nothing about those paths, so nobody was told to write them.
+  From round 2 the first person's run reports each as A14, naming the entry
+  and the file and saying that every other person must add their own
+  entry; a second person's run still does not recover them.)
 
 **Adaptations, decided by the implementing agent** (each with its reason
 in the notes kept for this round; the larger ones):
@@ -318,24 +322,35 @@ For the dispatching session to post.
   re-run while Jira cannot be reached writes nothing more and is finished
   with `--no-jira`. Also: a package below a 3.x root is refused with exit
   1 naming the root (not exit 7), and a second person's run writes their
-  personal entry for a TCW 3 cache clone but not M1 or M4's absolute paths.
+  personal entry for a TCW 3 cache clone but not M1 or M4's absolute paths,
+  which the first person's run reports as A14 (added in round 2).
 - **TCW-118.** Design 9.3 steps 0 to 8 and the way back, with the spec's
   "Handoff to TCW-118", and these concrete forms: the proof's commands are
   in this round's Step 14; step 2 saves `tcw migrate --dry-run`'s output
   outside the repository as `tcw116-dry-run.txt`; step 3 also deletes
   `UNMIGRATED_RECORDS` once TCW-117 has landed (not rehearsed here, as
   TCW-117 had not), and runs the suite with the credential variables
-  unset; step 6 saves its output as `tcw116-step6.txt`. The way back:
+  unset; step 6 saves its output as `tcw116-step6.txt`, and each run of
+  step 6 after a stop saves its own (`tcw116-step6-2.txt`, and so on). The
+  way back (revised in round 2: it reads every run's output, offers the
+  tickets a stopped run listed as not done, and names the tickets it put
+  back when it leaves some out):
   ```python
   from pathlib import Path
+  from tcw.errors import TcwError
   from tcw.migrate.jira import edited_tickets, restore_tickets, settings
   from tcw.work.jira.client import JiraClient
   root = Path(".")                       # the primary checkout
-  done = edited_tickets(Path("tcw116-step6.txt").read_text())
+  runs = sorted(Path(".").glob("tcw116-step6*.txt"))
+  done = edited_tickets("\n".join(p.read_text() for p in runs))
   dry = {k for k, _, _ in edited_tickets(
       Path("tcw116-dry-run.txt").read_text().replace("would edit ", "edit "))}
   print(sorted({k for k, _, _ in done} ^ dry))   # read these first
-  restore_tickets(done, JiraClient(settings(root)), root, "tcw")
+  try:
+      print("put back:", restore_tickets(done, JiraClient(settings(root)), root, "tcw"))
+  except TcwError as error:
+      print("put back:", error.restored)
+      print("left out:", error.pending, error)
   ```
   Build the client this way only on the day it is needed.
 - **TCW-110, TCW-111, TCW-112 and TCW-114.** The spec's handoff to each is

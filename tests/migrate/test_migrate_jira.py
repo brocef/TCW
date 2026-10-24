@@ -448,3 +448,72 @@ def test_a_dry_run_s_lines_are_not_edits():
     assert edited_tickets("would edit APP-1: C17 TCW Item: app/APP-1-a -> app.work/APP-1-a\n"
                           "edit APP-2: C17 TCW Item: app/APP-2-b -> app.work/APP-2-b\n") == \
         [("APP-2", "app/APP-2-b", "app.work/APP-2-b")]
+
+
+def test_the_way_back_offers_a_ticket_whose_answer_was_lost(tcw, fake, app):
+    """Review round 1, finding 2: Jira applies APP-2's edit and its answer is
+    lost, so run 1 lists APP-2 as not done and run 2, finding it converted,
+    has nothing to migrate. The way back over both outputs puts every
+    ticket back."""
+    from tcw.migrate.jira import edited_tickets, restore_tickets, settings
+    from tcw.work.jira.client import JiraClient
+    before = {key: ticket.custom.get(ITEM) for key, ticket in fake.tickets.items()}
+    writes = []
+
+    def lose_the_second_answer(method, path):
+        if method == "PUT":
+            writes.append(path)
+            if len(writes) == 2:
+                fake.drop_after_next_write()
+    fake.before_request(lose_the_second_answer)
+    one = tcw(["migrate"], app)
+    assert one.code != 0, one.err
+    assert f"  {EDITS[1]}" in lines(one) and EDITS[1] not in lines(one)
+    assert fake.tickets["APP-2"].custom[ITEM] == "app.work/APP-2-b"
+    fake.before_request(None)
+    two = tcw(["migrate"], app)
+    assert two.code == 0, two.err
+    assert "nothing to migrate" in lines(two)
+    pairs = edited_tickets(one.err + two.err)
+    assert sorted(k for k, _, _ in pairs) == ["APP-1", "APP-2", "APP-3"]
+    assert sorted(restore_tickets(pairs, JiraClient(settings(app)), app, "app")) == \
+        ["APP-1", "APP-2", "APP-3"]
+    assert {key: ticket.custom.get(ITEM) for key, ticket in fake.tickets.items()} == before
+
+
+def test_a_not_done_ticket_never_edited_is_left_alone(tcw, fake, app):
+    """Offering a ticket listed as not done that Jira never edited changes
+    nothing: it still holds its 3.x value."""
+    from tcw.migrate.jira import edited_tickets, restore_tickets, settings
+    from tcw.work.jira.client import JiraClient
+    done = tcw(["migrate", "--no-jira"], app)
+    assert done.code == 0, done.err
+    fake.log.clear()
+    assert restore_tickets(edited_tickets(f"not done:\n  {EDITS[0]}\n"),
+                           JiraClient(settings(app)), app, "app") == []
+    assert puts(fake) == []
+    assert fake.tickets["APP-1"].custom[ITEM] == "app/APP-1-a"
+
+
+def test_edited_tickets_names_each_ticket_once():
+    from tcw.migrate.jira import edited_tickets
+    assert edited_tickets(f"not done:\n  {EDITS[0]}\n{EDITS[0]}\n  would {EDITS[1]}\n") == \
+        [("APP-1", "app/APP-1-a", "app.work/APP-1-a")]
+
+
+def test_a_way_back_that_leaves_a_ticket_out_names_those_it_put_back(tcw, fake, app):
+    """Review round 1, finding 3: APP-2 was edited by hand since the run, so
+    it is left out; APP-1 and APP-3 are put back, and the error says
+    which is which."""
+    from tcw.errors import BackendError
+    from tcw.migrate.jira import edited_tickets, restore_tickets, settings
+    from tcw.work.jira.client import JiraClient
+    done = tcw(["migrate"], app)
+    assert done.code == 0, done.err
+    fake.tickets["APP-2"].custom[ITEM] = "app.work/APP-2-renamed"
+    with pytest.raises(BackendError) as raised:
+        restore_tickets(edited_tickets(done.err), JiraClient(settings(app)), app, "app")
+    assert raised.value.pending == ["APP-2"]
+    assert raised.value.restored == ["APP-1", "APP-3"]
+    assert fake.tickets["APP-1"].custom[ITEM] == "app/APP-1-a"
+    assert fake.tickets["APP-2"].custom[ITEM] == "app.work/APP-2-renamed"

@@ -68,19 +68,52 @@ def test_m1_a_relative_locator_is_the_shared_path_as_written(tcw, tmp_path, far)
     assert "projects" not in config
 
 
+def only_here(path, relation: str = "upstream", source: str = "tcw-config.yaml") -> str:
+    """A14's line for 'core' (review round 1, finding 1)."""
+    return (f"  A14 .tcw/tcw-manifest.local.yaml: projects.core.path: {path}, which "
+            f"{source}'s projects.{relation}.core held for everyone, is now only in "
+            f"this file, which is not shared; every other person must add their own "
+            f".tcw/tcw-manifest.local.yaml entry for 'core'")
+
+
 def test_m1_an_absolute_locator_goes_to_the_personal_manifest(tcw, tmp_path, far):
     app = app_with(tmp_path, f"  upstream:\n    core: {far}\n")
-    migrate(tcw, app)
+    done = migrate(tcw, app)
     assert manifests(app) == (None, {"core": {"path": str(far)}})
+    assert done.err.splitlines().count(only_here(far)) == 1
+
+
+def test_m1_an_absolute_locator_extended_is_reported_once(tcw, tmp_path, far):
+    """The reviewer's case: `taxonomy.extends` names the upstream too."""
+    app = app_with(tmp_path, f"  upstream:\n    core: {far}\ntaxonomy:\n"
+                             f"  extends: [core]\n")
+    done = migrate(tcw, app)
+    assert manifests(app) == (None, {"core": {"path": str(far)}})
+    assert done.err.splitlines().count(only_here(far)) == 1
+
+
+def test_m1_the_dry_run_reports_it_too(tcw, tmp_path, far):
+    app = app_with(tmp_path, f"  upstream:\n    core: {far}\n")
+    before = tree(app)
+    done = tcw(["migrate", "--dry-run", "--no-jira"], app)
+    assert done.code == 0, done.err
+    assert only_here(far) in done.err.splitlines()
+    assert tree(app) == before
+
+
+def test_a_relative_locator_is_not_a14(tcw, tmp_path, far):
+    app = app_with(tmp_path, "  upstream:\n    core: ../../far/core\n")
+    assert "  A14 " not in migrate(tcw, app).err
 
 
 def test_m1_an_absolute_locator_with_a_repository_keeps_m5_s_shared_path(tcw, tmp_path,
                                                                           far):
     app = app_with(tmp_path, f"  upstream:\n    core:\n      path: {far}\n"
                              f"      repository:\n        url: {URL}\n")
-    migrate(tcw, app)
+    done = migrate(tcw, app)
     assert manifests(app) == ({"core": {"repository": URL, "path": "../core"}},
                               {"core": {"path": str(far)}})
+    assert only_here(far) in done.err.splitlines()
 
 
 def test_m2_the_repository_and_its_ref(tcw, tmp_path, far):
@@ -127,9 +160,11 @@ def test_m4_a_relative_checkout(tcw, tmp_path, far):
 def test_m4_an_absolute_checkout(tcw, tmp_path, far):
     app = app_with(tmp_path, f"  upstream:\n    core:\n      repository:\n"
                              f"        url: {URL}\n        checkout: {far}\n")
-    migrate(tcw, app)
+    done = migrate(tcw, app)
     assert manifests(app) == ({"core": {"repository": URL, "path": "../core"}},
                               {"core": {"path": str(far)}})
+    assert only_here(far) in done.err.splitlines()
+    assert "  A14 " not in migrate(tcw, app).err        # the second run: nothing to say
 
 
 def test_m5_a_cache_clone_here_is_named_in_the_personal_manifest(tcw, tmp_path,

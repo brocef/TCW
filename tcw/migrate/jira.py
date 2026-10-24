@@ -154,16 +154,25 @@ def half(root: Path, project_id: str) -> JiraHalf:
 # ---------------------------------------------------------------------------
 # The way back (Design 9.3, 5.4)
 
-_EDIT_LINE = re.compile(r"^edit (?P<key>[A-Z][A-Z0-9_]*-\d+): C17 TCW Item: "
+_EDIT_LINE = re.compile(r"^(?:  )?edit (?P<key>[A-Z][A-Z0-9_]*-\d+): C17 TCW Item: "
                         r"(?P<old>\S+) -> (?P<new>\S+)$")
 
 
 def edited_tickets(text: str) -> list[tuple[str, str, str]]:
-    """Each ticket a run's output says it edited, as `(key, old, new)`, from
-    its `edit <key>: C17 TCW Item: <old> -> <new>` lines; a dry run's
-    `would edit` lines are not edits and are left out."""
-    return [(m["key"], m["old"], m["new"]) for m in map(_EDIT_LINE.match, text.splitlines())
-            if m]
+    """Each ticket a run's output says it edited, or may have edited, as
+    `(key, old, new)`, once each in the order first named: its `edit <key>:
+    C17 TCW Item: <old> -> <new>` lines, and the same lines indented under a
+    stopped run's `not done:`, since Jira may have made an edit whose answer
+    was lost, and the next run then skips that ticket as already converted.
+    `restore_tickets` edits only a ticket that still holds the 4.0 value, so
+    offering one never edited is harmless. `text` may join the outputs of
+    several runs. A dry run's `would edit` lines are not edits and are left
+    out."""
+    seen: dict[str, tuple[str, str, str]] = {}
+    for m in map(_EDIT_LINE.match, text.splitlines()):
+        if m and m["key"] not in seen:
+            seen[m["key"]] = (m["key"], m["old"], m["new"])
+    return list(seen.values())
 
 
 def restore_tickets(pairs: list[tuple[str, str, str]], client, root: Path,
@@ -173,9 +182,16 @@ def restore_tickets(pairs: list[tuple[str, str, str]], client, root: Path,
     edits a ticket only while it still holds the 4.0 value. `client` is the
     Jira client to send the edits through, passed in so that a test hands
     it the fake; the field ids come from the project's own `work.jira`.
-    Returns the keys edited."""
+    Returns the keys edited. When a ticket is left out (another value, or
+    Jira failed), raises `set_item_values`'s error, whose `pending` names
+    the tickets left out and whose `restored` the keys it did put back."""
+    from tcw.errors import TcwError
     backend = backend_for(root, project_id, settings(root), client)
     restored: list[str] = []
-    backend.set_item_values([(key, new, old) for key, old, new in pairs],
-                            edited=restored.append)
+    try:
+        backend.set_item_values([(key, new, old) for key, old, new in pairs],
+                                edited=restored.append)
+    except TcwError as error:
+        error.restored = restored
+        raise
     return restored

@@ -8,7 +8,7 @@ its action and its conversions, and a dry run puts `would ` first:
     delete <path>: C9
     edit <KEY>: C17 TCW Item: <old> -> <new>
 
-Reports are `<code> <where>: <text>` under `needs attention:` (A1-A13) and
+Reports are `<code> <where>: <text>` under `needs attention:` (A1-A14) and
 `reads differently in TCW 4:` (D1-D8); blockers are `<code> <where>: <why>;
 <what to do>` under `refused:`.
 """
