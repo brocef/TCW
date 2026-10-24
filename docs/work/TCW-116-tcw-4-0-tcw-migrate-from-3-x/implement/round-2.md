@@ -156,3 +156,9 @@ id: a report is never given for an entry that is not written.
 
 Not run here, as the brief asks: the dispatching session runs the full
 suite as CI runs it.
+
+The full suite as CI runs it, `.venv/bin/pytest -q -p no:cacheprovider` with
+every `TCW_*` variable unset, run by the dispatching session at `6a18c5a8`
+(2026-10-24) in two halves by folder: `2246 passed, 2 skipped` and `5482
+passed, 111 skipped`. `pnpm test` `247 passed`; `tsc --noEmit`, `pnpm lint`
+and `pnpm check:build` clean.
