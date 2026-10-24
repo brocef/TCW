@@ -83,6 +83,17 @@ def unavailable(error: Exception) -> dict[str, str]:
     return {"unavailable": str(error)}
 
 
+def _registered_tags(ctx: WorkContext) -> "list[str] | dict[str, str]":
+    """The project's tags, or, when a parent that is not here may set them or
+    passes them with a problem, `{"unavailable": <why>}`, so the summary still
+    answers (TCW-109 Design 3.4). `ctx.config.tags or []` is not a safe test:
+    using the value raises."""
+    from tcw.config import Withheld
+    if isinstance(ctx.config.tags, Withheld):
+        return unavailable(ctx.config.tags.error())
+    return list(ctx.config.tags)
+
+
 def degrading(ctx: WorkContext, read: Callable[[], Any],
               shape: Callable[[Any], Any] = lambda v: v) -> Any:
     """`read()`'s value shaped, or, when the backend owns the record and
@@ -172,7 +183,7 @@ def project(request: Request):
         "inboxStage": inbox_stage(),
         "startStage": start_stage(),
         "inboxItems": bool(ctx.backend.inbox_items),
-        "tags": list(ctx.config.tags),
+        "tags": _registered_tags(ctx),
         "scales": {"priority": list(PRIORITIES), "size": list(SIZES)},
         "capabilityScales": {"status": sorted(CAP_STATUSES),
                              "priority": sorted(CAP_PRIORITIES),

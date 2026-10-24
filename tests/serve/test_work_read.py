@@ -341,3 +341,39 @@ def test_a_stray_folder_is_not_on_the_fallback_board(jira):
     assert board["fallback"] is True
     assert sorted(r["full-id"] for r in board["items"]) == \
         ["tcw.work/TCW-1-first", "tcw.work/TCW-2-second"]
+
+
+# -- a parent that is not here (TCW-109 Design 3.4, AC 32) -------------------------------
+
+
+def _with_parents(root, parents, work=None):
+    from tests.projectfiles import config_file, write_config_file
+    document = yaml.safe_load(config_file(root).read_text())
+    document["parents"] = parents
+    if work is not None:
+        document["work"] = work
+    write_config_file(config_file(root), yaml.safe_dump(document, sort_keys=False))
+    return root
+
+
+def test_ac32_undecided_tags_do_not_stop_the_project_summary(tmp_path, serve_project):
+    decided = ok(serve_project(fs_project(tmp_path / "d", "app", tags=())).get(
+        "/api/project"))
+    app = _with_parents(fs_project(tmp_path / "u", "app", config={}), ["core"])
+    served = serve_project(app)
+    project = ok(served.get("/api/project"))
+    assert set(project["tags"]) == {"unavailable"}
+    assert "(work.tags)" in project["tags"]["unavailable"]
+    for key in decided:
+        if key not in ("tags", "user", "projects"):
+            assert project[key] == decided[key], key
+    assert served.get("/api/work").status == 200
+
+
+def test_ac32_undecided_jira_settings_stop_the_work_routes(tmp_path, serve_project):
+    from tests.test_inherited_config import jira_mode
+    app = _with_parents(fs_project(tmp_path, "app", config={}), ["core"],
+                        jira_mode(jira={"project": "APP"}))
+    answer = serve_project(app).get("/api/work")
+    assert answer.status == 500
+    assert "(work.jira)" in answer.json["error"]

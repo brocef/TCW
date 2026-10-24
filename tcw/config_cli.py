@@ -127,7 +127,15 @@ class _Writer:
             found = self.config.origins.get(path)
             if found is None and path and isinstance(path[-1], int):
                 found = self.config.origins.get(path[:-1])
-            if found is not None:
+            own = self.config.sources[-1] if self.config.sources else None
+            if found is not None and found.variable is not None:
+                parts.append(f"environment: {found.variable}")
+            elif found is not None and found.file is not None and found.project not in (
+                    None, own) and found.layer != "user":
+                # Passed by another project: its file by its whole path
+                # (TCW-109 Design 7.1).
+                parts.append(f"{found.layer}: {found.file}")
+            elif found is not None:
                 parts.append(found.layer if found.file is None
                              or found.layer == "project"
                              else f"{found.layer}: "
@@ -261,6 +269,19 @@ def _show(args: argparse.Namespace) -> int:
     # project file that cannot be read leaves nothing to print.
     if config.problems and (not args.origin or config.unreadable):
         raise ConfigError(config.problems)
+    # A key the project inherits that cannot be used: what would be printed
+    # is not the configuration commands run with, so nothing is (TCW-109
+    # Design 7.1). The first undecided key stops it, exit 7; else the first
+    # broken one, exit 1.
+    from tcw.config import INHERITED_KEYS
+    from tcw.errors import InheritedUnavailable
+    errors = [config.withheld[key].error() for key in INHERITED_KEYS
+              if key in config.withheld]
+    for error in errors:
+        if isinstance(error, InheritedUnavailable):
+            raise error
+    if errors:
+        raise errors[0]
     sys.stdout.write(render(config, origin=args.origin))
     if config.problems:
         for problem in config.problems:
@@ -274,8 +295,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = group(sub, NAME, help="the configuration this project runs with")
     verbs = p.add_subparsers(dest="config_verb", required=True)
     p = command(verbs, "show",
-                help="the effective configuration: TCW's defaults, "
-                     ".tcw/tcw-config.yaml and your personal files, merged",
+                help="the effective configuration: TCW's defaults, what the "
+                     "project's parents pass down, .tcw/tcw-config.yaml, your "
+                     "personal files and override variables, merged",
                 prints="the effective configuration as YAML; with --origin, where "
                        "each value came from",
                 writes="nothing",

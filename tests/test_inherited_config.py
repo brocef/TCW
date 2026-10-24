@@ -835,3 +835,102 @@ def test_ac29_two_repositories(tmp_path):
     assert ran.code == 0, ran
     [finding] = [line for line in lines_of(ran) if line.startswith("unresolved:")]
     assert "'ws'" in finding and SUFFIX in finding, finding
+
+
+# -- `tcw config show` (Step 9, Design 7.1, AC 17) ---------------------------------------
+
+
+def test_ac17_config_show_prints_what_is_inherited(tmp_path):
+    core = made(tmp_path, "core", work=jira_mode(jira=CORE_JIRA, tags=["a", "b"]))
+    app = made(tmp_path, "app", parents=["core"], work=jira_mode())
+    shown = tcw(app, "config", "show")
+    assert shown.code == 0, shown
+    values = yaml.safe_load(shown.out)
+    assert values["work"]["tags"] == ["a", "b"]
+    assert values["work"]["jira"]["site"] == "https://core.example.net"
+    origin = tcw(app, "config", "show", "--origin")
+    [site] = [line for line in origin.out.splitlines() if line.strip().startswith("site:")]
+    assert str(core / ".tcw" / "tcw-config.yaml") in site, site
+
+
+def test_ac17_a_variable_is_labelled_with_its_name(tmp_path):
+    app = made(tmp_path, "app")
+    env = {"TCW_NO_PERSONAL_CONFIG": None, "TCW_USER_NAME__APP": "Robin",
+           "HOME": str(tmp_path)}
+    shown = tcw(app, "config", "show", env=env)
+    assert yaml.safe_load(shown.out)["user"]["name"] == "Robin"
+    origin = tcw(app, "config", "show", "--origin", env=env)
+    [name] = [line for line in origin.out.splitlines() if "Robin" in line]
+    assert name.endswith("# environment: TCW_USER_NAME__APP"), name
+
+
+@pytest.mark.parametrize("flags", [(), ("--origin",)])
+def test_ac17_config_show_stops_on_an_undecided_key(tmp_path, flags):
+    app = made(tmp_path, "app", parents=["core"])
+    shown = tcw(app, "config", "show", *flags)
+    assert shown.code == 7 and shown.out == "" and "(work.tags)" in shown.err, shown
+    set_work(app, jira_mode(jira={"project": "APP"}))
+    shown = tcw(app, "config", "show", *flags)
+    assert shown.code == 7 and shown.out == "" and "(work.tags)" in shown.err, shown
+
+
+def test_ac17_config_show_stops_on_a_broken_key(tmp_path):
+    made(tmp_path, "core", work={"tags": "notalist"})
+    app = made(tmp_path, "app", parents=["core"])
+    shown = tcw(app, "config", "show")
+    assert shown.code == 1 and shown.out == "", shown
+
+
+def test_ac12_the_user_wide_files_shared_key_is_set_aside_once(tmp_path):
+    env = personal_env(tmp_path)
+    write_config_file(tmp_path / "xdg" / "tcw" / "config.yaml", "work:\n  tags: [u]\n")
+    made(tmp_path, "core", work={"tags": ["a"]})
+    app = made(tmp_path, "app", parents=["core"])
+    shown = tcw(app, "config", "show", "--origin", env=env)
+    assert sum(line.startswith("# refused: work.tags") for line in
+               shown.out.splitlines()) == 1, shown.out
+
+
+# -- the tag registry commands (Step 10, Design 6, AC 18) --------------------------------
+
+
+def test_ac18_tags_add_and_rm_in_a_child(tmp_path):
+    core = made(tmp_path, "core", work={"tags": ["a"]})
+    lib = made(tmp_path, "lib", parents=["core"])
+    app = made(tmp_path, "app", parents=["lib"])
+    others = {p: config_file(p).read_bytes() for p in (core, lib)}
+    added = tcw(app, "work", "tags", "add", "z")
+    assert added.code == 0, added
+    assert yaml.safe_load(config_file(app).read_text())["work"]["tags"] == [INHERIT, "z"]
+    assert {p: config_file(p).read_bytes() for p in (core, lib)} == others
+    assert tags_of(app) == {"a", "z"}
+    before = config_file(app).read_bytes()
+    assert tcw(app, "work", "tags", "add", "a").code == 0
+    assert config_file(app).read_bytes() == before
+    refused = tcw(app, "work", "tags", "rm", "a")
+    assert refused.code == 3 and "tag 'a' is inherited from 'core'" in refused.err, refused
+    assert config_file(app).read_bytes() == before
+    assert tcw(app, "work", "tags", "rm", "z").code == 0
+    assert yaml.safe_load(config_file(app).read_text())["work"]["tags"] == [INHERIT]
+    assert tags_of(app) == {"a"}
+    assert tcw(app, "work", "tags", "rm", "nowhere").code == 4
+
+
+def test_ac18_a_child_keeps_following_parents_with_no_tags_yet(tmp_path):
+    core = made(tmp_path, "core")
+    app = made(tmp_path, "app", parents=["core"])
+    assert tcw(app, "work", "tags", "add", "z").code == 0
+    assert yaml.safe_load(config_file(app).read_text())["work"]["tags"] == [INHERIT, "z"]
+    set_work(core, {"tags": ["q"]})
+    assert tags_of(app) == {"q", "z"}
+
+
+def test_ac18_a_project_with_no_parents_writes_what_it_wrote(tmp_path):
+    app = made(tmp_path, "app", work={"tags": ["b"]})
+    assert tcw(app, "work", "tags", "add", "c", "a").code == 0
+    assert yaml.safe_load(config_file(app).read_text())["work"]["tags"] == ["a", "b", "c"]
+    assert tcw(app, "work", "tags", "rm", "b").code == 0
+    assert yaml.safe_load(config_file(app).read_text())["work"]["tags"] == ["a", "c"]
+    bare = made(tmp_path, "bare")
+    assert tcw(bare, "work", "tags", "add", "x").code == 0
+    assert yaml.safe_load(config_file(bare).read_text())["work"]["tags"] == ["x"]

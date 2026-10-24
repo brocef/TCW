@@ -49,6 +49,12 @@ def _layered(project_root: Path, personal: bool, registry=None):
     return config
 
 
+def read_layered(project_root: Path, *, personal: bool = True, registry=None):
+    """The project's whole layered configuration (`tcw.config.Config`),
+    without opening the store; `ConfigError` naming every problem."""
+    return _layered(Path(project_root), personal, registry)
+
+
 def read_work_config(project_root: Path, *, personal: bool = True,
                      registry=None) -> WorkConfig:
     """The project's parsed `work:` configuration, without opening the

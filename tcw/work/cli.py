@@ -31,7 +31,7 @@ from tcw.work.model import (
     start_stage,
 )
 from tcw.work.open import (delegate, existing_item, external_stages_of, name_item,
-                           open_backend, open_for_update, project_facts,
+                           open_backend, open_for_update, project_facts, read_layered,
                            read_work_config, resolve_work_input)
 from tcw.work.record import item_record, readable
 
@@ -661,45 +661,87 @@ def _tags_list(args) -> int:
     return codes.OK
 
 
-def _write_tags(change) -> int:
-    """Rewrite `work.tags` in `tcw-config.yaml`, changing only its lines, and
-    name the file on stderr when it changed. Prints nothing on stdout."""
-    from tcw.store import config_edit
-    from tcw.store.fs import SENTINEL, _atomic_write_all
-    root = project_root()
-    registered = set(read_work_config(root).tags)
-    result = sorted(change(registered))
-    if set(result) != registered:
-        path = root / SENTINEL
+class _Tags:
+    """The tags of the project a tag command acts on (TCW-109 Design 6): the
+    merged list, which raises exit 7 or 1 when it cannot be used; the
+    project's own list in its shared file, and whether it holds an
+    `inherit: true` entry; and which tags reach it from another project."""
+
+    def __init__(self, root: Path):
+        from tcw.config import read_project_file
+        config = read_layered(root)
+        self.root = root
+        self.merged = set(config.work.tags)
+        own_id = config.sources[-1] if config.sources else None
+        raw, _ = read_project_file(root)
+        work = raw.get("work") if isinstance(raw, dict) else None
+        listed = work.get("tags") if isinstance(work, dict) else None
+        self.absent = not isinstance(listed, list)
+        entries = listed if isinstance(listed, list) else []
+        self.inherit = any(isinstance(e, dict) and e.get("inherit") is True
+                           for e in entries)
+        self.own = {normalize_tag(e) for e in entries if isinstance(e, str)}
+        self.has_source = len(config.sources) > 1
+        values = config.values.get("work", {}).get("tags") or []
+        self.inherited: dict[str, str] = {}
+        for i, value in enumerate(values):
+            origin = config.origins.get(("work", "tags", i))
+            if (isinstance(value, str) and origin is not None
+                    and origin.project not in (None, own_id)):
+                self.inherited[normalize_tag(value)] = origin.project
+
+    def write(self, own: set, inherit: bool) -> int:
+        """Rewrite `work.tags` in `tcw-config.yaml` as `own`, sorted, after an
+        `inherit: true` entry when `inherit`, changing only its lines, and
+        name the file on stderr when it changed. Prints nothing on stdout."""
+        from tcw.store import config_edit
+        from tcw.store.fs import SENTINEL, _atomic_write_all
+        path = self.root / SENTINEL
         try:
             text = config_edit.edit_text(path, config_edit.read_text(path),
                                          [config_edit.SetList("work", "tags",
-                                                              tuple(result))])
+                                                              tuple(sorted(own)),
+                                                              inherit=inherit)])
         except ValueError as error:
             raise BackendError(str(error)) from None
         if text is not None:
             _atomic_write_all([(path, text)])
             wrote(path)
-    return codes.OK
+        return codes.OK
 
 
 def _tags_add(args) -> int:
-    given = set(args.tag)
-    return _write_tags(lambda tags: tags | given)
+    """Add the tags not already registered to the project's own list. A
+    project with another source and no list of its own gets an `inherit:
+    true` entry first, so it keeps following its parents (TCW-109 Design
+    6.2)."""
+    tags = _Tags(project_root())
+    new = {normalize_tag(t) for t in args.tag} - tags.merged
+    if not new:
+        return codes.OK
+    return tags.write(tags.own | new, tags.inherit or (tags.absent and tags.has_source))
 
 
 def _tags_rm(args) -> int:
     """Refuse the whole call, writing nothing, when any tag given is not
-    registered: not found (4), naming each one (Design 2 decision 6)."""
-    given = set(args.tag)
-
-    def change(tags: set[str]) -> set[str]:
-        missing = sorted(given - tags)
-        if missing:
-            raise NotFound("no such tag" + ("s" if len(missing) > 1 else "")
-                           + ": " + ", ".join(f"'{t}'" for t in missing))
-        return tags - given
-    return _write_tags(change)
+    registered: not found (4), naming each one (Design 2 decision 6); or
+    when one would stay registered because a parent passes it: refused (3,
+    TCW-109 Design 6.3)."""
+    tags = _Tags(project_root())
+    given = {normalize_tag(t) for t in args.tag}
+    missing = sorted(given - tags.merged)
+    if missing:
+        raise NotFound("no such tag" + ("s" if len(missing) > 1 else "")
+                       + ": " + ", ".join(f"'{t}'" for t in missing))
+    if tags.absent or tags.inherit:
+        for tag in sorted(given):
+            if tag in tags.inherited:
+                raise Refused(f"tag '{tag}' is inherited from '{tags.inherited[tag]}'; "
+                              f"to drop it, list this project's tags under work.tags in "
+                              f".tcw/tcw-config.yaml without an 'inherit: true' entry")
+    if not given & tags.own:
+        return codes.OK
+    return tags.write(tags.own - given, tags.inherit)
 
 
 # -- the parser ------------------------------------------------------------------------------
