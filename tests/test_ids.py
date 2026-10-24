@@ -274,3 +274,22 @@ def test_ac1_a_work_slug_equals_the_identifier_parsed_from_text():
     assert hash(slug) == hash(parsed)
     assert slug in {parsed} and parsed in {slug}
     assert str(slug) == "demo.work/x" and slug.folder == "x"
+
+
+# -- the 255-character limit (TCW-111 Design 4.2) ----------------------------------
+
+
+def test_a_full_identifier_of_255_characters_is_parsed_and_256_refused():
+    from tcw.ids import ID_LIMIT
+    path = "/".join(["a" * 100, "b" * 100, "c" * 43])
+    text = f"demo.work/{path}"
+    assert len(text) == ID_LIMIT
+    assert str(parse_full_id(text)) == text
+    with pytest.raises(MalformedId, match="256 characters; a full identifier is at most 255"):
+        parse_full_id(text + "x")
+
+
+def test_command_input_longer_than_the_limit_is_refused():
+    from tcw.ids import sort_input
+    with pytest.raises(MalformedId, match="at most 255"):
+        sort_input("a" * 100 + "/" + "b" * 100 + "/" + "c" * 60, "work")

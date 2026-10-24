@@ -39,6 +39,8 @@ from tcw.project_files import PROJECT_ID_PATTERN, RESERVED_PROJECT_IDS
 
 NAMESPACES = ("taxonomy", "capabilities", "work")
 ID_PART_LIMIT = 128
+#: The longest full identifier, in characters (TCW-111 Design 4.2).
+ID_LIMIT = 255
 ID_PART = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 FOLDER_PART = re.compile(r"[A-Za-z0-9._~-]+")
 SCHEME = "tcw://"
@@ -202,11 +204,25 @@ def id_part_problem(part: str) -> str | None:
     return id_path_problem(part)
 
 
+def length_problem(full_id: "FullId | str") -> str | None:
+    """Why `full_id` is too long to be a full identifier (TCW-111 Design 4.2),
+    or None. The limit is checked by the parsers and by what makes a new
+    object, never by `FullId` itself, so an object placed by hand beyond it
+    is still read, and `tcw validate` reports it."""
+    text = str(full_id)
+    if len(text) <= ID_LIMIT:
+        return None
+    return f"{text} is {len(text)} characters; a full identifier is at most {ID_LIMIT}"
+
+
 def parse_full_id(text: Any, namespace: str | None = None) -> FullId:
     """`<project>.<namespace>/<id-path>`, by Design 1.1. With `namespace`, an
-    identifier of another namespace is refused naming the one expected."""
+    identifier of another namespace is refused naming the one expected. One
+    longer than `ID_LIMIT` is refused naming the limit (TCW-111 Design 4.2)."""
     if not isinstance(text, str) or not text:
         raise MalformedId(f"{text!r} is not a full identifier")
+    if (problem := length_problem(text)) is not None:
+        raise MalformedId(problem)
     head, slash, id_path = text.partition("/")
     pieces = head.split(".")
     if not slash or len(pieces) != 2:
@@ -340,6 +356,11 @@ def sort_input(text: Any, namespace: str, key_pattern: re.Pattern | None = None)
     noun = NOUNS[namespace]
     if not isinstance(text, str) or not text:
         raise MalformedId(f"{text!r} names no {noun}")
+    # No full identifier is longer than `ID_LIMIT`, so no id-path is either
+    # (TCW-111 Design 4.2); an address is checked as the full identifier in it.
+    if not text.startswith(SCHEME) and len(text) > ID_LIMIT:
+        raise MalformedId(f"{text[:40]}... is {len(text)} characters; a full "
+                          f"identifier is at most {ID_LIMIT}")
     if text.startswith(SCHEME):
         try:
             found = parse_address(text)

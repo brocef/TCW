@@ -14,8 +14,8 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any, Callable, Iterable
 
-from tcw.errors import NotFound, UsageError
-from tcw.ids import FullId, parse_stored, sort_input
+from tcw.errors import UsageError
+from tcw.ids import ID_LIMIT, FullId, parse_stored, sort_input
 from tcw.store.base import normalize_tag
 
 # ---------------------------------------------------------------------------
@@ -89,6 +89,53 @@ def title_words(title: str, limit: int = FOLDER_LIMIT - PREFIX_ALLOWANCE) -> str
         words = cut[:boundary] if boundary > 0 else words[:limit]
         words = words.strip("-")
     return words or "untitled"
+
+
+#: The fewest characters of title words a new item's folder may be given
+#: (TCW-111 Design 4.3): `untitled`'s length, so every refusal is about room
+#: and never about a title.
+MIN_TITLE_WORDS = 8
+
+
+def words_room(project: str, parent: str | None, prefix: int) -> int:
+    """How many characters of title words fit in a new item's full
+    identifier (TCW-111 Design 4.3): `ID_LIMIT`, less the project ID and
+    `.work/`, the parent's id-path and its `/` when the item is nested in
+    `parent`, and `prefix`, the backend's prefix with its `-`."""
+    room = ID_LIMIT - len(project) - len(".work/") - prefix
+    if parent:
+        room -= len(parent) + 1
+    return room
+
+
+def fitted_words(title: str, *, project: str, parent: str | None, prefix: int,
+                 refuse: bool = True) -> str | None:
+    """`title_words` cut to the smaller of today's limit and `words_room`.
+
+    With `refuse`, a room under `MIN_TITLE_WORDS` is a `UsageError`, said
+    before anything is written: naming the parent's full identifier when there
+    is one, else the project ID. Without it, the rule for after a ticket
+    exists (Design 4.3), it never raises: the words are cut to the room
+    however short, `untitled` included, and None means no character is left."""
+    room = words_room(project, parent, prefix)
+    if refuse and room < MIN_TITLE_WORDS:
+        if parent:
+            raise UsageError(
+                f"{FullId(project, 'work', parent)} leaves room for {max(room, 0)} "
+                f"characters of title words under it, and an item needs "
+                f"{MIN_TITLE_WORDS}, since no full identifier is longer than "
+                f"{ID_LIMIT}; nest the item higher, or not at all (leave out --nest)")
+        raise UsageError(
+            f"the project ID {project!r} leaves room for {max(room, 0)} characters "
+            f"of title words, and an item needs {MIN_TITLE_WORDS}, since no full "
+            f"identifier is longer than {ID_LIMIT}: it leaves no room for any item")
+    if room < 1:
+        return None
+    limit = min(FOLDER_LIMIT - PREFIX_ALLOWANCE, room)
+    words = title_words(title, limit)
+    if len(words) > limit:                       # `untitled` in a smaller room
+        words = words[:limit].strip("-") or words[:limit]
+    return words
 
 
 # ---------------------------------------------------------------------------
