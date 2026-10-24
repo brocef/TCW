@@ -328,6 +328,149 @@ def passing(axis: str, project_id: str, links, *, absent=frozenset()) -> set[str
     return found
 
 
+# ── Combining an object over its sources (TCW-112 Design 2) ─────────────────
+
+
+@dataclass(frozen=True)
+class Declaration:
+    """One project's own declaration of an object at one id-path (TCW-112
+    Design 2.2, 2.3): its fields, and its description, a text (possibly
+    empty) or None when it declares none. A store keeps "declared empty"
+    and "not declared" apart, because completeness tells them apart."""
+
+    fields: dict
+    description: str | None = None
+
+
+@dataclass(frozen=True)
+class Unused:
+    """A declarer whose object the active project does not use (Design 2.5):
+    `winner` is the chain member that took its place, and `warned` whether
+    the clash is still warned about."""
+
+    project: str
+    winner: str
+    warned: bool
+
+
+@dataclass(frozen=True)
+class Combined:
+    """The object at one id-path as one project sees it (Design 2.1-2.5).
+
+    `chain` holds the project IDs whose declarations make it, nearest first,
+    so `chain[0]` owns it and `chain[1]`, when there is one, is the object it
+    overrides. `declared_by` names, for each key in `fields` and for
+    `description`, the project whose declaration supplied it, so a store can
+    read what that key names (attached documents) from that project.
+    `unreadable` is a chain member whose declaration could not be read, in
+    which case nothing was combined."""
+
+    chain: tuple
+    fields: dict
+    description: str | None = None
+    declared_by: dict = field(default_factory=dict)
+    unused: tuple = ()
+    unreadable: str | None = None
+
+    @property
+    def owner(self) -> str:
+        return self.chain[0]
+
+    @property
+    def overrides(self) -> str | None:
+        return self.chain[1] if len(self.chain) > 1 else None
+
+
+#: The keys of a state file that belong to the file, never combined.
+_FILE_KEYS = frozenset({"tcw-version", "id"})
+
+
+def missing_parts(declaration: Declaration, axis: str) -> list[str]:
+    """What a declaration lacks to be complete on its own (Design 6.1):
+    a `name`, for a capability a `Status`, and a declared description,
+    possibly empty. Empty when it is complete."""
+    missing = [key for key in ("name", *(("Status",) if axis == "capabilities" else ()))
+               if declaration.fields.get(key) is None]
+    if declaration.description is None:
+        missing.append("description")
+    return missing
+
+
+def combine(declarers, passes, *, axis: str, unreadable=frozenset()) -> Combined | None:
+    """The object at one id-path in the active project's view (Design 2.1-2.5).
+
+    `declarers` is `(project ID, Declaration)` for every source of the
+    active project that has an object of its own at the id-path, in the
+    active project's load order; `passes(a, b)` says whether project `a`
+    passes the axis to project `b`. `unreadable` holds declarers whose
+    declaration could not be read: the chain is still found, since only who
+    declares is needed for it. None when nothing declares the path.
+
+    Reads no file and knows no folder, so every kind of store combines by
+    this one rule (Design 2.6)."""
+    declarers = list(declarers)
+    if not declarers:
+        return None
+    order = [pid for pid, _ in declarers]
+    position = {pid: i for i, pid in enumerate(order)}
+    declared = dict(declarers)
+    chain = [order[-1]]
+    while True:
+        current = chain[-1]
+        nearer = next((pid for pid in reversed(order[:position[current]])
+                       if passes(pid, current)), None)
+        if nearer is None:
+            break
+        chain.append(nearer)
+    in_chain = set(chain)
+    unused = []
+    for pid in order:
+        if pid in in_chain:
+            continue
+        winner = min((m for m in chain if position[m] > position[pid]),
+                     key=position.__getitem__)
+        decided = any(position[m] > position[winner] and passes(pid, m)
+                      and m not in unreadable and not missing_parts(declared[m], axis)
+                      for m in chain)
+        unused.append(Unused(pid, winner, not decided))
+    blocked = next((pid for pid in chain if pid in unreadable), None)
+    if blocked is not None:
+        return Combined(tuple(chain), {}, None, {}, tuple(unused), blocked)
+    fields: dict = {}
+    declared_by: dict = {}
+    for pid in reversed(chain):
+        for key, value in declared[pid].fields.items():
+            if key in _FILE_KEYS:
+                continue
+            if value is None:
+                fields.pop(key, None)
+                declared_by.pop(key, None)
+            else:
+                fields[key] = value
+                declared_by[key] = pid
+    description = None
+    for pid in chain:
+        text = declared[pid].description
+        if text is not None and text.strip():
+            description = text
+            declared_by["description"] = pid
+            break
+    return Combined(tuple(chain), fields, description, declared_by, tuple(unused))
+
+
+_COMPLETE = {"capabilities": "a name, a Status and a description",
+             "taxonomy": "a name and a description"}
+
+
+def clash_warning(axis: str, id_path: str, unused: str, winner: str, project: str) -> str:
+    """Design 2.5's warning for an unused declarer."""
+    return (f"{axis} {id_path}: '{unused}' and '{winner}' each have an object at this "
+            f"path, and neither inherits it from the other; '{project}' uses the one "
+            f"from '{winner}', which comes later in its load order, and nothing from "
+            f"'{unused}''s; to choose for yourself, give '{project}' a complete object "
+            f"of its own at {id_path} ({_COMPLETE[axis]}), holding every field you want")
+
+
 @dataclass(frozen=True)
 class UnreachableProject:
     """A connected project that is declared here but not available here.
@@ -500,14 +643,23 @@ class ProjectRegistry(ABC):
                                 missing=project_id in order.missing)
 
     def unavailable(self, project_id: str, gap_id: str, axis: str, *,
-                    subject: str | None = None, missing: bool | None = None):
+                    subject: str | None = None, missing: bool | None = None,
+                    store_message: str | None = None):
         """Design 6.2's error: `gap_id`, missing or unreadable, would pass
         `axis` to `project_id`. The one place its messages are built.
         `subject` stands for the axis in the message (TCW-109 passes
         `configuration (work.tags)`); `missing` says which of the two it is
-        when the caller knows, else `link_state` does."""
+        when the caller knows, else `link_state` does. `store_message`, when
+        given, is the third case (TCW-112 Design 1.3): `gap_id` is here and
+        readable, but its store for `axis` cannot be opened, and this is
+        that store's own message."""
         from tcw.errors import InheritedUnavailable
         words = subject or axis
+        if store_message is not None:
+            return InheritedUnavailable(
+                f"'{project_id}' inherits its {words} from project '{gap_id}', whose "
+                f"{words} store cannot be read here: {store_message}",
+                project=gap_id, axis=axis, reason="store", detail=store_message)
         if missing is None:
             missing = self.link_state(gap_id) == "missing"
         if missing:

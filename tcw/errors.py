@@ -123,18 +123,22 @@ class InheritedUnavailable(TcwError):
     above is unknown.
 
     `project` is the ID of the project that is not available, `axis` the axis
-    the command needed, and `reason` `"missing"` or `"unreadable"`, so `tcw
-    validate` can report it as "could not check" without parsing the
-    message."""
+    the command needed, and `reason` `"missing"`, `"unreadable"` or
+    `"store"` (the project is here but its store for the axis cannot be
+    opened, TCW-112 Design 1.3), so `tcw validate` can report it as "could
+    not check" without parsing the message. `detail` is the store's own
+    message for `"store"`, and None otherwise."""
 
     code = codes.INHERITED_UNAVAILABLE
 
     def __init__(self, message: str = "", *, project: str | None = None,
-                 axis: str | None = None, reason: str | None = None):
+                 axis: str | None = None, reason: str | None = None,
+                 detail: str | None = None):
         super().__init__(message)
         self.project = project
         self.axis = axis
         self.reason = reason
+        self.detail = detail
 
 
 class MovedWithoutNote(TcwError):

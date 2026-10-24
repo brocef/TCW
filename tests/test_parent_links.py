@@ -524,3 +524,18 @@ def test_tcw109_a_child_with_a_newer_version_stays_a_graph_problem(tmp_path):
     app = proj(tmp_path / "app", "app", children=["core"])
     with pytest.raises(ValueError, match="upgrade TCW"):
         FsProjectRegistry.open(app).require_valid()
+
+
+def test_tcw112_unavailable_builds_the_store_message(tmp_path):
+    from tcw import exit as codes
+    proj(tmp_path / "core", "core")
+    app = proj(tmp_path / "app", "app", parents=["core"])
+    registry = FsProjectRegistry.open(app)
+    error = registry.unavailable("app", "core", "taxonomy", store_message="<msg>")
+    assert error.code == codes.INHERITED_UNAVAILABLE == 7
+    assert (error.project, error.axis, error.reason, error.detail) == \
+        ("core", "taxonomy", "store", "<msg>")
+    assert str(error) == ("'app' inherits its taxonomy from project 'core', whose "
+                          "taxonomy store cannot be read here: <msg>")
+    assert registry.unavailable("app", "core", "taxonomy", missing=True).detail is None
+    assert registry.unavailable("app", "core", "taxonomy", missing=False).detail is None
