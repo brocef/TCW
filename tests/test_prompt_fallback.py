@@ -26,6 +26,10 @@ the recorded bytes were never brought up to it. Nothing else moved.
 spec prompt's "The requester revises the request" bullet, and the plan
 prompt's step 6 on filing a part into another project. A diff of the old and
 new bytes showed nothing else moved.
+
+**Re-captured again by TCW-111**, for the plan prompt's step 6 only, which now
+makes each part with `--nest`: the recorded step was replaced by the new one,
+text for text, and nothing else in the file was touched.
 """
 
 import json

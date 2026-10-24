@@ -22,7 +22,9 @@ from pathlib import Path
 import yaml
 
 from tcw.config import load_config
+from tcw.work.model import STAGES
 from tests.projectfiles import write_config
+from tests.statefiles import ITEM_STATE
 
 REPO = Path(__file__).resolve().parent.parent
 SCRIPT = REPO / "docs/guide/examples/commit-item-after-move.sh"
@@ -53,7 +55,7 @@ def _repository(path: Path) -> Path:
     _git(path, "config", "commit.gpgsign", "false")
     (path / "README.md").write_text("start\n")
     (path / "docs/work/x").mkdir(parents=True)
-    (path / "docs/work/x/item.yaml").write_text("title: x\n")
+    (path / f"docs/work/x/{ITEM_STATE}").write_text("title: x\n")
     _git(path, "add", "-A")
     _git(path, "commit", "-q", "-m", "start")
     return path
@@ -89,7 +91,7 @@ def test_a_change_in_the_item_folder_makes_one_commit_of_the_item_only(tmp_path)
     item = repo / "docs/work/x"
     (item / "plan").mkdir()
     (item / "plan/plan.md").write_text("the plan\n")
-    (item / "item.yaml").write_text("title: x\nstage: plan\n")
+    (item / ITEM_STATE).write_text("title: x\nstage: plan\n")
     before = _commits(repo)
     result = _run(repo, item)
     assert result.returncode == 0, result.stderr
@@ -103,13 +105,13 @@ def test_a_change_in_the_item_folder_makes_one_commit_of_the_item_only(tmp_path)
 def test_other_changes_staged_or_not_are_left_as_they_were(tmp_path):
     repo = _repository(tmp_path / "project")
     item = repo / "docs/work/x"
-    (item / "item.yaml").write_text("title: x\nstage: plan\n")
+    (item / ITEM_STATE).write_text("title: x\nstage: plan\n")
     (repo / "staged.txt").write_text("staged\n")
     _git(repo, "add", "staged.txt")
     (repo / "README.md").write_text("changed, not staged\n")
     result = _run(repo, item)
     assert result.returncode == 0, result.stderr
-    assert _last_commit_paths(repo) == ["docs/work/x/item.yaml"]
+    assert _last_commit_paths(repo) == [f"docs/work/x/{ITEM_STATE}"]
     status = _status(repo)
     assert "A  staged.txt" in status, status
     assert " M README.md" in status, status
@@ -133,15 +135,72 @@ def test_an_item_in_a_nested_repository_is_committed_there(tmp_path):
     _git(outer, "add", ".gitignore")
     _git(outer, "commit", "-q", "-m", "ignore the store")
     item = inner / "docs/work/x"
-    (item / "item.yaml").write_text("title: x\nstage: plan\n")
+    (item / ITEM_STATE).write_text("title: x\nstage: plan\n")
     (outer / "README.md").write_text("changed in the outer repository\n")
     outer_before, inner_before = _commits(outer), _commits(inner)
     result = _run(outer, item)
     assert result.returncode == 0, result.stderr
     assert _commits(inner) == inner_before + 1
-    assert _last_commit_paths(inner) == ["docs/work/x/item.yaml"]
+    assert _last_commit_paths(inner) == [f"docs/work/x/{ITEM_STATE}"]
     assert _commits(outer) == outer_before
     assert _status(outer) == [" M README.md"]
+
+
+# ── items nested in the moved one are left out (TCW-111 AC 20) ────────────────
+
+
+def _epic_with_a_part(tmp_path):
+    repo = _repository(tmp_path / "project")
+    epic = repo / "docs/work/x"
+    part = epic / "2026-10-02-part"
+    part.mkdir()
+    (part / ITEM_STATE).write_text("title: part\nstage: spec\n")
+    (part / "tracked.md").write_text("tracked\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "a part")
+    return repo, epic, part
+
+
+def test_a_nested_items_files_are_left_uncommitted(tmp_path):
+    repo, epic, part = _epic_with_a_part(tmp_path)
+    (part / "new.md").write_text("untracked\n")
+    (part / "tracked.md").write_text("changed\n")
+    (epic / ITEM_STATE).write_text("title: x\nstage: plan\n")
+    sample = epic / "resources" / "sample"
+    sample.mkdir(parents=True)
+    (sample / ITEM_STATE).write_text("an example file, not an item\n")
+    result = _run(repo, epic)
+    assert result.returncode == 0, result.stderr
+    assert sorted(_last_commit_paths(repo)) == [
+        f"docs/work/x/resources/sample/{ITEM_STATE}", f"docs/work/x/{ITEM_STATE}"]
+    status = _status(repo)
+    assert " M docs/work/x/2026-10-02-part/tracked.md" in status, status
+    assert "?? docs/work/x/2026-10-02-part/new.md" in status, status
+
+
+def test_a_folder_the_search_cannot_read_commits_nothing(tmp_path):
+    import pytest
+    if os.geteuid() == 0:
+        pytest.skip("root reads every folder")
+    repo, epic, part = _epic_with_a_part(tmp_path)
+    (epic / ITEM_STATE).write_text("title: x\nstage: plan\n")
+    locked = epic / "notes"
+    locked.mkdir()
+    locked.chmod(0)
+    before = _commits(repo)
+    try:
+        result = _run(repo, epic)
+    finally:
+        locked.chmod(0o755)
+    assert result.returncode != 0
+    assert _commits(repo) == before
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+
+
+def test_the_hook_skips_exactly_the_stage_folders():
+    text = SCRIPT.read_text(encoding="utf-8")
+    named = set(re.findall(r"-name ([a-z]+)(?![\w.-])", text)) - {"resources", "comments"}
+    assert named == {s.name for s in STAGES}
 
 
 # ── the guide shows the script and a configuration that works ────────────────
