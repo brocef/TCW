@@ -544,4 +544,9 @@ def test_every_yaml_name_tcw_writes_is_owned_or_deliberately_not(tmp_path):
         # that will not parse, independently of this set.
         "config.yaml",
         ".config.yaml",
+        # TCW-111's state files, named in `tcw/object_folders.py` before the
+        # stores read them; its next step makes them the owned names.
+        "tcw-taxonomy.yaml",
+        "tcw-capability.yaml",
+        "tcw-work-item.yaml",
     }, written

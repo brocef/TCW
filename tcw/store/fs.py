@@ -30,6 +30,7 @@ from tcw.errors import BackendError, NotFound, Refused, TcwError, Unreachable, U
 from tcw.findings import Finding
 from tcw.ids import (SCHEME, FolderAddress, FullId, IdError, MalformedId, id_path_problem,
                      parse_address, parse_stored, sort_input)
+from tcw.object_folders import exact_child, exact_path
 from tcw.output import shown as _shown
 from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
 from tcw.store.base import (
@@ -1049,38 +1050,6 @@ def _safe_store_id(value: str, label: str) -> str:
         if seg in ("", ".", "..") or seg != seg.strip():
             raise UsageError(f"invalid {label}: {value!r}")
     return v
-
-
-def exact_child(parent: Path, name: str) -> "bool | str":
-    """Whether `parent` holds an entry spelled exactly `name`: True when it
-    does, the entry's own spelling when one differs from `name` only in
-    letter case, and False when there is none. A disk that ignores case
-    finds `Cli` for `cli`; reading the listing keeps an id-path
-    case-sensitive there (TCW-110 Design 1.1)."""
-    try:
-        names = os.listdir(parent)
-    except OSError:
-        return False
-    if name in names:
-        return True
-    folded = name.casefold()
-    return next((entry for entry in names if entry.casefold() == folded), False)
-
-
-def exact_path(root: Path, id_path: str) -> "bool | str":
-    """`exact_child` for each part of `id_path` below `root`: True when every
-    folder is spelled as given, the spelling on disk when some differ only in
-    case, False when one is missing."""
-    spelled, folder = [], Path(root)
-    for part in id_path.split("/"):
-        found = exact_child(folder, part)
-        if found is False:
-            return False
-        name = part if found is True else found
-        spelled.append(name)
-        folder = folder / name
-    on_disk = "/".join(spelled)
-    return True if on_disk == id_path else on_disk
 
 
 def _check_id_path(id_path: str, label: str) -> None:
