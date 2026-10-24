@@ -134,7 +134,7 @@ def link_exists(work_path: Path, folder: str) -> bool:
 
 
 #: Row h's message in Jira mode, at the state file: today's message for an
-#: item folder whose `item.yaml` was missing (TCW-111 Design 2.6).
+#: item folder whose 3.x state file was missing (TCW-111 Design 2.6).
 UNMADE_MESSAGE = "is missing; it holds the ticket's link"
 
 
