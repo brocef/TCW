@@ -121,7 +121,7 @@ def list_rows(covered: Covered, axis: str, *, status: str | None = None,
     `down` and `all` are in Design 4.4's order; `own`, `up` and `--project`
     keep the order the store gives, which is each command's order today, so
     `--scope up` answers exactly what the command answered before TCW-113
-    and `own` exactly what `--local` did."""
+    and `own` exactly what TCW 3's local-only listing did."""
     from tcw.output import say as default_say
     say = say or default_say
     store = active_store(covered, axis)
@@ -311,6 +311,14 @@ LEFT_OUT = {
                  "its taxonomy entries are not included"),
     "capabilities": ("its capabilities are not listed", "its status is not shown"),
 }
+
+
+def refuse_local(args) -> None:
+    """`list --local`, removed in TCW 4 (Design 5.1): refused before anything
+    is read. The option is kept, hidden, only to say so."""
+    if getattr(args, "local", False):
+        raise UsageError("list --local is removed in TCW 4: --scope own, the default, "
+                         "already lists only this project's own objects; drop --local")
 
 
 def covered_for(args, axis: str, missing: Callable[[], Exception]) -> Covered:

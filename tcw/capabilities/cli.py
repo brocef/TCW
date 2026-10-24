@@ -19,8 +19,8 @@ from tcw.ids import identity, inherited_keys, parent_text
 from tcw.locate import find_tree_writable
 from tcw.output import changed, own_only, print_json, say
 from tcw.scope import scope_options
-from tcw.tree_scope import (LEFT_OUT, active_store, covered_for, print_rows, scope_keys,
-                            show_lines, show_row)
+from tcw.tree_scope import (LEFT_OUT, active_store, covered_for, print_rows, refuse_local,
+                            scope_keys, show_lines, show_row)
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import CAP_STATUSES, Capability
 from tcw.store.fs import FsCapabilitiesStore, find_component_project
@@ -64,6 +64,7 @@ def _covered(args: argparse.Namespace):
 
 
 def _list(args: argparse.Namespace) -> int:
+    refuse_local(args)
     return print_rows(_covered(args), NAME, "capabilities", _record, args.json,
                       status=args.status, namespace=args.namespace)
 
@@ -268,8 +269,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pl.add_argument("--status", choices=sorted(CAP_STATUSES),
                     help="only capabilities with this status")
     pl.add_argument("--namespace", help="only capabilities under this namespace folder")
-    pl.add_argument("--local", action="store_true",
-                    help="local capabilities only, none inherited")
+    pl.add_argument("--local", action="store_true", help=argparse.SUPPRESS)
     scope_options(pl)
     pl.add_argument("--json", action="store_true",
                     help='print {"schema": 2, "capabilities": [...]}, and "projects" '

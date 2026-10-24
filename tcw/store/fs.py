@@ -1874,9 +1874,9 @@ class FsTreeStore:
 
     def own_declarations(self) -> list:
         """Each of this project's own objects read from its own declaration
-        alone, marked partial (Design 3.4): what `list --local` shows when
-        the view cannot be built. Objects whose state file cannot be read are
-        left out and recorded, as a listing leaves them."""
+        alone, marked partial (Design 3.4): what `list` under `--scope own`
+        shows when the view cannot be built. Objects whose state file cannot
+        be read are left out and recorded, as a listing leaves them."""
         decls = self._declarations()
         return [self.declaration(p) for p in decls if decls[p] is not None]
 

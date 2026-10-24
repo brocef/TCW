@@ -508,3 +508,30 @@ def test_ac7_a_single_project_opens_no_other(tmp_path, monkeypatch):
                 assert ran.err == own.err, (argv, scope)
     assert set(asked) <= {"solo"}
     assert set(opened) == {"solo"}
+
+
+# -- AC 30: `--local` is removed (plan Step 12b) ----------------------------------------
+
+
+@pytest.mark.parametrize("axis", ["taxonomy", "capabilities"])
+def test_ac30_local_is_refused_before_anything_is_read(family, monkeypatch, axis):
+    from tcw.store.fs import FsTreeStore
+    opened = []
+    real_init = FsTreeStore.__init__
+
+    def init_(self, *a, **kw):
+        opened.append(a)
+        real_init(self, *a, **kw)
+    monkeypatch.setattr(FsTreeStore, "__init__", init_)
+    ran = family.run("desktop", axis, "list", "--local")
+    assert ran.code == 2
+    assert "--scope own" in ran.err and "drop --local" in ran.err
+    assert ran.out == ""
+    assert opened == []
+
+
+@pytest.mark.parametrize("axis", ["taxonomy", "capabilities"])
+def test_ac30_help_does_not_name_local(family, axis):
+    ran = family.run("desktop", axis, "list", "--help")
+    assert ran.code == 0
+    assert "--local" not in ran.out

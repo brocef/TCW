@@ -157,7 +157,7 @@ To **drop an override** and re-inherit the original, `tcw capabilities reset <pa
 
 `tcw validate` reports a capability that overrides nothing and is incomplete (it needs a name, a `Status` and a `description.md`, which may be empty), which is how an override whose original was moved or removed is caught; an `overrides` key; and, as a warning, two parents that do not inherit from each other with a capability at one path (the one that comes later in the project's load order, the order in which TCW reads its parents, is used whole, until the project gives that path a complete capability of its own). It checks the references an override sets (`Subject`, `Feature`, `Blocked by`, `Superseded by`, `Roles`, `When` — checked as a local capability's are) and attachment lists.
 
-**When a parent is not on this machine.** `tcw capabilities list --local` and `show` of one of the project's own capabilities still work: each JSON record read that way has `"partial": true` and no `overrides` key, since what it overrides is not known. The commands that need inherited capabilities (`list` without `--local`, `search`, `add`, `set` of an inherited capability, `reset`, `drift`) stop with exit code 7.
+**When a parent is not on this machine.** `tcw capabilities list`, whose default `--scope own` lists only the project's own capabilities, and `show` of one of them still work: each JSON record read that way has `"partial": true` and no `overrides` key, since what it overrides is not known. The commands that need inherited capabilities (`list` and `search` with `--scope up`, `add`, `set` of an inherited capability, `reset`, `drift`) stop with exit code 7.
 
 ## Product-layer wording from another project
 
@@ -186,8 +186,8 @@ To seed a new capabilities ledger from an existing codebase, use the `setup` ski
 | associate a feature              | `tcw capabilities set <path> --field "Feature=<feature-ref>"`                                                                     |
 | link taxonomy (multi-valued)     | `tcw capabilities set <path> --field "Subject=term-a,term-b"`                                                                     |
 | inherit another project          | name it under `parents:` with an `inherit` that includes `capabilities` (the configure skill's projects reference); no capabilities command |
-| read without a parent present    | `tcw capabilities list --local` · `show <own path>` — records marked `"partial": true`; commands needing inherited capabilities exit 7 |
-| list only local (not inherited)  | `tcw capabilities list --local`                                                                                                   |
+| read without a parent present    | `tcw capabilities list` · `show <own path>` — records marked `"partial": true`; commands needing inherited capabilities exit 7 |
+| list only local (not inherited)  | `tcw capabilities list` — the default, `--scope own`; `--scope up` adds the inherited capabilities                              |
 | check the ledger                 | `tcw validate` (the whole project: YAML, `tcw://` links, every axis's checks)                                                     |
 | find drift                       | `tcw capabilities drift` — inherited capabilities never ruled on, and what completed items declared that the records do not show  |
 | find / read                      | `tcw capabilities search <term>` · `tcw capabilities show <path>`                                                                 |

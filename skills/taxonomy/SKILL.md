@@ -132,11 +132,12 @@ from each other both have a term at one path, the one that comes later in the
 project's load order (the order in which TCW reads its parents) is used whole,
 with a warning; a complete term of the project's own at that path settles it.
 
-**When a parent is not on this machine.** `tcw taxonomy list --local` and
-`show` of one of the project's own terms still work: each JSON record read that
-way has `"partial": true` and no `overrides` key, since what it overrides is not
-known. The commands that need the inherited terms (`list` without `--local`,
-`search`, `add`, `show` of an inherited term) stop with exit code 7.
+**When a parent is not on this machine.** `tcw taxonomy list`, whose default
+`--scope own` lists only the project's own terms, and `show` of one of them
+still work: each JSON record read that way has `"partial": true` and no
+`overrides` key, since what it overrides is not known. The commands that need
+the inherited terms (`list` and `search` with `--scope up`, `add`, `show` of an
+inherited term) stop with exit code 7.
 
 ## Starting a taxonomy
 
@@ -154,6 +155,6 @@ To seed a new taxonomy from an existing codebase, use the `setup` skill.
 | locate the filesystem store     | `tcw taxonomy path` — prints only the absolute, resolved store folder                                                                                           |
 | inherit another project's terms | name it under `parents:` with an `inherit` that includes `taxonomy` (the configure skill's projects reference); no taxonomy command                                |
 | override an inherited term      | `tcw taxonomy add "<Name>" [--parent <path>]` at the inherited path — writes the project's own term there, holding only what differs; `tcw taxonomy rm <path>` removes it |
-| read without a parent present   | `tcw taxonomy list --local` · `show <own path>` — records marked `"partial": true`; commands needing inherited terms exit 7                                        |
+| read without a parent present   | `tcw taxonomy list` · `show <own path>` — records marked `"partial": true`; commands needing inherited terms exit 7                                        |
 | validate                        | `tcw validate` (the whole project: YAML, `tcw://` links, every axis's checks)                                                     |
 | remove a local term             | `tcw taxonomy rm <path>` — refused while a term is nested under it, another local term names it in `relatesTo` or a feature's `vocabulary`, one of the project's own capabilities, an override included, names it in `Subject` or `Feature` (or the capabilities cannot be read); fix those first. Every other file in its folder goes with it |

@@ -18,8 +18,8 @@ from tcw.ids import identity, inherited_keys, parent_text
 from tcw.locate import find_tree_writable
 from tcw.output import changed, own_only, print_json, say
 from tcw.scope import scope_options
-from tcw.tree_scope import (LEFT_OUT, active_store, covered_for, print_rows, scope_keys,
-                            show_lines, show_row)
+from tcw.tree_scope import (LEFT_OUT, active_store, covered_for, print_rows, refuse_local,
+                            scope_keys, show_lines, show_row)
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import NotASlug, Term
 from tcw.store.fs import FsTaxonomyStore, find_component_project
@@ -66,6 +66,7 @@ def _covered(args: argparse.Namespace):
 
 
 def _list(args: argparse.Namespace) -> int:
+    refuse_local(args)
     covered = _covered(args)
     return print_rows(covered, NAME, "terms", _record, args.json,
                       reorder=lambda terms: _ordered(terms, covered.active))
@@ -153,9 +154,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pl = command(g, "list", help="every entry's full identifier",
                  prints="one full identifier per line, or --json", writes="nothing",
-                 examples=["taxonomy list", "taxonomy list --local --json",
+                 examples=["taxonomy list", "taxonomy list --scope up --json",
                            "taxonomy list --scope down"])
-    pl.add_argument("--local", action="store_true", help="local entries only")
+    pl.add_argument("--local", action="store_true", help=argparse.SUPPRESS)
     scope_options(pl)
     pl.add_argument("--json", action="store_true",
                     help='print {"schema": 2, "terms": [...]}, and "projects" when the '

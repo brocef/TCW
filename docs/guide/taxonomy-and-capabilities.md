@@ -28,8 +28,8 @@ tcw taxonomy add Note --parent invoice --slug memo               # custom leaf s
 tcw taxonomy add User < user.md
 tcw taxonomy add "User Authentication" --kind feature --vocab user
 
-tcw taxonomy list                  # every entry's path, one per line
-tcw taxonomy list --local          # local entries only, none inherited
+tcw taxonomy list                  # this project's own entries, one per line
+tcw taxonomy list --scope up       # and the entries it inherits
 tcw taxonomy show admin/permission # read one entry
 tcw taxonomy search invoice        # match names and descriptions
 tcw taxonomy path                  # the taxonomy store's folder
@@ -89,9 +89,9 @@ through each item's `capabilities.yaml` (see
 tcw capabilities add billing/invoices "Download an invoice as PDF" < invoices.md
 tcw capabilities add billing/invoices/bulk "Download many at once"    # nested path
 
-tcw capabilities list                      # every capability's path
+tcw capabilities list                      # this project's own capabilities
 tcw capabilities list --status Missing     # filter by status
-tcw capabilities list --local              # hide inherited capabilities
+tcw capabilities list --scope up           # and the capabilities it inherits
 tcw capabilities show billing/invoices     # read one capability by path
 tcw capabilities search pdf
 tcw capabilities drift                     # see "Drift" below

@@ -412,7 +412,7 @@ registered in the taxonomy before a capability names it.
 
 | Command                        | What it does                                                                     |
 | ------------------------------ | -------------------------------------------------------------------------------- |
-| `tcw capabilities list`        | prints every capability's path; `--status` and `--local` narrow it               |
+| `tcw capabilities list`        | prints this project's own capabilities; `--status` narrows it, `--scope up` adds the inherited ones |
 | `tcw capabilities show`        | prints one capability                                                            |
 | `tcw capabilities path`        | prints the folder capabilities are stored in                                     |
 | `tcw capabilities add`         | creates a capability; its body from standard input; refused at an inherited path |
