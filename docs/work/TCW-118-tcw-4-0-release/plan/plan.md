@@ -32,11 +32,24 @@ Three kinds of actor appear in every step:
 **No step below may publish, push a tag, push `main` or `3.x`, write to the
 live `TCW` Jira board, run the live Jira scenario, install 4.0 as this
 machine's shared `tcw`, post to a GitHub issue, or move TCW-99, unless the
-matching go is already written in `gates.md` and committed** (Design 10). Each
+matching go is already written in `gates.md` and committed** (Design 10).
+The dispatching session's own lifecycle moves and comments on TCW-118's
+ticket are its work under the list above, not a write the gates cover. Each
 step that needs a go names the gate in its "Who" line, and its first action is
 the check `gate_go <gate> <commit>` (Tools), which stops the step unless the
-release folder's `gates.md` holds that go naming that commit and the
-committed copy says the same. If it stops, the step does not run.
+latest answer the release folder's `gates.md` holds for that gate and commit
+is the go, and a checkout's last commit holds that same `gates.md`. If it
+stops, the step does not run. A block that undoes a live write (a way back)
+starts with `gate_go <gate> <commit> way-back` instead, which needs the
+user's word for the way back as the latest answer.
+
+**`gate_go` cannot tell who wrote a line.** It checks that a line of the
+fixed form is there and committed, nothing more: anyone able to write the
+file could write a go. The protection is the rule that **only the
+dispatching session writes `gates.md`**, in both copies, and only to record
+an answer the user has just given, with the user's words quoted exactly
+beneath the line. No agent writes, edits or commits `gates.md`; an agent
+that finds it needs a go it does not have stops and says so.
 
 **Paths.** `~` is the user's home folder. The primary checkout is
 `~/Projects/TCW`; the `v4` worktree is `~/Projects/TCW/.claude/worktrees/v4`;
@@ -275,18 +288,22 @@ no_private_names() {   # <text on stdin> | no_private_names
     *) stop "the private-name search itself failed" ;;
   esac
 }
-gate_go() {   # gate_go <gate> <commit>: the go is written and committed
-  grep -Eq "^gate $1: go $2\$" "$REL/gates.md" ||
-    stop "gates.md holds no 'gate $1: go $2' line"
-  local copy
+gate_go() {   # gate_go <gate> <commit> [<word>]: the latest answer is <word> (go), and committed
+  local want=${3:-go} path=docs/work/TCW-118-tcw-4-0-release/gates.md last copy found=""
+  last=$(grep -E "^gate $1: [a-z-]+ $2\$" "$REL/gates.md" | tail -n 1) || true
+  [ "$last" = "gate $1: $want $2" ] ||
+    stop "the latest gate $1 answer naming $2 in gates.md is '${last:-none}', not '$want'"
   for copy in "$PRIMARY" "$C"; do
-    [ -f "$copy/docs/work/TCW-118-tcw-4-0-release/gates.md" ] || continue
-    git -C "$copy" diff --quiet HEAD -- docs/work/TCW-118-tcw-4-0-release/gates.md ||
-      stop "$copy's gates.md has changes not committed"
-    grep -Eq "^gate $1: go $2\$" "$copy/docs/work/TCW-118-tcw-4-0-release/gates.md" &&
-      return 0
+    [ -d "$copy" ] || continue
+    if git -C "$copy" cat-file -e "HEAD:$path" 2>/dev/null; then
+      git -C "$copy" show "HEAD:$path" | cmp -s - "$copy/$path" ||
+        stop "$copy's gates.md differs from its last commit"
+      if git -C "$copy" show "HEAD:$path" | cmp -s - "$REL/gates.md"; then found=1; fi
+    elif [ -e "$copy/$path" ]; then
+      stop "$copy's gates.md is not committed"
+    fi
   done
-  stop "no committed gates.md holds gate $1's go naming $2"
+  [ -n "$found" ] || stop "no checkout's last commit holds gates.md exactly as $REL/gates.md"
 }
 dispatch_ci() {   # id=$(dispatch_ci <commit>): start test.yml on v4, print its run's id
   local since id i
@@ -317,11 +334,30 @@ loop checks each value again after setting it.
 
 **`gates.md`**: the master copy of every answer at every gate, written as it
 is given (Design 10). Each entry starts with one line `gate <n>: <word>
-<commit>`, where the word is `go`, `declined` or `defect` and the commit is
-the full hash the go names (gate 1 and gate 2: A; gate 3: T); then the date
-and time (UTC), the user's words quoted exactly, and what followed. Its whole
-content is copied to `docs/work/TCW-118-tcw-4-0-release/gates.md` by the
-commit that records each answer, which `gate_go` checks.
+<commit>`, where the commit is the full hash the answer names (gate 1 and
+gate 2: A; gate 3: T) and the word is one of:
+
+- `go`: the user's go; also a go given again, such as Step 22's answer to
+  go ahead knowing about the emails;
+- `declined` (gate 1, 2 or 3) or `defect` (gate 1): the user's answer at the
+  gate;
+- `stop`: the user's word, at any point after a go, that the live writes stop
+  (Step 22's answer not to go ahead, or Step 24's answer not to run the way
+  back);
+- `way-back`: the user's word that the way back of Step 24 runs.
+
+Then the date and time (UTC), the user's words quoted exactly, each line
+starting `> ` so that no quoted line can take the fixed form, and what
+followed. `gate_go` reads only the latest fixed line for the gate and commit
+it is given, so a `stop` or `way-back` after a go ends that go, and only a
+new `go` line restores it. Its whole content is copied to
+`docs/work/TCW-118-tcw-4-0-release/gates.md` by the commit that records each
+answer, and `gate_go` requires a checkout whose last commit holds exactly the
+release folder's copy, with its working copy unchanged.
+
+**`issue-24.md`**, the reply to issue #24 (Step 42), and the line in
+`gates.md` recording its approval, `issue 24: approved <sha-256 of the
+file>`, which Step 42 checks before posting.
 
 **`ci-suite.sh <checkout> [<python>]`**, the suite as CI runs it:
 
@@ -378,36 +414,78 @@ it stops the block when a name is found, when the file is missing or empty,
 or when the search itself fails. If the file cannot be written because nobody
 has the list, the step stops and asks the user.
 
-**`way-back.py <project root> <project id> <folder of saved outputs>`**, the
-tickets' way back (Design 9; TCW-116's Step 27 comment, with Decided 2):
+**`way-back.py <project root> <project id> <folder of saved outputs>
+[--runs <pattern>] [--read]`**, the tickets' way back (Design 9; TCW-116's
+Step 27 comment, with Decided 2). `--runs` is the file pattern of the saved
+runs inside the folder, `tcw116-step6*.txt` when left out; `--read` says a
+person has read every key found in only one of the runs and the dry run.
+Options may come before or after the three names. It exits 0 when every
+edited ticket was put back, 1 when Jira left one out, 3 when it stops before
+editing anything, and 2 on a bad argument:
 
 ```python
 """Put back the 3.x TCW Item of every ticket a `tcw migrate` run edited.
 Run with the 4.0 `tcw`'s Python (the merge clone's .venv/bin/python), before
-3.0.2 is reinstalled (TCW-116 review round 1)."""
+3.0.2 is reinstalled (TCW-116 review round 1). Exits 0 when every edited
+ticket was put back, 1 when Jira left one out, 3 when it stops before
+editing anything, 2 on a bad argument (argparse's own exit)."""
+import argparse
 import sys
 from pathlib import Path
 from tcw.errors import TcwError
 from tcw.migrate.jira import edited_tickets, restore_tickets, settings
 from tcw.work.jira.client import JiraClient
 
-root, project_id, saved = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
-runs = sorted(saved.glob(sys.argv[4] if len(sys.argv) > 4 else "tcw116-step6*.txt"))
+
+def stop(message):
+    print("stop:", message)
+    sys.exit(3)
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("root", type=Path)
+parser.add_argument("project_id")
+parser.add_argument("saved", type=Path)
+parser.add_argument("--runs", default="tcw116-step6*.txt")
+parser.add_argument("--read", action="store_true")
+args = parser.parse_args()
+
+runs = sorted(args.saved.glob(args.runs))
+dry_files = sorted(args.saved.glob("*dry-run*.txt"))
+if not runs:
+    stop(f"no saved run matches {args.runs!r} in {args.saved}")
+if len(dry_files) != 1:
+    stop(f"{len(dry_files)} files match '*dry-run*.txt' in {args.saved}; exactly one is needed")
+if dry_files[0] in runs:
+    stop(f"{args.runs!r} matches the dry run {dry_files[0].name}")
 done = edited_tickets("\n".join(p.read_text() for p in runs))
-dry_file = sorted(saved.glob("*dry-run*.txt"))[-1]
-dry = {k for k, _, _ in edited_tickets(dry_file.read_text().replace("would edit ", "edit "))}
+dry = {k for k, _, _ in edited_tickets(dry_files[0].read_text().replace("would edit ", "edit "))}
+print("runs read:", [p.name for p in runs], "dry run:", dry_files[0].name)
+print("edited:", len(done), "in the dry run:", len(dry))
+if not done and dry:
+    stop(f"the runs name no edited ticket, though the dry run lists {len(dry)}: "
+         "a person reads the runs; nothing is put back")
 only_one = sorted({k for k, _, _ in done} ^ dry)
-print("runs read:", [p.name for p in runs], "dry run:", dry_file.name)
 print("in only one of the two:", only_one)
-if only_one and "--read" not in sys.argv:
-    sys.exit("stop: a person reads these keys first, then re-runs with --read")
+if only_one and not args.read:
+    stop("a person reads these keys first, then runs this again with --read")
 try:
-    print("put back:", restore_tickets(done, JiraClient(settings(root)), root, project_id))
+    print("put back:", restore_tickets(done, JiraClient(settings(args.root)), args.root,
+                                       args.project_id))
 except TcwError as error:
     print("put back:", getattr(error, "restored", None))
     print("left out:", getattr(error, "pending", None), error)
     sys.exit(1)
 ```
+
+Before revision 3 the script read its pattern as the fourth word on the
+command line, so `--read` given there became the pattern, matched nothing,
+and the script exited 0 having put nothing back (`restore_tickets` of an
+empty list returns at once, `tcw/work/jira/backend.py:1387-1388`); a block
+would then have reset the files with every ticket still at its 4.0 value.
+Now an empty match, or no edited ticket where the dry run lists some, stops
+with exit 3, and the blocks below treat every exit but the one they expect
+as a stop.
 
 It builds the Jira client only when it runs (TCW-116's 21:30 handoff); it is
 written at Step 12 and run only by Step 21 (on `TCWTEST`) or by section 9's
@@ -458,7 +536,7 @@ is not small.
 | 21 | F:60 | a refused run's planned lines describe C12 and D7 for a B9-refused override: it is missing from `resolved` (`tcw/migrate/stores.py:539`), so `_plan_object` plans them | at `tcw/migrate/stores.py:319` and `:345`, also require `"overrides" not in data` | a refused B9 run lists no C12 or D7 for that file |
 | 22 | F:63 | `tcw project new --work-path tcw://…` is refused with `init takes a path relative to the project` (`tcw/cli.py:67-70`); 4.0 has no `init` command (`tcw --help`), and `run_init` is reached only from `tcw project new` (`tcw/project_cli.py:73`, `tcw/cli.py:249-253`) | the message says `` `tcw project new` takes a path relative to the project `` | a test of `tcw project new work --work-path tcw://x.path/board`: exit 2, the message names `tcw project new` and not `init` |
 | 23 | F:64 | a credential name set aside from an override variable is recorded with its variable (`tcw/config.py:674-676`, `Setting.variable`, `:191`) but printed from its file alone, which a variable has none of: `where = … if s.file is not None else ""` (`tcw/config_cli.py:241`), giving `(Jira credential names apply only in a Jira-mode project, )` | when `s.file` is None and `s.variable` is set, name `environment <variable>`, the form the values' own comments use (`# app, environment TCW_USER_NAME__APP`) | `tests/config/test_config_show.py` (beside `:93`): `TCW_WORK_JIRA_CREDENTIALS_EMAIL_ENV__APP` set in a project without Jira; the `# skipped:` line ends `environment TCW_WORK_JIRA_CREDENTIALS_EMAIL_ENV__APP)` |
-| 24 | F:66 | the advice `run tcw project new <axis> --id <id>` (`tcw/project_cli.py:177`, `tcw/move.py:96-97`) names `--id` even inside a project that has one, where `tcw project new <axis>` reads the ID from `.tcw/tcw-config.yaml` (`tcw/cli.py:72-76`); reproduced with `tcw taxonomy path` and `tcw taxonomy move x --top` in a project holding only a work store (`store_folder` is also what `tcw project info` reads, `tcw/project_cli.py:241`) | name `--id <id>` only when no project with an ID is found here; otherwise `run tcw project new <axis> in the project folder` | in a project with only a work store, `tcw taxonomy path`'s and `tcw taxonomy move`'s advice names no `--id`; outside any project the move's still does |
+| 24 | F:66 | the advice `run tcw project new <axis> --id <id>` names `--id` even inside a project that has one, where `tcw project new <axis>` reads the ID from `.tcw/tcw-config.yaml` (`tcw/cli.py:72-76`). It is given at four places: `tcw/project_cli.py:177`, `tcw/move.py:96-97`, `_missing()` in `tcw/taxonomy/cli.py:29-31` and `_missing()` in `tcw/capabilities/cli.py:30-32`. Reproduced with `tcw taxonomy path` and `tcw taxonomy move x --top` in a project holding only a work store (`store_folder` is also what `tcw project info` reads, `tcw/project_cli.py:241`). A search of `v4` at `0cf6e97f` for `--id <` in `tcw/` finds three more, left as they are because each is given where no project ID exists: `NO_PROJECT` (`tcw/errors.py:13`, no project here at all), `tcw/cli.py:75` (a new project with no ID) and `tcw/store/project.py:947` (a manifest with no `id`) | one helper names `--id <id>` only when no project with an ID is found here, and otherwise says `run tcw project new <axis> in the project folder`; the four places use it | in a project with only a work store, the advice of `tcw taxonomy path`, `tcw taxonomy move`, a taxonomy command that needs the store (`tcw taxonomy list`) and a capabilities one (`tcw capabilities list`) names no `--id`; outside any project the move's still does |
 
 Fixes 18 to 21 are in `tcw migrate`, TCW-116's area, and are made before
 Step 15 runs it on this repository. Any fix found at implement to be larger
@@ -1363,17 +1441,35 @@ mkdir proj && cd proj && git init -q && git config user.email t@t && git config 
 
 then `work:` of its `tcw-config.yaml` replaced with the `LIVE` dictionary of
 `tests/work/jira/test_jira_scenario.py:19-40` (as
-`main:tests/work/projects.py:36-40` does), and committed. With 3.0.2:
-`tcw validate --remote` (open item 3: the fields accepted); `tcw work new`
-three items, "rehearsal one", "two" and "three"; `tcw work advance` on the
-first. If the `TCW` board uses an issue type the three tickets do not have,
-one ticket's type is changed to it in Jira, on `TCWTEST` only, so that every
-type the board uses is edited by the migration.
+`main:tests/work/projects.py:36-40` does), and committed. Then, with 3.0.2,
+the filing on `TCWTEST` (open item 3: the fields accepted):
+
+```sh
+. ~/.tcw-4.0-release/load.sh A
+gate_go 2 "$A"
+cd "$REL/rehearsal/proj"
+set +eu; source ~/.bashrc; set -eu
+T3=$REL/rehearsal/venv-3/bin/tcw
+"$T3" validate --remote
+for n in one two three; do "$T3" work new "rehearsal $n"; done | tee "$REL/rehearsal/filed.txt"
+```
+
+then, as a second block with the same first four lines, `"$T3" work advance
+<key>` with the first ticket's key, read from `filed.txt` and written in (as
+Step 38 writes in its run id). If the `TCW` board uses an issue
+type the three tickets do not have, one ticket's type is changed to it in
+Jira, on `TCWTEST` only, so that every type the board uses is edited by the
+migration. **Every edit made by hand in Jira in this step** (that type
+change, ticket three's value below, ticket three's value put back, the moves
+to `Won't Do`) is made only right after
+`bash -c '. ~/.tcw-4.0-release/load.sh A; gate_go 2 "$A"'` has exited 0,
+and only on `TCWTEST`.
 
 **The conversion,** with the merge clone's 4.0 `tcw` by full path:
 
 ```sh
-. ~/.tcw-4.0-release/load.sh
+. ~/.tcw-4.0-release/load.sh A
+gate_go 2 "$A"
 cd "$REL/rehearsal/proj"
 set +eu; source ~/.bashrc; set -eu
 T4=$C/.venv/bin/tcw; R=$REL/rehearsal
@@ -1387,15 +1483,20 @@ Then ticket three's `TCW Item` is edited by hand in Jira to another value
 (the check that the way back refuses it), and the way back runs:
 
 ```sh
-. ~/.tcw-4.0-release/load.sh
+. ~/.tcw-4.0-release/load.sh A
+gate_go 2 "$A"
 cd "$REL/rehearsal/proj"
 set +eu; source ~/.bashrc; set -eu
 rc=0
-"$C/.venv/bin/python" "$REL/way-back.py" . tcw-rehearsal "$REL/rehearsal" 'rehearsal-step6*.txt' \
+"$C/.venv/bin/python" "$REL/way-back.py" . tcw-rehearsal "$REL/rehearsal" --runs 'rehearsal-step6*.txt' \
   > "$REL/rehearsal/rehearsal-way-back.txt" 2>&1 || rc=$?
 test "$rc" -eq 1 || stop "the rehearsal's way back exited $rc, not 1 (ticket three should be left out)"
 grep -q '^left out:' "$REL/rehearsal/rehearsal-way-back.txt" || stop "the way back names nothing left out"
 ```
+
+The rehearsal's dry run and its run name the same three tickets, so no key
+is in only one and `--read` is not needed; an exit of 3 (a stop before any
+edit) fails the block's check like any exit but 1.
 
 It must put back tickets one and two and leave out three, naming it under
 "left out" and exiting 1; a person reads the file to confirm the two keys
@@ -1420,7 +1521,11 @@ Decided 3 and 4. A failure stops the release (Step 19's rows).
 
 **Does:** if the edits emailed watchers, tells the user how many tickets Step
 24 will edit and waits for their word before Step 23; their answer is added to
-`gates.md` (both copies) and committed on `~/tcw-4.0-merge`'s `main`. If the
+`gates.md` (both copies) as an entry whose first line is `gate 2: go <A>`
+(go ahead, knowing it) or `gate 2: stop <A>` (do not), and committed on
+`~/tcw-4.0-merge`'s `main`. After a `stop`, every later `gate_go 2` stops,
+so Steps 23 to 25 cannot run; the release waits for the user, and nothing
+on the `TCW` board has been touched. If the
 index lag showed stale lines, Step 25 waits at least as long as the lag the
 rehearsal saw before its checks.
 
@@ -1483,17 +1588,20 @@ stop, or a fourth run that stops, ends the re-runs:** the block stops, and
 the dispatching session brings every saved output to the user, with the way
 back below offered. Running the way back writes to the live board, so the
 user decides whether it is run, under gate 2; nothing is run until they
-answer, and their answer is added to both copies of `gates.md` and
-committed. The block runs in the background, since the waits can take
-twenty minutes.
+answer, and their answer is added to both copies of `gates.md`, as an entry
+whose first line is `gate 2: way-back <A>` (run it) or `gate 2: stop <A>`
+(do not), and committed. The block runs in the background, since the waits
+can take twenty minutes.
 
 Then the `C17` keys of all the runs are compared with the dry run's:
 
 ```sh
-~/tcw-4.0-merge/.venv/bin/python - <<'PY'
+. ~/.tcw-4.0-release/load.sh
+"$C/.venv/bin/python" - "$REL" <<'PY'
+import sys
 from pathlib import Path
 from tcw.migrate.jira import edited_tickets
-d = Path.home() / ".tcw-4.0-release"
+d = Path(sys.argv[1])
 done = {k for k, _, _ in edited_tickets("\n".join(p.read_text() for p in sorted(d.glob("tcw116-step6*.txt"))))}
 dry = {k for k, _, _ in edited_tickets((d / "tcw116-dry-run.txt").read_text().replace("would edit ", "edit "))}
 print("only in step 6:", sorted(done - dry)); print("only in the dry run:", sorted(dry - done))
@@ -1509,13 +1617,16 @@ or at 6.1-6.4 when the release is abandoned, and only on the user's word).
 **The tickets first, then the files**, in the order Step 21 rehearses:
 
 ```sh
-. ~/.tcw-4.0-release/load.sh M0
+. ~/.tcw-4.0-release/load.sh M0 A
+gate_go 2 "$A" way-back                    # the user's word for the way back is the latest answer
+for arg in "$@"; do [ "$arg" = --read ] || stop "the way back takes only --read, not '$arg'"; done
 cd "$PRIMARY"
 set +eu; source ~/.bashrc; set -eu
 # 1. The tickets, while the primary checkout still holds the 4.0 files the
 #    migration wrote and the 4.0 install, as in the rehearsal.
-"$C/.venv/bin/python" "$REL/way-back.py" "$PRIMARY" tcw "$REL" > "$REL/way-back.txt" 2>&1 ||
+"$C/.venv/bin/python" "$REL/way-back.py" "$PRIMARY" tcw "$REL" "$@" > "$REL/way-back.txt" 2>&1 ||
   stop "the tickets' way back stopped or left tickets out: see way-back.txt, and bring it to the user"
+grep -q '^put back: \[' "$REL/way-back.txt" || stop "way-back.txt names nothing put back"
 # 2. Then the files, as for 5.5.
 git reset --keep "$M0"
 py=$(head -1 "$(pyenv which tcw)" | sed 's/^#!//')
@@ -1523,12 +1634,18 @@ py=$(head -1 "$(pyenv which tcw)" | sed 's/^#!//')
 tcw --version | grep -q '^tcw 3\.0\.2$' || stop "the shared tcw is not 3.0.2 again"
 ```
 
-`way-back.py` reads the runs as `tcw116-step6*.txt` and the dry run as the
-one `*dry-run*.txt` file in the release folder (`tcw116-dry-run.txt`; the
-rehearsal's files are in `rehearsal/`, which the search does not enter). It
-keeps its `getattr` reads of `restored` and `pending` (Decided 2). A key in
-only one of the two files stops it until a person has read the key and
-re-runs it with `--read`. Why this order: it is the order the rehearsal
+The block is saved as `~/.tcw-4.0-release/way-back.sh` and run as `bash
+~/.tcw-4.0-release/way-back.sh`, or `bash ~/.tcw-4.0-release/way-back.sh
+--read` once a person has read the keys found in only one file; `load.sh`,
+sourced with names, leaves the block's own `--read` in place for the loop
+and the script. `way-back.py` reads the runs as `tcw116-step6*.txt` and the
+dry run as the one `*dry-run*.txt` file in the release folder
+(`tcw116-dry-run.txt`; the rehearsal's files are in `rehearsal/`, which the
+search does not enter). It keeps its `getattr` reads of `restored` and
+`pending` (Decided 2). Any exit but 0 stops the block before the files are
+touched: 3 when no run is found, when the runs name no edited ticket though
+the dry run lists some, or when a key is in only one of the two files and
+`--read` was not given; 1 when Jira left a ticket out. Why this order: it is the order the rehearsal
 proves; the script must run with the 4.0 code (its own docstring); and a
 stop partway leaves the primary checkout exactly as it was before the way
 back began, so the way back can be run again from the same state once the
@@ -1544,7 +1661,8 @@ spec's row lists the files before the tickets (Spec issues, 5).
 **Who:** the dispatching session.
 
 ```sh
-. ~/.tcw-4.0-release/load.sh
+. ~/.tcw-4.0-release/load.sh A
+gate_go 2 "$A"                              # a real tcw migrate, which would edit any ticket left
 cd "$PRIMARY"
 set +eu; source ~/.bashrc; set -eu
 capture "$REL/step7-migrate.txt" tcw migrate || stop "tcw migrate failed"
@@ -1813,7 +1931,8 @@ pipx run --spec tcw-cli==4.0.0 tcw --version | grep -q '^tcw 4\.0\.0$' || stop "
 ```
 
 This step is run by hand in two parts, since the run's id is read from the
-list: the list, then the rest with the id written in.
+list: the list, then the rest with the id written in, each part a file that
+starts with the block's first two lines.
 
 **Proves it:** criteria 35 and 38. A failed run follows 7.4: a failed `test`
 job stops for the user's decision (move the tag or cut 4.0.1); a `publish`
@@ -1879,7 +1998,9 @@ release folder after Step 39).
 (`tcw migrate --dry-run`, `tcw migrate`, `tcw validate`, with 4.0.0) and what
 each setup's record must hold (the dry run's counts, the three exit codes,
 and either that nothing was fixed by hand or the work item filed for what
-was), naming neither setup. TCW-118 does not wait for those records.
+was), naming neither setup. TCW-118 does not wait for those records. The
+comment is written to the live board, so it is posted only right after
+`bash -c '. ~/.tcw-4.0-release/load.sh T; gate_go 3 "$T"'` has exited 0.
 
 **Proves it:** criterion 40.
 
@@ -1890,8 +2011,23 @@ then the dispatching session posts and closes.
 
 **Does:** after Step 38, a reply naming 4.0.0 and what changed (TCW-113
 Design 7.1: the `audit-backlog` procedure covers a project's family), shown
-to the user in full; only after the user approves that exact text, `gh issue
-comment 24 --body-file <the approved text>` and `gh issue close 24`.
+to the user in full, and posted only after the user approves that exact
+text. The text is saved as `~/.tcw-4.0-release/issue-24.md` before it is shown; on the
+user's approval the dispatching session adds the line `issue 24: approved
+<sha-256 of issue-24.md>`, with the user's words quoted beneath it, to both
+copies of `gates.md` and commits it; then:
+
+```sh
+. ~/.tcw-4.0-release/load.sh T
+gate_go 3 "$T"
+sum=$(shasum -a 256 "$REL/issue-24.md" | cut -d' ' -f1)
+grep -qx "issue 24: approved $sum" "$REL/gates.md" || stop "issue-24.md is not the text the user approved"
+gh issue comment 24 --body-file "$REL/issue-24.md"
+gh issue close 24
+```
+
+A change to the text after its approval changes its digest, so the block
+stops until the user approves the new text.
 
 **Proves it:** criterion 41: the approval and the text in the qa record.
 
@@ -1907,7 +2043,10 @@ F:32's), and naming their keys;
 a comment on TCW-99 giving success criteria 1 (Step 7's output) and 3 (Step
 33's comparison) with their evidence; then `tcw work advance` to
 `completed`, which runs `tcw validate`. **TCW-99 is never moved by this
-item**; its stage is read before and after and is the same.
+item**; its stage is read before and after and is the same. The filings, the
+comments and the move all write to the live board, so the step starts only
+after `bash -c '. ~/.tcw-4.0-release/load.sh T; gate_go 3 "$T"'` has exited
+0.
 
 **Proves it:** criterion 42.
 
@@ -1960,8 +2099,10 @@ or to a decision above (Step 2: Decided 1; Step 22: Decided 4; Step 26:
 Design 2.2; Step 9a: Decided 7). No step repeats another: 4.5 and 6.2 (f)-(g) share their
 commands by reference (Step 17 runs Steps 32 and 33's).
 
-The gates are kept exactly: Steps 20, 21, 23, 24 read gate 2's entry first;
-Steps 37-39 read gate 3's; nothing before Step 18 leaves the machine but
+The gates are kept exactly: every block of Steps 20, 21, 23, 24 and 25
+reads gate 2's entry first, and the way back from Step 24 reads the user's
+`way-back` word; Steps 37-39 and 41-43 read gate 3's, and Step 42 also the
+approved text's digest (the full list is in Revision 3); nothing before Step 18 leaves the machine but
 Step 10's push of `v4`; Step 30 pushes only `v4`; Step 14's dry run and Step
 21's issue-type search only read; Step 41 and 43 comment on TCW-99 and never
 move it; Step 42 posts only approved text.
@@ -2110,3 +2251,114 @@ exits 1 (`check the spelling`) was checked against every fix: none changes
 that exit code. Fix 16, the nearest, changes only a check that could not
 run (`Unchecked`); an unknown ID is answered `Invalid` and still exits 1.
 Its row now says so and the quotation list names the two lines.
+
+## Revision 3
+
+The second plan review's findings, each checked against the plan by the
+dispatching session and accepted (decided by the dispatching session); what
+changed for each, and the choices made while answering them (decided by the
+plan's author, as marked).
+
+1. **[blocking] `way-back.py` took `--read` as its file pattern.** Run as
+   Step 24 runs it, `--read` was the fourth word, so the pattern matched
+   nothing, `restore_tickets([])` returned at once, the script exited 0 and
+   the block went on to reset the files with every ticket still at its 4.0
+   value (reproduced with the old script against a stub: `runs read: []`,
+   `put back: []`, exit 0). The script now parses its arguments with
+   `argparse`: three names, `--runs <pattern>` (default
+   `tcw116-step6*.txt`) and `--read`, in any order. It stops with exit 3 when
+   no run matches, when the folder holds other than exactly one dry run, when
+   the pattern matches the dry run, when the runs name no edited ticket
+   though the dry run lists some, and when a key is in only one file and
+   `--read` was not given; 1 stays the exit for a ticket Jira left out.
+   Every call uses the new form: Step 21's rehearsal passes `--runs
+   'rehearsal-step6*.txt'`; the way back from Step 24 passes its own
+   arguments through (`bash way-back.sh` or `bash way-back.sh --read`),
+   refusing any other, and also requires a `put back: [` line before the
+   files are touched. Choices (author): the distinct exit 3, so that Step
+   21's check for exit 1 cannot be met by a stop; the dry-run count and the
+   pattern-overlap checks.
+2. **[blocking] Live writes ran without `gate_go`.** Added: the filing on
+   `TCWTEST`, the conversion and the way back of Step 21; the way back from
+   Step 24 (`gate_go 2 "$A" way-back`); Step 25's real `tcw migrate`. Step
+   22's answer has its own first lines (`gate 2: go <A>` or `gate 2: stop
+   <A>`), and the answer to Step 24's offer of the way back too (`gate 2:
+   way-back <A>` or `gate 2: stop <A>`). `gate_go` now reads only the latest
+   fixed line for its gate and commit and requires it to be the word asked
+   for (`go` unless a third argument says otherwise), so a later `stop` or
+   `way-back` ends a go and only a new `go` restores it. Quoted words start
+   `> ` so they cannot take the fixed form. Every command in the plan that
+   writes outside the scratchpad, the merge clone or the release folder,
+   and what guards it:
+   - Jira, `TCWTEST`: Step 20's live scenario (`gate_go 2`); Step 21's
+     filing, conversion and way back (each `gate_go 2`), and its edits by
+     hand in Jira (each made only after a `gate_go 2` run exits 0).
+   - Jira, the live `TCW` board: Step 24's conversion (`gate_go 2`); the way
+     back from Step 24 (`gate_go 2 … way-back`); Step 25's `tcw migrate`
+     (`gate_go 2`); Steps 41 and 43's comments, filings and move to
+     `completed` (each after a `gate_go 3` run exits 0). Not gated: the
+     dispatching session's lifecycle moves and comments on TCW-118 (Step 27
+     and every earlier stage move), now said so under "Who does what"
+     (choice, author); Step 14's dry run and Step 21's issue-type search,
+     which only read.
+   - This machine's shared install: Step 23 (`gate_go 2`); the way back's
+     reinstall of 3.0.2 (`gate_go 2 … way-back`).
+   - GitHub: the pushes of `v4` and `gh workflow run` in Steps 10, 30 and 35
+     (allowed without a gate by the rule above, as the user allowed pushing
+     `v4`); the tag and the pushes of `3.x` and `main`, Steps 37 and 39
+     (`gate_go 3`); Step 42's comment and close (`gate_go 3`, and the
+     approved text's digest, below).
+   - PyPI: nothing is written; Step 38 only reads (`gate_go 3` anyway).
+   Choice (author): Step 42 now posts from `~/.tcw-4.0-release/issue-24.md`
+   only when `gates.md` holds `issue 24: approved <its sha-256>`, so the
+   text posted is the text approved.
+3. **`git diff --quiet HEAD` passed for an untracked `gates.md`.** `gate_go`
+   now stops when a checkout's `gates.md` exists but its last commit has
+   none, and when the working copy differs from the last commit's
+   (`git show HEAD:<path> | cmp`); it passes only when some checkout's last
+   commit holds exactly the release folder's copy. Choice (author): the
+   whole file is compared with the release folder's copy rather than one
+   line searched for, since "latest answer" needs the whole order.
+4. **Fix 24 missed two places.** The row now names `_missing()` in
+   `tcw/taxonomy/cli.py:29-31` and `tcw/capabilities/cli.py:30-32` beside
+   `tcw/project_cli.py:177` and `tcw/move.py:96-97`, through one helper, and
+   its test covers a taxonomy and a capabilities command. A search of
+   `tcw/` on `v4` at `0cf6e97f` for `--id <` found three more, left as they
+   are with the reason in the row: `tcw/errors.py:13`, `tcw/cli.py:75`,
+   `tcw/store/project.py:947`.
+5. **`gate_go` cannot tell who wrote a line.** Said plainly under "Who does
+   what": only the dispatching session writes `gates.md`, only to record an
+   answer just given, with the user's words quoted exactly; no agent writes
+   or commits it.
+6. **Minor.** Step 24's comparison block sources `load.sh` and reads the
+   release folder from `$REL` and the clone's Python from `$C`. Step 38's
+   two hand-run parts each start with the block's first two lines (author).
+
+**Tests run** (2026-10-24, scratch folder
+`/private/tmp/claude-501/-Users-brian-Projects-TCW/abc313a2-da1e-4eb6-ac45-d50b6c6dd99c/scratchpad/tp118/`;
+the script and `load.sh` were cut from this file's own text, with
+`restore_tickets` replaced by a function that prints and `load.sh`'s three
+paths pointed at scratch folders; no Jira, no `tcw`):
+
+- `way-back.py`, under `python3 -S` with stub modules: no `--read`, every
+  key in both files: `restore_tickets` called with both, exit 0. `--read`
+  after the names, and before them: the same, exit 0. No run found
+  (`--runs 'nothing*.txt'`): `stop: no saved run matches…`, exit 3, no call.
+  A key only in the dry run, no `--read`: exit 3, no call; with `--read`:
+  called with the one edited ticket, exit 0. Pattern matching the dry run:
+  exit 3. Runs with no edit line, dry run listing two: exit 3. Jira leaving
+  one out: `put back:` and `left out:` printed, exit 1. `--reed`: argparse's
+  usage, exit 2. The rehearsal's form (`. tcw-rehearsal … --runs …`): exit 0.
+- `gate_go`, under `/bin/bash` 3.2.57 with two scratch git repositories:
+  go written but never committed (untracked): stops, `is not committed`.
+  Go committed: passes. Go for another commit: stops. `way-back` asked with
+  only a go given: stops. Go then stop: stops. Go, stop, go: passes.
+  `way-back` written and asked for: passes; asked as a go: stops. Committed
+  copy changed afterwards (uncommitted): stops, `differs from its last
+  commit`. Release copy newer than every commit: stops. A quoted `> gate 2:
+  go <B>` line: not counted. An untracked copy in the primary checkout
+  beside a committed one in the clone: stops. No copy in the primary
+  checkout, committed in the clone: passes.
+- The way back's block under `/bin/bash` 3.2: after `. load.sh M0 A`, the
+  block still sees its own `--read` (`[--read]`) or nothing (`[]`), and
+  refuses `--force`.
