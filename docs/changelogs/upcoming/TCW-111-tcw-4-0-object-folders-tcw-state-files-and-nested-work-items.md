@@ -23,8 +23,8 @@
   missing, unresolved, a loop), and the folder-and-parent warning for terms,
   capabilities and work items (Jira items under `--remote` only). (TCW-111)
 - `tcw/errors.py` `StateFileProblem`; `tcw/output.py` `left_out`: list and
-  search name each state file they could not read on standard error and exit
-    1. (TCW-111)
+  search name each state file they could not read on standard error and
+  exit 1. (TCW-111)
 
 ## Changed
 

@@ -1094,8 +1094,8 @@ def _blocked_removal(d: Path, root: Path, namespace: str, id_path: str) -> None:
     legacy = [(where, name) for where, name in blockers if name != "state"]
     if legacy:
         where, name = legacy[0]
-        raise Refused(f"{where} holds a TCW 3.x {name}; run 'tcw migrate' in this "
-                      f"project first")
+        raise Refused(f"cannot remove '{id_path}': {where} holds a TCW 3.x {name}; "
+                      f"run 'tcw migrate' in this project first")
     nested = [where for where, _ in blockers]
     if nested:
         raise Refused(f"cannot remove '{id_path}': nested under it: "

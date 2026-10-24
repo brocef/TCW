@@ -34,7 +34,22 @@ def test_a_term_with_a_3x_folder_below_it_names_tcw_migrate(tcw, demo):
     before = tree_hash(demo)
     removed = tcw(["taxonomy", "rm", "invoice"], demo)
     assert removed.code == 3, removed
-    assert "invoice/old" in removed.err and "tcw migrate" in removed.err
+    assert removed.err == ("tcw taxonomy rm: cannot remove 'invoice': invoice/old holds "
+                           "a TCW 3.x meta.yaml; run 'tcw migrate' in this project "
+                           "first\n")
+    assert tree_hash(demo) == before
+
+
+def test_a_capability_with_a_3x_folder_below_it_names_tcw_migrate(tcw, demo):
+    cap = obj(demo, "capabilities", "cli/x", id="cap-aaaaaa", name="X", Status="Missing")
+    (cap / "old").mkdir()
+    (cap / "old" / "item.yaml").write_text("title: Old\n")
+    before = tree_hash(demo)
+    removed = tcw(["capabilities", "rm", "cli/x"], demo)
+    assert removed.code == 3, removed
+    assert removed.err == ("tcw capabilities rm: cannot remove 'cli/x': cli/x/old holds "
+                           "a TCW 3.x item.yaml; run 'tcw migrate' in this project "
+                           "first\n")
     assert tree_hash(demo) == before
 
 
