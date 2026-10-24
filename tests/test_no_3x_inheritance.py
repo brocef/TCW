@@ -63,6 +63,7 @@ ALLOWED = {
         "test_overrides_by_path.py": "AC 29: the key is an error at its file",
         "test_capabilities_federation.py": "Design 6.4, the same error",
         "test_no_3x_inheritance.py": "this guard's own samples",
+        "test_docs_describe_4_0.py": "TCW-117: the 3.x document scan's own samples (P12)",
     },
     "cap-id": {
         "test_overrides_by_path.py": "AC 28: an opaque id fails row k",
