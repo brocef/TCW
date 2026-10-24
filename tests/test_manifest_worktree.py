@@ -96,7 +96,7 @@ def test_ac17_the_main_checkouts_personal_configuration(tmp_path):
     env = personal_env(tmp_path)
     shown = tcw(worktree, "project", "config", "--origin", env=env)
     assert shown.code == 0, shown
-    assert f"name: Someone Else  # local: {local}" in shown.out, shown.out
+    assert f"name: Someone Else  # app, local {local}" in shown.out, shown.out
     prompt = tcw(worktree, "work", "stage", "prompt", "spec", env=env)
     assert prompt.code == 0, prompt
     assert "WORDS FROM THE WORKTREE" in prompt.out

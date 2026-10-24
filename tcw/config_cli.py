@@ -109,6 +109,35 @@ def _packaged(path: tuple) -> str | None:
     return None
 
 
+def origin_label(origin, root: Path | None, active_id: str | None) -> str:
+    """Where a value came from, in the one shape of TCW-115 Design 4.2:
+    `<project>, <layer> <file>`, `<project>, environment <NAME>`, or
+    `built-in`. `<file>` is relative to `root`, the active project's, when it
+    is inside it. A layer that names no project, the user-wide file among
+    them, is the active project's (Design 4.2). `tcw project info` prints the
+    same label in parentheses (Design 4.3)."""
+    from tcw.config import shown_in
+    if origin.layer == "built-in":
+        return "built-in"
+    project = origin.project or active_id
+    if origin.variable is not None:
+        return f"{project}, environment {origin.variable}"
+    if origin.file is None:
+        return f"{project}, {origin.layer}"
+    return f"{project}, {origin.layer} {shown_in(origin.file, root)}"
+
+
+def origin_json(origin, active_id: str | None) -> dict:
+    """`origin_label` as JSON (TCW-115 Design 4.3), the file absolute."""
+    if origin.layer == "built-in":
+        return {"layer": "built-in"}
+    project = origin.project or active_id
+    if origin.variable is not None:
+        return {"project": project, "layer": "environment", "variable": origin.variable}
+    return {"project": project, "layer": origin.layer,
+            "file": None if origin.file is None else str(Path(origin.file).absolute())}
+
+
 class _Writer:
     def __init__(self, config, *, origin: bool):
         self.config = config
@@ -116,9 +145,8 @@ class _Writer:
         self.lines: list[str] = []
 
     def comment(self, path: tuple, value: Any) -> str:
-        """What follows a value: its layer with `--origin`; the packaged file
+        """What follows a value: its origin with `--origin`; the packaged file
         for a built-in entry always."""
-        from tcw.config import shown_in
         packaged = (_packaged(path) if isinstance(value, dict)
                     and value.get("builtin") is True else None)
         parts = []
@@ -126,19 +154,9 @@ class _Writer:
             found = self.config.origins.get(path)
             if found is None and path and isinstance(path[-1], int):
                 found = self.config.origins.get(path[:-1])
-            own = self.config.sources[-1] if self.config.sources else None
-            if found is not None and found.variable is not None:
-                parts.append(f"environment: {found.variable}")
-            elif found is not None and found.file is not None and found.project not in (
-                    None, own) and found.layer != "user":
-                # Passed by another project: its file by its whole path
-                # (TCW-109 Design 7.1).
-                parts.append(f"{found.layer}: {found.file}")
-            elif found is not None:
-                parts.append(found.layer if found.file is None
-                             or found.layer == "project"
-                             else f"{found.layer}: "
-                                  f"{shown_in(found.file, self.config.root)}")
+            if found is not None:
+                own = self.config.sources[-1] if self.config.sources else None
+                parts.append(origin_label(found, self.config.root, own))
         if packaged:
             parts.append(packaged)
         return f"  # {', '.join(parts)}" if parts else ""

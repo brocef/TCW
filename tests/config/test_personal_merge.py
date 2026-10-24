@@ -194,7 +194,7 @@ def test_an_empty_mapping_is_blamed_on_the_file_that_wrote_it(personal):
     assert problem.file == personal.local_file
     from tcw.config_cli import render
     [line] = [l for l in render(config, origin=True).splitlines() if "custom:" in l]
-    assert line.endswith("custom: {}  # local: .tcw/tcw-config.local.yaml"), line
+    assert line.endswith("custom: {}  # p, local .tcw/tcw-config.local.yaml"), line
 
 
 def test_a_mapping_problem_is_blamed_on_the_highest_layer_under_it(personal):

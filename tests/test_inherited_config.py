@@ -854,7 +854,7 @@ def test_ac17_a_variable_is_labelled_with_its_name(tmp_path):
     assert yaml.safe_load(shown.out)["user"]["name"] == "Robin"
     origin = tcw(app, "project", "config", "--origin", env=env)
     [name] = [line for line in origin.out.splitlines() if "Robin" in line]
-    assert name.endswith("# environment: TCW_USER_NAME__APP"), name
+    assert name.endswith("# app, environment TCW_USER_NAME__APP"), name
 
 
 @pytest.mark.parametrize("flags", [(), ("--origin",)])

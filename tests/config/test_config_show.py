@@ -44,8 +44,9 @@ def test_origin_comments_without_personal_files(personal):
     assert result.code == 0, result
     assert yaml.safe_load(result.out) == load_config(root).values
     found = comments(result.out)
-    assert found and all(c.split(",")[0] in ("built-in", "project") for c in found)
-    assert "project" in found
+    assert found and all(c.split(",")[0] == "built-in"
+                         or c == "p, project .tcw/tcw-config.yaml" for c in found), found
+    assert "p, project .tcw/tcw-config.yaml" in found
 
 
 @pytest.mark.parametrize("flags", [(), ("--origin",)])
@@ -78,7 +79,7 @@ def test_origin_still_prints_and_marks_the_refused_key(personal):
     assert len(refused) == 1
     assert all(w in refused[0] for w in ("id", "other", ".tcw/tcw-config.local.yaml"))
     [blob] = [l for l in result.out.splitlines() if "blob: x" in l]
-    assert blob.endswith("  # local: .tcw/tcw-config.local.yaml"), blob
+    assert blob.endswith("  # p, local .tcw/tcw-config.local.yaml"), blob
     assert ".tcw/tcw-config.local.yaml: id: " in result.err
 
 
@@ -260,3 +261,92 @@ def test_a_value_that_would_not_read_back_is_refused(personal, monkeypatch):
             render(config, origin=origin)
         assert str(raised.value) == ("cannot print x-extra.keep[1]: written as YAML, "
                                      "it does not read back as the same value")
+
+
+# -- TCW-115 AC 7 and AC 8: the origin label, one shape for every layer ----------------
+
+def _ending(out: str, start: str) -> str:
+    [line] = [l for l in out.splitlines() if l.strip().startswith(start)]
+    return line
+
+
+def ac7(tmp_path):
+    from tests.test_inherited_config import CORE_JIRA, jira_mode, made
+    from tests.projectfiles import write_local_config
+    core = made(tmp_path, "core", work={"jira": {"site": CORE_JIRA["site"]}})
+    app = made(tmp_path, "app", parents=["core"], work=jira_mode(jira={
+        "project": "APP", "credentials": CORE_JIRA["credentials"],
+        "fields": CORE_JIRA["fields"]}))
+    write_local_config(app, "work:\n  procedures:\n    search:\n    - file: docs/s.md\n")
+    return core, app
+
+
+def test_ac7_each_label_names_project_layer_and_file(tmp_path):
+    from tests.test_project_files_cli import personal_env, tcw
+    core, app = ac7(tmp_path)
+    env = {**personal_env(tmp_path), "TCW_USER_NAME__APP": "Robin"}
+    shown = tcw(app, "project", "config", "--origin", env=env)
+    assert shown.code == 0, shown
+    out = shown.out
+    assert _ending(out, "site:").endswith(
+        f"  # core, project {core / '.tcw' / 'tcw-config.yaml'}"), out
+    assert _ending(out, "id:").endswith("  # app, project .tcw/tcw-config.yaml"), out
+    assert _ending(out, "- file: docs/s.md").endswith(
+        "  # app, local .tcw/tcw-config.local.yaml"), out
+    assert _ending(out, "name: Robin").endswith(
+        "  # app, environment TCW_USER_NAME__APP"), out
+    assert "        - builtin: true  # built-in, tcw/work/prompts/spec.md" in \
+        out.splitlines(), out
+    plain = tcw(app, "project", "config", env=env)
+    assert yaml.safe_load(plain.out) == yaml.safe_load(out)
+
+
+def test_ac7_a_value_from_the_user_wide_file_is_the_active_projects(tmp_path):
+    from tests.projectfiles import write_config_file
+    from tests.test_project_files_cli import personal_env, tcw
+    _core, app = ac7(tmp_path)
+    user = write_config_file(tmp_path / "xdg" / "tcw" / "config.yaml",
+                             "user:\n  name: Sam\n")
+    shown = tcw(app, "project", "config", "--origin", env=personal_env(tmp_path))
+    assert shown.code == 0, shown
+    assert _ending(shown.out, "name: Sam").endswith(f"  # app, user {user}"), shown.out
+
+
+@pytest.mark.parametrize("flags", [(), ("--origin",)])
+def test_ac8_core_absent_is_undecided_naming_both(tmp_path, flags):
+    import shutil
+    from tests.test_project_files_cli import tcw
+    from tests.test_inherited_config import jira_mode, made
+    made(tmp_path, "core")
+    # `app` sets `work.tags` itself, so `work.jira` is the first undecided key.
+    app = made(tmp_path, "app", parents=["core"], work=jira_mode(tags=["a"]))
+    shutil.rmtree(tmp_path / "core")
+    shown = tcw(app, "project", "config", *flags)
+    assert (shown.code, shown.out) == (7, ""), shown
+    assert "work.jira" in shown.err and "core" in shown.err, shown.err
+
+
+@pytest.mark.parametrize("flags", [(), ("--origin",)])
+def test_ac8_a_broken_inherited_key_names_its_file(tmp_path, flags):
+    from tests.test_project_files_cli import tcw
+    from tests.test_inherited_config import made
+    from tests.projectfiles import config_file
+    core = made(tmp_path, "core", work={"tags": ["!!!"]})
+    app = made(tmp_path, "app", parents=["core"])
+    shown = tcw(app, "project", "config", *flags)
+    assert (shown.code, shown.out) == (1, ""), shown
+    assert str(config_file(core)) in shown.err, shown.err
+    from tests.test_inherited_config import set_work
+    set_work(app, {"tags": ["a"]})
+    assert tcw(app, "project", "config", *flags).code == 0
+
+
+def test_ac8_the_projects_own_problem(tmp_path):
+    from tests.test_project_files_cli import tcw
+    from tests.test_inherited_config import made
+    made(tmp_path, "core")
+    app = made(tmp_path, "app", parents=["core"], work={"tags": 5})
+    plain = tcw(app, "project", "config")
+    assert (plain.code, plain.out) == (1, ""), plain
+    origin = tcw(app, "project", "config", "--origin")
+    assert origin.code == 1 and "id: app" in origin.out, origin

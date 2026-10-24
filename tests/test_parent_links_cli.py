@@ -405,8 +405,8 @@ def test_choice6_config_show_gives_each_childs_file(five, tmp_path):
     assert ran.code == 0, ran
     lines = [line.strip() for line in ran.out.splitlines()]
     at = lines.index("children:")
-    assert lines[at + 1:at + 3] == ["- a  # project",
-                                    "- b  # local: .tcw/tcw-config.local.yaml"], ran.out
+    assert lines[at + 1:at + 3] == ["- a  # ws, project .tcw/tcw-config.yaml",
+                                    "- b  # ws, local .tcw/tcw-config.local.yaml"], ran.out
 
 
 def test_ac32_personal_children_do_not_change_a_gate(tmp_path):
