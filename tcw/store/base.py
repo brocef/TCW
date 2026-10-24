@@ -22,6 +22,7 @@ from typing import Any
 from tcw.errors import NotFound, UsageError
 from tcw.findings import Finding
 from tcw.ids import FullId
+from tcw.ownership import writes
 from tcw.project_files import follows_naming_rule
 
 
@@ -873,6 +874,7 @@ class TaxonomyStore(ABC):
         project's is refused; nothing there is `NotFound` (TCW-112 Design
         4.4)."""
 
+    @writes
     @abstractmethod
     def add(self, name: str, slug: str | None = None, parent: str | None = None,
             description: str = "", kind: str = "Vocabulary",
@@ -882,6 +884,7 @@ class TaxonomyStore(ABC):
         made inside the parent's when it is a term of this project's own
         store, else at the root. Refuse a collision."""
 
+    @writes
     @abstractmethod
     def move(self, id_path: str, new_id_path: str, before_folder,
              *, report=None) -> list:
@@ -891,6 +894,7 @@ class TaxonomyStore(ABC):
         the `(old, new)` full identifiers, the object first. The store writes
         nothing else: references live in repository files in both modes."""
 
+    @writes
     @abstractmethod
     def remove(self, ref: "FullId | str") -> None:
         """Remove a local term, writing nothing when refused. `ref` is a full
@@ -916,6 +920,7 @@ class TaxonomyStore(ABC):
         core revision token. Returns ``None`` when it names nothing.
         """
 
+    @writes
     @abstractmethod
     def update_term(self, ref: "FullId | str", *,
                     name: Any = _UNSET,
@@ -1105,6 +1110,7 @@ class CapabilitiesStore(ABC):
         project's object not in the chain is refused with Design 4.2's
         message; nothing there is `NotFound`."""
 
+    @writes
     @abstractmethod
     def add(self, identifier: str, name: str | None = None, status: str = "Missing",
             body: str = "", fields: dict[str, Any] | None = None,
@@ -1114,6 +1120,7 @@ class CapabilitiesStore(ABC):
         identifier when given. Refuse a collision. `fields` are validated as `set` validates them, before
         anything is written, so a create carrying a bad field writes nothing."""
 
+    @writes
     @abstractmethod
     def move(self, id_path: str, new_id_path: str, before_folder,
              *, report=None) -> list:
@@ -1123,6 +1130,7 @@ class CapabilitiesStore(ABC):
         the `(old, new)` full identifiers, the object first. The store writes
         nothing else: references live in repository files in both modes."""
 
+    @writes
     @abstractmethod
     def remove(self, identifier: "FullId | str") -> None:
         """Delete the project's own capability `identifier` names
@@ -1138,6 +1146,7 @@ class CapabilitiesStore(ABC):
         second capability with it or leaves a reference pointing at nothing.
         Never changes another project's store."""
 
+    @writes
     @abstractmethod
     def reset(self, identifier: "FullId | str") -> None:
         """Remove the project's own capability at the id-path `identifier`
@@ -1148,6 +1157,7 @@ class CapabilitiesStore(ABC):
         while another of the project's own objects names it. Never changes
         another project's store."""
 
+    @writes
     @abstractmethod
     def set(self, identifier: "FullId | str", fields: dict[str, Any],
             parent: str | None = None) -> Capability:
@@ -1183,6 +1193,7 @@ class CapabilitiesStore(ABC):
         """The capability `identifier` names plus a revision token.
         Returns ``None`` when it names nothing."""
 
+    @writes
     @abstractmethod
     def update_capability(self, identifier: "FullId | str", *,
                           body: Any = _UNSET,

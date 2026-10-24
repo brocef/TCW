@@ -12,10 +12,10 @@ compares two project IDs every store has. It asks the deployment layer
 has decided to refuse, and every error that search raises is caught, so
 locating never changes the outcome (Design 1.3).
 
-`writes` marks the methods of the store and backend interfaces that write
-an existing object, for the sweep guard that keeps every caller of one on a
-path through this check (`tests/test_ownership_sweep.py`). It does nothing
-at run time.
+`writes` marks the methods of the store and backend interfaces that write,
+creators included, for the sweep guard that keeps every caller of one either
+on a path through this check or listed as a creator
+(`tests/test_ownership_sweep.py`). It does nothing at run time.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ F = TypeVar("F", bound=Callable)
 
 
 def writes(method: F) -> F:
-    """Mark an interface method as one that writes an existing object."""
+    """Mark an interface method as one that writes."""
     method.__tcw_writes__ = True
     return method
 

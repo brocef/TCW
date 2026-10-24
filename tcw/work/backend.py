@@ -17,6 +17,7 @@ from typing import Callable, Protocol, runtime_checkable
 
 from tcw.errors import UsageError
 from tcw.ids import FullId
+from tcw.ownership import writes
 from tcw.work.model import TERMINAL, Changes, Item, Slug, stage as table_stage
 
 
@@ -73,6 +74,7 @@ class WorkBackend(Protocol):
     external_stages: frozenset[str]  # stages whose record the backend keeps
     inbox_items: bool  # may an item sit at the inbox stage
 
+    @writes
     def create(self, title: str, props: Changes, *, stage: str,
                request: str | None, nest: bool = False) -> Item:
         """Make the item and its folder: inside its parent's folder when
@@ -87,8 +89,10 @@ class WorkBackend(Protocol):
 
     def list(self, query: Query) -> list[Item]: ...
 
+    @writes
     def update(self, id_path: str, changes: Changes) -> Item: ...
 
+    @writes
     def set_stage(self, id_path: str, stage: str, note: str | None) -> str | None:
         """Move the item, recording `note` as a comment as part of the same
         move where the store allows it. Returns the stage the backend reports
@@ -96,8 +100,10 @@ class WorkBackend(Protocol):
         `MovedWithoutNote` when the stage changed but the note was not kept.
         Runs no checks and no hooks: that is `advance`'s job."""
 
+    @writes
     def comment(self, id_path: str, text: str) -> None: ...
 
+    @writes
     def move(self, id_path: str, new_id_path: str,
              before_folder: Callable[[], object]) -> list[tuple[FullId, FullId]]:
         """Give the item, and every item nested in its folder, a new id-path

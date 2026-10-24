@@ -85,8 +85,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--json", action="store_true",
                    help="print each project's relation, presence, path, how it "
                         "was found, what a parent passes down ('inherit'), whether "
-                        "a child is listed only in the personal file ('personal') "
-                        "and whether it is read-only from here ('read-only'); then "
+                        "a child is listed only in the personal file ('personal'); "
+                        "then "
                         "'load-order', 'load-order-complete' and "
                         "'load-order-warning'")
     p.set_defaults(func=_list)
