@@ -26,9 +26,11 @@ EXCEPTED = ("tcw/serve/dist",)
 #: The 3.x names, which only `tcw/object_folders.py` spells.
 THREE_X = re.compile(r"(?<![\w-])(?:meta|item)\.yaml|ITEM_FILE")
 NAMES_KEPT_IN = "tcw/object_folders.py"
-#: Folders the 3.x-name check leaves out, each as its path parts from the
-#: root, matched by whole parts. Empty: TCW-116 adds `tcw migrate`'s.
-MIGRATION_FOLDERS: tuple[tuple[str, ...], ...] = ()
+#: Folders both checks leave out, each as its path parts from the root,
+#: matched by whole parts: `tcw migrate`'s copies of the 3.x readers (TCW-116
+#: Design 8.2), which find 3.x objects by their state files' names and list
+#: folders as 3.x listed them.
+MIGRATION_FOLDERS: tuple[tuple[str, ...], ...] = (("tcw", "migrate"),)
 
 #: The directory listings, by the method or function called.
 LISTING_METHODS = {"iterdir", "rglob", "glob", "scandir", "listdir", "walk"}
@@ -132,6 +134,8 @@ def offenders(root: Path) -> list[str]:
             for number, line in enumerate(text.splitlines(), start=1):
                 if THREE_X.search(line):
                     found.append(f"{rel}:{number}: names a TCW 3.x state file")
+        if _migration(rel):
+            continue
         if path.suffix == ".py":
             for number, function in _listings(text):
                 if (rel, function) not in ALLOWED:
@@ -167,3 +171,15 @@ def test_the_3x_names_are_kept_only_as_legacy_names():
                  if line.startswith("LEGACY_STATE_FILES = {"))
     assert named == [start, start + 1]
     assert set(LEGACY_STATE_FILES.values()) == {"meta.yaml", "item.yaml"}
+
+
+def test_the_migration_exemption_covers_its_folder_only(tmp_path):
+    """TCW-116 criterion 67: a 3.x state file's name and a folder listing pass
+    in `tcw/migrate/` and nowhere else, the folder matched by whole parts."""
+    text = 'def f(root):\n    return [p for p in root.rglob("meta.yaml")]\n'
+    for relative in ("tcw/migrate/x.py", "tcw/migrate_x.py", "tcw/store/x.py"):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    assert sorted({line.split(":")[0] for line in offenders(tmp_path)}) == [
+        "tcw/migrate_x.py", "tcw/store/x.py"]

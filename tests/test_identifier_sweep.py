@@ -23,9 +23,9 @@ FOLDERS = ("tcw", "web/client/src", "scripts", "evals")
 SUFFIXES = {".py", ".ts", ".tsx", ".mjs"}
 #: Folders never read, matched by whole path parts: the built web client.
 SKIPPED_FOLDERS = (("tcw", "serve", "dist"),)
-#: Folders that must spell 3.x forms to rewrite them; `tcw migrate` (TCW-116)
-#: adds its own here.
-MIGRATION_FOLDERS: tuple[tuple[str, ...], ...] = ()
+#: Folders that must spell 3.x forms to rewrite them: `tcw migrate`'s copies
+#: of the 3.x readers (TCW-116 Design 8.2), which parse links as 3.x did.
+MIGRATION_FOLDERS: tuple[tuple[str, ...], ...] = (("tcw", "migrate"),)
 #: The one file that recognises a 3.x reference.
 RECOGNISER = ("tcw", "ids.py")
 
@@ -94,3 +94,12 @@ def test_the_guard_leaves_the_recogniser_tests_and_the_built_client_alone(tmp_pa
 def test_the_recogniser_may_not_build_an_identifier_by_hand(tmp_path):
     _copy(tmp_path, "tcw/ids.py", 'return f"{full.project}/{rest}"\n')
     assert len(findings(tmp_path)) == 1
+
+
+def test_the_migration_exemption_covers_its_folder_only(tmp_path):
+    """TCW-116 criterion 67: the 3.x reader's text passes in `tcw/migrate/`
+    and nowhere else, the folder matched by whole path parts."""
+    for relative in ("tcw/migrate/x.py", "tcw/migrate_x.py", "tcw/store/x.py"):
+        _copy(tmp_path, relative, "found = parse_tcw_uri(link)\n")
+    assert [line.split(":")[0] for line in findings(tmp_path)] == [
+        "tcw/migrate_x.py", "tcw/store/x.py"]

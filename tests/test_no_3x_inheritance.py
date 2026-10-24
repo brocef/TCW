@@ -78,7 +78,9 @@ ALLOWED = {
 #: the package's folder or the tests' folder, matched by whole parts. Empty
 #: until then.
 MIGRATION_CODE: tuple[tuple[str, ...], ...] = ()
-MIGRATION_TESTS: tuple[tuple[str, ...], ...] = ()
+#: `tests/migrate/`: the fixtures of `tcw migrate` are 3.x projects, written
+#: as 3.x wrote them (TCW-116 Design 8.2).
+MIGRATION_TESTS: tuple[tuple[str, ...], ...] = (("migrate",),)
 
 
 def _under(path: Path, root: Path, folders: tuple[tuple[str, ...], ...]) -> bool:
@@ -155,3 +157,13 @@ def test_a_removed_name_and_message_are_seen():
     assert removed_names("def get_by_id(self):\n") == ["get_by_id"]
     assert removed_names("store.extends_add('x')\n") == ["extends_add"]
     assert removed_names("def get_by_identifier(self):\n") == []
+
+
+def test_the_migration_test_exemption_covers_its_folder_only(tmp_path):
+    """TCW-116 criterion 67: a 3.x fixture form passes in `tests/migrate/`
+    and nowhere else, the folder matched by whole path parts."""
+    for relative in ("migrate/test_x.py", "migrate_x/test_x.py", "work/test_x.py"):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('write_cap(root, "x", id="cap-x00001")\n', encoding="utf-8")
+    assert offenders(tmp_path) == ["migrate_x/test_x.py: cap-id", "work/test_x.py: cap-id"]
