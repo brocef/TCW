@@ -506,7 +506,8 @@ def plan_stores(root: Path, mapping: dict, project: str, *,
     term. `family` is the project's related projects, whose stores B7 also
     compares with and whose capabilities an override's pointer is resolved
     among (C14); `ancestors`, the projects each axis is inherited from once
-    converted (D2); `middle`, whether the project has children, below which
+    converted (D2); `middle`, whether a project of the family inherits
+    capabilities from it, below which
     4.0 applies its overrides (D4)."""
     out = StorePlan()
     stores = stores_of(root, mapping)

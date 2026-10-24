@@ -728,6 +728,9 @@ class Links:
     #: The projects each axis is inherited from once converted, in load
     #: order, the project itself left out (D2).
     ancestors: dict[str, list[str]] = field(default_factory=dict)
+    #: The projects of the family, found on this machine, that inherit
+    #: capabilities from this one once converted (D4).
+    below: list[str] = field(default_factory=list)
 
     def edits(self) -> list:
         """`projects:` removed and the links set (only when the file has
@@ -945,9 +948,28 @@ def plan_links(root: Path, project_id: str, mapping: dict, family) -> Links:
     out.ancestors = {axis: [pid for pid in order.ids if pid != project_id
                             and pid in passing(axis, project_id, graph)]
                      for axis in EXTENDED_AXES}
+    out.below = _below(project_id, family, converter, relations.children)
     out.extends_edits = [Remove(axis, "extends") for axis in EXTENDED_AXES
                          if isinstance(mapping.get(axis), dict)
                          and "extends" in mapping[axis]]
+    return out
+
+
+def _below(project_id: str, family, converter, children: list[str]) -> list[str]:
+    """The projects that inherit capabilities from `project_id` once the
+    family is converted: its listed children, and each project the 3.x
+    registry walk reaches from it whose converted links pass capabilities
+    from it (D4's middle project, which 3.x did not apply its overrides
+    below)."""
+    from tcw.store.base import passing
+    family._walk_to("\0")                  # place every project the walk reaches
+    out = list(children)
+    for pid in list(family.placed):
+        if pid in out or pid == project_id or family.quiet(pid) is None:
+            continue
+        graph = converter.graph(pid, converter.links_of(pid))
+        if project_id in passing("capabilities", pid, graph):
+            out.append(pid)
     return out
 
 

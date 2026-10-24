@@ -189,7 +189,7 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
         found = stores.plan_stores(read.root, read.shared[1], shared.project,
                                    three_x=read.three_x, work_backend=read.work_backend,
                                    family=family, ancestors=links.ancestors,
-                                   middle=bool(relations.children))
+                                   middle=bool(links.below))
         plan.owners = found.owners
         plan.blockers += found.blockers
         reports += found.reports

@@ -63,8 +63,14 @@ def cross_device_message(old: str, new: str) -> str:
 
 
 def _mkdir(path: Path) -> None:
-    if not path.is_dir():
-        path.mkdir(parents=True, exist_ok=True)
+    """Make `path` and each missing folder above it, one at a time, so that
+    each folder made is one write."""
+    missing = []
+    while not path.is_dir():
+        missing.append(path)
+        path = path.parent
+    for folder in reversed(missing):
+        folder.mkdir(exist_ok=True)
 
 
 def _write(path: Path, text: str) -> None:
@@ -271,10 +277,35 @@ def _finish(steps: list[Step], root: Path, say: Say) -> None:
     run_local(steps, root, say)
     path = resolve(root, progress.PROGRESS)
     try:
+        _remove_emptied(steps, root)
         if path.exists():
             _delete(path)
     except OSError as error:
         raise MigrateStopped(str(error), [Delete(progress.PROGRESS, "E", None)]) from None
+
+
+def _remove_emptied(steps: list[Step], root: Path) -> None:
+    """Remove each folder a move or a deletion left empty (an override's
+    folder, C14, once its entries moved and its 3.x state file is
+    deleted), and each folder above it left empty in
+    turn, stopping at the first that holds anything and never removing the
+    project's root or a folder above it. 4.0's `tcw validate` reports an
+    empty folder in a store as holding no object. Run after every step, on
+    each run that finishes, so a run stopped here removes them the next
+    time."""
+    top = Path(root).resolve()
+    for step in steps:
+        if not isinstance(step, (Move, Delete)):
+            continue
+        folder = resolve(root, step.old if isinstance(step, Move) else step.path).parent
+        while not folder.exists() and folder != folder.parent:
+            folder = folder.parent            # removed by an earlier run
+        while folder.is_dir() and not any(folder.iterdir()):
+            here = folder.resolve()
+            if here == top or here in top.parents:
+                break
+            folder.rmdir()
+            folder = folder.parent
 
 
 def refusal(steps: list[Step], root: Path) -> Blocker | None:
@@ -322,6 +353,11 @@ def check_after(root: Path, predicts: list[tuple[str, str]], *, work: bool) -> l
             .isdigit() else finding.where
         if any(_same_file(where, file, root) and KINDS.get(kind, "\0") in finding.message
                for file, kind in predicts):
+            continue
+        # A8 names a related project's folder, which 4.0 reports in the file
+        # whose entry or search reached it.
+        if any(kind == "legacy" and KINDS["legacy"] in finding.message
+               and file in finding.message for file, kind in predicts):
             continue
         out.append(Report("A12", finding.where, " ".join(finding.message.split())))
     return out
