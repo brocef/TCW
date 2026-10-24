@@ -41,7 +41,7 @@ through `--json`, on the commands that offer it.
 | `tcw work show`                                                  | the item's properties, its request and its comments, newest first                     |
 | `tcw work path`                                                  | one path                                                                              |
 | `tcw work advance`, `tcw work discard`                           | the stage the item is at after the move; with `--dry-run`, the stage it would move to |
-| `tcw work rename`                                                | the item's new full slug                                                              |
+| `tcw work rename`                                                | one `<old> -> <new>` line per identifier it changed                                   |
 | `tcw work stage prompt`, `tcw work procedure`                    | the composed instructions                                                             |
 | `tcw work lifecycle`                                             | every stage, its kind, whether it is turned on, and its bindings                      |
 | `tcw work docs`                                                  | the project's documentation entries                                                   |

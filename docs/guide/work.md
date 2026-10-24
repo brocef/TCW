@@ -357,7 +357,7 @@ tcw work edit demo/2026-10-15-refund-a-payment --assignee sam --effort medium
 - **`tcw work rename <slug> <words>`** renames the item's folder, keeping its
   date (filesystem) or its ticket key (Jira), and rewrites the `parent` and
   `blocked-by` of every other item in the project that names it. It prints
-  the new slug. Items in other projects that name the old slug are not
+  one `<old> -> <new>` line per identifier it changed. Items in other projects that name the old slug are not
   rewritten; `tcw validate` there reports them.
 - **`tcw work comment <slug>`** adds a comment, reading its text from
   standard input.
