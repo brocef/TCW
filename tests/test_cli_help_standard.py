@@ -34,6 +34,7 @@ SURFACE = {
     "work tags rm", "work tickets list", "work tickets adopt",
     # TCW 4.0's `tcw project` group (TCW-115 Design 1.1).
     "project new", "project list", "project config", "project provision", "project path",
+    "project info",
 }
 
 REMOVED = {
@@ -77,7 +78,7 @@ def leaves(commands):
 
 
 def test_the_surface_is_exactly_the_3_0_column(leaves):
-    assert len(SURFACE) == 45
+    assert len(SURFACE) == 46
     assert set(leaves) == SURFACE
 
 

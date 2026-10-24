@@ -163,6 +163,7 @@ def test_the_inbox_stage_is_named_without_a_slug(tmp_path):
     # Unchanged: `tcw project path` is a fourth match, past the three named.
     ("path", "did you mean one of `tcw taxonomy path`, `tcw capabilities path`, "
              "`tcw work path`?"),
+    ("info", "did you mean `tcw project info`?"),
 ])
 def test_a_top_level_word_names_the_project_verb_in_registration_order(capsys, word, line):
     err = usage_error(capsys, word)
@@ -177,6 +178,12 @@ def _every_subcommand(parser, found=None) -> set:
                 found.add(name)
                 _every_subcommand(child, found)
     return found
+
+
+def test_a_synonym_valid_where_it_was_typed_comes_first(capsys):
+    err = usage_error(capsys, "work", "info", "x")
+    assert err.splitlines()[-1] == \
+        "did you mean `tcw work show` or `tcw project info`?", err
 
 
 def test_no_synonym_but_info_is_a_subcommand_anywhere():

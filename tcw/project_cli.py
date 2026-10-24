@@ -12,9 +12,17 @@ The verbs' code stays where it was written: `run_init` and `run_provision` in
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass, field
 from pathlib import Path
 
 NAME = "project"
+
+#: The settings `info` shows (TCW-115 Design 6.1 (5)); the two `work.jira`
+#: keys only in Jira mode.
+SETTINGS = ("work.backend", "work.jira.site", "work.jira.project")
+
+#: The axes whose own objects can override an inherited one (Design 6.1 (7)).
+TREE_AXES = ("taxonomy", "capabilities")
 
 
 def _path(args: argparse.Namespace) -> int:
@@ -109,3 +117,195 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
         writes="nothing", examples=["project path", "project path core"])
     p_path.add_argument("id", nargs="?", help="the project's ID (default: this project)")
     p_path.set_defaults(func=_path)
+
+    p_info = command(
+        verbs, "info", help="how this project is assembled: its parents, children, "
+        "load order, where its settings come from, its stores and its overrides",
+        prints="one fact per line, or --json; what is missing is shown, never an error",
+        writes="nothing", examples=["project info", "project info --json"])
+    p_info.add_argument("--json", action="store_true",
+                        help="print the same facts as one JSON document")
+    p_info.set_defaults(func=_info)
+
+
+# -- `tcw project info` (TCW-115 Design 6) ----------------------------------------
+
+@dataclass
+class ProjectInfo:
+    """Everything `tcw project info` shows about the active project. What is
+    missing or unavailable is a value here, never an exception, so the
+    command exits 0 for all of it (Design 6.2)."""
+
+    id: str
+    path: Path
+    parents: list = field(default_factory=list)       # `connected`'s rows
+    children: list = field(default_factory=list)      # `connected`'s rows
+    order: object = None                              # a `LoadOrder`
+    #: Each key of `SETTINGS` shown: `("value", value, origin)`,
+    #: `("undecided", message)` or `("broken", message)`.
+    settings: dict = field(default_factory=dict)
+    #: Each axis: `("path", folder)` or `("unavailable", message)`.
+    stores: dict = field(default_factory=dict)
+    #: Each of `TREE_AXES`: `("list", [(full id, overridden id)], count)` or
+    #: `("unavailable", message)`.
+    overrides: dict = field(default_factory=dict)
+
+
+def _inherit_text(axes: list) -> str:
+    from tcw.store.base import AXES
+    if list(axes) == list(AXES):
+        return "all"
+    return ", ".join(axes) if axes else "none"
+
+
+def store_folder(axis: str, root: Path) -> Path:
+    """The folder `tcw <axis> path` prints for the project at `root`, raising
+    what that command would raise (plan choice 17)."""
+    from tcw.errors import BackendError
+    from tcw.store.fs import STORE_CLASSES, find_component_project
+    if axis == "work":
+        from tcw.work.open import project_facts
+        return project_facts(root).path
+    project = find_component_project(axis, root)
+    if project is None:
+        raise BackendError(f"no {axis} store here — run `tcw project new {axis} --id <id>` "
+                           f"in the project folder")
+    return STORE_CLASSES[axis].open(project).root
+
+
+def _setting(config, key: str):
+    from tcw.errors import InheritedUnavailable
+    from tcw.config import BUILT_IN
+    path = tuple(key.split("."))
+    held = config.withheld.get(".".join(path[:2])) if path[:2] == ("work", "jira") else None
+    if held is not None:
+        # Plan choice 15: both `work.jira` lines read the one message the
+        # commands that read the key stop with.
+        error = held.error()
+        kind = "undecided" if isinstance(error, InheritedUnavailable) else "broken"
+        return (kind, str(error))
+    value = config.values
+    for part in path:
+        value = value.get(part) if isinstance(value, dict) else None
+    if value is None and key == "work.backend":
+        from tcw.work.config import DEFAULT_BACKEND
+        value = DEFAULT_BACKEND
+    return ("value", value, config.origins.get(path, BUILT_IN))
+
+
+def _overrides(axis: str, root: Path):
+    from tcw.errors import TcwError
+    from tcw.store.fs import STORE_CLASSES, find_component_project
+    try:
+        project = find_component_project(axis, root)
+    except (TcwError, ValueError) as error:
+        return ("unavailable", str(error))
+    if project is None:
+        return ("list", [], 0)
+    try:
+        store = STORE_CLASSES[axis].open(project)
+        warnings = store.view_warnings()
+        found = [(str(obj.full_id), str(obj.overrides))
+                 for obj in store.list_all(local_only=True)
+                 if getattr(obj, "overrides", None) is not None]
+    except (TcwError, ValueError) as error:
+        return ("unavailable", str(error))
+    return ("list", found, len(warnings))
+
+
+def project_info(root: Path) -> ProjectInfo:
+    from tcw.config import load_config
+    from tcw.errors import TcwError
+    from tcw.projects_cli import connected
+    from tcw.store.fs import COMPONENTS
+    from tcw.store.project import FsProjectRegistry
+    registry = FsProjectRegistry.open(root).require_valid()
+    rows = connected(root, registry)
+    info = ProjectInfo(id=rows[0]["id"], path=Path(rows[0]["path"]),
+                       parents=[r for r in rows if r["relation"] == "parent"],
+                       children=[r for r in rows if r["relation"] == "child"],
+                       order=registry.load_order())
+    config = load_config(root, registry=registry)
+    jira = config.work is not None and config.work.backend == "jira"
+    for key in SETTINGS:
+        if key == "work.backend" or jira:
+            info.settings[key] = _setting(config, key)
+    for axis in COMPONENTS:
+        try:
+            info.stores[axis] = ("path", store_folder(axis, root))
+        except (TcwError, ValueError) as error:
+            info.stores[axis] = ("unavailable", str(error))
+    for axis in TREE_AXES:
+        info.overrides[axis] = _overrides(axis, root)
+    return info
+
+
+def render_text(info: ProjectInfo) -> str:
+    """Design 6.3's lines, in order."""
+    from tcw.config_cli import origin_label
+    lines = [f"id: {info.id}", f"path: {info.path}"]
+
+    def listing(label: str, rows: list, notes) -> None:
+        if not rows:
+            lines.append(f"{label}: none")
+            return
+        lines.append(f"{label}:")
+        for row in rows:
+            parts = notes(row) + ([] if row["present"] else ["not on this machine"])
+            lines.append(f"  {row['id']}" + (f" ({'; '.join(parts)})" if parts else ""))
+
+    listing("parents", info.parents, lambda r: [f"inherit: {_inherit_text(r['inherit'])}"])
+    listing("children", info.children, lambda r: ["personal"] if r["personal"] else [])
+    order = info.order
+    lines.append(f"load order: {', '.join(order.ids)}")
+    if not order.complete:
+        parts = []
+        if order.missing:
+            parts.append(f"not on this machine: {', '.join(order.missing)}")
+        if order.unreadable:
+            parts.append(f"links unreadable: {', '.join(order.unreadable)}")
+        lines.append(f"load order incomplete: {'; '.join(parts)}")
+    if order.warning:
+        lines.append(f"load order warning: {order.warning}")
+    lines.append("settings:")
+    for key, shown in info.settings.items():
+        if shown[0] == "value":
+            _, value, origin = shown
+            label = origin_label(origin, info.path, info.id)
+            if origin.layer != "built-in" and (origin.project or info.id) != info.id:
+                label += "; inherited"
+            lines.append(f"  {key}: {value} ({label})")
+        else:
+            lines.append(f"  {key}: {shown[0]}: {shown[1]}")
+    lines.append("stores:")
+    for axis, (_, where) in info.stores.items():
+        lines.append(f"  {axis}: {where}")
+    lines.append("overrides:")
+    counts = []
+    for axis, shown in info.overrides.items():
+        if shown[0] == "unavailable":
+            lines.append(f"  {axis}: could not check: {shown[1]}")
+            counts.append(f"{axis} ?")
+            continue
+        _, found, count = shown
+        counts.append(f"{axis} {count}")
+        if not found:
+            lines.append(f"  {axis}: none")
+            continue
+        lines.append(f"  {axis}:")
+        lines += [f"    {full_id} overrides {overridden}" for full_id, overridden in found]
+    lines.append(f"same path in two unrelated projects: {', '.join(counts)}")
+    return "\n".join(lines) + "\n"
+
+
+def _info(args: argparse.Namespace) -> int:
+    import sys
+    from tcw import exit as codes
+    from tcw.errors import NO_PROJECT, BackendError
+    from tcw.store.fs import find_project_root
+    root = find_project_root(Path.cwd())
+    if root is None:
+        raise BackendError(NO_PROJECT)
+    info = project_info(root)
+    sys.stdout.write(render_text(info))
+    return codes.OK
