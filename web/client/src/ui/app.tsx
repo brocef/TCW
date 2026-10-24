@@ -457,31 +457,63 @@ export function App() {
         }
     }, [axis, selected, detailVersion, scopeChoice]) // eslint-disable-line react-hooks/exhaustive-deps
 
+    // A term or capability of the served project is read when the list
+    // shown holds it, and its page is cleared when the list no longer does.
+    // Another project's is read by its full identifier whether or not the
+    // list holds it: under `down` the list shows an override's original,
+    // and a status line links to the override (Design 6.4, 6.9).
+    const selectedOwner = selected ? parseFullId(selected)?.project : undefined
+    const elsewhere = Boolean(
+        projectId && selectedOwner && selectedOwner !== projectId
+    )
+    const listed =
+        axis !== "work" &&
+        selected !== null &&
+        (data[axis] as AxisItem[]).some(
+            (item) => itemKey(axis, item, projectId) === selected
+        )
     useEffect(() => {
-        if (
-            axis === "work" ||
-            !selected ||
-            !(data[axis] as AxisItem[]).some(
-                (item) => itemKey(axis, item, projectId) === selected
-            )
-        ) {
+        if (axis === "work") {
             setDetail(null)
             return
         }
+        if (!selected || !(listed || elsewhere)) {
+            setDetail(null)
+            setDetailError("")
+            return
+        }
+        let stale = false
         setLoadingDetail(true)
+        setDetailError("")
         void fetchJson<Detail>(
             withScope(
                 `/api/${axis}/${encodeRef(selected)}`,
-                detailScope(
-                    scopeChoice,
-                    parseFullId(selected)?.project ?? projectId
-                )
+                detailScope(scopeChoice, selectedOwner ?? projectId)
             )
         )
-            .then(setDetail)
-            .catch((error) => setLoadError(String(error)))
-            .finally(() => setLoadingDetail(false))
-    }, [axis, selected, data, projectId, scopeChoice])
+            .then((found) => {
+                if (!stale) setDetail(found)
+            })
+            .catch((error: unknown) => {
+                if (stale) return
+                setDetail(null)
+                // An object the list does not hold failed alone: say so
+                // where its page would be, and leave the list standing.
+                if (listed) setLoadError(String(error))
+                else
+                    setDetailError(
+                        error instanceof Error ? error.message : String(error)
+                    )
+            })
+            .finally(() => {
+                if (!stale) setLoadingDetail(false)
+            })
+        return () => {
+            stale = true
+        }
+        // A list reload reads the served project's entry again, after a
+        // save; another project's, which nothing here writes, is read once.
+    }, [axis, selected, elsewhere ? null : data, projectId, scopeChoice]) // eslint-disable-line react-hooks/exhaustive-deps
 
     // Only views that offer items to choose read every item: the forms
     // and editors, and an item page whose record is edited here. The
@@ -1498,7 +1530,7 @@ export function App() {
                                     ),
                                 }}
                             />
-                        ) : axis === "work" && detailError ? (
+                        ) : detailError ? (
                             <Text className="empty" color="gray">
                                 {detailError}
                             </Text>

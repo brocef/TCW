@@ -992,3 +992,117 @@ test.each([
         expect(details.every((path) => path === asked)).toBe(true)
     }
 )
+
+// -- another project's term or capability, not a row (TCW-113 Design 6.9) ---
+
+const ABC_DOWN = {
+    capabilities: [
+        capability("abc", {
+            name: "Abc",
+            status: "Missing",
+            statuses: [
+                { status: "Missing", project: "p", inherited: false },
+                { status: "Supported", project: "desktop", inherited: false },
+            ],
+            "overridden-by": ["desktop.capabilities/abc"],
+        }),
+    ],
+    projects: [
+        { id: "p", relation: "current" },
+        { id: "desktop", relation: "descendant" },
+    ],
+}
+
+const DESKTOP_ABC = {
+    capability: capability(
+        "abc",
+        { name: "Desktop Abc", status: "Supported", body: "" },
+        "desktop"
+    ),
+    coreRevision: "r1",
+}
+
+test("a status line's link to another project's override opens its page", async () => {
+    const fetch = serve({ scopes: FAMILY }, [
+        [
+            /^GET \/api\/capabilities\/abc\?scope=down$/,
+            200,
+            {
+                capability: ABC_DOWN.capabilities[0],
+                coreRevision: "r1",
+            },
+        ],
+        [
+            /^GET \/api\/capabilities\/desktop\.capabilities%2Fabc\?scope=down$/,
+            200,
+            DESKTOP_ABC,
+        ],
+        ["/api/capabilities?scope=down$", 200, ABC_DOWN],
+    ])
+    renderApp("/capabilities/abc?scope=down")
+    const lines = await screen.findByRole("region", {
+        name: "Status by project",
+    })
+    fireEvent.click(within(lines).getByRole("link", { name: "desktop" }))
+    expect(await screen.findByText("owned by desktop")).toBeInTheDocument()
+    expect(screen.getByTestId("where")).toHaveTextContent(
+        "/capabilities/desktop.capabilities/abc"
+    )
+    expect(fetch.calls.map((call) => call.path)).toContain(
+        "/api/capabilities/desktop.capabilities%2Fabc?scope=down"
+    )
+})
+
+test.each([
+    [
+        "capabilities",
+        "/capabilities/desktop.capabilities/abc?scope=down",
+        /^GET \/api\/capabilities\/desktop\.capabilities%2Fabc\?scope=down$/,
+        DESKTOP_ABC,
+    ],
+    [
+        "taxonomy",
+        "/taxonomy/desktop.taxonomy/widget?scope=down",
+        /^GET \/api\/taxonomy\/desktop\.taxonomy%2Fwidget\?scope=down$/,
+        {
+            term: term(
+                "widget",
+                { name: "Widget", kind: "Vocabulary", body: "" },
+                "desktop"
+            ),
+            coreRevision: "r1",
+        },
+    ],
+])(
+    "a typed address of another project's %s entry the list lacks opens it",
+    async (_, page, route, answer) => {
+        const fetch = serve({ scopes: FAMILY }, [[route, 200, answer]])
+        renderApp(page)
+        expect(await screen.findByText("owned by desktop")).toBeInTheDocument()
+        expect(screen.queryByText("Select an entry.")).toBeNull()
+        // Read once, not again as each list arrives.
+        await waitFor(() => expect(listPaths(fetch)).toHaveLength(5))
+        expect(
+            fetch.calls.filter((call) => route.test(`GET ${call.path}`))
+        ).toHaveLength(1)
+    }
+)
+
+test("another project's entry that is not found says so beside the list", async () => {
+    serve({ scopes: FAMILY })
+    renderApp("/capabilities/desktop.capabilities/gone?scope=down")
+    expect(await screen.findByText(/not found/)).toBeInTheDocument()
+    expect(screen.queryByText(/Failed to load/)).toBeNull()
+})
+
+test("the served project's entry the list does not hold is not read", async () => {
+    const fetch = serve({ scopes: FAMILY })
+    renderApp("/capabilities/abc?scope=down")
+    expect(await screen.findByText("Select an entry.")).toBeInTheDocument()
+    await waitFor(() =>
+        expect(listPaths(fetch)).toContain("/api/capabilities?scope=down")
+    )
+    expect(
+        fetch.calls.some((call) => call.path.startsWith("/api/capabilities/"))
+    ).toBe(false)
+})
