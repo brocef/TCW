@@ -197,3 +197,54 @@ def test_projects_list_reports_a_registry_problem(graph, monkeypatch, capsys):
     index = document["children"].index("Bad ID")
     assert err.startswith("tcw project list: "), err
     assert f"fx/.tcw/tcw-config.yaml: children[{index}]: project ID must match" in err, err
+
+
+# -- TCW-115 AC 6: `tcw project list` as TCW-107 and TCW-114 leave it --------------
+
+def ac6(tmp_path):
+    """TCW-115 AC 6's projects: `app` with parent `core` (passing taxonomy)
+    next to it and in no manifest, and child `k` at `<tmp>/x/k`, placed by
+    `app`'s manifest. Returns `app`'s root."""
+    from tests.projectfiles import connect_projects
+    app = make_project(tmp_path, "app")
+    core = make_project(tmp_path, "core")
+    k = make_project(tmp_path / "x", "k")
+    connect_projects(app, "parent", "core", inherit=["taxonomy"])
+    connect_projects(app, "children", "k")
+    write_manifest(app, {"k": "../x/k"})
+    connect_projects(k, "parent", "app")
+    write_manifest(k, {"app": os.path.relpath(app, k)})
+    assert core.is_dir()
+    return app
+
+
+def test_ac6_the_plain_listing(tmp_path, monkeypatch, capsys):
+    app = ac6(tmp_path)
+    assert run(monkeypatch, capsys, app, "project", "list")[:2] == (0, "app\ncore\nk\n")
+
+
+def test_ac6_the_json_document(tmp_path, monkeypatch, capsys):
+    app = ac6(tmp_path)
+    code, out, err = run(monkeypatch, capsys, app, "project", "list", "--json")
+    assert code == 0, err
+    data = json.loads(out)
+    assert set(data) == {"schema", "projects", "load-order", "load-order-complete",
+                         "load-order-warning"}
+    rows = {p["id"]: p for p in data["projects"]}
+    assert rows["app"]["found"] is None and rows["app"]["relation"] == "current"
+    assert rows["core"]["inherit"] == ["taxonomy"]
+    assert rows["core"]["found"] == {"by": "search"}
+    assert rows["k"]["personal"] is False
+    assert rows["k"]["found"] == {"by": "manifest",
+                                  "file": str((app / ".tcw/tcw-manifest.yaml").resolve())}
+    assert not any("read-only" in row for row in data["projects"])
+
+
+def test_ac6_a_child_not_here_is_a_row(tmp_path, monkeypatch, capsys):
+    import shutil
+    app = ac6(tmp_path)
+    shutil.rmtree(tmp_path / "x" / "k")
+    code, out, err = run(monkeypatch, capsys, app, "project", "list", "--json")
+    assert code == 0, err
+    k = {p["id"]: p for p in json.loads(out)["projects"]}["k"]
+    assert (k["present"], k["path"], k["found"]) == (False, None, None)
