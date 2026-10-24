@@ -54,6 +54,9 @@ class Owners:
     has_ledger: bool
     blockers: list[Blocker] = field(default_factory=list)
     given: dict[str, str] = field(default_factory=dict)
+    #: Each of the project's capabilities an override's move (C14) puts at
+    #: a new id-path: the 3.x id-path to the new one.
+    moved: dict[str, str] = field(default_factory=dict)
 
     def owner_of(self, value: str, row: Field, where: str) -> str | None:
         """The full identifier `value` names, or None to leave it."""
@@ -80,7 +83,8 @@ class Owners:
                 return None
             if id_path_problem(value):
                 return None
-            new = str(FullId(self.project, row.namespace, value))
+            now = self.moved.get(value, value) if row.namespace == "capabilities" else value
+            new = str(FullId(self.project, row.namespace, now))
         self.given[f"{where} {row.name} {value}"] = new
         return new
 
@@ -111,6 +115,8 @@ class Owners:
                 ref = f"{prefix}/{ref}"
             if id_path_problem(ref):
                 continue
+            if namespace == "capabilities":
+                ref = self.moved.get(ref, ref)
             new = FullId(self.project, namespace, ref).address()
             self.given[f"{where} link {link.uri}"] = new
             edits.append((link.start, link.end, new))

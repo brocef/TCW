@@ -435,11 +435,14 @@ BLOCKERS = {
     "B1": {"tcw-config.yaml": "id: app\nwork:\n  stages:\n    spec:\n      Bad_Key: 1\n"},
     "B2": {"tcw-config.yaml": "id: app\nconnected-projects: []\n"},
     "B3": {"tcw-config.yaml": "id: app\nwork:\n  stages:\n    spec:\n      status: 5\n"},
-    "B5": {CAP: "id: cap-1a2b3c\nname: X\nStatus: Supported\noverrides: cap-000000\n"},
+    "B5": {"tcw-config.yaml": "id: app\nprojects:\n  upstream:\n    core: ../core\n"
+                              "capabilities:\n  extends:\n  - core\n",
+           CAP: "id: cap-1a2b3c\nname: X\nStatus: Supported\noverrides: core/cap-000000\n"},
     "B6": {"tcw-config.yaml": "id: app\ncapabilities:\n  path: /nowhere/in/a/project\n"},
     "B7": {"tcw-config.yaml": "id: app\ntaxonomy:\n  path: docs/x\ncapabilities:\n"
                               "  path: docs/x/y\n"},
     "B8": {f"{C}/cli/Bad Name/meta.yaml": "name: Bad\nStatus: Supported\n"},
+    "B9": {CAP: "id: cap-1a2b3c\nname: X\nStatus: Supported\noverrides: cap-000000\n"},
     "B10": {f"{W}/2026-10-01-a/item.yaml": "title: A\nstage: inbox\n",
             f"{W}/2026-10-01-a/capabilities.yaml": "new:\n- cli/x\n"},
     "B11": {"tcw-config.yaml": "id: app\n", ".tcw/tcw-config.yaml": version_line() + "id: other\n"},
@@ -490,9 +493,9 @@ def test_b17_in_both_forms_refuses_dry_and_real(tcw, fake, tmp_path, monkeypatch
 
 
 def test_three_blockers_in_one_run(tcw, tmp_path):
-    """Criterion 9's interim form: B1, B8 and the pointer (B5 for now)."""
-    root = _app(tmp_path, {**BLOCKERS["B1"], **BLOCKERS["B8"], **BLOCKERS["B5"]})
+    """Criterion 9: B1, B8 and a pointer that names nothing (B9)."""
+    root = _app(tmp_path, {**BLOCKERS["B1"], **BLOCKERS["B8"], **BLOCKERS["B9"]})
     done = tcw(["migrate"], root)
     assert done.code == 3
     found = {line.split()[0] for line in lines(done) if line.startswith("  B")}
-    assert {"B1", "B8", "B5"} <= found
+    assert {"B1", "B8", "B9"} <= found

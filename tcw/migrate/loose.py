@@ -36,10 +36,17 @@ class Loose:
     store_rel: str
     id_path: str
     entry: str
+    #: The object's id-path before the run, when an override's move (C14)
+    #: takes the entry straight to the object's new place.
+    origin: str | None = None
+
+    @property
+    def from_path(self) -> str:
+        return self.origin or self.id_path
 
     @property
     def old(self) -> str:
-        return f"{self.store_rel}/{self.id_path}/{self.entry}"
+        return f"{self.store_rel}/{self.from_path}/{self.entry}"
 
     @property
     def new(self) -> str:
@@ -94,13 +101,15 @@ def move_of(root: Path, loose: Loose) -> Move:
 class Mentions:
     """The rewrites and reports of every move of one run."""
 
-    def __init__(self, moved: list[Loose]):
+    def __init__(self, moved: list[Loose], relocated: list[tuple[str, str]] = ()):
         self.moved = moved
+        #: Every other entry a move takes elsewhere, `(old, new)` (C14).
+        self.relocated = list(relocated)
         self._exact = [(re.compile(rf"(?<![{_NAME}./]){re.escape(m.old)}{_AFTER}"), m)
                        for m in moved]
         self._short = []
         for m in moved:
-            folder = m.id_path.rsplit("/", 1)[-1]
+            folder = m.from_path.rsplit("/", 1)[-1]
             cuts = [re.escape(folder)] + [re.escape(folder[:i + 1]) + r"(?:…|\.\.\.)"
                                           for i, ch in enumerate(folder) if ch == "-"]
             pattern = rf"(?<![{_NAME}])(?:{'|'.join(cuts)})/{re.escape(m.entry)}{_AFTER}"
@@ -108,9 +117,9 @@ class Mentions:
 
     def final_path(self, rel: str) -> str:
         """Where the file at `rel` is after phase B."""
-        for m in self.moved:
-            if rel == m.old or rel.startswith(m.old + "/"):
-                return m.new + rel[len(m.old):]
+        for old, new in [(m.old, m.new) for m in self.moved] + self.relocated:
+            if rel == old or rel.startswith(old + "/"):
+                return new + rel[len(old):]
         return rel
 
     def rewrite(self, text: str) -> str:

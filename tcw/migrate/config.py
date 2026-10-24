@@ -725,6 +725,9 @@ class Links:
     located: list[Located] = field(default_factory=list)
     already: list[str] = field(default_factory=list)
     extends_edits: list = field(default_factory=list)
+    #: The projects each axis is inherited from once converted, in load
+    #: order, the project itself left out (D2).
+    ancestors: dict[str, list[str]] = field(default_factory=dict)
 
     def edits(self) -> list:
         """`projects:` removed and the links set (only when the file has
@@ -939,6 +942,9 @@ def plan_links(root: Path, project_id: str, mapping: dict, family) -> Links:
         relations.reports.append(Report("D8", rel, order.warning))
     relations.reports += _d1(rel, project_id, mapping, graph, family, converter)
     relations.reports += still_3x_reports(family, order.ids)
+    out.ancestors = {axis: [pid for pid in order.ids if pid != project_id
+                            and pid in passing(axis, project_id, graph)]
+                     for axis in EXTENDED_AXES}
     out.extends_edits = [Remove(axis, "extends") for axis in EXTENDED_AXES
                          if isinstance(mapping.get(axis), dict)
                          and "extends" in mapping[axis]]

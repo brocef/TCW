@@ -215,16 +215,6 @@ def test_one_store_inside_another_is_b7(tcw, tmp_path):
     assert tree(app) == before
 
 
-def test_an_override_is_b5_for_now(tcw, tmp_path):
-    app = make(tmp_path / "app", {
-        "tcw-config.yaml": "id: app\n",
-        f"{C}/ov/meta.yaml": "id: cap-1a2b3c\nname: Ov\noverrides: cap-2b3c4d\n"})
-    done = tcw(["migrate"], app)
-    assert done.code == 3
-    assert "B5 docs/capabilities/ov/meta.yaml: overrides: tcw migrate does not convert " \
-           "an override yet" in done.err
-
-
 def test_in_a_4_0_project_a_bare_taxonomy_folder_stays_an_organising_one(tcw, tmp_path):
     """A branch merged after the migration brings back one 3.x term inside
     an organising folder; the folder does not become a term."""

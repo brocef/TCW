@@ -25,9 +25,11 @@ from tcw.migrate.config import first_difference
 from tcw.migrate.editors import convert_text
 from tcw.migrate.legacy import STATE_3X, objects_3x, parse_mapping_3x, store_folder_3x
 from tcw.migrate.references import (CAPABILITIES_YAML, Owners, applied, state_fields)
-from tcw.migrate.loose import (TEXT_SUFFIXES, Loose, Mentions, docs_entry, loose_entries,
-                               move_of, relative_links)
-from tcw.migrate.model import ABSENT, Blocker, Delete, Report, Step, Write, digest, file_digest
+from tcw.migrate.loose import (TEXT_SUFFIXES, Loose, Mentions, docs_entry, files_of,
+                               loose_entries, move_of, relative_links)
+from tcw.migrate.model import (ABSENT, Blocker, Delete, Move, Report, Step, Write, digest,
+                               file_digest)
+from tcw.migrate.overrides import d2_reports, entry_moves, plan_overrides, reports_of
 from tcw.config import dotted
 from tcw.reference_fields import Field
 from tcw.object_folders import (DESCRIPTION, RESOURCES, STATE_FILES, _skipped_in_object,
@@ -66,6 +68,7 @@ class StorePlan:
     blockers: list[Blocker] = field(default_factory=list)
     ids: dict[str, str] = field(default_factory=dict)       # cap-… -> id-path
     owners: dict[str, str] = field(default_factory=dict)    # Design 2.7
+    moved: dict[str, str] = field(default_factory=dict)     # C14: id-path -> id-path
 
 
 def stores_of(root: Path, mapping: dict) -> list[Store]:
@@ -257,10 +260,16 @@ def left_elsewhere(root: Path, mapping: dict, steps, git: Path | None) -> list[s
 
 def _plan_object(store: Store, id_path: str, kept: set[str], project: str,
                  out: StorePlan, mentions: Mentions, entries: list[str],
-                 owners: Owners, work_backend: str) -> None:
+                 owners: Owners, work_backend: str, override=None) -> None:
+    """One object's state file. `override` is the object's C14 resolution:
+    its 4.0 state file is written at the original's id-path, without the
+    `overrides` key, and keeps no `name` of its own when it had none, since
+    3.x showed the original's."""
     ns = store.namespace
     folder = store.folder / id_path
     old_rel = f"{store.rel}/{id_path}/{STATE_3X[ns]}"
+    if override is not None:
+        id_path = override.target
     new_rel = f"{store.rel}/{id_path}/{STATE_FILES[ns]}"
     fix = "correct the file by hand, then run 'tcw migrate' again"
     try:
@@ -289,6 +298,9 @@ def _plan_object(store: Store, id_path: str, kept: set[str], project: str,
         conversions.append("C13")
     if applied(data, refs, replace) != data:
         conversions.append("C16")
+    if override is not None:
+        edits.append(RemoveTop("overrides"))
+        conversions.append("C14")
     own_id = data.get("id")
     if ns == "capabilities" and isinstance(own_id, str) and own_id.startswith("cap-"):
         edits.append(RemoveTop("id"))
@@ -305,7 +317,7 @@ def _plan_object(store: Store, id_path: str, kept: set[str], project: str,
         if above and above in kept and "parent" not in data:
             edits.append(SetTop("parent", str(FullId(project, ns, above)), after="name"))
             conversions.append("C11")
-        if not data.get("name"):
+        if not data.get("name") and override is None:
             edits.append(SetTop("name", fallback_name(id_path)))
             conversions.append("C12")
             out.reports.append(Report("D7", new_rel, f"name: {fallback_name(id_path)} "
@@ -329,7 +341,7 @@ def _plan_object(store: Store, id_path: str, kept: set[str], project: str,
                                reads))
         if text is not None:
             out.steps.append(Delete(old_rel, "C", digest(text), new_rel, digest(new), ("C9",)))
-    if ns != "work" and not (folder / DESCRIPTION).exists():
+    if ns != "work" and not (folder / DESCRIPTION).exists() and override is None:
         rel = f"{store.rel}/{id_path}/{DESCRIPTION}"
         out.steps.append(Write(rel, "C", ABSENT, "", ("C12",)))
         out.reports.append(Report("D7", rel, "written empty, where TCW 3 had none"))
@@ -380,7 +392,7 @@ def _text_writes(root: Path, planned, moved: list[Loose], mentions: Mentions,
     each at the place it has after phase B, and A3 for what is left."""
     entries: dict[str, list[str]] = {}
     for m in moved:
-        entries.setdefault(f"{m.store_rel}/{m.id_path}", []).append(m.entry)
+        entries.setdefault(f"{m.store_rel}/{m.from_path}", []).append(m.entry)
     converted = {f"{store.rel}/{p}" for store, convert, _ in planned for p in convert}
     kept_of = {store.rel: kept for store, _, kept in planned}
     for store, _, _ in planned:
@@ -420,40 +432,99 @@ def _text_writes(root: Path, planned, moved: list[Loose], mentions: Mentions,
                     out.steps.append(Write(final, "C", digest(text), ref_text, codes))
 
 
+def _own_ids(store: Store, convert: list[str]) -> dict[str, str]:
+    """Each of the store's own 3.x capabilities' `cap-…` id, by id-path; an
+    override is left out."""
+    out = {}
+    for id_path in convert:
+        data = _meta_of(store, id_path)
+        if data.get("overrides"):
+            continue
+        cap_id = data.get("id")
+        if isinstance(cap_id, str) and cap_id:
+            out[id_path] = cap_id
+    return out
+
+
+def _meta_of(store: Store, id_path: str) -> dict:
+    path = store.folder / id_path / STATE_3X[store.namespace]
+    try:
+        text = read_text(path)
+    except (OSError, UnicodeDecodeError):
+        return {}
+    data, _ = parse_mapping_3x(text, path) if text is not None else (None, None)
+    return data if isinstance(data, dict) else {}
+
+
 def plan_stores(root: Path, mapping: dict, project: str, *,
                 three_x: bool = True, work_backend: str = "filesystem",
-                family=None) -> StorePlan:
+                family=None, ancestors: dict[str, list[str]] | None = None,
+                middle: bool = False) -> StorePlan:
     """Every store's state files and loose entries. `three_x`: the project's
     configuration is still in 3.x form, so a bare taxonomy folder is a 3.x
     term. `family` is the project's related projects, whose stores B7 also
-    compares with."""
+    compares with and whose capabilities an override's pointer is resolved
+    among (C14); `ancestors`, the projects each axis is inherited from once
+    converted (D2); `middle`, whether the project has children, below which
+    4.0 applies its overrides (D4)."""
     out = StorePlan()
     stores = stores_of(root, mapping)
     out.blockers += nesting_blockers(stores)
     if family is not None:
         out.blockers += related_store_blockers(stores, family)
-    planned, moved = [], []
+    planned, moved, relocated, override_moves = [], [], [], []
+    found_overrides: dict[tuple[str, str], object] = {}
     for store in stores:
         convert, kept = objects(store, bare_terms=three_x)
         out.blockers += name_blockers(store, kept, project)
         planned.append((store, convert, kept))
+        resolved = {}
+        if store.namespace == "capabilities":
+            own = {cap_id: path for path, cap_id in _own_ids(store, convert).items()}
+            found = plan_overrides(store, convert, kept, mapping, family, own)
+            out.blockers += found.blockers
+            resolved = found.found
+            overridden = {o.target for o in resolved.values()}
+            for override in resolved.values():
+                found_overrides[(store.rel, override.path)] = override
+                out.reports += reports_of(store, override, _meta_of(store, override.path),
+                                          middle)
+        else:
+            overridden = set()
+        out.reports += d2_reports(store, kept, (ancestors or {}).get(store.namespace, []),
+                                  family, overridden)
         for id_path in convert:
-            for entry in loose_entries(store.folder / id_path, store.namespace, id_path, kept):
-                # One already in `resources/` under that name is left where it
-                # is: a rename would replace it.
-                if not (store.folder / id_path / RESOURCES / entry).exists():
-                    moved.append(Loose(store.rel, id_path, entry))
-    mentions = Mentions(moved)
+            override = resolved.get(id_path)
+            loose = [entry for entry in loose_entries(store.folder / id_path,
+                                                      store.namespace, id_path, kept)
+                     # One already in `resources/` under that name is left
+                     # where it is: a rename would replace it.
+                     if not (store.folder / id_path / RESOURCES / entry).exists()]
+            if override is None or not override.moves:
+                moved += [Loose(store.rel, id_path, entry) for entry in loose]
+                continue
+            out.moved[override.path] = override.target
+            moves, blockers = entry_moves(root, store, override, loose)
+            out.blockers += blockers
+            for old, new, codes in moves:
+                entry = old.rsplit("/", 1)[1]
+                if "C13" in codes:
+                    moved.append(Loose(store.rel, override.target, entry, override.path))
+                else:
+                    relocated.append((old, new))
+                override_moves.append(Move(old, new, "B", files_of(Path(root) / old), codes))
+    mentions = Mentions(moved, relocated)
     owners = Owners(project, any(s.namespace == "capabilities" and s.folder.is_dir()
-                                 for s in stores))
-    out.steps += [move_of(root, m) for m in moved]
+                                 for s in stores), moved=dict(out.moved))
+    out.steps += override_moves
+    out.steps += [move_of(root, m) for m in moved if m.origin is None]
     covered = set()
     for store, convert, kept in planned:
         for id_path in convert:
             entries = [m.entry for m in moved
-                       if m.store_rel == store.rel and m.id_path == id_path]
+                       if m.store_rel == store.rel and m.from_path == id_path]
             _plan_object(store, id_path, kept, project, out, mentions, entries, owners,
-                         work_backend)
+                         work_backend, found_overrides.get((store.rel, id_path)))
             covered.add(f"{store.rel}/{id_path}/{STATE_3X[store.namespace]}")
         out.reports += _resources_reports(store, kept)
     _text_writes(root, planned, moved, mentions, covered, owners, out)

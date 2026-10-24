@@ -4,3 +4,4 @@ tests/migrate/test_migrate_config.py::test_each_part_two_form_is_b5_and_nothing_
 tests/migrate/test_migrate_config.py::test_each_part_two_form_is_b5_and_nothing_is_written[capabilities.extends] — Step 19: the same
 tests/migrate/test_migrate_config.py::test_each_part_two_form_is_b5_and_nothing_is_written[a work store outside the project] — Step 20: tcw migrate now converts a store location leading out of the project (Decided 17); with it the parametrized test has no row left and is removed
 tests/migrate/test_migrate_config.py::test_each_part_two_form_is_b5_and_nothing_is_written[a taxonomy store with only a repository] — Step 20: the same, for a store with only a repository
+tests/migrate/test_migrate_stores.py::test_an_override_is_b5_for_now — Step 21: tcw migrate now converts overrides (C14); the part-1 refusal it checked is gone

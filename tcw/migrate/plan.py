@@ -8,7 +8,6 @@ steps in the order of Design 2.4. Nothing here writes.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,10 +15,9 @@ import yaml
 
 from tcw.migrate import config, record, stores
 from tcw.errors import TcwError
-from tcw.migrate.legacy import (ROOT_CONFIG, STATE_3X, Layer3, Layers3, objects_3x,
-                                own_jira_layers, parse_mapping_3x, read_3x_layers,
-                                read_layer_3x, store_folder_3x)
-from tcw.migrate.model import PHASES, Blocker, Plan, Write, not_yet
+from tcw.migrate.legacy import (ROOT_CONFIG, Layer3, Layers3, own_jira_layers,
+                                read_3x_layers, read_layer_3x)
+from tcw.migrate.model import PHASES, Blocker, Plan, Write
 from tcw.project_files import LOCAL_SENTINEL, SENTINEL, VERSION_KEY, without_version
 
 
@@ -63,35 +61,6 @@ def read_project(root: Path) -> Read:
 
 # ---------------------------------------------------------------------------
 # The part-1 refusal of part-2 forms (Decided 17)
-
-
-def _project_holding(path: Path) -> Path | None:
-    """The nearest folder at or above `path` that holds a TCW project's
-    configuration in either form, or None (B6)."""
-    for folder in (path, *path.parents):
-        if (folder / ROOT_CONFIG).is_file() or (folder / SENTINEL).is_file():
-            return folder
-    return None
-
-
-def part_two_forms(read: Read) -> list[Blocker]:
-    """B5 for every 3.x form only part 2 of the build converts. Each step of
-    part 2 removes the forms it converts."""
-    rel, mapping = read.shared
-    out = []
-    for store in stores.stores_of(read.root, mapping):
-        if store.namespace != "capabilities":
-            continue
-        for id_path in objects_3x(store.folder, "capabilities"):
-            meta = f"{store.rel}/{id_path}/{STATE_3X['capabilities']}"
-            try:
-                text = (read.root / meta).read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-            data, _ = parse_mapping_3x(text, Path(meta))
-            if isinstance(data, dict) and "overrides" in data:
-                out.append(not_yet(meta, "overrides", "an override"))
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +176,7 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
     personal = config.plan_file(read.root, read.layers.personal, read.personal4,
                                 shared=False)
     plan = Plan(shared.project, read.work_backend)
-    plan.blockers = (part_two_forms(read) + relations.blockers + shared.blockers
+    plan.blockers = (relations.blockers + shared.blockers
                      + personal.blockers)
     steps = shared.steps + personal.steps
     reports = relations.reports + shared.reports + personal.reports
@@ -219,11 +188,16 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
     if shared.project:
         found = stores.plan_stores(read.root, read.shared[1], shared.project,
                                    three_x=read.three_x, work_backend=read.work_backend,
-                                   family=family)
+                                   family=family, ancestors=links.ancestors,
+                                   middle=bool(relations.children))
         plan.owners = found.owners
         plan.blockers += found.blockers
         reports += found.reports
-        written = record.plan_record(read.root, found.ids, removed=relations.removed)
+        written = record.plan_record(read.root, found.ids, found.moved,
+                                     removed=relations.removed)
+        # B5 for a source an override's pointer must be read in (C14).
+        plan.blockers += [b for b in (family.blockers if family is not None else [])
+                          if b not in plan.blockers]
         steps = ([written] if written else []) + steps + found.steps
     if steps and read.git is not None:
         steps += config.plan_ignore(read.root)
