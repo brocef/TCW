@@ -14,6 +14,7 @@ from tcw.work.model import STAGES
 from tests.serve.conftest import fs_project
 from tests.serve.memory import ME, NAMES, SITE
 from tests.work.projects import commit_all, connect, make_project, write_item
+from tests.statefiles import write_state, ITEM_STATE
 
 STAGE_NAMES = {s.name for s in STAGES}
 
@@ -125,10 +126,10 @@ def test_a_name_that_is_not_a_tag_is_a_usage_error(tagged, jira, tag):
 
 def test_finished_items_show_only_with_all(tagged, tcw):
     served, folders = tagged
-    item = served.root / "docs" / "work" / folders["none"] / "item.yaml"
+    item = served.root / "docs" / "work" / folders["none"] / ITEM_STATE
     data = yaml.safe_load(item.read_text())
     data["stage"] = "completed"
-    item.write_text(yaml.safe_dump(data))
+    write_state(item, yaml.safe_dump(data))
     default = {i["full-id"] for i in ok(served.get("/api/work"))["items"]}
     every = ok(served.get("/api/work?all=1"))["items"]
     assert f"p.work/{folders['none']}" not in default

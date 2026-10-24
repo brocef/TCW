@@ -14,6 +14,7 @@ import pytest
 from tcw.cli import main
 from tcw.store.fs import init
 from tests.work.projects import make_project
+from tests.statefiles import write_state, TAXONOMY_STATE
 
 
 
@@ -47,7 +48,7 @@ def test_a_mistyped_command_is_a_usage_error_not_a_lookup(project, run):
 def test_add_prints_the_path_and_names_its_files(project, run):
     code, out, err = run(project, "taxonomy", "add", "Widget", stdin="A small part.\n")
     assert (code, out) == (0, "fx.taxonomy/widget\n")
-    assert err.splitlines() == ["wrote docs/taxonomy/widget/meta.yaml",
+    assert err.splitlines() == ["wrote docs/taxonomy/widget/tcw-taxonomy.yaml",
                                 "wrote docs/taxonomy/widget/description.md"]
     assert run(project, "taxonomy", "add", "Widget")[0] == 3
 
@@ -61,8 +62,8 @@ def test_show_of_nothing_is_not_found(project, run):
 def test_rm_of_a_referenced_term_is_refused(project, run):
     run(project, "taxonomy", "add", "Invoice")
     run(project, "taxonomy", "add", "Payment")
-    meta = project / "docs" / "taxonomy" / "payment" / "meta.yaml"
-    meta.write_text(meta.read_text().replace("relatesTo: []", "relatesTo: [fx.taxonomy/invoice]"))
+    meta = project / "docs" / "taxonomy" / "payment" / TAXONOMY_STATE
+    write_state(meta, meta.read_text().replace("relatesTo: []", "relatesTo: [fx.taxonomy/invoice]"))
     code, out, err = run(project, "taxonomy", "rm", "invoice")
     assert (code, out) == (3, "")
     assert "payment" in err
@@ -73,7 +74,7 @@ def test_rm_names_each_file_it_removed(project, run):
     code, out, err = run(project, "taxonomy", "rm", "widget")
     assert (code, out) == (0, "")
     assert sorted(err.splitlines()) == ["removed docs/taxonomy/widget/description.md",
-                                        "removed docs/taxonomy/widget/meta.yaml"]
+                                        "removed docs/taxonomy/widget/tcw-taxonomy.yaml"]
 
 
 def test_extends_add_prints_nothing_and_names_the_config(tmp_path, run):

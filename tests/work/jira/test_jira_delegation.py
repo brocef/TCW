@@ -10,6 +10,7 @@ from tests.work.jira.conftest import jira_config
 from tests.work.jira.fake import FIELDS
 from tests.work.projects import commit_all, connect, make_project
 from tests.projectfiles import config_file, write_config_file, write_local_config
+from tests.statefiles import ITEM_STATE
 
 ITEM, PROJECT = FIELDS["TCW Item"], FIELDS["TCW Project"]
 
@@ -37,7 +38,7 @@ def test_a_creatable_folder_makes_the_item(pair, fake, tcw):
     ticket = fake.tickets["TCW-1"]
     assert (ticket.custom[PROJECT], ticket.custom[ITEM]) == ("tcw", "tcw.work/TCW-1-add-export")
     assert ticket.status == "Triage"
-    assert (target / "docs" / "work" / "TCW-1-add-export" / "item.yaml").is_file()
+    assert (target / "docs" / "work" / "TCW-1-add-export" / ITEM_STATE).is_file()
     assert "uncommitted" in result.err
     # The next filing there would stay in the inbox until these are committed
     # (TCW-101), so the message says so.

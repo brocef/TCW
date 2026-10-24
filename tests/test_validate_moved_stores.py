@@ -13,6 +13,7 @@ from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 from tcw.validate import validate
 from nodeconfig import set_component_key
 from tests.projectfiles import write_config, write_manifest
+from tests.statefiles import write_state, CAPABILITY_STATE, TAXONOMY_STATE
 
 
 def repo(root: Path, name: str = "node") -> Path:
@@ -27,14 +28,14 @@ def repo(root: Path, name: str = "node") -> Path:
 def term(store: Path, slug: str, **meta) -> None:
     d = store / slug
     d.mkdir(parents=True, exist_ok=True)
-    (d / "meta.yaml").write_text(yaml.safe_dump({"name": slug, "relatesTo": [], **meta}))
+    write_state(d / TAXONOMY_STATE, yaml.safe_dump({"name": slug, "relatesTo": [], **meta}))
     (d / "description.md").write_text("")
 
 
 def cap(store: Path, path: str, **meta) -> None:
     d = store / path
     d.mkdir(parents=True, exist_ok=True)
-    (d / "meta.yaml").write_text(yaml.safe_dump(
+    write_state(d / CAPABILITY_STATE, yaml.safe_dump(
         {"id": "cap-" + path.replace("/", "-"), "name": path, **meta}))
     (d / "description.md").write_text("")
 
@@ -79,9 +80,9 @@ def test_a_moved_taxonomy_is_checked(tmp_path):
 def test_a_moved_taxonomy_is_scanned_for_yaml(tmp_path):
     root, store = moved(tmp_path, "taxonomy")
     (store / "broken").mkdir()
-    (store / "broken" / "meta.yaml").write_text("name: [unclosed\n")
+    write_state(store / "broken" / TAXONOMY_STATE, "name: [unclosed\n")
     problems = validate(root)
-    assert any(p.where == "moved/broken/meta.yaml" for p in problems), problems
+    assert any(p.where == "moved/broken/tcw-taxonomy.yaml" for p in problems), problems
 
 
 def test_a_moved_capabilities_store_is_checked(tmp_path):

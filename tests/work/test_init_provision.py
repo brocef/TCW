@@ -44,7 +44,7 @@ def test_init_refuses_to_move_a_store_holding_an_item(tmp_path, capsys, monkeypa
     code, _, err = run(capsys, monkeypatch, root, "init", "work",
                        "--work-path", "elsewhere")
     assert code == 1 and "non-pristine" in err
-    assert (root / "docs/work/2026-10-01-a/item.yaml").exists()
+    assert (root / "docs/work/2026-10-01-a/tcw-work-item.yaml").exists()
 
 
 def test_init_moves_an_empty_store(tmp_path, capsys, monkeypatch):
@@ -70,7 +70,7 @@ def test_provision_accepts_a_store_of_item_folders(tmp_path, capsys, monkeypatch
     code, out, err = run(capsys, monkeypatch, root, "provision",
                          "--component", "work")
     assert code == 0, out + err
-    assert (tmp_path / "co" / "docs/work/2026-10-01-a/item.yaml").exists()
+    assert (tmp_path / "co" / "docs/work/2026-10-01-a/tcw-work-item.yaml").exists()
     code, out, err = run(capsys, monkeypatch, root, "work", "list")
     assert (code, out) == (0, "p.work/2026-10-01-a\n"), err
 

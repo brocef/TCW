@@ -13,6 +13,7 @@ from tcw.errors import TcwError
 from tests.fullids import fid
 from tests.projectfiles import config_file, write_config_file, write_manifest
 from tests.projectfiles import write_config as write_project_config
+from tests.statefiles import write_state, CAPABILITY_STATE, TAXONOMY_STATE
 
 
 def node(tmp_path: Path, name: str) -> Path:
@@ -41,7 +42,7 @@ def write_term(root: Path, slug: str, name=None, relates_to=None, description=""
         meta["kind"] = kind
     if vocabulary:
         meta["vocabulary"] = vocabulary
-    (d / "meta.yaml").write_text(yaml.safe_dump(meta))
+    write_state(d / TAXONOMY_STATE, yaml.safe_dump(meta))
     (d / "description.md").write_text(description)
 
 
@@ -70,7 +71,7 @@ def test_add_nesting_and_slug_is_path(tmp_path):
     st.add("Admin")
     perm = st.add("Permission", parent="admin")
     assert perm.slug == "admin/permission"
-    assert (root / "docs/taxonomy/admin/permission/meta.yaml").exists()
+    assert (root / "docs/taxonomy/admin/permission/tcw-taxonomy.yaml").exists()
     assert st.get_view("admin/permission").name == "Permission"
     # same leaf under different parents are distinct terms
     st.add("Object")
@@ -83,7 +84,7 @@ def test_modified_timestamp_uses_bounded_taxonomy_resources(tmp_path):
     st = FsTaxonomyStore.open(root)
     st.add("User")
     folder = root / "docs/taxonomy/user"
-    os.utime(folder / "meta.yaml", (100, 100))
+    os.utime(folder / TAXONOMY_STATE, (100, 100))
     os.utime(folder / "description.md", (200, 200))
     attachment = folder / "notes.txt"
     attachment.write_text("not a core taxonomy resource\n")
@@ -243,7 +244,7 @@ def test_transitive_extends_flattens_terms_by_owning_project(tmp_path):
     assert detail is not None
     assert detail.term.origin == "charlie"
     assert st._validation_resources("deep") == [
-        c / "docs/taxonomy/deep/meta.yaml",
+        c / "docs/taxonomy/deep/tcw-taxonomy.yaml",
         c / "docs/taxonomy/deep/description.md",
     ]
 
@@ -311,7 +312,7 @@ def test_transitive_extends_crosses_a_second_hop_through_a_moved_tree(tmp_path):
     }
     assert st.check() == []
     assert st._validation_resources("deep") == [
-        c / "docs/taxonomy/deep/meta.yaml",
+        c / "docs/taxonomy/deep/tcw-taxonomy.yaml",
         c / "docs/taxonomy/deep/description.md",
     ]
 
@@ -372,7 +373,7 @@ def test_rm_refuses_ref_escaping_the_store(tmp_path):
     root = node(tmp_path, "repo")
     outside = root / "docs" / "capabilities" / "thing"
     outside.mkdir(parents=True)
-    (outside / "meta.yaml").write_text("name: Thing\n")
+    write_state(outside / CAPABILITY_STATE, "name: Thing\n")
     st = FsTaxonomyStore.open(root)
     assert st.get_view("../capabilities/thing") is None
     with pytest.raises(TcwError, match="is not a full identifier"):
@@ -381,7 +382,7 @@ def test_rm_refuses_ref_escaping_the_store(tmp_path):
 
 
 def test_check_reports_escaping_ref_as_dangling(tmp_path):
-    # A `..` ref already stored in a meta.yaml must be reported, not raised.
+    # A `..` ref already stored in a tcw-taxonomy.yaml must be reported, not raised.
     root = node(tmp_path, "repo")
     write_term(root, "user", name="User")
     write_term(root, "feature", name="Feature", kind="Feature",
@@ -458,7 +459,7 @@ def test_rm_is_not_blocked_by_an_untracked_leftover_folder(tmp_path):
     (root / "docs/taxonomy/admin/permission/.DS_Store").write_bytes(b"x")
     st.remove("admin/permission")
     st.remove("admin")
-    assert not (root / "docs/taxonomy/admin/meta.yaml").exists()
+    assert not (root / "docs/taxonomy/admin/tcw-taxonomy.yaml").exists()
 
 
 def test_rm_ignores_vocabulary_on_a_non_feature(tmp_path):
@@ -952,7 +953,7 @@ def test_a_shared_tree_may_now_be_composed_with_itself(tmp_path):
     shared_tree = tmp_path / "shared-tree"
     shared_tree.mkdir()
     (shared_tree / "common").mkdir()
-    (shared_tree / "common" / "meta.yaml").write_text("name: Common\n")
+    write_state(shared_tree / "common" / TAXONOMY_STATE, "name: Common\n")
     (shared_tree / "common" / "description.md").write_text("")
 
     alpha = node(tmp_path, "alpha")
@@ -1060,4 +1061,4 @@ def test_cli_add_takes_a_slug_that_is_one(tmp_path, monkeypatch, capsys):
     root = node(tmp_path, "repo")
     monkeypatch.chdir(root)
     assert main(["taxonomy", "add", "Memo", "--slug", "memo-2"]) == 0
-    assert (root / "docs" / "taxonomy" / "memo-2" / "meta.yaml").is_file()
+    assert (root / "docs" / "taxonomy" / "memo-2" / TAXONOMY_STATE).is_file()

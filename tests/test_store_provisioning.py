@@ -34,6 +34,7 @@ WHERE = "work.repository"
 
 from nodeconfig import declare_extends, set_component_key
 from tests.projectfiles import config_file, write_config, write_config_file, write_manifest
+from tests.statefiles import write_state, TAXONOMY_STATE
 
 
 def _repo(path: Path) -> Path:
@@ -1546,7 +1547,7 @@ def _federation_pair(tmp_path: Path, *, taxonomy_path: str | None) -> tuple[Path
     taxonomy (not its child), placed by the consumer's manifest."""
     source = _repo(tmp_path / "source")
     (source / "docs" / "taxonomy" / "argument").mkdir(parents=True)
-    (source / "docs" / "taxonomy" / "argument" / "meta.yaml").write_text("name: Argument\n")
+    write_state(source / "docs" / "taxonomy" / "argument" / TAXONOMY_STATE, "name: Argument\n")
     (source / "docs" / "taxonomy" / "argument" / "description.md").write_text("")
     write_config(source, "id: source\n")
 

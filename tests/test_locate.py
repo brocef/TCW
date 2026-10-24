@@ -22,12 +22,13 @@ from tests.projectfiles import (config_file, connect_projects, write_config_file
                                 write_manifest)
 from tests.work.jira.conftest import jira_config
 from tests.work.projects import make_project, write_item
+from tests.statefiles import write_state, STATE_OF
 
 
 def _entry(root: Path, tree: str, path: str, **meta) -> None:
     folder = root / "docs" / tree / path
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / "meta.yaml").write_text(yaml.safe_dump(
+    write_state(folder / STATE_OF[tree], yaml.safe_dump(
         {"name": path.rsplit("/", 1)[-1].title(), **meta}))
     (folder / "description.md").write_text("")
 

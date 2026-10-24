@@ -16,6 +16,7 @@ from tcw.work.open import open_backend
 from tests.fullids import wid
 from tests.work.jira.fake import FIELDS, SITE, FakeJira
 from tests.work.projects import make_project
+from tests.statefiles import write_state, ITEM_STATE
 
 EMAIL_ENV, TOKEN_ENV = "TCW_TEST_JIRA_EMAIL", "TCW_TEST_JIRA_TOKEN"
 ME = "acct-dev"
@@ -70,7 +71,7 @@ class JiraProject:
         if folder:
             path = self.work / name
             path.mkdir(parents=True)
-            (path / "item.yaml").write_text(
+            write_state(path / ITEM_STATE,
                 yaml.safe_dump({"ticket": f"{self.fake.site}/browse/{ticket.key}"}))
         return ticket.key, name
 

@@ -17,6 +17,7 @@ from tcw.work.open import (
 )
 from tcw.work.model import Changes
 from tests.work.projects import commit_all, connect, git, make_project
+from tests.statefiles import ITEM_STATE
 
 # -- open_backend (AC 20, library) ---------------------------------------------------
 
@@ -104,9 +105,9 @@ def test_delegate_creates_an_inbox_item_and_commits_nothing(pq):
     slug = delegate("q", "T", "please\n", "high", here=p, report=lines.append)
     folder = slug.split("/", 1)[1]
     assert slug.startswith("q.work/") and folder.endswith("-t")
-    item = yaml.safe_load((q / "docs" / "work" / folder / "item.yaml").read_text())
+    item = yaml.safe_load((q / "docs" / "work" / folder / ITEM_STATE).read_text())
     assert item == {"title": "T", "stage": "inbox", "priority": "high"}
-    assert any("item.yaml" in l and "uncommitted" in l for l in lines)
+    assert any(ITEM_STATE in l and "uncommitted" in l for l in lines)
     assert git(q, "rev-parse", "HEAD") == before[0]
     assert git(q, "diff", "--cached", "--name-only") == ""
 

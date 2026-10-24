@@ -20,6 +20,7 @@ from tcw.store.project import FsProjectRegistry
 from tcw.validate import validate
 from tests.serve.conftest import Served, start
 from tests.projectfiles import write_config
+from tests.statefiles import write_state, TAXONOMY_STATE
 
 RENDERED = re.compile(r"(error|warning|unresolved): \S.*: \S.*")
 
@@ -38,7 +39,7 @@ def broken(tmp_path):
     root = _node(tmp_path)
     term = root / "docs" / "taxonomy" / "search"
     term.mkdir(parents=True)
-    (term / "meta.yaml").write_text("name: search\nkind: Feature\nrelatesTo: []\n")
+    write_state(term / TAXONOMY_STATE, "name: search\nkind: Feature\nrelatesTo: []\n")
     (term / "description.md").write_text("[gone](tcw://T/nowhere)\n")
     FsCapabilitiesStore.open(root).add("half", status="Partial")
     return root

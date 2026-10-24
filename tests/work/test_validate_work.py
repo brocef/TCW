@@ -9,6 +9,7 @@ from tcw.locate import Locator
 from tcw.validate import _store_overlaps, _work_findings
 from tcw.work.config import MIGRATION_GUIDE
 from tests.work.projects import commit_all, connect, make_project, write_item
+from tests.statefiles import ITEM_STATE
 
 TAGS = {"tags": ["ui"]}
 
@@ -46,7 +47,7 @@ def test_three_warnings_and_no_error(tmp_path):
     assert "2026-10-01-nothing" in where["2026-10-01-blocked"]
     assert "stage" in where["2026-10-01-ahead"] and "spec" in where["2026-10-01-ahead"]
     assert "unregistered" in where["2026-10-01-tagged"]
-    assert all(f.where.endswith("item.yaml") for f in warnings)
+    assert all(f.where.endswith(ITEM_STATE) for f in warnings)
 
 
 def test_references_into_other_projects(tmp_path):
@@ -117,11 +118,11 @@ def test_one_unreadable_item_does_not_hide_the_rest(tmp_path):
     (folder / "capabilities.yaml").write_text("added: [x/y]\n")
     found, note = findings(p)
     paths = {f.where for f in found}
-    assert any(w.endswith("2026-10-01-bad/item.yaml") for w in paths)
-    assert any(w.endswith("2026-10-01-blocked/item.yaml") for w in paths)
+    assert any(w.endswith("2026-10-01-bad/tcw-work-item.yaml") for w in paths)
+    assert any(w.endswith("2026-10-01-blocked/tcw-work-item.yaml") for w in paths)
     assert any(w.endswith("2026-10-01-caps/capabilities.yaml") for w in paths)
     assert len(by_severity(found, "error")) == 2
-    assert "2026-10-01-bad/item.yaml" in note
+    assert "2026-10-01-bad/tcw-work-item.yaml" in note
 
 
 def test_a_config_error_is_one_finding(tmp_path):
@@ -170,12 +171,12 @@ def test_validate_counts_only_errors(tmp_path, capsys, monkeypatch):
                                        "tags": ["unregistered"]})
     code, text = run_validate(capsys, monkeypatch, p)
     assert code == 0, text
-    assert "warning:" in text and "2026-10-01-tagged/item.yaml" in text
+    assert "warning:" in text and "2026-10-01-tagged/tcw-work-item.yaml" in text
     write_item(p, "2026-10-01-bad", {"title": "b", "stage": "request",
                                     "created": "2026-10-01"})
     code, text = run_validate(capsys, monkeypatch, p)
     assert code == 1
-    assert "2026-10-01-bad/item.yaml" in text and "created" in text
+    assert "2026-10-01-bad/tcw-work-item.yaml" in text and "created" in text
 
 
 def test_validate_names_the_guide_for_a_status_folder(tmp_path, capsys, monkeypatch):

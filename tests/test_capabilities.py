@@ -11,6 +11,7 @@ from tcw.store.fs import FsCapabilitiesStore, heading_slug, write_sentinel
 from tcw.errors import TcwError
 from tests.fullids import fid
 from tests.projectfiles import write_config, write_manifest
+from tests.statefiles import write_state, CAPABILITY_STATE, TAXONOMY_STATE
 
 
 def node(tmp_path: Path, name: str = "repo") -> Path:
@@ -31,13 +32,13 @@ def connect(parent: Path, child: Path) -> None:
 
 
 def write_cap(root: Path, path: str, body: str = "", **meta) -> None:
-    """Write a folder-model capability node (meta.yaml + description.md)."""
+    """Write a folder-model capability node (tcw-capability.yaml + description.md)."""
     d = root / "docs" / "capabilities" / path
     d.mkdir(parents=True, exist_ok=True)
     m = {"id": "cap-" + hashlib.sha1(path.encode()).hexdigest()[:6],
          "name": path.rsplit("/", 1)[-1].replace("-", " ").title()}
     m.update(meta)
-    (d / "meta.yaml").write_text(yaml.safe_dump(m, sort_keys=False, allow_unicode=True))
+    write_state(d / CAPABILITY_STATE, yaml.safe_dump(m, sort_keys=False, allow_unicode=True))
     (d / "description.md").write_text(body)
 
 
@@ -112,7 +113,7 @@ def test_add_creates_folder_with_id(tmp_path):
     cap = st.add("routes/login", name="Sign in")
     assert cap.path == "routes/login"
     assert cap.id.startswith("cap-")
-    assert (root / "docs/capabilities/routes/login/meta.yaml").is_file()
+    assert (root / "docs/capabilities/routes/login/tcw-capability.yaml").is_file()
     assert (root / "docs/capabilities/routes/login/description.md").is_file()
     assert st.get_view("routes/login").status == "Missing"        # default status
 
@@ -122,10 +123,10 @@ def test_modified_timestamp_includes_declared_capability_docs(tmp_path):
     st = FsCapabilitiesStore.open(root)
     st.add("routes/login", name="Sign in")
     folder = root / "docs/capabilities/routes/login"
-    meta_path = folder / "meta.yaml"
+    meta_path = folder / CAPABILITY_STATE
     meta = yaml.safe_load(meta_path.read_text())
     meta["appendedDocs"] = ["guide.md"]
-    meta_path.write_text(yaml.safe_dump(meta, sort_keys=False))
+    write_state(meta_path, yaml.safe_dump(meta, sort_keys=False))
     guide = folder / "guide.md"
     guide.write_text("Extra context\n")
     os.utime(meta_path, (100, 100))
@@ -176,7 +177,7 @@ def test_list_search(tmp_path):
 
 
 def test_grouping_dir_is_not_a_capability(tmp_path):
-    # `api/` is a pure grouping parent (no meta.yaml); only `api/auth/login` is a cap.
+    # `api/` is a pure grouping parent (no tcw-capability.yaml); only `api/auth/login` is a cap.
     st = FsCapabilitiesStore.open(small_tree(tmp_path))
     paths = {c.path for c in st.list_all()}
     assert "api" not in paths and "api/auth" not in paths
@@ -289,7 +290,7 @@ def test_check_missing_id(tmp_path):
     root = node(tmp_path)
     d = root / "docs/capabilities/x"
     d.mkdir(parents=True)
-    (d / "meta.yaml").write_text("name: X\nStatus: Supported\n")
+    write_state(d / CAPABILITY_STATE, "name: X\nStatus: Supported\n")
     (d / "description.md").write_text("")
     assert any("missing id" in p for p in map(str, FsCapabilitiesStore.open(root).check()))
 
@@ -299,9 +300,9 @@ def test_check_duplicate_id(tmp_path):
     write_cap(root, "a", Status="Supported")
     write_cap(root, "b", Status="Supported")
     # Force a duplicate id on b.
-    mb = root / "docs/capabilities/b/meta.yaml"
+    mb = root / "docs/capabilities/b/tcw-capability.yaml"
     m = yaml.safe_load(mb.read_text())
-    m["id"] = yaml.safe_load((root / "docs/capabilities/a/meta.yaml").read_text())["id"]
+    m["id"] = yaml.safe_load((root / "docs/capabilities/a/tcw-capability.yaml").read_text())["id"]
     mb.write_text(yaml.safe_dump(m))
     assert any("duplicate id" in p for p in map(str, FsCapabilitiesStore.open(root).check()))
 
@@ -312,7 +313,7 @@ def test_check_with_taxonomy(tmp_path):
     from tcw.store.fs import FsTaxonomyStore
     root = node(tmp_path)
     (root / "docs" / "taxonomy" / "user").mkdir(parents=True)
-    (root / "docs" / "taxonomy" / "user" / "meta.yaml").write_text("name: User\n")
+    write_state(root / "docs" / "taxonomy" / "user" / TAXONOMY_STATE, "name: User\n")
     write_cap(root, "routes/x", Status="Supported", Subject=T("user"))
     assert FsCapabilitiesStore.open(root).check(FsTaxonomyStore.open(root)) == []
 
@@ -726,10 +727,10 @@ def test_the_capabilities_store_has_no_attachment_surface_to_regress(tmp_path):
     d = root / "docs" / "capabilities" / "billing" / "refund"
     (d / "config.yaml").write_text("not a store config; just a file\n")
     (d / "extra.md").write_text("appended text")
-    yaml_path = d / "meta.yaml"
+    yaml_path = d / CAPABILITY_STATE
     meta = yaml.safe_load(yaml_path.read_text())
     meta["appendedDocs"] = ["extra.md"]
-    yaml_path.write_text(yaml.safe_dump(meta, sort_keys=False))
+    write_state(yaml_path, yaml.safe_dump(meta, sort_keys=False))
 
     cap = FsCapabilitiesStore.open(root).get_view("billing/refund")
     assert cap is not None

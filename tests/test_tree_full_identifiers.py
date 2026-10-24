@@ -16,6 +16,7 @@ from tcw.cli import main
 from tests.fullids import fid
 from tests.inherit import demo_inheriting_core, entry
 from tests.work.projects import make_project
+from tests.statefiles import CAPABILITY_STATE
 
 
 @dataclass
@@ -176,7 +177,7 @@ def test_ac18_a_hand_made_folder_breaking_the_rule_is_listed_and_reported(tcw, d
         assert refused.code == 2, refused.err
         assert "letters, digits" in refused.err and "rename it by hand" in refused.err
         assert "or its id-path" not in refused.err
-    assert (demo / "docs" / "capabilities" / "cli" / "has.dot" / "meta.yaml").is_file()
+    assert (demo / "docs" / "capabilities" / "cli" / "has.dot" / CAPABILITY_STATE).is_file()
     entry(demo, "taxonomy", "has.dot")
     for argv in (["show", "has.dot"], ["rm", "has.dot"]):
         refused = tcw(["taxonomy", *argv], demo)
@@ -193,7 +194,7 @@ def test_ac18_a_hand_made_folder_breaking_the_rule_is_listed_and_reported(tcw, d
 def _overridden(demo: Path) -> Path:
     """`demo`'s 3.x override of `core`'s `cli/y`, setting `Omitted`."""
     entry(demo, "capabilities", "ov/y", overrides="core/cap-y", Status="Omitted")
-    return demo.parent / "core" / "docs" / "capabilities" / "cli" / "y" / "meta.yaml"
+    return demo.parent / "core" / "docs" / "capabilities" / "cli" / "y" / CAPABILITY_STATE
 
 
 def test_ac23_an_inherited_capability_is_read_through_this_projects_view(tcw, demo):
@@ -212,7 +213,7 @@ def test_ac23_set_of_an_inherited_capability_changes_the_override_only(tcw, demo
     found = tcw(["capabilities", "set", "core.capabilities/cli/y", "--status", "Partial"],
                 demo)
     assert found.code == 0, found.err
-    override = demo / "docs" / "capabilities" / "ov" / "y" / "meta.yaml"
+    override = demo / "docs" / "capabilities" / "ov" / "y" / CAPABILITY_STATE
     assert "Partial" in override.read_text()
     assert upstream.read_bytes() == before
 

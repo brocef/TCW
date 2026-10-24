@@ -57,3 +57,8 @@ def read_state(path) -> dict:
     compares a whole file's mapping."""
     data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     return {k: v for k, v in data.items() if k != VERSION_KEY}
+
+
+#: Each store's state file, by the store's folder name under `docs/`.
+STATE_OF = {"taxonomy": TAXONOMY_STATE, "capabilities": CAPABILITY_STATE,
+            "work": ITEM_STATE}

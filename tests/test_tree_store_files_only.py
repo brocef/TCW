@@ -12,6 +12,7 @@ import pytest
 
 from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
+from tests.statefiles import CAPABILITY_STATE
 
 WRITES = [
     ["taxonomy", "add", "Payment"],
@@ -100,10 +101,10 @@ def test_the_store_records_what_it_changed(repository):
     store = FsCapabilitiesStore.open(repository)
     store.add("billing/refund", status="Missing")
     root = store.root
-    assert store.changed == [("wrote", root / "billing" / "refund" / "meta.yaml"),
+    assert store.changed == [("wrote", root / "billing" / "refund" / CAPABILITY_STATE),
                              ("wrote", root / "billing" / "refund" / "description.md")]
     store.changed.clear()
     store.remove("billing/refund")
     assert sorted(store.changed) == [
         ("removed", root / "billing" / "refund" / "description.md"),
-        ("removed", root / "billing" / "refund" / "meta.yaml")]
+        ("removed", root / "billing" / "refund" / CAPABILITY_STATE)]

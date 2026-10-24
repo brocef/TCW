@@ -10,6 +10,7 @@ from tcw.cli import main
 from tcw.serve.records import RESOLVE_MAX_URIS
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
 from tests.projectfiles import config_file, write_config_file
+from tests.statefiles import CAPABILITY_STATE, TAXONOMY_STATE
 
 
 def detail(served, axis: str, ref: str) -> dict:
@@ -219,7 +220,7 @@ def test_every_write_route_works_outside_a_repository(records_root, serve_projec
     served = serve_project(records_root)
     assert served.post("/api/taxonomy", {"name": "Gadget", "slug": "gadget"}).status == 201
     assert served.post("/api/capabilities", {"path": "a/b", "name": "Thing"}).status == 201
-    assert (records_root / "docs" / "taxonomy" / "gadget" / "meta.yaml").is_file()
+    assert (records_root / "docs" / "taxonomy" / "gadget" / TAXONOMY_STATE).is_file()
 
 
 def test_a_project_without_a_taxonomy_lists_none(tmp_path, personal_on, serve_project):
@@ -343,7 +344,7 @@ def test_a_refused_term_edit_is_400(refusing, fields):
     {"Status": "Sideways"},
 ])
 def test_a_refused_capability_value_is_400_and_writes_nothing(refusing, fields):
-    meta = refusing.root / "docs" / "capabilities" / "web" / "meta.yaml"
+    meta = refusing.root / "docs" / "capabilities" / "web" / CAPABILITY_STATE
     before = meta.read_text()
     assert_error(capability_patch(refusing, "web", fields), 400, "usage")
     assert meta.read_text() == before
@@ -396,7 +397,7 @@ def test_an_inherited_capability_is_listed_with_its_owner_and_read_only(inheriti
     listed = {c["full-id"]: c for c in inheriting.get("/api/capabilities").json}
     assert listed["base.capabilities/shared-cap"]["owner"] == "base"
     meta = inheriting.root.parent / "base" / "docs" / "capabilities" / "shared-cap" / \
-        "meta.yaml"
+        CAPABILITY_STATE
     before = meta.read_text()
     answer = inheriting.patch("/api/capabilities/shared-cap",
                               {"fields": {"Status": "Partial", "Gaps": "x"},
@@ -487,7 +488,7 @@ def test_an_inherited_capabilitys_refusal_names_a_command_that_overrides_it(
     for argv in named:
         build_parser().parse_args(argv)
     base_meta = inheriting.root.parent / "base" / "docs" / "capabilities" / "shared-cap" / \
-        "meta.yaml"
+        CAPABILITY_STATE
     before = base_meta.read_text()
     argv = [part.replace("<name>=<value>", "Status=Partial") for part in named[0]]
     ran = tcw(argv, inheriting.root)

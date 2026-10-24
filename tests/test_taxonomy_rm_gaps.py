@@ -13,6 +13,7 @@ from tcw.store.fs import FsTaxonomyStore, init
 from nodeconfig import set_component_key
 from tcw.errors import TcwError
 from tests.fullids import fid
+from tests.statefiles import write_state, CAPABILITY_STATE, TAXONOMY_STATE
 
 
 def git(root: Path, *args: str) -> None:
@@ -32,7 +33,7 @@ def node(tmp_path: Path) -> Path:
 def term(root: Path, slug: str, *, stage: bool = True) -> None:
     d = root / "docs" / "taxonomy" / slug
     d.mkdir(parents=True)
-    (d / "meta.yaml").write_text(yaml.safe_dump({"name": slug.rsplit("/", 1)[-1]}))
+    write_state(d / TAXONOMY_STATE, yaml.safe_dump({"name": slug.rsplit("/", 1)[-1]}))
     (d / "description.md").write_text("")
     if stage:
         git(root, "add", str(d))
@@ -41,7 +42,7 @@ def term(root: Path, slug: str, *, stage: bool = True) -> None:
 def cap(root: Path, path: str, **fields) -> None:
     d = root / "docs" / "capabilities" / path
     d.mkdir(parents=True)
-    (d / "meta.yaml").write_text(yaml.safe_dump(
+    write_state(d / CAPABILITY_STATE, yaml.safe_dump(
         {"id": f"cap-{path}", "name": path, "Status": "Supported", **fields}))
     (d / "description.md").write_text("")
     git(root, "add", str(d))
@@ -104,7 +105,7 @@ def test_a_node_without_capabilities_removes_as_before(tmp_path, monkeypatch, ca
 # ── a child the listing counts but git does not track ────────────────────────
 
 def test_a_child_term_refuses_the_removal_whatever_git_knows(tmp_path, monkeypatch, capsys):
-    """A nested term is a folder holding a `meta.yaml`, decided from the disk
+    """A nested term is a folder holding a `tcw-taxonomy.yaml`, decided from the disk
     (TCW-73 Design 8.2): one never added to git refuses like any other."""
     root = node(tmp_path)
     term(root, "zed")
@@ -169,17 +170,17 @@ def test_a_malformed_capability_names_the_capabilities_check(tmp_path, monkeypat
     term(root, "zed")
     bad = root / "docs" / "capabilities" / "broken"
     bad.mkdir()
-    (bad / "meta.yaml").write_text("Subject: [unclosed\n")
+    write_state(bad / CAPABILITY_STATE, "Subject: [unclosed\n")
     code, err = rm(root, monkeypatch, capsys, "zed")
     assert code == 3 and "capabilities that might name it cannot be read" in err, err
     assert lists(root, "zed")
 
 
-# ── review fix S1: a sub-folder without a meta.yaml still lists as a term ────
+# ── review fix S1: a sub-folder without a tcw-taxonomy.yaml still lists as a term ────
 
 def test_a_reference_to_a_folder_under_the_term_refuses_the_removal(
         tmp_path, monkeypatch, capsys):
-    """`taxonomy list` counts a folder with no `meta.yaml` as a term, so a
+    """`taxonomy list` counts a folder with no `tcw-taxonomy.yaml` as a term, so a
     capability can name `zed/sub`. Removing `zed` would delete that folder and
     leave the capability pointing at nothing, so the removal is refused."""
     root = node(tmp_path)
@@ -200,8 +201,8 @@ def test_a_term_naming_a_folder_under_the_term_refuses_the_removal(
     term(root, "zed")
     (root / "docs" / "taxonomy" / "zed" / "sub").mkdir()
     term(root, "other")
-    meta = root / "docs" / "taxonomy" / "other" / "meta.yaml"
-    meta.write_text(yaml.safe_dump({"name": "other",
+    meta = root / "docs" / "taxonomy" / "other" / TAXONOMY_STATE
+    write_state(meta, yaml.safe_dump({"name": "other",
                                     "relatesTo": [fid("node", "taxonomy", "zed/sub")]}))
     code, err = rm(root, monkeypatch, capsys, "zed")
     assert code == 3 and "other (relatesTo)" in err, err

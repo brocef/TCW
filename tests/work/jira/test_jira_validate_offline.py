@@ -11,6 +11,7 @@ from tests.work.jira.conftest import EMAIL_ENV, TOKEN_ENV
 from tests.work.jira.fake import SITE
 from tests.work.projects import connect, make_project, write_item
 from tests.projectfiles import config_file, write_config_file
+from tests.statefiles import write_state, ITEM_STATE
 
 
 @pytest.fixture
@@ -36,7 +37,7 @@ def folder(project, name, ticket=None, **extra):
     path.mkdir(parents=True)
     key = "-".join(name.split("-")[:2])
     data = {"ticket": ticket or f"{SITE}/browse/{key}", **extra}
-    (path / "item.yaml").write_text(yaml.safe_dump(data))
+    write_state(path / ITEM_STATE, yaml.safe_dump(data))
     return path
 
 

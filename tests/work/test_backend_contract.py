@@ -23,6 +23,7 @@ from tcw.work.model import Changes
 from tests.work.jira.conftest import EMAIL_ENV, STATUSES, TOKEN_ENV, jira_config
 from tests.work.jira.fake import FakeJira
 from tests.work.memory_backend import MemoryBackend
+from tests.statefiles import write_state, ITEM_STATE
 
 TAGS = ["bug", "docs", "ui", "api"]
 
@@ -52,10 +53,10 @@ def _filesystem(tmp_path, monkeypatch, user):
                             today=lambda: date(2026, 10, 2), now=_Clock())
 
     def put_stage(folder, stage):
-        path = tmp_path / "work" / folder / "item.yaml"
+        path = tmp_path / "work" / folder / ITEM_STATE
         data = yaml.safe_load(path.read_text())
         data["stage"] = "verify" if stage is None else stage
-        path.write_text(yaml.safe_dump(data, sort_keys=False))
+        write_state(path, yaml.safe_dump(data, sort_keys=False))
 
     return backend, put_stage
 

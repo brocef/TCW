@@ -15,6 +15,7 @@ import yaml
 from tcw.cli import main
 from tests.work.projects import commit_all, connect, git, make_project, write_item
 from tests.projectfiles import write_config
+from tests.statefiles import ITEM_STATE
 
 TODAY = date.today().isoformat()
 
@@ -41,7 +42,7 @@ def tcw(monkeypatch, capsys):
 
 
 def item_yaml(root, folder):
-    return yaml.safe_load((root / "docs" / "work" / folder / "item.yaml").read_text())
+    return yaml.safe_load((root / "docs" / "work" / folder / ITEM_STATE).read_text())
 
 
 @pytest.fixture
@@ -55,7 +56,7 @@ def test_new_prints_the_slug_and_writes_three_keys(tcw, p):
     r = tcw(["new", "Add a widget"], p)
     assert (r.code, r.out) == (0, f"p.work/{TODAY}-add-a-widget\n")
     folder = p / "docs" / "work" / f"{TODAY}-add-a-widget"
-    assert (folder / "item.yaml").read_text() == (
+    assert (folder / ITEM_STATE).read_text() == (
         "title: Add a widget\nstage: request\npriority: medium\n")
     assert not (folder / "request").exists()
 
@@ -102,7 +103,7 @@ def test_only_the_first_flow_stage_is_accepted(tcw, p):
 def test_show_of_an_unreadable_item(tcw, p, text, key):
     write_item(p, "2026-10-01-x", text)
     r = tcw(["show", "2026-10-01-x"], p)
-    assert r.code == 1 and "item.yaml" in r.err
+    assert r.code == 1 and ITEM_STATE in r.err
     if key:
         assert key in r.err
 
@@ -150,7 +151,7 @@ def test_show_with_another_item_unreadable(tcw, p):
     assert record["children"] == ["p.work/2026-10-01-b"]
     assert record["blocks"] == ["p.work/2026-10-01-b"]
     [line] = r.err.strip().splitlines()
-    assert "2026-10-01-bad/item.yaml" in line
+    assert "2026-10-01-bad/tcw-work-item.yaml" in line
 
 
 def test_plain_show_has_one_line_per_field(tcw, p):
@@ -270,14 +271,14 @@ def test_rename(tcw, tmp_path):
                                      "blocked-by": ["p.work/2026-09-01-a"]})
     write_item(other, "2026-09-01-x", {"title": "x", "stage": "spec",
                                       "blocked-by": ["p.work/2026-09-01-a"]})
-    before = (other / "docs/work/2026-09-01-x/item.yaml").read_text()
+    before = (other / "docs/work/2026-09-01-x/tcw-work-item.yaml").read_text()
     r = tcw(["rename", "2026-09-01-a", "new-words"], root)
     assert (r.code, r.out) == (0, "p.work/2026-09-01-new-words\n")
     assert item_yaml(root, "2026-09-01-b")["parent"] == "p.work/2026-09-01-new-words"
     assert item_yaml(root, "2026-09-01-c")["blocked-by"] == ["p.work/2026-09-01-new-words"]
     assert "spec.md:2" in r.err
     assert not list(root.rglob("renames.yaml"))
-    assert (other / "docs/work/2026-09-01-x/item.yaml").read_text() == before
+    assert (other / "docs/work/2026-09-01-x/tcw-work-item.yaml").read_text() == before
     write_item(root, "2026-09-01-d", {"title": "d", "stage": "spec"})
     assert tcw(["rename", "2026-09-01-d", "new-words"], root).code == 3
     assert tcw(["rename", "2026-09-01-d", "New Words"], root).code == 2
@@ -307,7 +308,7 @@ def test_new_into_another_project(tcw, pq):
     assert (r.code, r.out) == (0, f"q.work/{TODAY}-t\n")
     assert item_yaml(q, f"{TODAY}-t") == {"title": "T", "stage": "inbox",
                                           "priority": "high"}
-    assert "uncommitted" in r.err and "item.yaml" in r.err
+    assert "uncommitted" in r.err and ITEM_STATE in r.err
     assert git(q, "rev-parse", "HEAD") == head
 
 
@@ -347,7 +348,7 @@ def test_edit_blocks_into_another_project(tcw, pq):
     assert sorted(os.listdir(q / "docs/work")) == [".gitkeep", "2026-10-01-x"]
     # Review fix N3: the file written in the other repository says it is left
     # uncommitted there, as delegation's lines do (TCW-73 Design 1.2).
-    other = [line for line in r.err.splitlines() if "2026-10-01-x/item.yaml" in line]
+    other = [line for line in r.err.splitlines() if "2026-10-01-x/tcw-work-item.yaml" in line]
     assert other and all(line.startswith("wrote ") and "(uncommitted in " in line
                          for line in other), r.err
 

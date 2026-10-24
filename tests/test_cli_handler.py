@@ -150,7 +150,7 @@ def test_a_reader_gone_before_a_failure_names_what_it_made(fx):
     assert b"Exception ignored" not in done.stderr, done.stderr.decode()
 
 def test_a_create_rolled_back_names_each_file_removed(run, fx, monkeypatch):
-    """Review fix N2: a create that fails after writing `item.yaml` removes
+    """Review fix N2: a create that fails after writing `tcw-work-item.yaml` removes
     its folder, naming each file removed and not the folder (Design 1.2)."""
     from tcw.work import fs_backend
     real = fs_backend._replace_file
@@ -163,5 +163,5 @@ def test_a_create_rolled_back_names_each_file_removed(run, fx, monkeypatch):
     code, out, err = run(["work", "new", "A b"], fx, stdin="Need X\n")
     assert (code, out) == (1, ""), err
     removed = [line for line in err.splitlines() if line.startswith("removed ")]
-    assert removed and all(line.endswith("/item.yaml") for line in removed), err
+    assert removed and all(line.endswith("/tcw-work-item.yaml") for line in removed), err
     assert not list((fx / "docs" / "work").glob("*-a-b"))

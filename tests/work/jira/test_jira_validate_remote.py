@@ -12,6 +12,7 @@ from tcw.work.model import Changes
 from tests.work.jira.conftest import JiraProject, jira_config
 from tests.work.jira.fake import FIELDS, Transition as Route
 from tests.work.projects import make_project
+from tests.statefiles import write_state, ITEM_STATE
 
 ITEM = FIELDS["TCW Item"]
 LINE = re.compile(r"^(error|warning|unresolved): \S+: .+$")
@@ -143,9 +144,9 @@ def test_a_refused_key_search_reports_only_the_gone_ticket(clean, monkeypatch, c
     (clean.work / "TCW-50-gone").mkdir()
     clean.fake.refuse_missing_key_search = True
     run = remote(clean, monkeypatch, capsys)
-    # The offline check's line for the folder's missing `item.yaml` shares
+    # The offline check's line for the folder's missing `tcw-work-item.yaml` shares
     # stdout with the remote findings since TCW-73 (Design 6.3).
-    remote_lines = [line for line in run.lines if "item.yaml" not in line]
+    remote_lines = [line for line in run.lines if ITEM_STATE not in line]
     assert remote_lines == ["error: tcw.work/TCW-50-gone: its ticket TCW-50 does not exist in "
                             "Jira, or this account cannot see it"], run.out
 
@@ -277,7 +278,7 @@ def test_a_ticket_answered_under_another_key(clean, monkeypatch, capsys):
     moved.custom.update({FIELDS["TCW Project"]: "tcw", ITEM: "tcw.work/TCW-9-moved"})
     folder = clean.work / "TCW-9-moved"
     folder.mkdir()
-    (folder / "item.yaml").write_text(yaml.safe_dump(
+    write_state(folder / ITEM_STATE, yaml.safe_dump(
         {"ticket": f"{clean.fake.site}/browse/TCW-9"}))
     clean.fake.tickets["TCW-9"] = moved
     run = remote(clean, monkeypatch, capsys)

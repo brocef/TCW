@@ -13,6 +13,7 @@ from tcw.work.backend import Query
 from tcw.work.config import MIGRATION_GUIDE, parse_work_config
 from tcw.work.fs_backend import FsWorkBackend, read_all, work_store_problems
 from tcw.work.model import Changes, Slug
+from tests.statefiles import write_state, ITEM_STATE
 
 TODAY = date(2026, 10, 2)
 
@@ -53,13 +54,13 @@ def new(backend, title, request=None, stage="request", **props):
 
 
 def item_yaml(work, folder):
-    return (work / folder / "item.yaml").read_text()
+    return (work / folder / ITEM_STATE).read_text()
 
 
 def write_item(work, folder, data):
     (work / folder).mkdir(parents=True, exist_ok=True)
     text = data if isinstance(data, str) else yaml.safe_dump(data, sort_keys=False)
-    (work / folder / "item.yaml").write_text(text)
+    write_state(work / folder / ITEM_STATE, text)
 
 
 # -- AC 2: create ---------------------------------------------------------------
@@ -69,7 +70,7 @@ def test_create_writes_exactly_title_stage_priority(backend, work):
     assert item.slug == Slug("tcw", "2026-10-02-add-a-widget")
     assert item_yaml(work, item.slug.folder) == (
         "title: Add a widget\nstage: request\npriority: medium\n")
-    assert sorted(p.name for p in (work / item.slug.folder).iterdir()) == ["item.yaml"]
+    assert sorted(p.name for p in (work / item.slug.folder).iterdir()) == [ITEM_STATE]
 
 
 def test_a_second_create_the_same_day_is_refused(backend, work):
@@ -152,7 +153,7 @@ def test_strict_reading(backend, work, text, key):
     write_item(work, "2026-10-01-x", text)
     with pytest.raises(BackendError) as error:
         backend.read("2026-10-01-x")
-    assert "item.yaml" in str(error.value)
+    assert ITEM_STATE in str(error.value)
     if key:
         assert key in str(error.value)
 
@@ -251,7 +252,7 @@ def test_a_failed_replace_leaves_the_old_file(backend, work, monkeypatch):
     with pytest.raises(OSError):
         backend.update(item.slug.folder, Changes(priority="high"))
     assert item_yaml(work, item.slug.folder) == before
-    assert sorted(p.name for p in (work / item.slug.folder).iterdir()) == ["item.yaml"]
+    assert sorted(p.name for p in (work / item.slug.folder).iterdir()) == [ITEM_STATE]
 
 
 # -- AC 6: comments ----------------------------------------------------------------------
@@ -376,7 +377,7 @@ def test_work_store_problems(work):
     (work / ".gitkeep").write_text("")
 
     found = {(f.severity, os.path.basename(os.path.dirname(f.where))
-              if f.where.endswith("item.yaml") else os.path.basename(f.where)):
+              if f.where.endswith(ITEM_STATE) else os.path.basename(f.where)):
              f.message for f in work_store_problems(work, "tcw", cfg)}
     assert set(found) == {("error", "2026-10-01-bad"), ("error", "2026-10-01-lost"),
                           ("warning", "2026-10-01-tagged"), ("error", "inbox"),
@@ -393,6 +394,6 @@ def test_every_file_written_is_reported(work):
     backend = backend_for(work, report=lines.append)
     item = new(backend, "x", request="text")
     backend.comment(item.slug.folder, "hi")
-    assert any("item.yaml" in l for l in lines)
+    assert any(ITEM_STATE in l for l in lines)
     assert any("request.md" in l for l in lines)
     assert any("comments" in l for l in lines)

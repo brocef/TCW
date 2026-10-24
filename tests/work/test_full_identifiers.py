@@ -1,6 +1,6 @@
 """Work items are named by their full identifier (TCW-110 Design 1, 3, 4, 5):
 `<project>.work/<folder>` is what every command prints, what every record
-carries, and what `item.yaml` stores, in a files-backend project `demo`."""
+carries, and what `tcw-work-item.yaml` stores, in a files-backend project `demo`."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ import yaml
 from tcw.cli import main
 from tests.fullids import addr, wid
 from tests.work.projects import make_project, write_item
+from tests.statefiles import write_state, ITEM_STATE
 
 TODAY = date.today().isoformat()
 REPO = Path(__file__).resolve().parents[2]
@@ -57,7 +58,7 @@ def _new(tcw, root, title) -> str:
 
 
 def _item_yaml(root, folder):
-    return yaml.safe_load((root / "docs" / "work" / folder / "item.yaml").read_text())
+    return yaml.safe_load((root / "docs" / "work" / folder / ITEM_STATE).read_text())
 
 
 def test_ac4_new_and_list_print_the_full_identifier(tcw, demo):
@@ -141,7 +142,7 @@ def _bound(root, stages):
     path = root / ".tcw" / "tcw-config.yaml"
     document = yaml.safe_load(path.read_text())
     document.setdefault("work", {})["stages"] = stages
-    path.write_text(yaml.safe_dump(document, sort_keys=False))
+    write_state(path, yaml.safe_dump(document, sort_keys=False))
 
 
 def test_ac19_a_pre_command_sees_the_full_identifier(tcw, demo, tmp_path):
@@ -238,7 +239,7 @@ def test_ac10_a_key_in_a_files_project_is_never_a_folder_name(tcw, demo, typed):
 def test_ac25_a_reference_that_is_not_there_stops_the_edit(tcw, demo):
     _new(tcw, demo, "Other")
     _new(tcw, demo, "Mine")
-    path = demo / "docs" / "work" / f"{TODAY}-mine" / "item.yaml"
+    path = demo / "docs" / "work" / f"{TODAY}-mine" / ITEM_STATE
     before = path.read_bytes()
     for flag in ("--parent", "--blocked-by"):
         found = tcw(["work", "edit", f"{TODAY}-mine", flag, f"{TODAY}-OTHER"], demo)
@@ -256,10 +257,10 @@ def test_a_new_item_refuses_a_parent_that_is_not_there(tcw, demo):
 
 def test_removing_a_blocker_that_no_longer_exists_is_allowed(tcw, demo):
     _new(tcw, demo, "Mine")
-    path = demo / "docs" / "work" / f"{TODAY}-mine" / "item.yaml"
+    path = demo / "docs" / "work" / f"{TODAY}-mine" / ITEM_STATE
     document = yaml.safe_load(path.read_text())
     document["blocked-by"] = [wid("demo", f"{TODAY}-gone")]
-    path.write_text(yaml.safe_dump(document))
+    write_state(path, yaml.safe_dump(document))
     found = tcw(["work", "edit", f"{TODAY}-mine", "--unblocked-by", f"{TODAY}-gone"], demo)
     assert found.code == 0, found.err
     assert "blocked-by" not in _item_yaml(demo, f"{TODAY}-mine")

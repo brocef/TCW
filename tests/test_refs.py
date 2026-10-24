@@ -18,6 +18,7 @@ from tcw.store.fs import FsCapabilitiesStore, init
 from tests.inherit import entry
 from tests.projectfiles import connect_projects
 from tests.work.projects import make_project
+from tests.statefiles import write_state, TAXONOMY_STATE
 
 
 @pytest.fixture
@@ -146,7 +147,7 @@ def test_a_store_failure_becomes_an_answer(app, monkeypatch, raised):
 
 
 def test_an_unreadable_store_becomes_an_answer(app):
-    (app / "docs" / "taxonomy" / "auth" / "meta.yaml").write_text("name: [unclosed\n")
+    write_state(app / "docs" / "taxonomy" / "auth" / TAXONOMY_STATE, "name: [unclosed\n")
     found = resolve_address(app, "tcw://app.taxonomy/auth")
     assert (found.ok, found.outcome) == (False, ERROR)
-    assert "meta.yaml" in found.reason
+    assert TAXONOMY_STATE in found.reason

@@ -13,6 +13,7 @@ from tcw.work.jira.tickets import (
 from tests.work.jira.conftest import JiraProject, jira_config
 from tests.work.jira.fake import FIELDS
 from tests.work.projects import make_project
+from tests.statefiles import write_state, ITEM_STATE
 
 PROJECT, ITEM = FIELDS["TCW Project"], FIELDS["TCW Item"]
 
@@ -112,7 +113,7 @@ def test_adopting_from_the_inbox(jira_project, tcw):
     ticket = jira_project.fake.tickets[key]
     assert (ticket.custom[PROJECT], ticket.custom[ITEM]) == ("tcw", slug)
     assert ticket.status == "Triage"
-    assert (jira_project.work / f"{key}-fix-the-login" / "item.yaml").is_file()
+    assert (jira_project.work / f"{key}-fix-the-login" / ITEM_STATE).is_file()
     edits = [b for m, p, b in jira_project.fake.log if m == "PUT"]
     assert len(edits) == 1 and set(edits[0]["fields"]) == {PROJECT, ITEM}
 
@@ -161,11 +162,11 @@ def test_resuming_with_the_folder_at_the_inbox_status(jira_project, tcw):
     key = raw(jira_project, "x", TCW_Project="tcw", TCW_Item="tcw.work/TCW-1-kept")
     folder = jira_project.work / "TCW-1-kept"
     folder.mkdir(parents=True)
-    (folder / "item.yaml").write_text("ticket: mine\n")
+    write_state(folder / ITEM_STATE, "ticket: mine\n")
     result = tcw(["tickets", "adopt", key], jira_project.root)
     assert result.code == 0, result.err
     assert jira_project.fake.tickets[key].status == "Triage"
-    assert (folder / "item.yaml").read_text() == "ticket: mine\n"
+    assert (folder / ITEM_STATE).read_text() == "ticket: mine\n"
     assert jira_project.fake.writes() == [("POST", f"/rest/api/3/issue/{key}/transitions")]
 
 
@@ -179,7 +180,7 @@ def test_finishing_a_create_that_stopped_at_its_folder(jira_project, tcw):
     (jira_project.work / "TCW-1-half").unlink()
     result = tcw(["tickets", "adopt", "TCW-1"], jira_project.root)
     assert (result.code, result.out.strip()) == (0, "tcw.work/TCW-1-half")
-    assert (jira_project.work / "TCW-1-half" / "item.yaml").is_file()
+    assert (jira_project.work / "TCW-1-half" / "tcw-work-item.yaml").is_file()
     assert jira_project.fake.tickets["TCW-1"].status == "Triage"
 
 
@@ -324,7 +325,7 @@ def test_a_folder_left_without_item_yaml_is_finished(jira_project, tcw):
     (jira_project.work / "TCW-1-kept").mkdir(parents=True)
     result = tcw(["tickets", "adopt", key], jira_project.root)
     assert (result.code, result.out.strip()) == (0, "tcw.work/TCW-1-kept"), result.err
-    assert (jira_project.work / "TCW-1-kept" / "item.yaml").read_text() == \
+    assert (jira_project.work / "TCW-1-kept" / ITEM_STATE).read_text() == \
         f"ticket: {jira_project.fake.site}/browse/{key}\n"
 
 
@@ -345,7 +346,7 @@ def test_an_item_moved_on_whose_item_yaml_is_gone_is_not_taken_back(jira_project
     result = tcw(["tickets", "adopt", key], jira_project.root)
     assert result.code == 3 and "already the item" in result.err, result.err
     assert jira_project.fake.writes() == []
-    assert not (jira_project.work / "TCW-1-kept" / "item.yaml").exists()
+    assert not (jira_project.work / "TCW-1-kept" / ITEM_STATE).exists()
 
 
 # -- review fix C4: a late failure still names the item (TCW-73 Design 1.8) ------------
@@ -389,7 +390,7 @@ def test_adopt_whose_move_fails_names_the_item(jira_project, tcw, monkeypatch):
     result = tcw(["tickets", "adopt", key], jira_project.root)
     slug = f"tcw.work/{key}-fix-the-login"
     assert (result.code, result.out) == (5, slug + "\n"), result
-    assert (jira_project.work / f"{key}-fix-the-login" / "item.yaml").is_file()
+    assert (jira_project.work / f"{key}-fix-the-login" / ITEM_STATE).is_file()
 
 
 def test_create_fields_names_what_the_create_screen_has(jira_project, tmp_path):

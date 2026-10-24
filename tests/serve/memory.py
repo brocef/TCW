@@ -26,6 +26,7 @@ from tests.work.jira.conftest import jira_config
 from tests.work.jira.fake import SITE
 from tests.work.memory_backend import MemoryBackend
 from tests.work.projects import commit_all, make_project
+from tests.statefiles import write_state, ITEM_STATE
 
 ME = "acc-me"
 NAMES = {ME: "Me Myself", "acc-ann": "Ann Author", "acc-bob": "Bob Builder"}
@@ -61,7 +62,7 @@ class RecordingBackend(MemoryBackend):
         """An item that already exists, made without recording a call."""
         (self.work_root / folder).mkdir(parents=True, exist_ok=True)
         key = "-".join(folder.split("-")[:2])
-        (self.work_root / folder / "item.yaml").write_text(
+        write_state(self.work_root / folder / ITEM_STATE,
             yaml.safe_dump({"ticket": f"{SITE}/browse/{key}"}))
         values: dict[str, Any] = dict(
             slug=Slug(self.project, folder), title=title,

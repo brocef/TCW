@@ -12,6 +12,7 @@ from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 from tcw.errors import TcwError
 from tests.projectfiles import write_config, write_manifest
+from tests.statefiles import write_state, CAPABILITY_STATE
 
 
 def repo(tmp_path: Path, name: str) -> Path:
@@ -32,7 +33,7 @@ def write_cap(root: Path, path: str, *, id=None, body="", **meta) -> None:
         m["id"] = id
     m["name"] = meta.pop("name", path.rsplit("/", 1)[-1].replace("-", " ").title())
     m.update(meta)
-    (d / "meta.yaml").write_text(yaml.safe_dump(m, sort_keys=False, allow_unicode=True))
+    write_state(d / CAPABILITY_STATE, yaml.safe_dump(m, sort_keys=False, allow_unicode=True))
     (d / "description.md").write_text(body)
 
 

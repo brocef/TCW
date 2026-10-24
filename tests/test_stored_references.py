@@ -22,6 +22,7 @@ from tests.fullids import fid
 from tests.inherit import entry
 from tests.projectfiles import connect_projects
 from tests.work.projects import make_project
+from tests.statefiles import (write_state, CAPABILITY_STATE, STATE_OF, TAXONOMY_STATE)
 
 
 @dataclass
@@ -61,14 +62,14 @@ def demo(tmp_path) -> Path:
 
 
 def _meta(root: Path, tree: str, path: str) -> dict:
-    return yaml.safe_load((root / "docs" / tree / path / "meta.yaml").read_text())
+    return yaml.safe_load((root / "docs" / tree / path / STATE_OF[tree]).read_text())
 
 
 def _set(root: Path, path: str, **fields) -> None:
-    meta_path = root / "docs" / "capabilities" / path / "meta.yaml"
+    meta_path = root / "docs" / "capabilities" / path / CAPABILITY_STATE
     meta = yaml.safe_load(meta_path.read_text())
     meta.update(fields)
-    meta_path.write_text(yaml.safe_dump(meta))
+    write_state(meta_path, yaml.safe_dump(meta))
 
 
 def test_ac8_set_stores_the_full_identifier_of_a_subject(tcw, demo):
@@ -92,10 +93,10 @@ def test_ac8_add_stores_the_full_identifier_of_a_vocabulary_entry(tcw, demo):
 ])
 def test_ac11_validate_reports_a_3x_value_naming_the_field_and_tcw_migrate(
         tcw, demo, tree, path, field, value, namespace):
-    meta_path = demo / "docs" / tree / path / "meta.yaml"
+    meta_path = demo / "docs" / tree / path / STATE_OF[tree]
     meta = yaml.safe_load(meta_path.read_text())
     meta[field] = value
-    meta_path.write_text(yaml.safe_dump(meta))
+    write_state(meta_path, yaml.safe_dump(meta))
     checked = tcw(["validate"], demo)
     assert checked.code == 1
     [line] = [line for line in checked.out.splitlines() if field in line]
@@ -146,8 +147,8 @@ def test_a_reference_to_another_projects_entry_does_not_block_a_removal(tcw, dem
     """Only this project's own entry is what `rm` compares a reference with:
     `core.taxonomy/term` is not `demo.taxonomy/term`."""
     core_term = fid("core", "taxonomy", "term")
-    meta = demo / "docs" / "taxonomy" / "pay-feature" / "meta.yaml"
-    meta.write_text(yaml.safe_dump({"name": "Pay", "kind": "Feature",
+    meta = demo / "docs" / "taxonomy" / "pay-feature" / TAXONOMY_STATE
+    write_state(meta, yaml.safe_dump({"name": "Pay", "kind": "Feature",
                                     "vocabulary": [core_term]}))
     _set(demo, "cli/x", Subject=[core_term])
     removed = tcw(["taxonomy", "rm", "term"], demo)
@@ -157,9 +158,9 @@ def test_a_reference_to_another_projects_entry_does_not_block_a_removal(tcw, dem
 
 @pytest.mark.parametrize("field, value", [("Roles", "cli/x"), ("When", "!roles/admin")])
 def test_a_role_or_condition_outside_its_folder_is_refused(tcw, demo, field, value):
-    before = (demo / "docs" / "capabilities" / "cli" / "x" / "meta.yaml").read_bytes()
+    before = (demo / "docs" / "capabilities" / "cli" / "x" / CAPABILITY_STATE).read_bytes()
     found = tcw(["capabilities", "set", "cli/x", "--field", f"{field}={value}"], demo)
     assert found.code == 2
     folder = "roles" if field == "Roles" else "conditions"
     assert f"{field} '{value}' must be a {folder}/ slug" in found.err
-    assert (demo / "docs" / "capabilities" / "cli" / "x" / "meta.yaml").read_bytes() == before
+    assert (demo / "docs" / "capabilities" / "cli" / "x" / CAPABILITY_STATE).read_bytes() == before

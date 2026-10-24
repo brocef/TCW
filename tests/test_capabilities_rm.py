@@ -14,6 +14,7 @@ from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 from tcw.errors import TcwError
 from tests.fullids import fid
 from tests.projectfiles import write_config, write_manifest
+from tests.statefiles import write_state, CAPABILITY_STATE
 
 
 def repo(tmp_path: Path, name: str) -> Path:
@@ -39,7 +40,7 @@ def write_cap(root: Path, path: str, *, id=None, body="", **meta) -> None:
         m["id"] = id
     m["name"] = meta.pop("name", path.rsplit("/", 1)[-1].replace("-", " ").title())
     m.update(meta)
-    (d / "meta.yaml").write_text(yaml.safe_dump(m, sort_keys=False, allow_unicode=True))
+    write_state(d / CAPABILITY_STATE, yaml.safe_dump(m, sort_keys=False, allow_unicode=True))
     (d / "description.md").write_text(body)
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
 
@@ -95,7 +96,7 @@ def test_remove_deletes_local_capability_and_stages_nothing(tmp_path):
     assert store(root).get_view("x") is None
     status = subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
                             capture_output=True, text=True, check=True).stdout
-    assert " D docs/capabilities/x/meta.yaml" in status        # deleted, not staged
+    assert " D docs/capabilities/x/tcw-capability.yaml" in status        # deleted, not staged
 
 
 def test_remove_ignores_unresolvable_reference_tokens(tmp_path):
@@ -135,12 +136,12 @@ def test_remove_path_escaping_store_changes_nothing(tmp_path):
     write_cap(root, "x", id="cap-x00001", Status="Supported")
     outside = root / "docs" / "taxonomy" / "thing"
     outside.mkdir(parents=True)
-    (outside / "meta.yaml").write_text("id: cap-out001\nname: Thing\nStatus: Supported\n")
+    write_state(outside / CAPABILITY_STATE, "id: cap-out001\nname: Thing\nStatus: Supported\n")
     before = tree_hash(root)
     with pytest.raises(TcwError, match="is not a full identifier"):
         store(root).remove("../taxonomy/thing")
     _assert_nothing_removed(root, before)
-    assert (outside / "meta.yaml").is_file()
+    assert (outside / CAPABILITY_STATE).is_file()
 
 
 @pytest.mark.parametrize("ref", ["auth/login", "base.capabilities/auth/login"])
@@ -157,7 +158,7 @@ def test_remove_overridden_inherited_names_reset(tmp_path):
     base, child = federated(tmp_path)
     store(child).set("auth/login", {"Status": "Missing"})
     override = child / "docs" / "capabilities" / "auth" / "login"
-    assert (override / "meta.yaml").is_file()
+    assert (override / CAPABILITY_STATE).is_file()
     before = tree_hash(child)
     with pytest.raises(TcwError, match="tcw capabilities reset"):
         store(child).remove("auth/login")
@@ -214,7 +215,7 @@ def test_remove_treats_a_glob_character_in_the_path_literally(tmp_path):
     store(root).remove(FullId("solo", "capabilities", "a*"))
     assert store(root).get_view("a*") is None
     assert store(root).get_view("abc") is not None
-    assert (root / "docs" / "capabilities" / "abc" / "meta.yaml").is_file()
+    assert (root / "docs" / "capabilities" / "abc" / CAPABILITY_STATE).is_file()
 
 
 def test_remove_skips_a_folder_that_vanished_after_listing(tmp_path, monkeypatch):
@@ -281,7 +282,7 @@ def test_remove_refuses_nested_override_folder(tmp_path):
     base, child = federated(tmp_path)
     write_cap(child, "auth", id="cap-aut001", Status="Supported")
     store(child).set("auth/login", {"Status": "Missing"})   # override lands at auth/login
-    assert (child / "docs" / "capabilities" / "auth" / "login" / "meta.yaml").is_file()
+    assert (child / "docs" / "capabilities" / "auth" / "login" / CAPABILITY_STATE).is_file()
     before = tree_hash(child)
     with pytest.raises(TcwError, match="auth/login"):
         store(child).remove("auth")
@@ -362,7 +363,7 @@ def test_cli_rm_removes_and_reports(tmp_path, monkeypatch, capsys):
     assert main(["capabilities", "rm", "x"]) == 0
     printed = capsys.readouterr()
     assert printed.out == ""
-    assert "removed docs/capabilities/x/meta.yaml" in printed.err.splitlines()
+    assert "removed docs/capabilities/x/tcw-capability.yaml" in printed.err.splitlines()
     assert main(["capabilities", "show", "x"]) == 4
 
 

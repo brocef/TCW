@@ -9,6 +9,7 @@ from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tcw.findings import Finding
 from tcw.validate import ValidationTarget, validate
 from tests.projectfiles import write_config, write_manifest
+from tests.statefiles import write_state, ITEM_STATE, TAXONOMY_STATE
 
 
 def _node(tmp_path: Path) -> Path:
@@ -68,22 +69,22 @@ def test_target_scans_only_selected_yaml_and_links(tmp_path):
     taxonomy.add("Good", slug="good")
     taxonomy.add("Broken", slug="broken")
     (root / "docs/taxonomy/good/description.md").write_text("[bad](tcw://T/missing)\n")
-    (root / "docs/taxonomy/broken/meta.yaml").write_text("name: [\n")
+    (root / "docs/taxonomy/broken/tcw-taxonomy.yaml").write_text("name: [\n")
     targeted = [str(f) for f in validate(root, target=ValidationTarget("taxonomy", "good"))]
     full = [str(f) for f in validate(root)]
     assert any("tcw://" in problem for problem in targeted)
-    assert not any("broken/meta.yaml" in problem for problem in targeted)
-    assert any("broken/meta.yaml" in problem for problem in full)
+    assert not any("broken/tcw-taxonomy.yaml" in problem for problem in targeted)
+    assert any("broken/tcw-taxonomy.yaml" in problem for problem in full)
 
 
 def test_target_reports_its_own_malformed_yaml(tmp_path):
     root = _node(tmp_path)
     FsCapabilitiesStore.open(root).add("broken")
-    (root / "docs/capabilities/broken/meta.yaml").write_text("name: [\n")
+    (root / "docs/capabilities/broken/tcw-capability.yaml").write_text("name: [\n")
     notes: list[str] = []
     problems = [str(f) for f in validate(
         root, target=ValidationTarget("capabilities", "broken"), notes=notes)]
-    assert any("broken/meta.yaml" in problem for problem in problems)
+    assert any("broken/tcw-capability.yaml" in problem for problem in problems)
     assert any("checks skipped" in note for note in notes), notes
 
 
@@ -94,7 +95,7 @@ def test_axis_semantics_are_object_local(tmp_path):
     for slug in ("feature", "other"):
         d = root / "docs" / "taxonomy" / slug
         d.mkdir(parents=True)
-        (d / "meta.yaml").write_text(f"name: {slug}\nkind: Feature\nrelatesTo: []\n")
+        write_state(d / TAXONOMY_STATE, f"name: {slug}\nkind: Feature\nrelatesTo: []\n")
         (d / "description.md").write_text("")
     capability = FsCapabilitiesStore.open(root)
     capability.add("bad", status="Partial")
@@ -133,14 +134,14 @@ def test_one_work_item_reports_its_own_problems_only(tmp_path):
     assert by_file["spec.md"].severity == "error" and "tcw://C/nowhere" in by_file["spec.md"].message
     assert by_file["round-1.md"].severity == "warning"
     assert by_file["capabilities.yaml"].severity == "error"
-    assert by_file["item.yaml"].severity == "warning" and "2026-10-01-a-gone" in \
-        by_file["item.yaml"].message
+    assert by_file[ITEM_STATE].severity == "warning" and "2026-10-01-a-gone" in \
+        by_file[ITEM_STATE].message
     assert len(found) == 4, found
 
 
 def test_one_work_item_uses_the_item_it_is_given(tmp_path):
     """The caller's item decides the stage: a terminal one skips the records
-    check that `item.yaml`'s stage would run."""
+    check that `tcw-work-item.yaml`'s stage would run."""
     from dataclasses import replace
     from tcw.work.open import open_backend
     root = _node(tmp_path)
@@ -167,7 +168,7 @@ def test_one_jira_item_sharing_its_key_with_another_folder(tmp_path):
         folder = root / "docs" / "work" / name
         folder.mkdir(parents=True)
         key = name.rsplit("-", 1)[0]
-        (folder / "item.yaml").write_text(yaml.safe_dump({"ticket": f"{SITE}/browse/{key}"}))
+        write_state(folder / ITEM_STATE, yaml.safe_dump({"ticket": f"{SITE}/browse/{key}"}))
     found = validate(root, target=ValidationTarget("work", "TCW-1-a"))
     assert any("the key TCW-1 names 2 folders" in f.message for f in found), found
     other = validate(root, target=ValidationTarget("work", "TCW-2-c"))

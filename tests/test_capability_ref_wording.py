@@ -33,6 +33,7 @@ from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 from tcw.errors import TcwError
 from tests.fullids import fid
 from tests.projectfiles import write_config, write_manifest
+from tests.statefiles import write_state, CAPABILITY_STATE, TAXONOMY_STATE
 
 
 def node(tmp_path, name="repo"):
@@ -51,7 +52,7 @@ def write_cap(root, path, body="", **meta):
     m = {"id": "cap-" + hashlib.sha1(path.encode()).hexdigest()[:6],
          "name": path.rsplit("/", 1)[-1].replace("-", " ").title()}
     m.update(meta)
-    (d / "meta.yaml").write_text(yaml.safe_dump(m, sort_keys=False, allow_unicode=True))
+    write_state(d / CAPABILITY_STATE, yaml.safe_dump(m, sort_keys=False, allow_unicode=True))
     (d / "description.md").write_text(body)
 
 
@@ -233,7 +234,7 @@ def _node_with_taxonomy(tmp_path):
     for slug, kind in (("thing", "Vocabulary"), ("real-feature", "Feature")):
         d = tax / slug
         d.mkdir(parents=True)
-        (d / "meta.yaml").write_text(f"name: {slug}\nkind: {kind}\nrelatesTo: []\n")
+        write_state(d / TAXONOMY_STATE, f"name: {slug}\nkind: {kind}\nrelatesTo: []\n")
         (d / "description.md").write_text("x")
     write_cap(root, "web/editing", Status="Supported")
     return root
@@ -252,7 +253,7 @@ def _node_with_taxonomy(tmp_path):
 def test_set_refuses_an_unresolvable_ref_and_writes_nothing(
         tmp_path, field, value, expected):
     root = _node_with_taxonomy(tmp_path)
-    meta = root / "docs" / "capabilities" / "web" / "editing" / "meta.yaml"
+    meta = root / "docs" / "capabilities" / "web" / "editing" / CAPABILITY_STATE
     before = meta.read_bytes()
     store = FsCapabilitiesStore.open(root)
     with pytest.raises(TcwError) as e:
@@ -418,5 +419,5 @@ def test_add_with_a_null_field_clears_it_as_add_then_set_did(tmp_path):
     store = FsCapabilitiesStore.open(root)
     store.add("new/thing", name="Thing", status="Supported", fields={"Status": None})
     meta = yaml.safe_load(
-        (root / "docs" / "capabilities" / "new" / "thing" / "meta.yaml").read_text())
+        (root / "docs" / "capabilities" / "new" / "thing" / CAPABILITY_STATE).read_text())
     assert "Status" not in meta

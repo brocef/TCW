@@ -17,6 +17,7 @@ import pytest
 
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, write_sentinel
 from tcw.errors import TcwError
+from tests.statefiles import write_state, CAPABILITY_STATE, TAXONOMY_STATE
 
 
 def _repo(tmp_path, name="repo"):
@@ -119,20 +120,20 @@ def _outside(root, name, text):
 
 def test_taxonomy_node_with_a_symlinked_meta_does_not_resolve(tmp_path):
     root = _repo(tmp_path)
-    target = _outside(root, "meta.yaml", "kind: Vocabulary\nname: Stolen\n")
+    target = _outside(root, TAXONOMY_STATE, "kind: Vocabulary\nname: Stolen\n")
     d = root / "docs" / "taxonomy" / "victim"
     d.mkdir()
-    (d / "meta.yaml").symlink_to(target)
+    (d / TAXONOMY_STATE).symlink_to(target)
     (d / "description.md").write_text("body")
     assert FsTaxonomyStore.open(root).get_local("victim") is None
 
 
 def test_capability_node_with_a_symlinked_meta_does_not_resolve(tmp_path):
     root = _repo(tmp_path)
-    target = _outside(root, "meta.yaml", "id: cap-stolen\nname: Stolen\nStatus: Supported\n")
+    target = _outside(root, CAPABILITY_STATE, "id: cap-stolen\nname: Stolen\nStatus: Supported\n")
     d = root / "docs" / "capabilities" / "victim"
     d.mkdir()
-    (d / "meta.yaml").symlink_to(target)
+    (d / CAPABILITY_STATE).symlink_to(target)
     (d / "description.md").write_text("body")
     assert FsCapabilitiesStore.open(root).get_local("victim") is None
 
@@ -144,7 +145,7 @@ def test_a_symlinked_description_reads_empty_not_external(tmp_path):
     target = _outside(root, "description.md", "SECRET BODY")
     d = root / "docs" / "capabilities" / "partly"
     d.mkdir()
-    (d / "meta.yaml").write_text("id: cap-partly\nname: Partly\nStatus: Supported\n")
+    write_state(d / CAPABILITY_STATE, "id: cap-partly\nname: Partly\nStatus: Supported\n")
     (d / "description.md").symlink_to(target)
     cap = FsCapabilitiesStore.open(root).get_local("partly")
     assert cap is not None
@@ -157,7 +158,7 @@ def test_an_in_store_node_still_reads_normally(tmp_path):
     root = _repo(tmp_path)
     d = root / "docs" / "capabilities" / "ordinary"
     d.mkdir()
-    (d / "meta.yaml").write_text("id: cap-ord\nname: Ordinary\nStatus: Supported\n")
+    write_state(d / CAPABILITY_STATE, "id: cap-ord\nname: Ordinary\nStatus: Supported\n")
     (d / "description.md").write_text("REAL BODY")
     cap = FsCapabilitiesStore.open(root).get_local("ordinary")
     assert cap is not None and cap.name == "Ordinary"
@@ -187,7 +188,7 @@ def test_taxonomy_list_does_not_advertise_a_symlinked_entry(tmp_path):
     root = _repo(tmp_path)
     secret = _plant(root)
     (secret / "victim").mkdir()
-    (secret / "victim" / "meta.yaml").write_text("kind: Vocabulary\nname: Victim\n")
+    write_state(secret / "victim" / TAXONOMY_STATE, "kind: Vocabulary\nname: Victim\n")
     store = FsTaxonomyStore.open(root)
     slugs = [t.slug for t in store.list_all(local_only=True)]
     assert "alpha/link" not in slugs
@@ -197,7 +198,7 @@ def test_taxonomy_validation_resources_refuses_an_escaping_ref(tmp_path):
     root = _repo(tmp_path)
     secret = _plant(root)
     (secret / "victim").mkdir()
-    (secret / "victim" / "meta.yaml").write_text("kind: Vocabulary\nname: Victim\n")
+    write_state(secret / "victim" / TAXONOMY_STATE, "kind: Vocabulary\nname: Victim\n")
     store = FsTaxonomyStore.open(root)
     assert store._validation_resources("alpha/link/victim") == []
 
@@ -207,14 +208,14 @@ def test_taxonomy_validation_resources_refuses_an_escaping_ref(tmp_path):
 def _cap_link(root, target_has_meta=True):
     """`docs/capabilities/link -> ../../outside`, with a capability behind it.
 
-    The symlink must resolve to a folder that *itself* holds a meta.yaml, or
+    The symlink must resolve to a folder that *itself* holds a tcw-capability.yaml, or
     `rglob` — which never descends a symlinked directory — hides it from
     `list_all` today too, and the test passes on the unfixed tree.
     """
     outside = root / "outside"
     outside.mkdir(exist_ok=True)
     if target_has_meta:
-        (outside / "meta.yaml").write_text(
+        write_state(outside / CAPABILITY_STATE,
             "id: cap-outside\nname: Outside\nStatus: Supported\n")
         (outside / "description.md").write_text("OUTSIDE BODY")
     (root / "docs" / "capabilities" / "link").symlink_to("../../outside")
@@ -231,11 +232,11 @@ def test_capabilities_list_does_not_advertise_a_symlinked_entry(tmp_path):
 def test_capabilities_set_through_a_symlink_mutates_nothing_outside(tmp_path):
     root = _repo(tmp_path)
     outside = _cap_link(root)
-    before = (outside / "meta.yaml").read_bytes()
+    before = (outside / CAPABILITY_STATE).read_bytes()
     store = FsCapabilitiesStore.open(root)
     with pytest.raises(TcwError):
         store.set("link", {"Status": "Omitted"})
-    assert (outside / "meta.yaml").read_bytes() == before
+    assert (outside / CAPABILITY_STATE).read_bytes() == before
 
 
 def test_capabilities_add_through_a_symlink_creates_nothing_outside(tmp_path):

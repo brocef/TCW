@@ -155,7 +155,7 @@ def test_a_verdict_about_an_older_implementation_is_stale(layout):
 def test_item_folders_lists_the_folders_under_the_work_path_in_order(layout, tmp_path):
     """The board's fallback while the backend is unavailable (TCW-77 Design
     7.3): folder names only, sorted, hidden entries and plain files left
-    out, and no `item.yaml` read."""
+    out, and no `tcw-work-item.yaml` read."""
     work = tmp_path / "work"
     for name in ("2-b", "1-a", ".hidden", "TCW-3-c"):
         (work / name).mkdir(parents=True)

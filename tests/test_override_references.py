@@ -13,6 +13,7 @@ from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from test_capabilities_federation import child_of, write_cap
 from tcw.errors import TcwError
 from tests.fullids import fid
+from tests.statefiles import write_state, CAPABILITY_STATE, TAXONOMY_STATE
 
 UPSTREAM = {"auth/login": {"id": "cap-aaa111", "Status": "Supported"}}
 
@@ -36,7 +37,7 @@ def term(root: Path, slug: str, kind: str = "") -> None:
     meta = {"name": slug}
     if kind:
         meta["kind"] = kind
-    (d / "meta.yaml").write_text(yaml.safe_dump(meta))
+    write_state(d / TAXONOMY_STATE, yaml.safe_dump(meta))
     (d / "description.md").write_text("")
     subprocess.run(["git", "-C", str(root), "add", str(d)], check=True)
 
@@ -114,7 +115,7 @@ def test_a_malformed_override_refuses_the_removal_readably(tmp_path, monkeypatch
     root = node(tmp_path)
     term(root, "zed")
     override(root, Subject=[T("other")])
-    (root / "docs" / "capabilities" / "ov" / "meta.yaml").write_text("overrides: [unclosed\n")
+    write_state(root / "docs" / "capabilities" / "ov" / CAPABILITY_STATE, "overrides: [unclosed\n")
     monkeypatch.chdir(root)
     capsys.readouterr()
     assert main(["taxonomy", "rm", "zed"]) == 3

@@ -22,6 +22,7 @@ from tcw.store.fs import (FsCapabilitiesStore, FsTaxonomyStore, _revision, _revi
 from test_capabilities_federation import child_of
 from tcw.errors import TcwError
 from tests.projectfiles import write_config, write_manifest
+from tests.statefiles import CAPABILITY_STATE, TAXONOMY_STATE
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -367,7 +368,7 @@ def test_update_capability_inherited_matches_set(tmp_path):
         st = FsCapabilitiesStore.open(root)
         write(st)
         meta = yaml.safe_load(
-            (root / "docs/capabilities/routes/login/meta.yaml").read_text())
+            (root / "docs/capabilities/routes/login/tcw-capability.yaml").read_text())
         upstream_id = st.get_view("routes/login").id
         meta["overrides"] = meta["overrides"].replace(upstream_id, "<id>")
         return meta
@@ -452,12 +453,12 @@ def test_taxonomy_update_validation_no_partial_write(tmp_path):
     root = _tax_node(tmp_path)
     st = FsTaxonomyStore.open(root)
     st.add("Admin")
-    meta_before = (root / "docs/taxonomy/admin/meta.yaml").read_bytes()
+    meta_before = (root / "docs/taxonomy/admin/tcw-taxonomy.yaml").read_bytes()
 
     with pytest.raises(TcwError):
         st.update_term("admin", name="X", relates_to=["ghost"])
 
-    meta_after = (root / "docs/taxonomy/admin/meta.yaml").read_bytes()
+    meta_after = (root / "docs/taxonomy/admin/tcw-taxonomy.yaml").read_bytes()
     assert meta_before == meta_after
 
 
@@ -608,14 +609,14 @@ def test_write_node_failure_leaves_existing_node_untouched(tmp_path, monkeypatch
     st = FsTaxonomyStore.open(root)
     st.add("Admin", description="original body\n")
     d = root / "docs" / "taxonomy" / "admin"
-    meta_before = (d / "meta.yaml").read_bytes()
+    meta_before = (d / TAXONOMY_STATE).read_bytes()
     desc_before = (d / "description.md").read_bytes()
 
     _fail_writing(monkeypatch, "description.md")
     with pytest.raises(OSError):
         st.update_term("admin", name="Changed", description="new body\n")
 
-    assert (d / "meta.yaml").read_bytes() == meta_before
+    assert (d / TAXONOMY_STATE).read_bytes() == meta_before
     assert (d / "description.md").read_bytes() == desc_before
     assert list(root.rglob("*.tmp")) == []
 
@@ -657,12 +658,12 @@ def test_update_capability_failure_removes_override_it_materialized(tmp_path,
 
 def test_set_failure_removes_override_it_materialized(tmp_path, monkeypatch):
     """`capabilities set` — the CLI path — materializes a fresh override too, and
-    writes only `meta.yaml`. A failed write must not leave the empty directory."""
+    writes only `tcw-capability.yaml`. A failed write must not leave the empty directory."""
     base, child = child_of(tmp_path, {
         "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
     d = child / "docs" / "capabilities" / "moderation" / "report-content"
 
-    _fail_writing(monkeypatch, "meta.yaml")
+    _fail_writing(monkeypatch, CAPABILITY_STATE)
     with pytest.raises(OSError) as excinfo:
         FsCapabilitiesStore.open(child).set(
             "moderation/report-content", {"Status": "Missing"})
@@ -782,13 +783,13 @@ def test_atomic_write_all_keeps_the_targets_mode(tmp_path):
 
 def test_the_body_clear_branch_rolls_back(tmp_path, monkeypatch):
     """`update_capability`'s body-clear branch deletes `description.md` and
-    writes `meta.yaml` into an override it materialized; a failed write leaves
+    writes `tcw-capability.yaml` into an override it materialized; a failed write leaves
     no folder behind."""
     base, child = child_of(tmp_path, {
         "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
     d = child / "docs" / "capabilities" / "moderation" / "report-content"
 
-    _fail_writing(monkeypatch, "meta.yaml")
+    _fail_writing(monkeypatch, CAPABILITY_STATE)
     with pytest.raises(OSError):
         FsCapabilitiesStore.open(child).update_capability(
             "moderation/report-content", body="")

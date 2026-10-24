@@ -19,6 +19,7 @@ from tests.config.conftest import tcw
 from tests.work.memory_backend import MemoryBackend
 from tests.work.projects import commit_all, connect, make_project
 from tests.projectfiles import write_local_config
+from tests.statefiles import ITEM_STATE
 
 PACKAGE = Path(__file__).resolve().parents[2] / "tcw"
 
@@ -30,7 +31,7 @@ def project(personal) -> Path:
 
 def assignee(root: Path, slug: str) -> str | None:
     folder = slug.split("/", 1)[1]
-    record = yaml.safe_load((root / "docs" / "work" / folder / "item.yaml").read_text())
+    record = yaml.safe_load((root / "docs" / "work" / folder / ITEM_STATE).read_text())
     return record.get("assignee")
 
 

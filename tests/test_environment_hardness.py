@@ -39,6 +39,7 @@ from tcw.store.fs import (
     FsCapabilitiesStore, FsTaxonomyStore, WorkLocation, init, load_yaml,
 )
 from tcw.store.project import FsProjectRegistry
+from tests.statefiles import write_state, CAPABILITY_STATE, TAXONOMY_STATE
 
 
 def _parent_folder(root):
@@ -262,7 +263,7 @@ class TestLoneProject:
         st.add("Thing")
         d = root / "docs" / "taxonomy" / "thing"
         nope = f"{st.project_id}.taxonomy/nope"
-        (d / "meta.yaml").write_text(yaml.safe_dump({"name": "Thing", "relatesTo": [nope]}))
+        write_state(d / TAXONOMY_STATE, yaml.safe_dump({"name": "Thing", "relatesTo": [nope]}))
         problems = [str(f) for f in st.check()]
         assert any("dangling" in p for p in problems)
 
@@ -312,10 +313,10 @@ class TestLoneProject:
         tax = FsTaxonomyStore.open(root)
         caps = FsCapabilitiesStore.open(root)
         caps.add("routes/x", status="Supported")
-        meta_path = root / "docs" / "capabilities" / "routes" / "x" / "meta.yaml"
+        meta_path = root / "docs" / "capabilities" / "routes" / "x" / CAPABILITY_STATE
         meta = load_yaml(meta_path)
         meta["Subject"] = [f"{tax.project_id}.taxonomy/ghost"]
-        meta_path.write_text(
+        write_state(meta_path,
             yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
         problems = [str(f) for f in caps.check(taxonomy=tax)]
         assert any("dangling" in p for p in problems)

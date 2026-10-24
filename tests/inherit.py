@@ -10,6 +10,7 @@ import yaml
 
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, write_sentinel
 from tests.projectfiles import write_config, write_manifest
+from tests.statefiles import write_state, STATE_OF
 
 
 def _repo(tmp_path: Path, name: str) -> Path:
@@ -25,7 +26,7 @@ def entry(root: Path, tree: str, path: str, **meta) -> None:
     """One taxonomy entry or capability, written as its files."""
     folder = root / "docs" / tree / path
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / "meta.yaml").write_text(yaml.safe_dump(
+    write_state(folder / STATE_OF[tree], yaml.safe_dump(
         {"name": path.rsplit("/", 1)[-1].title(), **meta}))
     (folder / "description.md").write_text("")
 

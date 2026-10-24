@@ -19,6 +19,7 @@ import yaml
 
 from tcw.cli import main
 from tests.work.projects import commit_all, make_project, write_item
+from tests.statefiles import ITEM_STATE
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "require_artifact.py"
 FOLDER = "2026-10-01-a"
@@ -49,7 +50,7 @@ def advance(root, monkeypatch, capsys):
 
 
 def stage(root):
-    item = root / "docs" / "work" / FOLDER / "item.yaml"
+    item = root / "docs" / "work" / FOLDER / ITEM_STATE
     return yaml.safe_load(item.read_text())["stage"]
 
 

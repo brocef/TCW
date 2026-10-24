@@ -15,6 +15,7 @@ from tcw.errors import Refused
 from tcw.work.open import delegate
 from tests.work.projects import commit_all, connect, git, make_project, write_item
 from tests.projectfiles import write_config
+from tests.statefiles import ITEM_STATE
 
 TODAY = date.today().isoformat()
 
@@ -31,7 +32,7 @@ def run(monkeypatch, capsys, cwd, *argv, stdin=""):
 
 
 def item_yaml(root, folder):
-    return yaml.safe_load((root / "docs" / "work" / folder / "item.yaml").read_text())
+    return yaml.safe_load((root / "docs" / "work" / folder / ITEM_STATE).read_text())
 
 
 @pytest.fixture
@@ -52,7 +53,7 @@ def pq(tmp_path):
 
 @pytest.mark.parametrize("leftover", ["README.md", "notes/plan.md",
                                       "completed/2025-01-01-old/outcome.md",
-                                      "Not-An-Item/item.yaml"])
+                                      "Not-An-Item/tcw-work-item.yaml"])
 def test_init_refuses_to_move_a_store_holding_anything(tmp_path, monkeypatch, capsys,
                                                        leftover):
     root = make_project(tmp_path, "p")
@@ -110,7 +111,7 @@ def test_item_files_take_the_usual_mode(tmp_path, monkeypatch, capsys):
         os.umask(old)
     assert code == 0, err
     folder = root / "docs" / "work" / f"{TODAY}-t"
-    for path in (folder / "item.yaml", folder / "request" / "request.md"):
+    for path in (folder / ITEM_STATE, folder / "request" / "request.md"):
         assert stat.S_IMODE(path.stat().st_mode) == 0o644, path
 
 
@@ -292,11 +293,11 @@ def test_undecodable_text_is_a_usage_error(tmp_path, monkeypatch, capsys, argv):
     root = make_project(tmp_path, "p")
     write_item(root, "2026-10-01-a", {"title": "a", "stage": "spec"})
     before = sorted(p.name for p in (root / "docs" / "work").iterdir())
-    text = (root / "docs/work/2026-10-01-a/item.yaml").read_text()
+    text = (root / "docs/work/2026-10-01-a/tcw-work-item.yaml").read_text()
     code, out, _ = run(monkeypatch, capsys, root, "work", *argv)
     assert (code, out) == (2, "")
     assert sorted(p.name for p in (root / "docs" / "work").iterdir()) == before
-    assert (root / "docs/work/2026-10-01-a/item.yaml").read_text() == text
+    assert (root / "docs/work/2026-10-01-a/tcw-work-item.yaml").read_text() == text
 
 
 def test_init_refuses_to_move_a_store_holding_a_hidden_file_with_content(

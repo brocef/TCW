@@ -19,10 +19,11 @@ from tests.serve.test_work_read import new, ok
 from tests.work.jira.conftest import EMAIL_ENV, TOKEN_ENV
 from tests.work.projects import commit_all, connect, git, make_project
 from tests.projectfiles import config_file, write_config_file
+from tests.statefiles import ITEM_STATE
 
 
 def item_yaml(root: Path, folder: str) -> dict:
-    return yaml.safe_load((root / "docs" / "work" / folder / "item.yaml").read_text())
+    return yaml.safe_load((root / "docs" / "work" / folder / ITEM_STATE).read_text())
 
 
 def assert_refused(answer, status: int, code: str, *named: str):

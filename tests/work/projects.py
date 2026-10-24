@@ -15,6 +15,7 @@ import yaml
 
 from tcw.store.fs import init
 from tests.projectfiles import config_file, write_config_file, write_manifest
+from tests.statefiles import write_state, ITEM_STATE
 
 WORK_PATH = Path("docs") / "work"
 
@@ -72,5 +73,5 @@ def write_item(root: Path, folder: str, data: "dict | str") -> Path:
     path = root / WORK_PATH / folder
     path.mkdir(parents=True, exist_ok=True)
     text = data if isinstance(data, str) else yaml.safe_dump(data, sort_keys=False)
-    (path / "item.yaml").write_text(text)
+    write_state(path / ITEM_STATE, text)
     return path

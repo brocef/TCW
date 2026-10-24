@@ -21,6 +21,7 @@ from tcw.validate import ValidationTarget, validate
 from nodeconfig import declare_extends, set_component_key
 from test_validate import node
 from tests.projectfiles import config_file, write_config_file, write_manifest
+from tests.statefiles import write_state, CAPABILITY_STATE, TAXONOMY_STATE
 
 LEFTOVER = {"taxonomy": "config.yaml", "capabilities": ".config.yaml"}
 STORE = {"taxonomy": FsTaxonomyStore, "capabilities": FsCapabilitiesStore}
@@ -30,7 +31,7 @@ MARK = "no longer read"
 def _write_term(root: Path, slug: str, *, tree: str = "docs/taxonomy") -> None:
     d = root / tree / slug
     d.mkdir(parents=True, exist_ok=True)
-    (d / "meta.yaml").write_text(yaml.safe_dump({"name": slug, "relatesTo": []}))
+    write_state(d / TAXONOMY_STATE, yaml.safe_dump({"name": slug, "relatesTo": []}))
     (d / "description.md").write_text("")
 
 
@@ -38,7 +39,7 @@ def _write_cap(root: Path, path: str, cap_id: str, *,
                tree: str = "docs/capabilities") -> None:
     d = root / tree / path
     d.mkdir(parents=True, exist_ok=True)
-    (d / "meta.yaml").write_text(yaml.safe_dump(
+    write_state(d / CAPABILITY_STATE, yaml.safe_dump(
         {"id": cap_id, "name": path, "Status": "Supported"}, sort_keys=False))
     (d / "description.md").write_text("")
 
@@ -278,7 +279,7 @@ def test_an_unparseable_leftover_gets_both_its_parse_error_and_the_report(tmp_pa
 
 def test_a_yaml_error_elsewhere_does_not_hide_the_leftover(tmp_path):
     consumer = _federated(tmp_path)
-    (consumer / "docs" / "taxonomy" / "Local" / "meta.yaml").write_text("name: [unclosed\n")
+    write_state(consumer / "docs" / "taxonomy" / "Local" / TAXONOMY_STATE, "name: [unclosed\n")
     (consumer / "docs" / "capabilities" / ".config.yaml").write_text("extends: [shared]\n")
 
     notes: list[str] = []

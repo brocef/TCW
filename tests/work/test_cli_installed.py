@@ -18,6 +18,7 @@ import pytest
 import yaml
 
 from tests.work.projects import make_project, write_item
+from tests.statefiles import ITEM_STATE
 
 REPO = Path(__file__).resolve().parents[2]
 TODAY = date.today().isoformat()
@@ -47,7 +48,7 @@ def p(tmp_path):
 
 def stage_of(root, folder):
     return yaml.safe_load(
-        (root / "docs/work" / folder / "item.yaml").read_text())["stage"]
+        (root / "docs/work" / folder / ITEM_STATE).read_text())["stage"]
 
 
 def test_new_prints_exactly_the_slug(p):

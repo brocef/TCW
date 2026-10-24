@@ -9,6 +9,7 @@ from urllib.parse import quote
 import pytest
 
 from tests.inherit import demo_inheriting_core
+from tests.statefiles import TAXONOMY_STATE
 
 STRIPPED = {"slug", "qualified", "path", "origin"}
 
@@ -64,7 +65,7 @@ def test_ac8_a_web_edit_stores_the_full_identifier_of_a_reference(served):
     answer = served.patch("/api/taxonomy/term", {"revision": revision,
                                                  "fields": {"relatesTo": ["shared"]}})
     assert answer.status == 200, answer.body
-    meta = served.root / "docs" / "taxonomy" / "term" / "meta.yaml"
+    meta = served.root / "docs" / "taxonomy" / "term" / TAXONOMY_STATE
     assert "core.taxonomy/shared" in meta.read_text()
 
 

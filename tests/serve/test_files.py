@@ -13,6 +13,7 @@ from tcw.errors import Unreachable
 from tcw.serve.files import revision
 from tests.serve.conftest import fs_project
 from tests.serve.test_work_read import new, ok
+from tests.statefiles import ITEM_STATE
 
 
 @pytest.fixture
@@ -93,8 +94,8 @@ def test_a_reading_of_a_missing_file_is_404(item):
     assert served.get(f"/api/work/{folder}/files/spec/spec.md").status == 404
 
 
-@pytest.mark.parametrize("path", ["item.yaml", "comments/x.md", "spec/notes.md",
-                                  "spec/../item.yaml", "..%2Fitem.yaml", "spec",
+@pytest.mark.parametrize("path", [ITEM_STATE, "comments/x.md", "spec/notes.md",
+                                  "spec/../tcw-work-item.yaml", "..%2Ftcw-work-item.yaml", "spec",
                                   "completed/completed.md", "spec/round-1.md",
                                   "implement/implement.md", "nope/nope.md"])
 def test_paths_the_layout_does_not_name_are_404(item, path):

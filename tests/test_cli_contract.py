@@ -38,6 +38,7 @@ from tcw.work.model import Item, Slug
 from tests.work.jira.conftest import ME, fake, jira_config  # noqa: F401
 from tests.projectfiles import config_file, write_config, write_config_file, write_local_config
 from tests.projectfiles import write_manifest
+from tests.statefiles import write_state, ITEM_STATE, TAXONOMY_STATE
 
 TODAY = date.today().isoformat()
 SOURCE = str(Path(tcw.__file__).resolve().parent.parent)
@@ -408,8 +409,8 @@ def test_tree_exit_codes(fx):
     assert run(fx, "taxonomy", "show", "nosuch").code == 4
     assert run(fx, "capabilities", "show", "nosuch").code == 4
     ok(fx, "taxonomy", "add", "Gadget")
-    meta = fx / "docs" / "taxonomy" / "gadget" / "meta.yaml"
-    meta.write_text(meta.read_text().replace("relatesTo: []", "relatesTo: [fx.taxonomy/widget]"))
+    meta = fx / "docs" / "taxonomy" / "gadget" / TAXONOMY_STATE
+    write_state(meta, meta.read_text().replace("relatesTo: []", "relatesTo: [fx.taxonomy/widget]"))
     assert run(fx, "taxonomy", "rm", "widget").code == 3
 
     ok(fx, "capabilities", "add", "ns/do-a-thing")
@@ -442,12 +443,12 @@ def test_a_rename_that_fails_after_moving_prints_the_new_slug(fx):
     child = new(fx, "Child", "--parent", slug)
     folder = fx / "docs" / "work" / child.split("/", 1)[1]
     folder.chmod(0o555)
-    (folder / "item.yaml").chmod(0o444)
+    (folder / ITEM_STATE).chmod(0o444)
     try:
         result = run(fx, "work", "rename", slug, "moved")
     finally:
         folder.chmod(0o755)
-        (folder / "item.yaml").chmod(0o644)
+        (folder / ITEM_STATE).chmod(0o644)
     assert (result.code, result.out) == (1, f"fx.work/{TODAY}-moved\n"), result
 
 

@@ -56,7 +56,7 @@ def test_an_unreadable_item_is_named_and_the_rest_still_checked(tmp_path):
     write_item(p, "2026-10-01-bad", "title: [x\n")
     problems = _completed_work_drift(p)
     assert any(p.where == "p.capabilities/x/y" for p in problems)
-    assert any(p.kind == "unchecked" and p.where.endswith("2026-10-01-bad/item.yaml")
+    assert any(p.kind == "unchecked" and p.where.endswith("2026-10-01-bad/tcw-work-item.yaml")
                for p in problems)
 
 

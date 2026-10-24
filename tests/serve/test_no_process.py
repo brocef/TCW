@@ -16,6 +16,7 @@ from tests.serve.test_process import URL_LINE, _launch, _stop
 from tests.serve.test_work_read import new
 from tests.serve.test_work_write import family  # noqa: F401  (a fixture)
 from tests.work.projects import commit_all, connect, make_project
+from tests.statefiles import ITEM_STATE
 
 SERVE = Path(__file__).resolve().parents[2] / "tcw" / "serve"
 
@@ -141,7 +142,7 @@ def test_the_child_process_starts_no_child(prepared, tmp_path):
 
 def test_lifecycle_routes_do_not_exist(fs, tcw):
     folder = new(tcw, fs.root, "Thing")
-    item = fs.root / "docs" / "work" / folder / "item.yaml"
+    item = fs.root / "docs" / "work" / folder / ITEM_STATE
     before = item.read_text()
     for method, path in (("POST", f"/api/work/{folder}/actions/start"),
                          ("POST", f"/api/work/{folder}/actions/complete"),

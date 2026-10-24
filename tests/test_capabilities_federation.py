@@ -13,6 +13,7 @@ from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 from nodeconfig import declare_extends
 from tcw.errors import InheritedUnavailable, TcwError, UsageError
 from tests.projectfiles import write_config, write_manifest
+from tests.statefiles import write_state, CAPABILITY_STATE
 
 
 def repo(tmp_path: Path, name: str) -> Path:
@@ -33,7 +34,7 @@ def write_cap(root: Path, path: str, *, id=None, body="", docs=None, **meta) -> 
         m["id"] = id
     m["name"] = meta.pop("name", path.rsplit("/", 1)[-1].replace("-", " ").title())
     m.update(meta)
-    (d / "meta.yaml").write_text(yaml.safe_dump(m, sort_keys=False, allow_unicode=True))
+    write_state(d / CAPABILITY_STATE, yaml.safe_dump(m, sort_keys=False, allow_unicode=True))
     (d / "description.md").write_text(body)
     for fn, text in (docs or {}).items():
         (d / fn).write_text(text)
@@ -249,7 +250,7 @@ def test_get_by_id_local(tmp_path):
 # ── set on an inherited path: materialize the override (issue #3) ────────────
 
 def ov_meta(child: Path, path: str) -> dict:
-    return yaml.safe_load((child / "docs" / "capabilities" / path / "meta.yaml")
+    return yaml.safe_load((child / "docs" / "capabilities" / path / CAPABILITY_STATE)
                           .read_text())
 
 
@@ -345,12 +346,12 @@ def test_set_inherited_falls_back_when_local_occupies_path(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
     write_cap(child, "auth/login", id="cap-loc001", Status="Missing")
-    before = (child / "docs" / "capabilities" / "auth" / "login" / "meta.yaml").read_bytes()
+    before = (child / "docs" / "capabilities" / "auth" / "login" / CAPABILITY_STATE).read_bytes()
 
     store(child).set("base.capabilities/auth/login", {"Status": "Partial", "Gaps": "wip"})
 
     assert (child / "docs" / "capabilities" / "auth" / "login"
-            / "meta.yaml").read_bytes() == before          # local untouched
+            / CAPABILITY_STATE).read_bytes() == before          # local untouched
     assert ov_meta(child, "base/auth/login") == {
         "overrides": "base/cap-aaa111", "Status": "Partial", "Gaps": "wip"}
     assert store(child).get_inherited("base", "auth/login").status == "Partial"
@@ -630,7 +631,7 @@ def test_a_moved_sibling_that_extends_further_still_resolves(tmp_path):
     """
     root = _chain(tmp_path, 3, moved={1})
     (tmp_path / "n1" / "ledger" / "own").mkdir()
-    (tmp_path / "n1" / "ledger" / "own" / "meta.yaml").write_text(
+    write_state(tmp_path / "n1" / "ledger" / "own" / CAPABILITY_STATE,
         "id: cap-ddd222\nname: Own\nStatus: Supported\n")
     (tmp_path / "n1" / "ledger" / "own" / "description.md").write_text("")
     assert {str(c.full_id) for c in store(root).list_all()} == {"n1.capabilities/own"}

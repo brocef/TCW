@@ -9,6 +9,7 @@ from tcw.work.jira.mapping import document_text
 from tcw.work.model import Changes, Slug
 from tests.work.jira.conftest import ME
 from tests.work.jira.fake import FIELDS
+from tests.statefiles import ITEM_STATE
 
 
 def ticket_of(project, item):
@@ -35,8 +36,8 @@ def test_a_new_item(jira_project):
     assert ticket.custom[FIELDS["TCW Item"]] == "tcw.work/TCW-1-dark-mode"
     assert ticket.status == "Triage" and document_text(ticket.description) == "Please"
     folder = jira_project.work / "TCW-1-dark-mode"
-    assert [p.name for p in folder.iterdir()] == ["item.yaml"]
-    assert (folder / "item.yaml").read_text() == \
+    assert [p.name for p in folder.iterdir()] == [ITEM_STATE]
+    assert (folder / ITEM_STATE).read_text() == \
         f"ticket: {jira_project.fake.site}/browse/TCW-1\n"
 
 
@@ -95,7 +96,7 @@ def test_step_6_refused(jira_project, tcw):
     result = tcw(["new", "Half"], jira_project.root)
     assert (result.code, result.out.strip()) == (1, "tcw.work/TCW-1-half")
     assert "resolution is required" in result.err and "advance" in result.err
-    assert (jira_project.work / "TCW-1-half" / "item.yaml").is_file()
+    assert (jira_project.work / "TCW-1-half" / "tcw-work-item.yaml").is_file()
     assert jira_project.fake.tickets["TCW-1"].status == "To Do"
 
 

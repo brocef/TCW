@@ -16,6 +16,7 @@ from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tests.work.projects import make_project
 from tests.projectfiles import config_file, write_config_file, write_manifest
+from tests.statefiles import write_state, CAPABILITY_STATE
 
 
 @pytest.fixture
@@ -48,7 +49,7 @@ def thing(project, run):
 def test_add_prints_the_path_and_names_its_files(project, run):
     code, out, err = run(project, "capabilities", "add", "ns/do-a-thing", stdin="Body.\n")
     assert (code, out) == (0, "fx.capabilities/ns/do-a-thing\n")
-    assert "wrote docs/capabilities/ns/do-a-thing/meta.yaml" in err.splitlines()
+    assert "wrote docs/capabilities/ns/do-a-thing/tcw-capability.yaml" in err.splitlines()
     assert "Body." in FsCapabilitiesStore.open(project).get_view("ns/do-a-thing").body
 
 
@@ -56,7 +57,7 @@ def test_set_prints_nothing(thing, run):
     code, out, err = run(thing, "capabilities", "set", "ns/do-a-thing",
                          "--status", "Supported")
     assert (code, out) == (0, "")
-    assert err.splitlines() == ["wrote docs/capabilities/ns/do-a-thing/meta.yaml"]
+    assert err.splitlines() == ["wrote docs/capabilities/ns/do-a-thing/tcw-capability.yaml"]
     assert FsCapabilitiesStore.open(thing).get_view("ns/do-a-thing").status == "Supported"
 
 
@@ -103,7 +104,7 @@ def test_rm_names_each_file_it_removed(thing, run):
     assert (code, out) == (0, "")
     assert sorted(err.splitlines()) == [
         "removed docs/capabilities/ns/do-a-thing/description.md",
-        "removed docs/capabilities/ns/do-a-thing/meta.yaml"]
+        "removed docs/capabilities/ns/do-a-thing/tcw-capability.yaml"]
 
 
 def test_list_and_search_print_one_path_per_line(thing, run):
@@ -122,8 +123,8 @@ def test_list_and_search_print_one_path_per_line(thing, run):
 
 
 def test_a_record_carrying_a_retired_field_is_a_check_error(thing):
-    meta = thing / "docs" / "capabilities" / "ns" / "do-a-thing" / "meta.yaml"
-    meta.write_text(meta.read_text() + "Planning doc: docs/plan/x.md\nTracker: X-1\n")
+    meta = thing / "docs" / "capabilities" / "ns" / "do-a-thing" / CAPABILITY_STATE
+    write_state(meta, meta.read_text() + "Planning doc: docs/plan/x.md\nTracker: X-1\n")
     findings = FsCapabilitiesStore.open(thing).check()
     retired = [f for f in findings if "migration-guide-2.8-to-3.0.0.md" in f.message]
     assert {f.severity for f in retired} == {"error"} and len(retired) == 2, findings
@@ -169,7 +170,7 @@ def test_reset_refuses_a_capability_nested_under_the_override(overridden, run):
     store_root = FsCapabilitiesStore.open(project).root
     assert f"nested under its override: {nested.relative_to(store_root).as_posix()}" in err
     assert "`tcw capabilities rm`" in err and "`tcw capabilities reset`" in err
-    assert (folder / "meta.yaml").is_file() and (nested / "meta.yaml").is_file()
+    assert (folder / CAPABILITY_STATE).is_file() and (nested / CAPABILITY_STATE).is_file()
 
 
 def test_reset_goes_ahead_once_the_nested_capability_is_gone(overridden, run):
