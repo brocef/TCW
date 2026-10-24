@@ -95,3 +95,9 @@ Recorded from the qa Outcome: "Entry 8's edit half is not a defect of this
 item, decided by the dispatching session: the web page has never offered a
 properties edit for a Jira item, and the server refuses a property `PATCH` of
 one with 403, a rule older than TCW-114 that the spec does not change."
+
+The full suite as CI runs it, `.venv/bin/pytest -q -p no:cacheprovider`, run by
+the dispatching session at `b1668d0c` (2026-10-24) in two halves by folder:
+`2076 passed, 2 skipped` (`tests/work`, `tests/serve`) and `4750 passed,
+111 skipped` (the rest). `pnpm test` `198 passed`; `tsc --noEmit`,
+`pnpm lint` and `pnpm check:build` clean.
