@@ -296,7 +296,8 @@ def pending(steps: list[Step], root: Path) -> list[Step]:
 #: How a 4.0 finding's kind is told from its message, for each kind a report
 #: predicts.
 KINDS = {"not_tags": "'not_tags'", "id": "is not its folder's name",
-         "resources": "resources/", "mention": "names "}
+         "resources": "resources/", "mention": "names ",
+         "legacy": "is a TCW 3.x project"}
 
 
 def _same_file(a: str, b: str, root: Path) -> bool:

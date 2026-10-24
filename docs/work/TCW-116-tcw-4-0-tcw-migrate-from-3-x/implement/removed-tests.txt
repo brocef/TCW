@@ -1,2 +1,4 @@
 # Tests removed by TCW-116's implement stage, each with the step and the reason.
 tests/migrate/test_migrate_config.py::test_each_part_two_form_is_b5_and_nothing_is_written[projects:] — Step 18: tcw migrate now converts projects: (plan Decided 17, the part-1 refusal's allowed list)
+tests/migrate/test_migrate_config.py::test_each_part_two_form_is_b5_and_nothing_is_written[taxonomy.extends] — Step 19: tcw migrate now converts extends (Decided 17)
+tests/migrate/test_migrate_config.py::test_each_part_two_form_is_b5_and_nothing_is_written[capabilities.extends] — Step 19: the same

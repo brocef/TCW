@@ -136,6 +136,28 @@ class Family:
         self.read[project_id] = found
         return found
 
+    def quiet(self, project_id: str) -> Member | None:
+        """`member` for a reading that can go without: the project read when
+        it is here, else None, with no B5."""
+        if project_id == self.active.id:
+            return self.active
+        if project_id in self.read:
+            return self.read[project_id]
+        placed = self.placed.get(project_id) or self._walk_to(project_id)
+        if placed is None or not placed.here:
+            return None
+        found = read_member(project_id, placed.folder, placed.how)
+        if found is not None:
+            self.read[project_id] = found
+        return found
+
+    def base_of(self, placed: Placed) -> Path:
+        """The folder of the project whose entry placed `placed`."""
+        if placed.declared_by == self.active.id:
+            return self.active.folder
+        declarer = self.read.get(placed.declared_by)
+        return declarer.folder if declarer is not None else self.active.folder
+
     def _absent(self, placed: Placed, why: str, where: str) -> None:
         detail = absent_project_message(placed.id, placed.folder,
                                         placed.relation.repository)

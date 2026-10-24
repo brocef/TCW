@@ -509,10 +509,13 @@ def _jira_block_credentials(rel: str, key: str, block: Any) -> list[Report]:
 class Located:
     """A project a manifest entry may be written for: the 3.x entry that
     names it (`relation`), and the folder of the project whose entry it is
-    (`base`), against which a relative locator is read."""
+    (`base`), against which a relative locator is read. `folder` is where it
+    was found, for an entry that holds no location of its own (a project a
+    migrated project's manifest placed)."""
 
     relation: Any
     base: Path
+    folder: Path | None = None
 
 
 @dataclass
@@ -573,6 +576,15 @@ def _plan_entry(root: Path, item: Located, out: ManifestPlan, legacy, family_mod
                                    f"says it is, not from the variable"))
     declared = _declared_folder(base, relation, legacy)
     repo = relation.repository
+    if relation.locator is None and repo is None:
+        # Placed by a migrated project's manifest or search: its folder.
+        if item.folder is None:
+            return
+        declared = Path(os.path.realpath(item.folder))
+        found = family_module.search_4(root, pid)
+        if not (len(found) == 1 and Path(os.path.realpath(found[0])) == declared):
+            out.shared.setdefault(pid, {"path": _relative(root, declared)})
+        return
     if repo is None:
         found = family_module.search_4(root, pid)
         if declared is not None and len(found) == 1 and found[0] == declared:
@@ -698,3 +710,312 @@ def _manifest_writes(root: Path, shared: dict, personal: dict
 
 
 B3_FIX = "correct it in the TCW 3 file it is converted from, then run 'tcw migrate' again"
+
+
+# ---------------------------------------------------------------------------
+# `extends` becomes parent links (C8: E1-E5; D1, D6, D8, B4; plan Step 19)
+
+
+@dataclass
+class Links:
+    """One project's converted links: Relations, extended by C8, with the
+    projects whose manifest entries C4 writes (`located`), the E1 lines,
+    and the edits removing each `extends`."""
+
+    relations: Relations
+    located: list[Located] = field(default_factory=list)
+    already: list[str] = field(default_factory=list)
+    extends_edits: list = field(default_factory=list)
+
+    def edits(self) -> list:
+        """`projects:` removed and the links set (only when the file has
+        `projects:`), then each `extends` removed."""
+        return self.relations.edits() + self.extends_edits
+
+
+def _parent_links(links: list[Link]):
+    """`links` as 4.0's own `ParentLink`s, which `passing`, `find_loop` and
+    `load_order_of` take: a plain ID passes every axis, `config` included."""
+    from tcw.store.base import AXES, ParentLink
+    return [ParentLink(l.id, frozenset(AXES) if l.inherit is None
+                       else frozenset(l.inherit)) for l in links]
+
+
+def _from_parent_links(found) -> list[Link]:
+    from tcw.store.base import AXES
+    return [Link(l.id, None if set(l.inherit) == set(AXES)
+                 else tuple(a for a in EXTENDED_AXES if a in l.inherit)) for l in found]
+
+
+def _extends_listed_child(member, child_id: str) -> bool:
+    """Design 6.1: whether `member`, in either form, extends `child_id` as
+    its listed child; once migrated, it has `child_id` among its parents and
+    no longer lists it as a child."""
+    from tcw.migrate.legacy import relations_3x
+    if member.three_x:
+        listed = {r.id for r in relations_3x(member.raw, ".")[0] if r.kind == "children"}
+        extends = extended_by(member.raw)
+        return child_id in listed and any(child_id in ids for ids in extends.values())
+    from tcw.store.links import parse_parents
+    parents = parse_parents(member.raw.get("parents"), ".")[0] or []
+    children = member.raw.get("children") or []
+    return any(l.id == child_id for l in parents) and child_id not in children
+
+
+class _Converter:
+    """C3 and C8 over a family, one project at a time, each related 3.x
+    project's links predicted by the same conversion (Design 6.1)."""
+
+    def __init__(self, family):
+        self.family = family
+        self.memo: dict[str, list[Link]] = family.predicted
+        self.absent: set[str] = set()
+        self.busy: set[str] = set()
+
+    def links_of(self, project_id: str) -> list[Link]:
+        """`project_id`'s parent links in 4.0: its own when migrated, the
+        predicted ones when 3.x; none for a project not here."""
+        if project_id in self.memo:
+            return self.memo[project_id]
+        if project_id in self.busy:
+            return []
+        member = self.family.quiet(project_id)
+        if member is None:
+            self.absent.add(project_id)
+            return []
+        if not member.three_x:
+            from tcw.store.links import parse_parents
+            found = _from_parent_links(parse_parents(member.raw.get("parents"), ".")[0]
+                                       or [])
+        else:
+            self.busy.add(project_id)
+            try:
+                found = self.convert(member).relations.parents
+            finally:
+                self.busy.discard(project_id)
+        self.memo[project_id] = found
+        return found
+
+    def graph(self, start: str, own: list[Link]) -> dict:
+        """The parent links of `start`, given as `own`, and of every project
+        above it, as 4.0's helpers take them."""
+        links = {start: _parent_links(own)}
+        frontier = [l.id for l in own]
+        while frontier:
+            pid = frontier.pop()
+            if pid in links:
+                continue
+            found = self.links_of(pid)
+            links[pid] = _parent_links(found)
+            frontier += [l.id for l in found]
+        return links
+
+    def ancestors(self, project_id: str) -> set[str]:
+        graph = self.graph(project_id, self.links_of(project_id))
+        return {pid for pid in graph if pid != project_id}
+
+    def convert(self, subject) -> Links:
+        """`subject`'s links: C3 (with Design 6.1's drop of a parent that
+        extends it as its listed child), then each `extends` entry by E1 to
+        E5, taxonomy first, each in the order written."""
+        from tcw.store.base import find_loop, passing
+        rel = ROOT_CONFIG if subject.three_x else SENTINEL
+        relations = plan_relations(rel, subject.raw)
+        out = Links(relations)
+        if relations.blockers:
+            return out
+        by_id = {r.id: r for r in relations.entries}
+        upstreams = {r.id for r in relations.entries if r.kind == "upstream"}
+        for link in list(relations.parents):
+            if by_id.get(link.id) is None or by_id[link.id].kind != "parent":
+                continue
+            parent = self.family.quiet(link.id)
+            if parent is not None and _extends_listed_child(parent, subject.id):
+                relations.parents.remove(link)
+                relations.reports.append(Report(
+                    "D6", rel, f"projects.parent.{link.id}: dropped; '{link.id}' extends "
+                               f"this project as its listed child, which TCW 4 writes as "
+                               f"this project being one of its parents"))
+        extends = extended_by(subject.raw)
+        for axis in EXTENDED_AXES:
+            for target in extends[axis]:
+                self._classify(subject, out, axis, target, upstreams, rel)
+        if not out.relations.blockers:
+            graph = self.graph(subject.id, relations.parents)
+            loop = find_loop(graph, [subject.id])
+            if loop is not None:
+                relations.blockers.append(Blocker(
+                    "B4", rel, f"extends: the parent links it converts to make a loop: "
+                               f"{' -> '.join(loop)}", "remove one of the extends entries "
+                                                       "that make the loop, then run "
+                                                       "'tcw migrate' again"))
+        named = {l.id for l in relations.parents} | set(relations.children)
+        for entry in relations.entries:
+            if entry.id in named and all(l.relation.id != entry.id for l in out.located):
+                out.located.append(Located(entry, subject.folder))
+        out.located = [l for l in out.located if l.relation.id in named]
+        return out
+
+    def _classify(self, subject, out: Links, axis: str, target: str, upstreams: set,
+                  rel: str) -> None:
+        from tcw.store.base import passing
+        relations = out.relations
+        key = f"{axis}.extends"
+        if target in upstreams:                                             # E2
+            return
+        if target in relations.children:                                    # E3
+            relations.children.remove(target)
+            self._add(relations, Link(target, (axis,)), axis)
+            relations.reports.append(Report(
+                "D6", rel, f"projects.children.{target}: dropped; {key} names it, so "
+                           f"'{target}' becomes a parent passing {axis} instead"))
+            return
+        graph = self.graph(subject.id, relations.parents)
+        if target in passing(axis, subject.id, graph):                      # E1
+            out.already.append(f"{key}: '{target}' is already inherited through "
+                               f"parents")
+            return
+        absent = sorted(self.absent & set(graph))
+        if absent:
+            for pid in absent:
+                self.family.member(pid, f"{key}: E1", rel)
+            relations.blockers += [b for b in self.family.blockers
+                                   if b not in relations.blockers]
+            return
+        member = self.family.member(target, f"{key}: E4", rel)
+        if member is None:
+            if not self.family.blockers or self.family.place(target) is None:
+                relations.blockers.append(Blocker(
+                    "B14", rel, f"{key}: names project '{target}', which no projects: "
+                                f"entry of the family names; TCW 3 refused it too",
+                    "remove the entry, or name the project under projects:, then run "
+                    "'tcw migrate' again"))
+            relations.blockers += [b for b in self.family.blockers
+                                   if b not in relations.blockers]
+            return
+        if subject.id in self.ancestors(target) and target not in relations.children:
+            relations.blockers.append(Blocker(                                # E5
+                "B4", rel, f"{key}: '{target}' is a descendant of this project and not "
+                           f"its listed child; TCW 4 has no link for a project extending "
+                           f"its descendant", "remove the entry, then run 'tcw migrate' "
+                                              "again"))
+            return
+        self._add(relations, Link(target, (axis,)), axis)                   # E4
+        placed = self.family.place(target)
+        if placed is not None:
+            out.located.append(Located(placed.relation, self.family.base_of(placed),
+                                       placed.folder if placed.here else None))
+
+    def _add(self, relations: Relations, link: Link, axis: str) -> None:
+        """A new parent appended, or `axis` added to the entry already made
+        for it; a new one that is an ancestor of an existing parent goes
+        before the first such parent, so that C3 keeps its order."""
+        for index, existing in enumerate(relations.parents):
+            if existing.id == link.id:
+                relations.parents[index] = existing.with_axis(axis)
+                return
+        at = len(relations.parents)
+        for index, existing in enumerate(relations.parents):
+            if link.id in self.ancestors(existing.id):
+                at = index
+                break
+        relations.parents.insert(at, link)
+
+
+def plan_links(root: Path, project_id: str, mapping: dict, family) -> Links:
+    """The active project's links (C3, C8), its D1 and D8 reports, and the
+    edits of its shared file: `projects:` and each `extends` removed,
+    `parents:` and `children:` set."""
+    from tcw.store.base import load_order_of, passing
+    from tcw.store.config_edit import Remove
+    converter = _Converter(family)
+    out = converter.convert(family.active)
+    relations = out.relations
+    rel = ROOT_CONFIG if family.active.three_x else SENTINEL
+    if relations.blockers:
+        return out
+    graph = converter.graph(project_id, relations.parents)
+    order = load_order_of(project_id, graph, missing=frozenset(converter.absent))
+    if order.warning:
+        relations.reports.append(Report("D8", rel, order.warning))
+    relations.reports += _d1(rel, project_id, mapping, graph, family, converter)
+    relations.reports += still_3x_reports(family, order.ids)
+    out.extends_edits = [Remove(axis, "extends") for axis in EXTENDED_AXES
+                         if isinstance(mapping.get(axis), dict)
+                         and "extends" in mapping[axis]]
+    return out
+
+
+def _d1(rel: str, project_id: str, mapping: dict, graph: dict, family,
+        converter) -> list[Report]:
+    """D1: the projects and axes newly inherited, and each key of
+    `INHERITED_KEYS` a parent passing configuration sets and this project
+    does not."""
+    from tcw.config import INHERITED_KEYS
+    from tcw.store.base import passing
+    out = []
+    extends = extended_by(mapping)
+    for axis in EXTENDED_AXES:
+        new = sorted(passing(axis, project_id, graph) - {project_id} - set(extends[axis]))
+        if new:
+            out.append(Report("D1", rel, f"parents: now inherits {axis} from "
+                                         f"{', '.join(repr(n) for n in new)}, which "
+                                         f"TCW 3 did not pass to this project"))
+    work = mapping.get("work") if isinstance(mapping.get("work"), dict) else {}
+    for pid in sorted(passing("config", project_id, graph) - {project_id}):
+        member = family.quiet(pid)
+        their = member.raw.get("work") if member is not None else None
+        if not isinstance(their, dict):
+            continue
+        for dotted_key in INHERITED_KEYS:
+            key = dotted_key.split(".", 1)[1]
+            if key not in their:
+                continue
+            if key not in work or not isinstance(their[key], dict):
+                paths = [] if key in work else [()]
+            else:
+                # `work.jira` is merged key by key (S109 Design 3.1-3.3).
+                mine = work[key] if isinstance(work[key], dict) else {}
+                paths = [path for path, value in _leaves(their[key])
+                         if not isinstance(value, dict) and not any(
+                             isinstance(p, int) for p in path)
+                         and _at(mine, path) is _MISSING]
+            for path in paths:
+                shown = ".".join(("work", key, *map(str, path)))
+                out.append(Report("D1", rel, f"{shown}: set by parent '{pid}' and not "
+                                             f"by this project, which now inherits it"))
+    return out
+
+
+_MISSING = object()
+
+
+def _at(mapping: Any, path: tuple) -> Any:
+    for part in path:
+        if not isinstance(mapping, dict) or part not in mapping:
+            return _MISSING
+        mapping = mapping[part]
+    return mapping
+
+
+def still_3x_reports(family, order: tuple[str, ...] = ()) -> list[Report]:
+    """A8 (Design 2.10, 6.2): each related project found on this machine that
+    is still in 3.x form, with the command that migrates it, parents first:
+    the active project's ancestors in load order, then the rest in the order
+    they were found. Each predicts 4.0's finding that the folder is a 3.x
+    project."""
+    from tcw.migrate.legacy import ROOT_CONFIG as THREE_X
+    seen: dict[str, Path] = {}
+    for pid in (*order, *family.placed, *family.read):
+        if pid == family.active.id or pid in seen:
+            continue
+        placed = family.placed.get(pid)
+        member = family.read.get(pid)
+        folder = member.folder if member is not None else (
+            placed.folder if placed is not None and placed.here else None)
+        if folder is not None and (Path(folder) / THREE_X).is_file():
+            seen[pid] = Path(folder)
+    return [Report("A8", str(folder), f"'{pid}' is still a TCW 3.x project; migrate it "
+                                      f"with 'tcw -C {folder} migrate'",
+                   predicts=(str(folder), "legacy"))
+            for pid, folder in seen.items()]

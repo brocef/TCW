@@ -292,8 +292,6 @@ def test_a13_names_each_binding_and_leaves_its_bytes(tcw, tmp_path):
 # ── part 2's forms, refused for now (Decided 17) ─────────────────────────────
 
 @pytest.mark.parametrize("text, form", [
-    ("id: app\ntaxonomy:\n  extends: [core]\n", "taxonomy.extends"),
-    ("id: app\ncapabilities:\n  extends: [core]\n", "capabilities.extends"),
     ("id: app\nwork:\n  path: ../elsewhere/work\n", "a work store outside the project"),
     ("id: app\ntaxonomy:\n  repository:\n    url: https://example.invalid/t.git\n",
      "a taxonomy store with only a repository"),
