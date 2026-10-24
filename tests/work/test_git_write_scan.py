@@ -10,12 +10,14 @@ and the first string literal left is the verb. When the verb arrives through
 moved Jira client is not scanned: its text says "add" and "comment" about
 HTTP calls.
 
-Allowances name the method the literal sits in, as `Class.method`, never a
-file or a whole class:
+Allowances name the method the literal sits in, as `Class.method`, or the
+module-level function, as `function`, never a file or a whole class:
 
 - `FsStoreProvisioner._obtain`, for `tcw project provision`: `clone`, and `checkout`
   of the declared ref in the fresh clone. Since TCW-73 it never fetches into
   or merges an existing checkout (its Design 8.4: `--refresh` is gone).
+- `fetch_project`, for `tcw project provision`'s projects: `clone` into a
+  fresh staging folder, and nothing else (TCW-115 Design 7.9).
 
 Nothing else: since TCW-73 the taxonomy and capabilities stores write files
 and stage nothing, and the scan covers their CLI modules too.
@@ -45,6 +47,7 @@ WRITERS = {"add", "commit", "mv", "rm", "reset", "checkout", "merge", "push",
            "update-ref", "update-index", "init", "branch"}
 ALLOWED = {
     "FsStoreProvisioner._obtain": {"clone", "checkout"},
+    "fetch_project": {"clone"},
 }
 # git's options that take their value as the next element.
 WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace"}
@@ -94,15 +97,19 @@ def _owners(node, parents):
 
 def _methods(node, parents):
     """`Class.method` for each function enclosing `node` whose own enclosing
-    scope is a class: what an allowance is keyed on."""
+    scope is a class, and `function` for an enclosing function at the
+    module's top: what an allowance is keyed on."""
     scopes = []
     while node in parents:
         node = parents[node]
         if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             scopes.append(node)
-    return {f"{outer.name}.{inner.name}" for inner, outer in zip(scopes, scopes[1:])
-            if isinstance(outer, ast.ClassDef)
-            and isinstance(inner, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    found = {f"{outer.name}.{inner.name}" for inner, outer in zip(scopes, scopes[1:])
+             if isinstance(outer, ast.ClassDef)
+             and isinstance(inner, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    if scopes and isinstance(scopes[-1], (ast.FunctionDef, ast.AsyncFunctionDef)):
+        found.add(scopes[-1].name)
+    return found
 
 
 def _git_literals(tree):
@@ -219,13 +226,13 @@ def test_the_allowance_covers_only_the_one_method():
 
 
 def test_the_real_allowance_is_where_the_clone_is():
-    """`_obtain` is still the method that clones, so the allowance names a
-    method that exists."""
+    """`_obtain` and `fetch_project` are still what clones, so each allowance
+    names a function that exists."""
     tree = ast.parse((PACKAGE / "store" / "fs.py").read_text(encoding="utf-8"))
     parents = _parents(tree)
     clones = [_methods(node, parents) for node in _git_literals(tree)
               if _verb(node.elts[1:]) == "clone"]
-    assert clones == [{"FsStoreProvisioner._obtain"}]
+    assert sorted(map(sorted, clones)) == [["FsStoreProvisioner._obtain"], ["fetch_project"]]
 
 
 def test_status_without_optional_locks_is_reported():

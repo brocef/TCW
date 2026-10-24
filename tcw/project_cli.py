@@ -111,7 +111,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
         "(its load order), and no store")
     p_provision.add_argument(
         "--component", action="append", choices=list(PROVISION_COMPONENTS),
-        help="only this axis's store; repeat for more (default: every declared one)")
+        help="only this axis's store, and no project; repeat for more "
+             "(default: every declared one)")
     p_provision.add_argument("--dry-run", action="store_true",
                              help="print the plan; contact nothing")
     p_provision.set_defaults(own_config=True, func=_cmd_provision)

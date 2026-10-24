@@ -69,7 +69,8 @@ def test_a_project_not_on_this_machine(side_by_side, repository):
     entry = {"path": "../core", **({"repository": repository} if repository else {})}
     write_manifest(app, {"core": entry})
     message = str(refusal(CORE_X, app))
-    tail = f" ({repository})" if repository else ""
+    tail = (f" ({repository}); fetch it with tcw project provision core" if repository
+            else "")
     assert message == ("core.capabilities/cli/x belongs to project 'core'; project "
                        f"'core' is not on this machine{tail}")
     assert "tcw -C" not in message

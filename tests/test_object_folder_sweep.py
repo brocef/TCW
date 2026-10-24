@@ -67,6 +67,10 @@ ALLOWED = {
         "the files a removal deletes, to name each one",
     ("tcw/store/fs.py", "_resource_files"):
         "one object's resources/ folder: its attachments",
+    ("tcw/store/fs.py", "_empty_or_absent"):
+        "whether a project's clone destination is empty, just before the move",
+    ("tcw/provision.py", "_folder_state"):
+        "whether the folder a project would be cloned into is empty",
     ("evals/coverage.py", "shipped_skills"):
         "the plugin's skill folders",
     ("evals/grade.py", "rounds"):
