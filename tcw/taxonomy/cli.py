@@ -15,9 +15,11 @@ from tcw import exit as codes
 from tcw.cli_help import command, group
 from tcw.errors import BackendError, InheritedUnavailable, UsageError
 from tcw.ids import identity, inherited_keys, parent_text
-from tcw.locate import find_tree, find_tree_writable
-from tcw.output import changed, left_out, own_only, print_json, say
+from tcw.locate import find_tree_writable
+from tcw.output import changed, own_only, print_json, say
 from tcw.scope import scope_options
+from tcw.tree_scope import (LEFT_OUT, active_store, covered_for, print_rows, scope_keys,
+                            show_lines, show_row)
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import NotASlug, Term
 from tcw.store.fs import FsTaxonomyStore, find_component_project
@@ -59,88 +61,35 @@ def _ordered(terms: list[Term], project_id: str) -> list[Term]:
                                         tuple(t.full_id.parts)))
 
 
-def _print_terms(terms: list[Term], as_json: bool) -> int:
-    if as_json:
-        print_json("terms", [_record(t) for t in terms])
-    else:
-        for t in terms:
-            print(t.full_id)
-    return codes.OK
-
-
-def _warn_view(st: FsTaxonomyStore, terms: list[Term]) -> None:
-    """Design 2.5's warning for each id-path listed, on standard error,
-    before the list (TCW-112 Design 3.2)."""
-    for warning in st.view_warnings({t.slug for t in terms}):
-        say(f"warning: {warning}")
-
-
 def _covered(args: argparse.Namespace):
-    from tcw.tree_scope import covered_for
     return covered_for(args, NAME, _missing)
 
 
 def _list(args: argparse.Namespace) -> int:
     covered = _covered(args)
-    if covered is not None:
-        from tcw.tree_scope import print_rows
-        return print_rows(covered, NAME, "terms", _record, args.json,
-                          reorder=lambda terms: _ordered(terms, covered.active))
-    st = _store()
-    try:
-        terms = st.list_all(local_only=args.local)
-        _warn_view(st, terms)
-    except InheritedUnavailable as error:
-        # The project's own terms are listed without the view, each its own
-        # declaration alone (TCW-112 Design 3.4).
-        if not args.local:
-            raise
-        own_only(error, st.project_id)
-        terms = st.own_declarations()
-    _print_terms(_ordered(terms, st.project_id), args.json)
-    return left_out(st.unreadable_files())
+    return print_rows(covered, NAME, "terms", _record, args.json,
+                      reorder=lambda terms: _ordered(terms, covered.active))
 
 
 def _search(args: argparse.Namespace) -> int:
-    covered = _covered(args)
-    if covered is not None:
-        from tcw.tree_scope import print_rows
-        return print_rows(covered, NAME, "terms", _record, args.json, query=args.query)
-    st = _store()
-    terms = list(st.search(args.query))
-    _warn_view(st, terms)
-    _print_terms(terms, args.json)
-    return left_out(st.unreadable_files())
+    return print_rows(_covered(args), NAME, "terms", _record, args.json, query=args.query)
 
 
 def _show(args: argparse.Namespace) -> int:
     covered = _covered(args)
-    if covered is None:
-        st = _store()
-        term = find_tree(st, args.path)
-        row = None
-    else:
-        from tcw.tree_scope import LEFT_OUT, active_store, show_row
-        st = active_store(covered, NAME)
-        row = show_row(covered, NAME, args.path)
-        term = row.obj
-        covered.warn(LEFT_OUT[NAME][1], say)
+    st = active_store(covered, NAME)
+    row = show_row(covered, NAME, args.path)
+    term = row.obj
+    covered.warn(LEFT_OUT[NAME][1], say)
     if term.partial and st.view_error is not None:
         own_only(st.view_error, st.project_id)
     detail = _detail(term)
     if args.json:
-        if row is None:
-            print_json("term", detail)
-        else:
-            from tcw.tree_scope import scope_keys
-            projects = covered.projects_json()
-            print_json(None, {"term": {**detail, **scope_keys(row)},
-                              **({} if projects is None else {"projects": projects})})
+        projects = covered.projects_json()
+        print_json(None, {"term": {**detail, **scope_keys(row)},
+                          **({} if projects is None else {"projects": projects})})
         return codes.OK
-    overridden = []
-    if row is not None:
-        from tcw.tree_scope import show_lines
-        overridden, _ = show_lines(covered, row)
+    overridden, _ = show_lines(covered, row)
     lines = [f"full-id: {term.full_id}", f"owner: {term.owner}",
              *([f"parent: {term.parent}"] if term.parent is not None else []),
              *([f"overrides: {term.overrides}"] if term.overrides is not None else []),
@@ -207,7 +156,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                  examples=["taxonomy list", "taxonomy list --local --json",
                            "taxonomy list --scope down"])
     pl.add_argument("--local", action="store_true", help="local entries only")
-    scope_options(pl, default=None)
+    scope_options(pl)
     pl.add_argument("--json", action="store_true",
                     help='print {"schema": 2, "terms": [...]}, and "projects" when the '
                          'scope is not own')
@@ -238,7 +187,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ps.add_argument("path",
                     help="the entry: its full identifier (<project>.taxonomy/<path>), "
                          "or its path in this project, e.g. event/log-batch")
-    scope_options(ps, default=None)
+    scope_options(ps)
     ps.add_argument("--json", action="store_true",
                     help='print {"schema": 2, "term": {...}}, and "projects" when the '
                          'scope is not own')
@@ -264,7 +213,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                   examples=["taxonomy search refund", "taxonomy search refund --json",
                             "taxonomy search refund --scope down"])
     pse.add_argument("query", help="text matched case-insensitively in names + descriptions")
-    scope_options(pse, default=None)
+    scope_options(pse)
     pse.add_argument("--json", action="store_true",
                      help='print {"schema": 2, "terms": [...]}, and "projects" when the '
                           'scope is not own')

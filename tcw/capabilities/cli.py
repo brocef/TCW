@@ -16,9 +16,11 @@ from tcw import exit as codes
 from tcw.cli_help import command, group
 from tcw.errors import BackendError, InheritedUnavailable, UsageError
 from tcw.ids import identity, inherited_keys, parent_text
-from tcw.locate import find_tree, find_tree_writable
-from tcw.output import changed, left_out, own_only, print_json, say
+from tcw.locate import find_tree_writable
+from tcw.output import changed, own_only, print_json, say
 from tcw.scope import scope_options
+from tcw.tree_scope import (LEFT_OUT, active_store, covered_for, print_rows, scope_keys,
+                            show_lines, show_row)
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import CAP_STATUSES, Capability
 from tcw.store.fs import FsCapabilitiesStore, find_component_project
@@ -57,91 +59,34 @@ def _fmt(v) -> str:
     return ", ".join(v) if isinstance(v, list) else str(v)
 
 
-def _print_caps(caps: list[Capability], as_json: bool) -> int:
-    if as_json:
-        print_json("capabilities", [_record(c) for c in caps])
-    else:
-        for c in caps:
-            print(c.full_id)
-    return codes.OK
-
-
-def _warn_view(st: FsCapabilitiesStore, caps: list[Capability]) -> None:
-    """Design 2.5's warning for each id-path listed, on standard error,
-    before the list (TCW-112 Design 3.2)."""
-    for warning in st.view_warnings({c.path for c in caps}):
-        say(f"warning: {warning}")
-
-
 def _covered(args: argparse.Namespace):
-    from tcw.tree_scope import covered_for
     return covered_for(args, NAME, _missing)
 
 
 def _list(args: argparse.Namespace) -> int:
-    covered = _covered(args)
-    if covered is not None:
-        from tcw.tree_scope import print_rows
-        return print_rows(covered, NAME, "capabilities", _record, args.json,
-                          status=args.status, namespace=args.namespace)
-    st = _store()
-    try:
-        caps = st.list_all(status=args.status, namespace=args.namespace,
-                           local_only=args.local)
-        _warn_view(st, caps)
-    except InheritedUnavailable as error:
-        # The project's own capabilities are listed without the view, each
-        # its own declaration alone (TCW-112 Design 3.4).
-        if not args.local:
-            raise
-        own_only(error, st.project_id)
-        caps = [c for c in st.own_declarations()
-                if (not args.status or c.status == args.status)
-                and (not args.namespace or c.path.split("/")[0] == args.namespace)]
-    _print_caps(caps, args.json)
-    return left_out(st.unreadable_files())
+    return print_rows(_covered(args), NAME, "capabilities", _record, args.json,
+                      status=args.status, namespace=args.namespace)
 
 
 def _search(args: argparse.Namespace) -> int:
-    covered = _covered(args)
-    if covered is not None:
-        from tcw.tree_scope import print_rows
-        return print_rows(covered, NAME, "capabilities", _record, args.json,
-                          query=args.query)
-    st = _store()
-    caps = st.search(args.query)
-    _warn_view(st, caps)
-    _print_caps(caps, args.json)
-    return left_out(st.unreadable_files())
+    return print_rows(_covered(args), NAME, "capabilities", _record, args.json,
+                      query=args.query)
 
 
 def _show(args: argparse.Namespace) -> int:
     covered = _covered(args)
-    if covered is None:
-        st = _store()
-        cap = find_tree(st, args.id)
-        row = None
-    else:
-        from tcw.tree_scope import LEFT_OUT, active_store, show_row
-        st = active_store(covered, NAME)
-        row = show_row(covered, NAME, args.id)
-        cap = row.obj
-        covered.warn(LEFT_OUT[NAME][1], say)
+    st = active_store(covered, NAME)
+    row = show_row(covered, NAME, args.id)
+    cap = row.obj
+    covered.warn(LEFT_OUT[NAME][1], say)
     if cap.partial and st.view_error is not None:
         own_only(st.view_error, st.project_id)
     if args.json:
-        if row is None:
-            print_json("capability", _detail(cap))
-        else:
-            from tcw.tree_scope import scope_keys
-            projects = covered.projects_json()
-            print_json(None, {"capability": {**_detail(cap), **scope_keys(row)},
-                              **({} if projects is None else {"projects": projects})})
+        projects = covered.projects_json()
+        print_json(None, {"capability": {**_detail(cap), **scope_keys(row)},
+                          **({} if projects is None else {"projects": projects})})
         return codes.OK
-    overridden, block = [], []
-    if row is not None:
-        from tcw.tree_scope import show_lines
-        overridden, block = show_lines(covered, row)
+    overridden, block = show_lines(covered, row)
     lines = [f"full-id: {cap.full_id}", f"owner: {cap.owner}",
              *([f"parent: {cap.parent}"] if cap.parent is not None else []),
              *([f"overrides: {cap.overrides}"] if cap.overrides is not None else []),
@@ -325,7 +270,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pl.add_argument("--namespace", help="only capabilities under this namespace folder")
     pl.add_argument("--local", action="store_true",
                     help="local capabilities only, none inherited")
-    scope_options(pl, default=None)
+    scope_options(pl)
     pl.add_argument("--json", action="store_true",
                     help='print {"schema": 2, "capabilities": [...]}, and "projects" '
                          'when the scope is not own')
@@ -340,7 +285,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                     help="the capability: its full identifier "
                          "(<project>.capabilities/<path>), or its path in this "
                          "project, e.g. web/login")
-    scope_options(ps, default=None)
+    scope_options(ps)
     ps.add_argument("--json", action="store_true",
                     help='print {"schema": 2, "capability": {...}}, and "projects" when '
                          'the scope is not own')
@@ -411,7 +356,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                   examples=["capabilities search refund",
                             "capabilities search refund --scope up"])
     pse.add_argument("query", help="text matched case-insensitively in names + bodies")
-    scope_options(pse, default=None)
+    scope_options(pse)
     pse.add_argument("--json", action="store_true",
                      help='print {"schema": 2, "capabilities": [...]}, and "projects" '
                           'when the scope is not own')

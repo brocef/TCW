@@ -416,3 +416,95 @@ def test_up_and_own_keep_each_commands_order_today(family):
     up = family.run("desktop", "taxonomy", "list", "--scope", "up")
     assert up.lines == ["desktop.taxonomy/zebra", "shared.taxonomy/invoice"]
     assert up.lines == family.run("desktop", "taxonomy", "list", "--scope", "up").lines
+
+
+# -- `own` is the default (plan Step 11) ------------------------------------------------
+
+
+def test_ac2_own_is_the_default_on_the_trees(family):
+    ran = family.run("desktop", "capabilities", "list")
+    assert ran.lines == ["desktop.capabilities/abc", DEF]
+    assert ran.lines == family.run("desktop", "capabilities", "list", "--scope", "own").lines
+    assert family.run("desktop", "taxonomy", "list").out == ""
+    for axis, key in (("capabilities", "capabilities"), ("taxonomy", "terms")):
+        document = family.run("desktop", axis, "list", "--json").json
+        assert "projects" not in document and key in document
+
+
+def test_ac14_show_with_no_scope_prints_neither(family):
+    ran = family.run("shared", "capabilities", "show", "abc")
+    assert ran.code == 0, ran.err
+    assert "status by project:" not in ran.lines
+    assert not [line for line in ran.lines if line.startswith("overridden by:")]
+
+
+def test_ac16_status_with_no_scope_lists_only_the_projects_own(family):
+    assert family.run("shared", "capabilities", "list", "--status", "Supported").out == ""
+
+
+def test_ac17_show_by_id_path_follows_the_default_scope(family):
+    hint = family.run("desktop", "capabilities", "show", "ghi")
+    assert hint.code == 4
+    assert "--scope up" in hint.err and GHI in hint.err
+    up = family.run("desktop", "capabilities", "show", "ghi", "--scope", "up", "--json")
+    assert up.json["capability"]["full-id"] == GHI
+    family.remove("shared")
+    assert family.run("desktop", "capabilities", "show", "ghi").code == 4
+
+
+def test_ac21_own_keeps_working_without_the_view(family):
+    family.remove("shared")
+    ran = family.run("desktop", "capabilities", "list", "--json")
+    assert ran.code == 0, ran.err
+    assert ran.json["capabilities"]
+    assert all(r["partial"] is True for r in ran.json["capabilities"])
+
+
+def test_ac31_search_with_no_scope_finds_only_the_projects_own(family):
+    family.capability("shared", "ghi", description="Ledger text", name="Ghi",
+                      Status="Missing")
+    assert family.run("desktop", "capabilities", "search", "Ledger text").out == ""
+
+
+EIGHT = (["taxonomy", "list"], ["taxonomy", "show", "word"], ["taxonomy", "search", "wo"],
+         ["capabilities", "list"], ["capabilities", "show", "cap"],
+         ["capabilities", "search", "ca"], ["work", "list"],
+         ["work", "show", "2026-10-01-solo-item"])
+
+
+def test_ac7_a_single_project_opens_no_other(tmp_path, monkeypatch):
+    import subprocess
+
+    from tcw.store.fs import FsTreeStore, init
+    from tcw.store.project import FsProjectRegistry
+    from tests.families import Family
+    solo = tmp_path / "solo"
+    solo.mkdir()
+    subprocess.run(["git", "init", "-q", str(solo)], check=True)
+    init(["taxonomy", "capabilities", "work"], solo, "solo")
+    family = Family(tmp_path, {"solo": solo})
+    family.capability("solo", "cap", description="", name="Cap", Status="Missing")
+    family.term("solo", "word", description="", name="Word", kind="vocabulary")
+    family.item("solo", "2026-10-01-solo-item")
+    asked, opened = [], []
+    real_folder = FsProjectRegistry.project_folder
+    monkeypatch.setattr(FsProjectRegistry, "project_folder",
+                        lambda self, pid, named_by: asked.append(pid)
+                        or real_folder(self, pid, named_by))
+    real_init = FsTreeStore.__init__
+
+    def init_(self, root, *a, **kw):
+        real_init(self, root, *a, **kw)
+        opened.append(self.project_id)
+    monkeypatch.setattr(FsTreeStore, "__init__", init_)
+    for argv in EIGHT:
+        own = family.run("solo", *argv, "--scope", "own")
+        assert own.code == 0, (argv, own.err)
+        assert family.run("solo", *argv).out == own.out
+        for scope in ("up", "down", "all"):
+            ran = family.run("solo", *argv, "--scope", scope)
+            assert ran.code == 0 and ran.out == own.out, (argv, scope, ran.err)
+            if "--json" not in argv:
+                assert ran.err == own.err, (argv, scope)
+    assert set(asked) <= {"solo"}
+    assert set(opened) == {"solo"}

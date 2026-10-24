@@ -51,6 +51,18 @@ class TreeRead:
     view_built: bool = True
 
 
+def rows_scope(covered: Covered) -> str:
+    """The scope whose rows a listing gives: `own` for a project with no
+    family (no parents and no children), whose every scope prints what `own`
+    prints (Design 1.9), else the scope itself. A project with parents keeps
+    `down` even when it has no children: `down` still needs its view
+    (Design 4.9)."""
+    if covered.scope == "own" or covered.ids != [covered.active]:
+        return covered.scope
+    alone = covered.scope == "all" or covered.registry.scope_members("all") == covered.members
+    return "own" if alone else covered.scope
+
+
 def body_of(obj) -> str:
     """The text `search` matches besides the name: a term's description, a
     capability's body."""
@@ -114,7 +126,7 @@ def list_rows(covered: Covered, axis: str, *, status: str | None = None,
     say = say or default_say
     store = active_store(covered, axis)
     view_built = True
-    if covered.only is not None or covered.scope == "own":
+    if covered.only is not None or rows_scope(covered) == "own":
         only = covered.only or covered.active
         if only == covered.active:
             objs, view_built = _p_own(store, say)
@@ -125,7 +137,7 @@ def list_rows(covered: Covered, axis: str, *, status: str | None = None,
             objs = [] if got is UNAVAILABLE else got
         rows = [TreeRow(o) for o in objs
                 if _keep(o, status=status, namespace=namespace, query=query)]
-    elif covered.scope == "up":
+    elif rows_scope(covered) == "up":
         rows = [TreeRow(o) for o in store.list_all()
                 if _keep(o, status=status, namespace=namespace, query=query)]
     else:
@@ -140,7 +152,7 @@ def list_rows(covered: Covered, axis: str, *, status: str | None = None,
                                                           query):
                     continue
                 rows.append(row)
-    if covered.only is None and covered.scope in ("down", "all"):
+    if covered.only is None and rows_scope(covered) in ("down", "all"):
         rows = row_order(rows, covered.ids, shown=lambda r: r.obj.full_id)
     return TreeRead(rows, store, view_built)
 
@@ -242,7 +254,7 @@ def show_row(covered: Covered, axis: str, text: str) -> TreeRow:
         return TreeRow(find_tree(store, text))
     if named is not None:
         obj = find_tree(store, text)
-        if covered.scope in ("down", "all"):
+        if rows_scope(covered) in ("down", "all"):
             for row in _grouped(covered, axis, store).get(named.id_path, []):
                 if obj.full_id in row.scope_ids:
                     return TreeRow(obj, row.statuses,
@@ -250,12 +262,12 @@ def show_row(covered: Covered, axis: str, text: str) -> TreeRow:
                                    row.scope_ids)
         return TreeRow(obj)
     x = found.id_path
-    if covered.scope == "own":
+    if rows_scope(covered) == "own":
         if store.has_own(x):
             return TreeRow(find_tree(store, text))
         raise NotFound(_no_such(axis, text) + _hints(store, axis, x)
                        + _inherits_hint(store, x))
-    if covered.scope == "up":
+    if rows_scope(covered) == "up":
         store.list_all()        # `P`'s view, which `up` needs (Design 4.9)
         return TreeRow(find_tree(store, text))
     rows = _grouped(covered, axis, store).get(x, [])
@@ -301,13 +313,9 @@ LEFT_OUT = {
 }
 
 
-def covered_for(args, axis: str, missing: Callable[[], Exception]) -> Covered | None:
-    """The projects a tree command covers, or None for what the command did
-    before TCW-113 (no `--scope` and no `--project`: plan choice 12's interim
-    default). A `--project` with no `--scope` is under `own`. `missing()` is
-    the error for a folder with no `axis` store, as the command gives it."""
-    if args.scope is None and args.project is None:
-        return None
+def covered_for(args, axis: str, missing: Callable[[], Exception]) -> Covered:
+    """The projects a tree command covers. `missing()` is the error for a
+    folder with no `axis` store, as the command gives it."""
     from tcw.scope import cover
     from tcw.store.fs import find_component_project, find_project_root
     from tcw.store.project import FsProjectRegistry
@@ -315,7 +323,7 @@ def covered_for(args, axis: str, missing: Callable[[], Exception]) -> Covered | 
     if root is None:
         raise missing()
     FsProjectRegistry.open(root).require_valid()
-    covered = cover(root, args.scope or "own", args.project)
+    covered = cover(root, args.scope, args.project)
     # Whether the project has the store, asked of the store the command's
     # `Locator` keeps, so it is opened once.
     if find_component_project(axis, opener=lambda nr: active_store(covered, axis)) is None:
@@ -344,7 +352,7 @@ def print_rows(covered: Covered, axis: str, key: str, record: Callable[[Any], di
     from tcw.output import left_out, print_json, say
     read = list_rows(covered, axis, **filters)
     if reorder is not None and (covered.only is not None
-                                or covered.scope not in ("down", "all")):
+                                or rows_scope(covered) not in ("down", "all")):
         read.rows = [TreeRow(o) for o in reorder([r.obj for r in read.rows])]
     covered.warn(LEFT_OUT[axis][0], say)
     if read.view_built:

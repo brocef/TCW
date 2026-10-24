@@ -181,8 +181,8 @@ PROJECT_HELP = ("keep only this project's own objects; it must be one the scope 
                 "covers")
 
 
-def scope_options(parser, *, default: str | None = "own") -> None:
+def scope_options(parser) -> None:
     """`--scope` and `--project` on one of the eight list and show commands
     (Design 1.1)."""
-    parser.add_argument("--scope", choices=SCOPES, default=default, help=SCOPE_HELP)
+    parser.add_argument("--scope", choices=SCOPES, default="own", help=SCOPE_HELP)
     parser.add_argument("--project", metavar="ID", help=PROJECT_HELP)
