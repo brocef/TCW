@@ -177,13 +177,13 @@ Every entry of a `prompt`, `pre`, `post` or procedure list is a **binding**: a
 mapping that names exactly one kind, plus an optional `when:`. A bare string
 is refused, never guessed at.
 
-| Kind | Its value | `prompt` and procedures | `pre` | `post` |
-| --- | --- | --- | --- | --- |
-| `blob` | text, used as written; an empty `blob` says nothing | yes | no | no |
-| `file` | a path to a text file, read from the folder of the file that declares it, and never outside that folder | yes | no | no |
-| `generate` | a shell command whose output is the text | yes | no | no |
-| `skill` | a skill name (`plugin:skill` is allowed); prints "Invoke the … skill." | yes | no | yes: reported, never run |
-| `command` | a shell command | no: use `generate` | yes | yes |
+| Kind       | Its value                                                                                               | `prompt` and procedures | `pre` | `post`                   |
+| ---------- | ------------------------------------------------------------------------------------------------------- | ----------------------- | ----- | ------------------------ |
+| `blob`     | text, used as written; an empty `blob` says nothing                                                     | yes                     | no    | no                       |
+| `file`     | a path to a text file, read from the folder of the file that declares it, and never outside that folder | yes                     | no    | no                       |
+| `generate` | a shell command whose output is the text                                                                | yes                     | no    | no                       |
+| `skill`    | a skill name (`plugin:skill` is allowed); prints "Invoke the … skill."                                  | yes                     | no    | yes: reported, never run |
+| `command`  | a shell command                                                                                         | no: use `generate`      | yes   | yes                      |
 
 A `skill` is refused in a `pre` list: TCW cannot run a skill, so a check that
 is only reported would always pass. A `skill:` value is checked for its shape
@@ -246,16 +246,16 @@ Each hook runs through the shell, from the project's root folder, with no
 input, and anything it prints goes to TCW's standard error. It gets these
 environment variables:
 
-| Variable | Value |
-| --- | --- |
-| `TCW_SLUG` | the item's full slug, `project/folder` |
-| `TCW_STAGE` | the stage the item is moving into |
-| `TCW_FROM_STAGE` | the stage it is moving from (empty when it had none) |
-| `TCW_ITEM_PATH` | the item's folder |
-| `TCW_PROJECT_ROOT` | the project's root folder |
-| `TCW_CONFIG_DIR` | the folder of the file that declared the hook, so a personal hook can reach its own script |
-| `TCW_FORCED` | `1`, on a forced move only |
-| `TCW_REASON` | the `--reason` text, on a forced move only |
+| Variable           | Value                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------ |
+| `TCW_SLUG`         | the item's full slug, `project/folder`                                                     |
+| `TCW_STAGE`        | the stage the item is moving into                                                          |
+| `TCW_FROM_STAGE`   | the stage it is moving from (empty when it had none)                                       |
+| `TCW_ITEM_PATH`    | the item's folder                                                                          |
+| `TCW_PROJECT_ROOT` | the project's root folder                                                                  |
+| `TCW_CONFIG_DIR`   | the folder of the file that declared the hook, so a personal hook can reach its own script |
+| `TCW_FORCED`       | `1`, on a forced move only                                                                 |
+| `TCW_REASON`       | the `--reason` text, on a forced move only                                                 |
 
 A hook that runs longer than `work.hooks.timeout` is stopped and counts as
 failed.
@@ -275,16 +275,31 @@ becomes the text. It gets:
   `TCW_HOOK_ID` (the stage or procedure name) and `TCW_HOOK_PHASE` (`prompt`).
 - On standard input, one JSON object:
 
-  ```json
-  {"schema": 1, "item": {"slug": "my-app/2026-10-01-add-login", "title": "Add login", "...": "..."}, "request": "the item's request text", "hook": {"role": "prompt", "kind": "generate", "id": "spec", "phase": "prompt", "body_truncated": false}}
-  ```
+    ```json
+    {
+        "schema": 1,
+        "item": {
+            "slug": "my-app/2026-10-01-add-login",
+            "title": "Add login",
+            "...": "..."
+        },
+        "request": "the item's request text",
+        "hook": {
+            "role": "prompt",
+            "kind": "generate",
+            "id": "spec",
+            "phase": "prompt",
+            "body_truncated": false
+        }
+    }
+    ```
 
-  `item` is the item's properties (`slug`, `title`, `stage`, `created`,
-  `priority`, `effort`, `complexity`, `tags`, `assignee`, `parent`,
-  `blocked-by`, `blocks`, `children`, `path`, `untracked`), or `null` with no
-  item.
-  `request` is the item's request, cut to 64 KiB, in which case
-  `body_truncated` is `true`, or `null`.
+    `item` is the item's properties (`slug`, `title`, `stage`, `created`,
+    `priority`, `effort`, `complexity`, `tags`, `assignee`, `parent`,
+    `blocked-by`, `blocks`, `children`, `path`, `untracked`), or `null` with no
+    item.
+    `request` is the item's request, cut to 64 KiB, in which case
+    `body_truncated` is `true`, or `null`.
 
 A script that runs longer than `work.hooks.timeout`, or prints more than
 `work.hooks.output-cap` bytes, is stopped, and nothing it printed is used. A

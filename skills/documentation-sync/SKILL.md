@@ -4,6 +4,7 @@ description: Use when completing a coding task and deciding whether documentatio
 allowed-tools: Bash(tcw *)
 dynamic_skill: true # which skills a project may override, and why: ../README.md
 ---
+
 **Version check.** Under Claude Code, skip this: the session-start hook already ran it. Under any other harness, once per session before your first `tcw` command, run `bash "<plugin>/scripts/check_versions.sh"`, where `<plugin>` is two folders above the folder holding this `SKILL.md`, and pass on anything it prints to the user.
 
 # Documentation Sync
@@ -19,10 +20,10 @@ Outside a TCW project `tcw work docs` does not apply; use the legacy convention 
 
 This is a cross-cutting process skill: it does not drive a `tcw` axis, it governs when docs must move with code. In a TCW project the stage prompts invoke it at two points:
 
-| Lifecycle point        | What this skill does                                                                                                                                                                                       | Reference                                                     |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| **`plan`**             | Predict which triggers will fire and name a doc task for each — scheduled as one block at the _end_ of the plan.                                                                                           | `tcw work stage prompt plan`                                  |
-| **End of `implement`** | The documentation gate. Once every plan task is done and the suite is green, make **one** pass over the finished change and answer every fired trigger, before writing the implement round.                | `tcw work stage prompt implement`                             |
+| Lifecycle point        | What this skill does                                                                                                                                                                        | Reference                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| **`plan`**             | Predict which triggers will fire and name a doc task for each — scheduled as one block at the _end_ of the plan.                                                                            | `tcw work stage prompt plan`      |
+| **End of `implement`** | The documentation gate. Once every plan task is done and the suite is green, make **one** pass over the finished change and answer every fired trigger, before writing the implement round. | `tcw work stage prompt implement` |
 
 One pass at the end, not per-task: docs written mid-implementation describe a shape the change has abandoned by the time it lands. Review then checks code and docs together instead of accepting a change whose docs are still pending.
 

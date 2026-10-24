@@ -8,6 +8,7 @@ metadata:
 license: Apache-2.0
 dynamic_skill: false # which skills a project may override, and why: ../README.md
 ---
+
 **Version check.** Under Claude Code, skip this: the session-start hook already ran it. Under any other harness, once per session before your first `tcw` command, run `bash "<plugin>/scripts/check_versions.sh"`, where `<plugin>` is two folders above the folder holding this `SKILL.md`, and pass on anything it prints to the user.
 
 # The taxonomy process
@@ -80,7 +81,7 @@ declared term: a `new` or `changed` one present, a `removed` one gone.
 - **Entries stay inside their own store.** A ref is joined onto the store root,
   so a symlink planted inside the store would otherwise carry it out. Every
   lookup, listing, write and validation resolves the path first and refuses one
-  that lands outside — and the same holds for the files *inside* an entry, so an
+  that lands outside — and the same holds for the files _inside_ an entry, so an
   entry whose `meta.yaml` or `description.md` is a symlink out is not read. Such
   an entry does not resolve, does not appear in `list`, and cannot be written
   to; a stored ref of that shape reports as **dangling**. Inheriting from a
@@ -145,16 +146,16 @@ To seed a new taxonomy from an existing codebase, use the `setup` skill.
 
 ## Quick reference
 
-| Goal                            | Command                                                                                                                                                          |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| add vocabulary                  | `tcw taxonomy add "<Name>" [--parent <path>] [--slug <slug>]`                                                                                                        |
-| add a feature                   | `tcw taxonomy add "<Name>" --kind feature --vocab <ref> [--vocab <ref>...]` — a path, an `<alias>/<path>`, or a unique leaf slug; refused if it does not resolve |
-| nest under a parent             | `tcw taxonomy add "<Name>" --parent <path>`                                                                                                                      |
-| link related terms              | edit `relatesTo` in the term's `meta.yaml`, then `tcw validate`                                                                                                         |
-| browse / read / find            | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>`                                                                                     |
-| locate the filesystem store     | `tcw taxonomy path` — prints only the absolute, resolved store folder                                                                                           |
-| inherit another project's terms | name it under `parents:` with an `inherit` that includes `taxonomy` (the configure skill's projects reference); no taxonomy command                                |
-| override an inherited term      | `tcw taxonomy add "<Name>" [--parent <path>]` at the inherited path — writes the project's own term there, holding only what differs; `tcw taxonomy rm <path>` removes it |
-| read without a parent present   | `tcw taxonomy list` · `show <own path>` — records marked `"partial": true`; commands needing inherited terms exit 7                                        |
-| validate                        | `tcw validate` (the whole project: YAML, `tcw://` links, every axis's checks)                                                     |
+| Goal                            | Command                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| add vocabulary                  | `tcw taxonomy add "<Name>" [--parent <path>] [--slug <slug>]`                                                                                                                                                                                                                                                                                  |
+| add a feature                   | `tcw taxonomy add "<Name>" --kind feature --vocab <ref> [--vocab <ref>...]` — a path, an `<alias>/<path>`, or a unique leaf slug; refused if it does not resolve                                                                                                                                                                               |
+| nest under a parent             | `tcw taxonomy add "<Name>" --parent <path>`                                                                                                                                                                                                                                                                                                    |
+| link related terms              | edit `relatesTo` in the term's `meta.yaml`, then `tcw validate`                                                                                                                                                                                                                                                                                |
+| browse / read / find            | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>`                                                                                                                                                                                                                                                                   |
+| locate the filesystem store     | `tcw taxonomy path` — prints only the absolute, resolved store folder                                                                                                                                                                                                                                                                          |
+| inherit another project's terms | name it under `parents:` with an `inherit` that includes `taxonomy` (the configure skill's projects reference); no taxonomy command                                                                                                                                                                                                            |
+| override an inherited term      | `tcw taxonomy add "<Name>" [--parent <path>]` at the inherited path — writes the project's own term there, holding only what differs; `tcw taxonomy rm <path>` removes it                                                                                                                                                                      |
+| read without a parent present   | `tcw taxonomy list` · `show <own path>` — records marked `"partial": true`; commands needing inherited terms exit 7                                                                                                                                                                                                                            |
+| validate                        | `tcw validate` (the whole project: YAML, `tcw://` links, every axis's checks)                                                                                                                                                                                                                                                                  |
 | remove a local term             | `tcw taxonomy rm <path>` — refused while a term is nested under it, another local term names it in `relatesTo` or a feature's `vocabulary`, one of the project's own capabilities, an override included, names it in `Subject` or `Feature` (or the capabilities cannot be read); fix those first. Every other file in its folder goes with it |

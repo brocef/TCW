@@ -9,6 +9,7 @@ compatibility: Requires Python 3.11+ and network access to PyPI on first install
 license: Apache-2.0
 dynamic_skill: false # which skills a project may override, and why: ../README.md
 ---
+
 **Version check.** Under Claude Code, skip this: the session-start hook already ran it. Under any other harness, once per session before your first `tcw` command, run `bash "<plugin>/scripts/check_versions.sh"`, where `<plugin>` is two folders above the folder holding this `SKILL.md`, and pass on anything it prints to the user.
 
 # Setting up TCW
@@ -28,18 +29,18 @@ Skip a step that is already done. Steps 3 and 4 are optional, and 4 needs 3.
 A project that keeps its work in Jira continues with
 [`jira.md`](references/jira.md) once step 2 is done.
 
-| The user wants to… | Open |
-| --- | --- |
-| install `tcw`, or fix one that is missing, broken or out of date | [`install.md`](references/install.md) |
-| start tracking a repository with TCW | [`project.md`](references/project.md) |
-| get a TCW project cloned from elsewhere working on this machine | [`project.md`](references/project.md) |
-| write down the project's terms and features from its existing code | [`taxonomy.md`](references/taxonomy.md) |
-| write down what users can already do, from the existing code | [`capabilities.md`](references/capabilities.md) |
-| keep the project's work items in Jira, and check its workflow fits | [`jira.md`](references/jira.md) |
-| set up documentation entries (which documents a change must update) | the `configure` skill |
-| set up stage bindings (skills or commands run at a stage) | the `configure` skill |
-| set up store locations, or keep a store in another repository | the `configure` skill |
-| set up connected or inherited projects | the `configure` skill |
+| The user wants to…                                                  | Open                                            |
+| ------------------------------------------------------------------- | ----------------------------------------------- |
+| install `tcw`, or fix one that is missing, broken or out of date    | [`install.md`](references/install.md)           |
+| start tracking a repository with TCW                                | [`project.md`](references/project.md)           |
+| get a TCW project cloned from elsewhere working on this machine     | [`project.md`](references/project.md)           |
+| write down the project's terms and features from its existing code  | [`taxonomy.md`](references/taxonomy.md)         |
+| write down what users can already do, from the existing code        | [`capabilities.md`](references/capabilities.md) |
+| keep the project's work items in Jira, and check its workflow fits  | [`jira.md`](references/jira.md)                 |
+| set up documentation entries (which documents a change must update) | the `configure` skill                           |
+| set up stage bindings (skills or commands run at a stage)           | the `configure` skill                           |
+| set up store locations, or keep a store in another repository       | the `configure` skill                           |
+| set up connected or inherited projects                              | the `configure` skill                           |
 
 A request that says "set up" but names one of the last four areas is a
 configuration change to a project that already works, not first-time setup.

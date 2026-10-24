@@ -11,15 +11,15 @@ item, is in [the work guide](work.md).
 
 Each fact about an item has one home, and nothing is copied between the two:
 
-| Jira owns | The repository owns |
-| --- | --- |
-| the request (the ticket's description) | the spec, the plan and every round |
-| the status, which is the item's stage | handoffs for the stages worked in the repository |
-| the assignee | the item's declared record changes, `capabilities.yaml` |
-| priority, effort and complexity | the taxonomy and the capabilities |
-| labels, which are the item's tags | |
-| the parent, and "blocks" links | |
-| comments | |
+| Jira owns                              | The repository owns                                     |
+| -------------------------------------- | ------------------------------------------------------- |
+| the request (the ticket's description) | the spec, the plan and every round                      |
+| the status, which is the item's stage  | handoffs for the stages worked in the repository        |
+| the assignee                           | the item's declared record changes, `capabilities.yaml` |
+| priority, effort and complexity        | the taxonomy and the capabilities                       |
+| labels, which are the item's tags      |                                                         |
+| the parent, and "blocks" links         |                                                         |
+| comments                               |                                                         |
 
 In the repository, each item still has a folder in the work store, named with
 the ticket's key, `TCW-42-refund-a-payment`. Its `item.yaml` holds only the
@@ -122,10 +122,10 @@ work:
   two environment variables, and TCW reads their values only when it sends a
   request. Set them in the shell that runs `tcw`:
 
-  ```sh
-  export TCW_JIRA_EMAIL=you@example.com
-  export TCW_JIRA_TOKEN=<your Jira API token>
-  ```
+    ```sh
+    export TCW_JIRA_EMAIL=you@example.com
+    export TCW_JIRA_TOKEN=<your Jira API token>
+    ```
 
 - **Two custom fields** tie a ticket to an item: a text field holding the TCW
   project's ID (`TCW Project`) and one holding the item's slug (`TCW Item`).

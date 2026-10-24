@@ -33,16 +33,16 @@ project, the folder name alone is enough; in Jira mode, so is the ticket key.
 
 Every item has the same **properties**, in either backend:
 
-| Property | Values |
-| --- | --- |
-| title | any text |
-| stage | one of the stages below |
-| priority | `highest`, `high`, `medium` (the default), `low`, `lowest` |
-| effort, complexity | `low`, `medium`, `high`, `very-high`, or empty |
-| tags | tags registered for the project (`tcw work tags list`) |
-| assignee | who is working on it, or empty |
-| parent | the item it belongs under, or empty |
-| blocked-by | items that must finish first |
+| Property           | Values                                                     |
+| ------------------ | ---------------------------------------------------------- |
+| title              | any text                                                   |
+| stage              | one of the stages below                                    |
+| priority           | `highest`, `high`, `medium` (the default), `low`, `lowest` |
+| effort, complexity | `low`, `medium`, `high`, `very-high`, or empty             |
+| tags               | tags registered for the project (`tcw work tags list`)     |
+| assignee           | who is working on it, or empty                             |
+| parent             | the item it belongs under, or empty                        |
+| blocked-by         | items that must finish first                               |
 
 `blocks` and `children` are not stored; `tcw work show` works them out from
 the other items' `blocked-by` and `parent`.
@@ -67,18 +67,18 @@ Every item moves through the same table of stages. `tcw work lifecycle`
 prints it for your project, with which stages are turned on and what each one
 runs.
 
-| Stage | Kind | Writes | Can be turned off |
-| --- | --- | --- | --- |
-| `inbox` | flow | nothing | no |
-| `request` | flow | one document, `request/request.md` | no |
-| `spec` | flow | one document, `spec/spec.md` | yes |
-| `plan` | flow | one document, `plan/plan.md` | yes |
-| `implement` | flow | numbered rounds, `implement/round-N.md` | no |
-| `review` | flow | numbered rounds, each with a verdict | yes |
-| `qa` | flow | numbered rounds, each with a verdict | yes |
-| `completed` | terminal | nothing | no |
-| `discarded` | terminal | nothing | no |
-| `postmortem` | side | one document, `postmortem/postmortem.md` | yes |
+| Stage        | Kind     | Writes                                   | Can be turned off |
+| ------------ | -------- | ---------------------------------------- | ----------------- |
+| `inbox`      | flow     | nothing                                  | no                |
+| `request`    | flow     | one document, `request/request.md`       | no                |
+| `spec`       | flow     | one document, `spec/spec.md`             | yes               |
+| `plan`       | flow     | one document, `plan/plan.md`             | yes               |
+| `implement`  | flow     | numbered rounds, `implement/round-N.md`  | no                |
+| `review`     | flow     | numbered rounds, each with a verdict     | yes               |
+| `qa`         | flow     | numbered rounds, each with a verdict     | yes               |
+| `completed`  | terminal | nothing                                  | no                |
+| `discarded`  | terminal | nothing                                  | no                |
+| `postmortem` | side     | one document, `postmortem/postmortem.md` | yes               |
 
 The columns mean:
 
@@ -141,6 +141,7 @@ of YAML between two `---` lines at the top of the file:
 verdict: accepted
 judges: 2
 ---
+
 The refund path works; tests in tests/test_refund.py pass.
 ```
 
@@ -419,24 +420,24 @@ shows one way, with a prompt and a `post` hook.
 
 ## Commands
 
-| Command | What it does |
-| --- | --- |
-| `tcw work new "<title>"` | create an item; its request on standard input |
-| `tcw work list` | list items |
-| `tcw work show <slug>` | everything about one item |
-| `tcw work path [<slug> [<stage>]]` | where a file goes |
-| `tcw work edit <slug>` | change properties |
-| `tcw work advance <slug>` | move an item to its next stage, or `--to` one |
-| `tcw work discard <slug> --reason "<why>"` | abandon an item |
-| `tcw work comment <slug>` | add a comment from standard input |
-| `tcw work rename <slug> <words>` | rename the item's folder |
-| `tcw work stage prompt <stage> [<slug>]` | a stage's instructions |
-| `tcw work procedure <id> [<slug>]` | a procedure's instructions |
-| `tcw work lifecycle` | the stage table and its bindings |
-| `tcw work docs` | the documentation entries |
-| `tcw work tags list` / `add` / `rm` | the tag registry |
-| `tcw work tickets list` | Jira tickets waiting to become items |
-| `tcw work tickets adopt <KEY>` | make a Jira ticket an item |
+| Command                                    | What it does                                  |
+| ------------------------------------------ | --------------------------------------------- |
+| `tcw work new "<title>"`                   | create an item; its request on standard input |
+| `tcw work list`                            | list items                                    |
+| `tcw work show <slug>`                     | everything about one item                     |
+| `tcw work path [<slug> [<stage>]]`         | where a file goes                             |
+| `tcw work edit <slug>`                     | change properties                             |
+| `tcw work advance <slug>`                  | move an item to its next stage, or `--to` one |
+| `tcw work discard <slug> --reason "<why>"` | abandon an item                               |
+| `tcw work comment <slug>`                  | add a comment from standard input             |
+| `tcw work rename <slug> <words>`           | rename the item's folder                      |
+| `tcw work stage prompt <stage> [<slug>]`   | a stage's instructions                        |
+| `tcw work procedure <id> [<slug>]`         | a procedure's instructions                    |
+| `tcw work lifecycle`                       | the stage table and its bindings              |
+| `tcw work docs`                            | the documentation entries                     |
+| `tcw work tags list` / `add` / `rm`        | the tag registry                              |
+| `tcw work tickets list`                    | Jira tickets waiting to become items          |
+| `tcw work tickets adopt <KEY>`             | make a Jira ticket an item                    |
 
 Every command's options are in its `--help`, and what each prints, with the
 exit codes, is in [the command-line guide](cli.md).

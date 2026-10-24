@@ -92,17 +92,17 @@ when Jira could not be reached. The other codes are in
   stage-ahead checks, and the check of the records a `capabilities.yaml`
   declares, run only under `tcw validate --remote`, which reads each item's
   properties from Jira.
-  - an `item.yaml` that cannot be read is an **error**;
-  - a `parent` or `blocked-by` naming an item that does not exist is a
-    **warning**;
-  - an item whose stage is ahead of its documents, such as an item at
-    `implement` with nothing from `spec`, is a **warning** until the item is
-    finished;
-  - a reference into a project that cannot be reached from here is
-    **unresolved**;
-  - the latest `review` or `qa` round with no usable `verdict` and `judges` is a
-    **warning**, because `tcw work advance` refuses past that stage until it
-    has them.
+    - an `item.yaml` that cannot be read is an **error**;
+    - a `parent` or `blocked-by` naming an item that does not exist is a
+      **warning**;
+    - an item whose stage is ahead of its documents, such as an item at
+      `implement` with nothing from `spec`, is a **warning** until the item is
+      finished;
+    - a reference into a project that cannot be reached from here is
+      **unresolved**;
+    - the latest `review` or `qa` round with no usable `verdict` and `judges` is a
+      **warning**, because `tcw work advance` refuses past that stage until it
+      has them.
 - **Each unfinished item's `capabilities.yaml`**, the records it declares it
   changes. While the item is being worked, only what cannot be right at any
   point is reported: a file that cannot be read or is malformed, an unknown

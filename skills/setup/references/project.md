@@ -25,15 +25,16 @@ Look for `tcw-config.yaml` in the current folder or any folder above it, and run
    has named the project, use that name in this form and say so; otherwise ask.
 2. **Run `tcw project new` from the folder the project lives in:**
 
-   ```sh
-   tcw project new --id <project-id>                  # all three components
-   tcw project new --id <project-id> taxonomy work    # or only the named ones
-   ```
+    ```sh
+    tcw project new --id <project-id>                  # all three components
+    tcw project new --id <project-id> taxonomy work    # or only the named ones
+    ```
 
-   It marks the current folder as a TCW project by writing `tcw-config.yaml`
-   with the ID, then creates each component's store under `docs/`. The folder
-   does not have to be the root of a repository, so one repository can hold
-   several projects.
+    It marks the current folder as a TCW project by writing `tcw-config.yaml`
+    with the ID, then creates each component's store under `docs/`. The folder
+    does not have to be the root of a repository, so one repository can hold
+    several projects.
+
 3. **A component can be added later** by naming it: `tcw project new taxonomy`,
    `tcw project new capabilities` or `tcw project new work`, run in the project's folder.
 4. **Stores somewhere other than `docs/<component>`**, including in another

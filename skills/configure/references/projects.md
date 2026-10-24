@@ -131,7 +131,7 @@ project's files.
   followed, and a problem in them does not stop the reader.
 - **One relation per project.** A project may not declare as upstream a
   project it also reaches as a parent, child, sibling or ancestor; `tcw
-  validate` reports it.
+validate` reports it.
 
 To turn a child into an upstream, move its entry from the parent's `children`
 to `upstream` in one edit, then remove `parent` from the former child. In

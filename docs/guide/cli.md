@@ -54,8 +54,8 @@ through `--json`, on the commands that offer it.
 | `tcw taxonomy path`, `tcw capabilities path`                     | the store's folder                                                                    |
 | `tcw capabilities drift`                                         | one finding per line, `<kind>: <path>: <message>`; nothing when there is none         |
 | `tcw validate`                                                   | one finding per line, `<severity>: <where>: <message>`; nothing when there is none    |
-| `tcw project list`                                              | one project ID per line, this project first                                           |
-| `tcw project config`                                                | the configuration in effect, as YAML                                                  |
+| `tcw project list`                                               | one project ID per line, this project first                                           |
+| `tcw project config`                                             | the configuration in effect, as YAML                                                  |
 | `tcw serve`                                                      | the address the web viewer is served at                                               |
 
 Every other command, such as `tcw work edit`, `tcw work comment`,

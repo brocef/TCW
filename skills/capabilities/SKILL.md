@@ -8,6 +8,7 @@ metadata:
 license: Apache-2.0
 dynamic_skill: false # which skills a project may override, and why: ../README.md
 ---
+
 **Version check.** Under Claude Code, skip this: the session-start hook already ran it. Under any other harness, once per session before your first `tcw` command, run `bash "<plugin>/scripts/check_versions.sh"`, where `<plugin>` is two folders above the folder holding this `SKILL.md`, and pass on anything it prints to the user.
 
 # The capabilities process
@@ -41,11 +42,11 @@ the item.
 
 ```yaml
 new:
-    - auth/login             # added during implement, with its real status
+    - auth/login # added during implement, with its real status
 changed:
     - billing/refund
 removed:
-    - billing/legacy-export  # deleted with tcw capabilities rm during implement
+    - billing/legacy-export # deleted with tcw capabilities rm during implement
 taxonomy:
     new:
         - login-session
@@ -175,21 +176,21 @@ To seed a new capabilities ledger from an existing codebase, use the `setup` ski
 
 ## Quick reference
 
-| Goal                             | Command                                                                                                                           |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| declare a change (spec)          | `capabilities.yaml` in the folder `tcw work path <slug>` prints: `new:`, `changed:`, `removed:`, `taxonomy:`                       |
-| add a capability (implement)     | `tcw capabilities add <ns/path> "<Name>" --status Supported`, description on stdin                                                |
-| change status or fields          | `tcw capabilities set <path> --status <S>` · `--field K=V` (local or inherited)                                                    |
-| change an inherited entry        | `tcw capabilities set <path> --status <S>` — writes the project's own capability at that path, holding only the fields given      |
-| delete a local capability        | `tcw capabilities rm <path>` — an override included; refuses another project's, nested-under, or still-referenced; list it under `removed:` in the item's `capabilities.yaml` |
-| drop an override                 | `tcw capabilities reset <path>` (or the overridden capability's full identifier) — re-inherit the original (refuses if none, or while the project's own references name the override) |
-| associate a feature              | `tcw capabilities set <path> --field "Feature=<feature-ref>"`                                                                     |
-| link taxonomy (multi-valued)     | `tcw capabilities set <path> --field "Subject=term-a,term-b"`                                                                     |
-| inherit another project          | name it under `parents:` with an `inherit` that includes `capabilities` (the configure skill's projects reference); no capabilities command |
-| read without a parent present    | `tcw capabilities list` · `show <own path>` — records marked `"partial": true`; commands needing inherited capabilities exit 7 |
-| list only local (not inherited)  | `tcw capabilities list` — the default, `--scope own`; `--scope up` adds the inherited capabilities                              |
-| check the ledger                 | `tcw validate` (the whole project: YAML, `tcw://` links, every axis's checks)                                                     |
-| find drift                       | `tcw capabilities drift` — inherited capabilities never ruled on, and what completed items declared that the records do not show  |
-| find / read                      | `tcw capabilities search <term>` · `tcw capabilities show <path>`                                                                 |
-| locate the store                 | `tcw capabilities path` — prints only the absolute, resolved store folder                                                         |
-| ask another project for wording  | `tcw -C tcw://<parent>.path/ work new "capability wording: <name>"`                                                               |
+| Goal                            | Command                                                                                                                                                                               |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| declare a change (spec)         | `capabilities.yaml` in the folder `tcw work path <slug>` prints: `new:`, `changed:`, `removed:`, `taxonomy:`                                                                          |
+| add a capability (implement)    | `tcw capabilities add <ns/path> "<Name>" --status Supported`, description on stdin                                                                                                    |
+| change status or fields         | `tcw capabilities set <path> --status <S>` · `--field K=V` (local or inherited)                                                                                                       |
+| change an inherited entry       | `tcw capabilities set <path> --status <S>` — writes the project's own capability at that path, holding only the fields given                                                          |
+| delete a local capability       | `tcw capabilities rm <path>` — an override included; refuses another project's, nested-under, or still-referenced; list it under `removed:` in the item's `capabilities.yaml`         |
+| drop an override                | `tcw capabilities reset <path>` (or the overridden capability's full identifier) — re-inherit the original (refuses if none, or while the project's own references name the override) |
+| associate a feature             | `tcw capabilities set <path> --field "Feature=<feature-ref>"`                                                                                                                         |
+| link taxonomy (multi-valued)    | `tcw capabilities set <path> --field "Subject=term-a,term-b"`                                                                                                                         |
+| inherit another project         | name it under `parents:` with an `inherit` that includes `capabilities` (the configure skill's projects reference); no capabilities command                                           |
+| read without a parent present   | `tcw capabilities list` · `show <own path>` — records marked `"partial": true`; commands needing inherited capabilities exit 7                                                        |
+| list only local (not inherited) | `tcw capabilities list` — the default, `--scope own`; `--scope up` adds the inherited capabilities                                                                                    |
+| check the ledger                | `tcw validate` (the whole project: YAML, `tcw://` links, every axis's checks)                                                                                                         |
+| find drift                      | `tcw capabilities drift` — inherited capabilities never ruled on, and what completed items declared that the records do not show                                                      |
+| find / read                     | `tcw capabilities search <term>` · `tcw capabilities show <path>`                                                                                                                     |
+| locate the store                | `tcw capabilities path` — prints only the absolute, resolved store folder                                                                                                             |
+| ask another project for wording | `tcw -C tcw://<parent>.path/ work new "capability wording: <name>"`                                                                                                                   |

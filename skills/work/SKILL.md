@@ -8,6 +8,7 @@ metadata:
 license: Apache-2.0
 dynamic_skill: false # which skills a project may override, and why: ../README.md
 ---
+
 **Version check.** Under Claude Code, skip this: the session-start hook already ran it. Under any other harness, once per session before your first `tcw` command, run `bash "<plugin>/scripts/check_versions.sh"`, where `<plugin>` is two folders above the folder holding this `SKILL.md`, and pass on anything it prints to the user.
 
 # Driving `tcw work`
@@ -28,16 +29,16 @@ An item is at exactly one stage. Each stage's instructions come from
 composed with this project's, and the same under every harness. Read it before
 working a stage, and follow it; this skill does not repeat it.
 
-| Stage        | Writes, through `tcw work path <slug> <stage>`                    |
-| ------------ | ---------------------------------------------------------------- |
-| `inbox`      | nothing: an arrival is accepted, split or turned away            |
-| `request`    | the request: what to build, for any reader                       |
-| `spec`       | the spec, `capabilities.yaml` in the item's folder, and a `QA plan` comment |
-| `plan`       | the plan                                                         |
-| `implement`  | the code, the records, and one round (`--next`) with no verdict  |
-| `review`     | one round with `verdict` and `judges` front matter               |
+| Stage        | Writes, through `tcw work path <slug> <stage>`                                                                                                  |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inbox`      | nothing: an arrival is accepted, split or turned away                                                                                           |
+| `request`    | the request: what to build, for any reader                                                                                                      |
+| `spec`       | the spec, `capabilities.yaml` in the item's folder, and a `QA plan` comment                                                                     |
+| `plan`       | the plan                                                                                                                                        |
+| `implement`  | the code, the records, and one round (`--next`) with no verdict                                                                                 |
+| `review`     | one round with `verdict` and `judges` front matter                                                                                              |
 | `qa`         | one round with `verdict` and `judges` (with `decided-by` when a person decides); where the backend keeps qa, findings in a comment and no round |
-| `postmortem` | a side stage on any item that was not discarded; never moves it  |
+| `postmortem` | a side stage on any item that was not discarded; never moves it                                                                                 |
 
 `completed` and `discarded` end an item. **`tcw work advance <slug>`** moves an
 item to its next enabled stage once the stage's output is written; the gates run

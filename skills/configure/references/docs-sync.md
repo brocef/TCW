@@ -29,7 +29,7 @@ Shared: personal configuration cannot set it.
 
 A list of entries. Three required keys per entry, all non-empty strings. `path` need not exist yet — an entry naming a file the project intends to create is correct, and a placeholder like `skills/<component>/SKILL.md` is legal. `trigger` may be any project-defined name; only whitespace in it is rejected.
 
-The same `path` may appear in **several entries with different triggers** — an entry is identified by the `(path, trigger)` pair, not by the file alone. That is how a file large enough for its sections to answer to different changes is declared: one `README.md` entry under `Public-CLI-API`, another under `Validation-Rules`. Only two entries agreeing on *both* path and trigger are rejected as duplicates.
+The same `path` may appear in **several entries with different triggers** — an entry is identified by the `(path, trigger)` pair, not by the file alone. That is how a file large enough for its sections to answer to different changes is declared: one `README.md` entry under `Public-CLI-API`, another under `Validation-Rules`. Only two entries agreeing on _both_ path and trigger are rejected as duplicates.
 
 ### The fallback: a section in `CLAUDE.md`
 
@@ -66,4 +66,4 @@ This keeps deferred work in the same board the rest of the project's work lives 
 | --------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Not creating the changelog file if it doesn't exist | If the file is listed in Documentation Sync, create it if missing            |
 | Omitting the opening directive line                 | The skill must be reloaded each session; the directive is what triggers that |
-| Adding a `docs/FOLLOWUPS.md` log in a TCW project   | Track deferred code work as work items instead                 |
+| Adding a `docs/FOLLOWUPS.md` log in a TCW project   | Track deferred code work as work items instead                               |

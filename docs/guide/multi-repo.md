@@ -153,24 +153,24 @@ What happens depends on where the target is:
 2. **It is an upstream project:** refused, exit code 3, since upstream
    projects are read-only from here.
 3. **It is on this machine:**
-   - with the **filesystem** backend, the item is created at the target's
-     `inbox` stage. TCW first checks three things: the target's path resolves
-     here, it has a work store, and that work store has no uncommitted
-     changes. It checks the last by reading git's status of the store, and
-     changes nothing. If any of the three fails, or the work store is not
-     inside a git repository, creating the item is refused with exit code 3.
-     The files it writes in the other repository are left uncommitted, and
-     named on standard error, and standard output is the new item's slug;
-   - with the **Jira** backend, TCW creates the ticket in the target's Jira
-     inbox, using the target's own `work.jira` settings, never this project's.
-     When the target's work store is present, inside a git repository and has
-     no uncommitted changes, and Jira offers a move to the status set for
-     the `request` stage, TCW then moves the ticket to the `request` stage
-     and writes its item folder, left uncommitted; standard output is the new
-     item's slug. Otherwise the ticket stays in the Jira inbox, TCW says why on
-     standard error, prints the ticket's key, and exits 0. A filing that made
-     the item says so, and says that the next filing into that project will
-     stay in its inbox until the new files are committed.
+    - with the **filesystem** backend, the item is created at the target's
+      `inbox` stage. TCW first checks three things: the target's path resolves
+      here, it has a work store, and that work store has no uncommitted
+      changes. It checks the last by reading git's status of the store, and
+      changes nothing. If any of the three fails, or the work store is not
+      inside a git repository, creating the item is refused with exit code 3.
+      The files it writes in the other repository are left uncommitted, and
+      named on standard error, and standard output is the new item's slug;
+    - with the **Jira** backend, TCW creates the ticket in the target's Jira
+      inbox, using the target's own `work.jira` settings, never this project's.
+      When the target's work store is present, inside a git repository and has
+      no uncommitted changes, and Jira offers a move to the status set for
+      the `request` stage, TCW then moves the ticket to the `request` stage
+      and writes its item folder, left uncommitted; standard output is the new
+      item's slug. Otherwise the ticket stays in the Jira inbox, TCW says why on
+      standard error, prints the ticket's key, and exits 0. A filing that made
+      the item says so, and says that the next filing into that project will
+      stay in its inbox until the new files are committed.
 4. **It is declared but not on this machine, and this project's entry for it
    has a `jira` block:** TCW creates the ticket in that project's Jira inbox,
    prints the ticket's key, and exits 0. The block names the target's site,

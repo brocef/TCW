@@ -40,26 +40,26 @@ Each case is marked:
 - [How to use this document](#how-to-use-this-document)
 - [What varies between setups](#what-varies-between-setups)
 - Architectures
-  - [UC-1 A single project in its own repository](#uc-1-a-single-project-in-its-own-repository)
-  - [UC-2 A library other projects read](#uc-2-a-library-other-projects-read)
-  - [UC-3 A monorepo of several projects](#uc-3-a-monorepo-of-several-projects)
-  - [UC-4 Many repositories and a planning workspace](#uc-4-many-repositories-and-a-planning-workspace)
-  - [UC-5 One Jira project shared by several TCW projects](#uc-5-one-jira-project-shared-by-several-tcw-projects)
-  - [UC-6 A connected project that is not on this machine](#uc-6-a-connected-project-that-is-not-on-this-machine)
-  - [UC-7 A library published to the public, read by private projects](#uc-7-a-library-published-to-the-public-read-by-private-projects)
-  - [UC-8 Several separate families on one machine](#uc-8-several-separate-families-on-one-machine)
+    - [UC-1 A single project in its own repository](#uc-1-a-single-project-in-its-own-repository)
+    - [UC-2 A library other projects read](#uc-2-a-library-other-projects-read)
+    - [UC-3 A monorepo of several projects](#uc-3-a-monorepo-of-several-projects)
+    - [UC-4 Many repositories and a planning workspace](#uc-4-many-repositories-and-a-planning-workspace)
+    - [UC-5 One Jira project shared by several TCW projects](#uc-5-one-jira-project-shared-by-several-tcw-projects)
+    - [UC-6 A connected project that is not on this machine](#uc-6-a-connected-project-that-is-not-on-this-machine)
+    - [UC-7 A library published to the public, read by private projects](#uc-7-a-library-published-to-the-public-read-by-private-projects)
+    - [UC-8 Several separate families on one machine](#uc-8-several-separate-families-on-one-machine)
 - Situations that cut across architectures
-  - [S-1 Who decides, and whether they are present](#s-1-who-decides-and-whether-they-are-present)
-  - [S-2 Which agent harness](#s-2-which-agent-harness)
-  - [S-3 Which backend keeps the work](#s-3-which-backend-keeps-the-work)
-  - [S-4 Copies of a checkout: worktrees, clones, other machines](#s-4-copies-of-a-checkout-worktrees-clones-other-machines)
-  - [S-5 Personal configuration](#s-5-personal-configuration)
-  - [S-6 Unattended and automated runs](#s-6-unattended-and-automated-runs)
-  - [S-7 Several people at once](#s-7-several-people-at-once)
-  - [S-8 Partial failure: offline, unreachable, half-finished](#s-8-partial-failure-offline-unreachable-half-finished)
-  - [S-9 Upgrades: an old tcw, a new tcw, mixed versions](#s-9-upgrades-an-old-tcw-a-new-tcw-mixed-versions)
-  - [S-10 Things TCW does not own that sit inside a project](#s-10-things-tcw-does-not-own-that-sit-inside-a-project)
-  - [S-11 Version control](#s-11-version-control)
+    - [S-1 Who decides, and whether they are present](#s-1-who-decides-and-whether-they-are-present)
+    - [S-2 Which agent harness](#s-2-which-agent-harness)
+    - [S-3 Which backend keeps the work](#s-3-which-backend-keeps-the-work)
+    - [S-4 Copies of a checkout: worktrees, clones, other machines](#s-4-copies-of-a-checkout-worktrees-clones-other-machines)
+    - [S-5 Personal configuration](#s-5-personal-configuration)
+    - [S-6 Unattended and automated runs](#s-6-unattended-and-automated-runs)
+    - [S-7 Several people at once](#s-7-several-people-at-once)
+    - [S-8 Partial failure: offline, unreachable, half-finished](#s-8-partial-failure-offline-unreachable-half-finished)
+    - [S-9 Upgrades: an old tcw, a new tcw, mixed versions](#s-9-upgrades-an-old-tcw-a-new-tcw-mixed-versions)
+    - [S-10 Things TCW does not own that sit inside a project](#s-10-things-tcw-does-not-own-that-sit-inside-a-project)
+    - [S-11 Version control](#s-11-version-control)
 - [The checklist](#the-checklist)
 - [Adding a case](#adding-a-case)
 
@@ -84,17 +84,17 @@ look.
 
 These are the dimensions. A real setup is a combination of them.
 
-| Dimension | Values seen or expected |
-| --- | --- |
-| Repositories | one repository; one repository holding several projects (monorepo); several repositories; a repository that holds only planning |
-| Projects per family | one; a parent with children; children with their own children; a project read by others that names none of them (upstream) |
-| Where each store is | inside the project (`docs/<component>/`); elsewhere in the same repository; in a different repository; not on this machine yet |
-| Inheritance (`extends`) | none; one level; several levels (server → shared → core); different lists for taxonomy and capabilities |
-| Work backend | files; Jira, one Jira project per TCW project; Jira, one Jira project for several TCW projects |
-| Who is present | the person who decides, talking to the agent; an engineer, with the requester elsewhere (on Jira); nobody (unattended) |
-| Harness | Claude Code; Codex; Pi; a person typing `tcw` themselves; a script or CI job |
-| Machine | everything checked out; some connected projects missing; a linked worktree; a fresh clone; CI |
-| Version control | git, which TCW reads but never changes; no version control (expected); a store in a repository other than the code's |
+| Dimension               | Values seen or expected                                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Repositories            | one repository; one repository holding several projects (monorepo); several repositories; a repository that holds only planning |
+| Projects per family     | one; a parent with children; children with their own children; a project read by others that names none of them (upstream)      |
+| Where each store is     | inside the project (`docs/<component>/`); elsewhere in the same repository; in a different repository; not on this machine yet  |
+| Inheritance (`extends`) | none; one level; several levels (server → shared → core); different lists for taxonomy and capabilities                         |
+| Work backend            | files; Jira, one Jira project per TCW project; Jira, one Jira project for several TCW projects                                  |
+| Who is present          | the person who decides, talking to the agent; an engineer, with the requester elsewhere (on Jira); nobody (unattended)          |
+| Harness                 | Claude Code; Codex; Pi; a person typing `tcw` themselves; a script or CI job                                                    |
+| Machine                 | everything checked out; some connected projects missing; a linked worktree; a fresh clone; CI                                   |
+| Version control         | git, which TCW reads but never changes; no version control (expected); a store in a repository other than the code's            |
 
 ## Architectures
 
@@ -329,7 +329,7 @@ TCW project it belongs to, and `TCW Item` holds its slug
   person decides which project takes it, unless the cross-project filing that
   created it already set its `TCW Project`.
 - A Jira workflow change made for one project affects all of them. `tcw
-  validate --remote` in any one of them must report a status that a stage
+validate --remote` in any one of them must report a status that a stage
   needs and the shared workflow no longer offers.
 - Credentials are per person, not per project. Each project's configuration
   names the environment variables that hold them, so one person's values
@@ -504,7 +504,7 @@ fresh clone.
   the primary checkout are different stores; nothing may silently use the
   other.
 - A fresh clone in CI has no connected projects and no credentials. `tcw
-  validate` there must run without them, and report what it could not check
+validate` there must run without them, and report what it could not check
   rather than failing for that reason (TCW-14 asks for this as a gate). Today
   this holds for a missing connected project, but not for a missing project
   named in `extends` (UC-6, known gaps).

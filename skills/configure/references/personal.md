@@ -109,20 +109,20 @@ the user-wide file's path is shortened):
 
 ```yaml
 work:
-  backend: filesystem  # built-in
-  hooks:
-    timeout: 300  # built-in
-    output-cap: 65536  # built-in
-  stages:
-    spec:
-      prompt:
-        - blob: Read the team notes first.  # local: tcw-config.local.yaml
-        - builtin: true  # built-in, tcw/work/prompts/spec.md
-      post:
-        - command: echo team  # project
-id: demo  # project
+    backend: filesystem # built-in
+    hooks:
+        timeout: 300 # built-in
+        output-cap: 65536 # built-in
+    stages:
+        spec:
+            prompt:
+                - blob: Read the team notes first. # local: tcw-config.local.yaml
+                - builtin: true # built-in, tcw/work/prompts/spec.md
+            post:
+                - command: echo team # project
+id: demo # project
 user:
-  name: Sam  # user: ~/.config/tcw/config.yaml
+    name: Sam # user: ~/.config/tcw/config.yaml
 ```
 
 The built-in entry stands for TCW's own text, and its comment names the
@@ -136,60 +136,60 @@ Every configuration key path, with who may set it. `*` stands for a name the
 project chooses: a stage, a procedure or a project ID. A key that TCW adds
 later is shared unless it is added to the personal list.
 
-| Key path | Who may set it | Described in |
-| --- | --- | --- |
-| `id` | Shared | [`projects.md`](projects.md#id) |
-| `user.name` | Personal only | [`personal.md`](#username) |
-| `taxonomy.path` | Shared | [`stores.md`](stores.md#taxonomypath) |
-| `taxonomy.repository` | Shared | [`stores.md`](stores.md#taxonomyrepository) |
-| `capabilities.path` | Shared | [`stores.md`](stores.md#capabilitiespath) |
-| `capabilities.repository` | Shared | [`stores.md`](stores.md#capabilitiesrepository) |
-| `work.path` | Shared | [`work.md`](work.md#workpath) |
-| `work.repository` | Shared | [`work.md`](work.md#workrepository) |
-| `work.backend` | Shared | [`work.md`](work.md#workbackend) |
-| `work.tags` | Shared | [`work.md`](work.md#worktags) |
-| `work.documentation` | Shared | [`docs-sync.md`](docs-sync.md#workdocumentation) |
-| `work.procedures.*` | Overridable | [`work.md`](work.md#workprocedures) |
-| `work.stages.*.enabled` | Shared | [`work.md`](work.md#workstagesenabled) |
-| `work.stages.*.status` | Shared | [`work.md`](work.md#workstagesstatus) |
-| `work.stages.*.prompt` | Overridable | [`work.md`](work.md#workstagesprompt) |
-| `work.stages.*.pre` | Shared | [`work.md`](work.md#workstagespre) |
-| `work.stages.*.post` | Overridable | [`work.md`](work.md#workstagespost) |
-| `work.hooks.timeout` | Shared | [`work.md`](work.md#workhookstimeout) |
-| `work.hooks.output-cap` | Shared | [`work.md`](work.md#workhooksoutput-cap) |
-| `work.jira.site` | Shared | [`jira.md`](jira.md#workjirasite) |
-| `work.jira.project` | Shared | [`jira.md`](jira.md#workjiraproject) |
-| `work.jira.issue-type` | Shared | [`jira.md`](jira.md#workjiraissue-type) |
-| `work.jira.inbox-query` | Shared | [`jira.md`](jira.md#workjirainbox-query) |
-| `work.jira.timeout` | Shared | [`jira.md`](jira.md#workjiratimeout) |
-| `work.jira.priorities` | Shared | [`jira.md`](jira.md#workjirapriorities) |
-| `work.jira.credentials.email-env` | Overridable | [`jira.md`](jira.md#workjiracredentialsemail-env) |
-| `work.jira.credentials.token-env` | Overridable | [`jira.md`](jira.md#workjiracredentialstoken-env) |
-| `work.jira.fields.project` | Shared | [`jira.md`](jira.md#workjirafieldsproject) |
-| `work.jira.fields.item` | Shared | [`jira.md`](jira.md#workjirafieldsitem) |
-| `work.jira.fields.effort` | Shared | [`jira.md`](jira.md#workjirafieldseffort) |
-| `work.jira.fields.complexity` | Shared | [`jira.md`](jira.md#workjirafieldscomplexity) |
-| `projects.parent.*.path` | Shared | [`projects.md`](projects.md#projectsparentpath) |
-| `projects.parent.*.repository` | Shared | [`projects.md`](projects.md#projectsparentrepository) |
-| `projects.children.*.path` | Shared | [`projects.md`](projects.md#projectschildrenpath) |
-| `projects.children.*.repository` | Shared | [`projects.md`](projects.md#projectschildrenrepository) |
-| `projects.upstream.*.path` | Shared | [`projects.md`](projects.md#projectsupstreampath) |
-| `projects.upstream.*.repository` | Shared | [`projects.md`](projects.md#projectsupstreamrepository) |
-| `projects.parent.*.jira.site` | Shared | [`projects.md`](projects.md#projectsparentjirasite) |
-| `projects.parent.*.jira.project` | Shared | [`projects.md`](projects.md#projectsparentjiraproject) |
-| `projects.parent.*.jira.inbox-status` | Shared | [`projects.md`](projects.md#projectsparentjirainbox-status) |
-| `projects.parent.*.jira.credentials.email-env` | Shared | [`projects.md`](projects.md#projectsparentjiracredentialsemail-env) |
-| `projects.parent.*.jira.credentials.token-env` | Shared | [`projects.md`](projects.md#projectsparentjiracredentialstoken-env) |
-| `projects.parent.*.jira.fields.project` | Shared | [`projects.md`](projects.md#projectsparentjirafieldsproject) |
-| `projects.children.*.jira.site` | Shared | [`projects.md`](projects.md#projectschildrenjirasite) |
-| `projects.children.*.jira.project` | Shared | [`projects.md`](projects.md#projectschildrenjiraproject) |
-| `projects.children.*.jira.inbox-status` | Shared | [`projects.md`](projects.md#projectschildrenjirainbox-status) |
-| `projects.children.*.jira.credentials.email-env` | Shared | [`projects.md`](projects.md#projectschildrenjiracredentialsemail-env) |
-| `projects.children.*.jira.credentials.token-env` | Shared | [`projects.md`](projects.md#projectschildrenjiracredentialstoken-env) |
-| `projects.children.*.jira.fields.project` | Shared | [`projects.md`](projects.md#projectschildrenjirafieldsproject) |
-| `projects.upstream.*.jira.site` | Shared | [`projects.md`](projects.md#projectsupstreamjirasite) |
-| `projects.upstream.*.jira.project` | Shared | [`projects.md`](projects.md#projectsupstreamjiraproject) |
-| `projects.upstream.*.jira.inbox-status` | Shared | [`projects.md`](projects.md#projectsupstreamjirainbox-status) |
-| `projects.upstream.*.jira.credentials.email-env` | Shared | [`projects.md`](projects.md#projectsupstreamjiracredentialsemail-env) |
-| `projects.upstream.*.jira.credentials.token-env` | Shared | [`projects.md`](projects.md#projectsupstreamjiracredentialstoken-env) |
-| `projects.upstream.*.jira.fields.project` | Shared | [`projects.md`](projects.md#projectsupstreamjirafieldsproject) |
+| Key path                                         | Who may set it | Described in                                                          |
+| ------------------------------------------------ | -------------- | --------------------------------------------------------------------- |
+| `id`                                             | Shared         | [`projects.md`](projects.md#id)                                       |
+| `user.name`                                      | Personal only  | [`personal.md`](#username)                                            |
+| `taxonomy.path`                                  | Shared         | [`stores.md`](stores.md#taxonomypath)                                 |
+| `taxonomy.repository`                            | Shared         | [`stores.md`](stores.md#taxonomyrepository)                           |
+| `capabilities.path`                              | Shared         | [`stores.md`](stores.md#capabilitiespath)                             |
+| `capabilities.repository`                        | Shared         | [`stores.md`](stores.md#capabilitiesrepository)                       |
+| `work.path`                                      | Shared         | [`work.md`](work.md#workpath)                                         |
+| `work.repository`                                | Shared         | [`work.md`](work.md#workrepository)                                   |
+| `work.backend`                                   | Shared         | [`work.md`](work.md#workbackend)                                      |
+| `work.tags`                                      | Shared         | [`work.md`](work.md#worktags)                                         |
+| `work.documentation`                             | Shared         | [`docs-sync.md`](docs-sync.md#workdocumentation)                      |
+| `work.procedures.*`                              | Overridable    | [`work.md`](work.md#workprocedures)                                   |
+| `work.stages.*.enabled`                          | Shared         | [`work.md`](work.md#workstagesenabled)                                |
+| `work.stages.*.status`                           | Shared         | [`work.md`](work.md#workstagesstatus)                                 |
+| `work.stages.*.prompt`                           | Overridable    | [`work.md`](work.md#workstagesprompt)                                 |
+| `work.stages.*.pre`                              | Shared         | [`work.md`](work.md#workstagespre)                                    |
+| `work.stages.*.post`                             | Overridable    | [`work.md`](work.md#workstagespost)                                   |
+| `work.hooks.timeout`                             | Shared         | [`work.md`](work.md#workhookstimeout)                                 |
+| `work.hooks.output-cap`                          | Shared         | [`work.md`](work.md#workhooksoutput-cap)                              |
+| `work.jira.site`                                 | Shared         | [`jira.md`](jira.md#workjirasite)                                     |
+| `work.jira.project`                              | Shared         | [`jira.md`](jira.md#workjiraproject)                                  |
+| `work.jira.issue-type`                           | Shared         | [`jira.md`](jira.md#workjiraissue-type)                               |
+| `work.jira.inbox-query`                          | Shared         | [`jira.md`](jira.md#workjirainbox-query)                              |
+| `work.jira.timeout`                              | Shared         | [`jira.md`](jira.md#workjiratimeout)                                  |
+| `work.jira.priorities`                           | Shared         | [`jira.md`](jira.md#workjirapriorities)                               |
+| `work.jira.credentials.email-env`                | Overridable    | [`jira.md`](jira.md#workjiracredentialsemail-env)                     |
+| `work.jira.credentials.token-env`                | Overridable    | [`jira.md`](jira.md#workjiracredentialstoken-env)                     |
+| `work.jira.fields.project`                       | Shared         | [`jira.md`](jira.md#workjirafieldsproject)                            |
+| `work.jira.fields.item`                          | Shared         | [`jira.md`](jira.md#workjirafieldsitem)                               |
+| `work.jira.fields.effort`                        | Shared         | [`jira.md`](jira.md#workjirafieldseffort)                             |
+| `work.jira.fields.complexity`                    | Shared         | [`jira.md`](jira.md#workjirafieldscomplexity)                         |
+| `projects.parent.*.path`                         | Shared         | [`projects.md`](projects.md#projectsparentpath)                       |
+| `projects.parent.*.repository`                   | Shared         | [`projects.md`](projects.md#projectsparentrepository)                 |
+| `projects.children.*.path`                       | Shared         | [`projects.md`](projects.md#projectschildrenpath)                     |
+| `projects.children.*.repository`                 | Shared         | [`projects.md`](projects.md#projectschildrenrepository)               |
+| `projects.upstream.*.path`                       | Shared         | [`projects.md`](projects.md#projectsupstreampath)                     |
+| `projects.upstream.*.repository`                 | Shared         | [`projects.md`](projects.md#projectsupstreamrepository)               |
+| `projects.parent.*.jira.site`                    | Shared         | [`projects.md`](projects.md#projectsparentjirasite)                   |
+| `projects.parent.*.jira.project`                 | Shared         | [`projects.md`](projects.md#projectsparentjiraproject)                |
+| `projects.parent.*.jira.inbox-status`            | Shared         | [`projects.md`](projects.md#projectsparentjirainbox-status)           |
+| `projects.parent.*.jira.credentials.email-env`   | Shared         | [`projects.md`](projects.md#projectsparentjiracredentialsemail-env)   |
+| `projects.parent.*.jira.credentials.token-env`   | Shared         | [`projects.md`](projects.md#projectsparentjiracredentialstoken-env)   |
+| `projects.parent.*.jira.fields.project`          | Shared         | [`projects.md`](projects.md#projectsparentjirafieldsproject)          |
+| `projects.children.*.jira.site`                  | Shared         | [`projects.md`](projects.md#projectschildrenjirasite)                 |
+| `projects.children.*.jira.project`               | Shared         | [`projects.md`](projects.md#projectschildrenjiraproject)              |
+| `projects.children.*.jira.inbox-status`          | Shared         | [`projects.md`](projects.md#projectschildrenjirainbox-status)         |
+| `projects.children.*.jira.credentials.email-env` | Shared         | [`projects.md`](projects.md#projectschildrenjiracredentialsemail-env) |
+| `projects.children.*.jira.credentials.token-env` | Shared         | [`projects.md`](projects.md#projectschildrenjiracredentialstoken-env) |
+| `projects.children.*.jira.fields.project`        | Shared         | [`projects.md`](projects.md#projectschildrenjirafieldsproject)        |
+| `projects.upstream.*.jira.site`                  | Shared         | [`projects.md`](projects.md#projectsupstreamjirasite)                 |
+| `projects.upstream.*.jira.project`               | Shared         | [`projects.md`](projects.md#projectsupstreamjiraproject)              |
+| `projects.upstream.*.jira.inbox-status`          | Shared         | [`projects.md`](projects.md#projectsupstreamjirainbox-status)         |
+| `projects.upstream.*.jira.credentials.email-env` | Shared         | [`projects.md`](projects.md#projectsupstreamjiracredentialsemail-env) |
+| `projects.upstream.*.jira.credentials.token-env` | Shared         | [`projects.md`](projects.md#projectsupstreamjiracredentialstoken-env) |
+| `projects.upstream.*.jira.fields.project`        | Shared         | [`projects.md`](projects.md#projectsupstreamjirafieldsproject)        |

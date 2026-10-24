@@ -136,18 +136,19 @@ until the records themselves change:
 2. **Spec.** The spec declares the changes formally, in `capabilities.yaml` at
    the root of the item's folder:
 
-   ```yaml
-   new: [billing/refund-a-payment]
-   changed: [billing/view-a-payment]
-   removed: [billing/legacy-export]
-   taxonomy:
-       new: [refund]
-       changed: []
-       removed: []
-   ```
+    ```yaml
+    new: [billing/refund-a-payment]
+    changed: [billing/view-a-payment]
+    removed: [billing/legacy-export]
+    taxonomy:
+        new: [refund]
+        changed: []
+        removed: []
+    ```
 
-   Each key is optional. `new`, `changed` and `removed` list capability paths;
-   `taxonomy` lists term paths the same way.
+    Each key is optional. `new`, `changed` and `removed` list capability paths;
+    `taxonomy` lists term paths the same way.
+
 3. **Implement.** The records are changed with `tcw capabilities add`, `set`
    and `rm` (and `tcw taxonomy add` and `rm`), in the same change as the code.
 4. **The records gate**, on any move into the stage after `implement`, checks
@@ -170,7 +171,7 @@ with the child's project ID:
 
 ```yaml
 new:
-    - shared-app/authoring/add-a-claim   # checked in shared-app's ledger
+    - shared-app/authoring/add-a-claim # checked in shared-app's ledger
 ```
 
 The records gate checks the rest of the path in that child's ledger, so the

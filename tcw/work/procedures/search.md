@@ -38,14 +38,17 @@ When you need more, `tcw work show <slug>` prints the item's request and its
 comments, and `tcw work path <slug> spec` and `tcw work path <slug> plan` name
 its documents.
 <!-- backend: filesystem -->
+
 To choose which items to open, search under the folder `tcw work path`
 prints for the question's words first, then read only the likely ones.
 <!-- /backend -->
 <!-- backend: jira -->
+
 The request of each item is its ticket's description, which lives in Jira: to
 choose which items to open, search Jira for the question's words, or read the
 titles first and open only the likely ones.
 <!-- /backend -->
+
 Never build a path into the work store yourself.
 
 ## 3. Judge, do not match words

@@ -8,6 +8,7 @@ metadata:
 license: Apache-2.0
 dynamic_skill: false # which skills a project may override, and why: ../README.md
 ---
+
 **Version check.** Under Claude Code, skip this: the session-start hook already ran it. Under any other harness, once per session before your first `tcw` command, run `bash "<plugin>/scripts/check_versions.sh"`, where `<plugin>` is two folders above the folder holding this `SKILL.md`, and pass on anything it prints to the user.
 
 # Configuring TCW
@@ -22,14 +23,14 @@ Find the user's request in the table and open that document. Each key has its
 own heading there, which says what the key does, shows its shape, and says
 whether one person may set it for themselves.
 
-| The user wants to… | Open |
-| --- | --- |
-| turn stages on or off, bind text or commands to a stage, change hook limits, register tags, or change a procedure's text | [`work.md`](references/work.md) |
-| keep the project's work items in Jira, or change how stages map to Jira statuses | [`jira.md`](references/jira.md) |
-| set up documentation tracking: which documents must be updated when which kind of change lands | [`docs-sync.md`](references/docs-sync.md) |
-| keep a component's store in another folder or another repository | [`stores.md`](references/stores.md) |
-| connect a parent, child or upstream project, say where a project is on this machine, create items in another project, or inherit another project's taxonomy or capabilities | [`projects.md`](references/projects.md) |
-| set their own name, credentials or additions for themselves only, or see which file a setting came from | [`personal.md`](references/personal.md) |
+| The user wants to…                                                                                                                                                          | Open                                      |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| turn stages on or off, bind text or commands to a stage, change hook limits, register tags, or change a procedure's text                                                    | [`work.md`](references/work.md)           |
+| keep the project's work items in Jira, or change how stages map to Jira statuses                                                                                            | [`jira.md`](references/jira.md)           |
+| set up documentation tracking: which documents must be updated when which kind of change lands                                                                              | [`docs-sync.md`](references/docs-sync.md) |
+| keep a component's store in another folder or another repository                                                                                                            | [`stores.md`](references/stores.md)       |
+| connect a parent, child or upstream project, say where a project is on this machine, create items in another project, or inherit another project's taxonomy or capabilities | [`projects.md`](references/projects.md)   |
+| set their own name, credentials or additions for themselves only, or see which file a setting came from                                                                     | [`personal.md`](references/personal.md)   |
 
 `personal.md` also holds one table of every configuration key, with who may
 set it.

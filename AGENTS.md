@@ -15,7 +15,7 @@ This project keeps its items in Jira (the `TCW` project): each item's stage,
 request and comments are on its ticket, and its folder under `docs/work/`
 holds its other documents.
 
-The rules for *how* to do that work are bound to the lifecycle stages rather than
+The rules for _how_ to do that work are bound to the lifecycle stages rather than
 written here. Before working a stage, run
 **`tcw work stage prompt <stage> <item>`**: it prints TCW's own instructions for
 that stage composed with this repo's, and it behaves identically under Claude
@@ -24,13 +24,13 @@ moves the item to its next stage and runs the checks bound to that move;
 **`tcw work advance <item> --dry-run`** says whether the move would be allowed,
 and moves nothing.
 
-| Stage       | What this repo adds to TCW's own instructions                                                                                |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Stage       | What this repo adds to TCW's own instructions                                                                                                                                                                                                                                     |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `spec`      | [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) · [`docs/lifecycle/harness.md`](docs/lifecycle/harness.md) · the spec outline, [`spec.md`](docs/lifecycle/templates/spec.md) or, for an item tagged `bug`, [`spec-bug.md`](docs/lifecycle/templates/spec-bug.md) |
-| `plan`      | [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) — and the move into `plan` refuses until the spec is written |
-| `implement` | [`docs/lifecycle/implementation.md`](docs/lifecycle/implementation.md) · [`docs/lifecycle/harness.md`](docs/lifecycle/harness.md) — and the move into `implement` refuses until the spec and plan are written |
-| `review`    | [`docs/lifecycle/review.md`](docs/lifecycle/review.md): the suite run as CI runs it, and the documentation entries, before an accepted verdict |
-| `completed` | the move into `completed` runs `tcw validate`, and refuses unless it passes                                                 |
+| `plan`      | [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) — and the move into `plan` refuses until the spec is written                                                                                                                                                     |
+| `implement` | [`docs/lifecycle/implementation.md`](docs/lifecycle/implementation.md) · [`docs/lifecycle/harness.md`](docs/lifecycle/harness.md) — and the move into `implement` refuses until the spec and plan are written                                                                     |
+| `review`    | [`docs/lifecycle/review.md`](docs/lifecycle/review.md): the suite run as CI runs it, and the documentation entries, before an accepted verdict                                                                                                                                    |
+| `completed` | the move into `completed` runs `tcw validate`, and refuses unless it passes                                                                                                                                                                                                       |
 
 Every stage's instructions from `request` on start by asking for
 `git pull --ff-only`, and every move to a stage after `inbox` runs

@@ -257,17 +257,17 @@ the same folder from the first stage to the last. Each item is addressed by its
 
 **One command-line tool, `tcw`**, does everything:
 
-| Command                   | What it does                                                                  |
-| ------------------------- | ----------------------------------------------------------------------------- |
-| `tcw project new`                | marks a folder as a TCW project and creates the folders for each axis         |
-| `tcw project provision`           | obtains the stores and projects this project declares but this machine lacks |
+| Command                   | What it does                                                                                                                                                                                               |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tcw project new`         | marks a folder as a TCW project and creates the folders for each axis                                                                                                                                      |
+| `tcw project provision`   | obtains the stores and projects this project declares but this machine lacks                                                                                                                               |
 | `tcw validate [--remote]` | checks every file, reference and link in the project; in a Jira-mode project the item references, stages and declared record changes are checked only with `--remote`, which also checks the Jira workflow |
-| `tcw project list`       | lists this project and every project connected to it                          |
-| `tcw project config`         | prints the configuration commands run with; `--origin` says where each value came from |
-| `tcw serve`               | starts a local web app for reading and editing all three axes                 |
-| `tcw taxonomy`            | the vocabulary and features                                                   |
-| `tcw capabilities`        | what a user can do                                                            |
-| `tcw work`                | the changes, and the stages each one moves through                            |
+| `tcw project list`        | lists this project and every project connected to it                                                                                                                                                       |
+| `tcw project config`      | prints the configuration commands run with; `--origin` says where each value came from                                                                                                                     |
+| `tcw serve`               | starts a local web app for reading and editing all three axes                                                                                                                                              |
+| `tcw taxonomy`            | the vocabulary and features                                                                                                                                                                                |
+| `tcw capabilities`        | what a user can do                                                                                                                                                                                         |
+| `tcw work`                | the changes, and the stages each one moves through                                                                                                                                                         |
 
 A repository adopts TCW with one command:
 
@@ -351,14 +351,14 @@ described in [Skills and Agents](#skills-and-agents).
 
 #### CLI
 
-| Command                    | What it does                                                          |
-| -------------------------- | --------------------------------------------------------------------- |
-| `tcw taxonomy list`        | prints every entry's path                                             |
-| `tcw taxonomy add`         | creates a vocabulary entry or a feature; its description from standard input; at an inherited path, writes an override holding only what differs |
-| `tcw taxonomy show`        | prints one entry                                                      |
-| `tcw taxonomy path`        | prints the folder the taxonomy is stored in                           |
-| `tcw taxonomy rm`          | removes a local entry nothing is nested under or refers to, an override included |
-| `tcw taxonomy search`      | searches entry names and descriptions                                 |
+| Command               | What it does                                                                                                                                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tcw taxonomy list`   | prints every entry's path                                                                                                                        |
+| `tcw taxonomy add`    | creates a vocabulary entry or a feature; its description from standard input; at an inherited path, writes an override holding only what differs |
+| `tcw taxonomy show`   | prints one entry                                                                                                                                 |
+| `tcw taxonomy path`   | prints the folder the taxonomy is stored in                                                                                                      |
+| `tcw taxonomy rm`     | removes a local entry nothing is nested under or refers to, an override included                                                                 |
+| `tcw taxonomy search` | searches entry names and descriptions                                                                                                            |
 
 Creating the taxonomy's folder is `tcw project new taxonomy`, and checking it is
 `tcw validate`. Which projects a taxonomy is inherited from is set by the
@@ -404,23 +404,23 @@ registered in the taxonomy before a capability names it.
 
 #### Skills
 
-| Skill                                          | What it does                                                                                                                                                  |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Skill                                          | What it does                                                                                                                                                                                |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`capabilities`](skills/capabilities/SKILL.md) | Guides an agent through a work item that changes what users can do: declaring the change at spec, checking it against the existing capabilities, and changing the records during implement. |
 
 #### CLI
 
-| Command                        | What it does                                                                     |
-| ------------------------------ | -------------------------------------------------------------------------------- |
-| `tcw capabilities list`        | prints this project's own capabilities; `--status` narrows it, `--scope up` adds the inherited ones |
-| `tcw capabilities show`        | prints one capability                                                            |
-| `tcw capabilities path`        | prints the folder capabilities are stored in                                     |
-| `tcw capabilities add`         | creates a capability; its body from standard input; refused at an inherited path |
-| `tcw capabilities set`         | changes a capability's status or fields; on an inherited one, writes an override at the same path holding only the fields given |
-| `tcw capabilities reset`       | removes a local override, going back to the inherited version                    |
-| `tcw capabilities rm`          | removes a local capability, an override included                                 |
-| `tcw capabilities search`      | searches names and descriptions                                                  |
-| `tcw capabilities drift`       | reports inherited capabilities nobody here has ruled on, and changes finished work declared that today's records do not show |
+| Command                   | What it does                                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `tcw capabilities list`   | prints this project's own capabilities; `--status` narrows it, `--scope up` adds the inherited ones                             |
+| `tcw capabilities show`   | prints one capability                                                                                                           |
+| `tcw capabilities path`   | prints the folder capabilities are stored in                                                                                    |
+| `tcw capabilities add`    | creates a capability; its body from standard input; refused at an inherited path                                                |
+| `tcw capabilities set`    | changes a capability's status or fields; on an inherited one, writes an override at the same path holding only the fields given |
+| `tcw capabilities reset`  | removes a local override, going back to the inherited version                                                                   |
+| `tcw capabilities rm`     | removes a local capability, an override included                                                                                |
+| `tcw capabilities search` | searches names and descriptions                                                                                                 |
+| `tcw capabilities drift`  | reports inherited capabilities nobody here has ruled on, and changes finished work declared that today's records do not show    |
 
 Creating the ledger's folder is `tcw project new capabilities`, and checking it is
 `tcw validate`. Which projects capabilities are inherited from is set by the
@@ -466,16 +466,16 @@ A project keeps its work items with one of two **backends**, chosen by
 stages, the same properties, the same item folders and the same commands. What
 differs is where each fact is kept.
 
-| Fact                                         | Filesystem                     | Jira                            |
-| -------------------------------------------- | ------------------------------ | ------------------------------- |
-| the request                                  | `request/request.md`           | the ticket's description        |
-| the stage                                    | `item.yaml`                    | the ticket's status             |
-| assignee, priority, effort, complexity, tags | `item.yaml`                    | the ticket's fields and labels  |
-| parent and blocked-by                        | `item.yaml`                    | the ticket's parent and links   |
-| comments                                     | `comments/` in the item folder | the ticket's comments           |
-| spec, plan, rounds, handoffs                 | the item folder                | the item folder                 |
-| the records it changes, `capabilities.yaml`  | the item folder                | the item folder                 |
-| taxonomy and capabilities                    | the repository                 | the repository                  |
+| Fact                                         | Filesystem                     | Jira                           |
+| -------------------------------------------- | ------------------------------ | ------------------------------ |
+| the request                                  | `request/request.md`           | the ticket's description       |
+| the stage                                    | `item.yaml`                    | the ticket's status            |
+| assignee, priority, effort, complexity, tags | `item.yaml`                    | the ticket's fields and labels |
+| parent and blocked-by                        | `item.yaml`                    | the ticket's parent and links  |
+| comments                                     | `comments/` in the item folder | the ticket's comments          |
+| spec, plan, rounds, handoffs                 | the item folder                | the item folder                |
+| the records it changes, `capabilities.yaml`  | the item folder                | the item folder                |
+| taxonomy and capabilities                    | the repository                 | the repository                 |
 
 #### Filesystem: everything in the repository
 
@@ -546,18 +546,18 @@ flowchart LR
 Dashed boxes are stages a project can turn off; an item then moves straight
 past them. Any item can be moved to `discarded`, with a reason.
 
-| Stage        | Purpose                                                    | Writes                                    | Can be turned off |
-| ------------ | ---------------------------------------------------------- | ----------------------------------------- | ----------------- |
-| `inbox`      | a raw request waits to be taken on                         | nothing                                   | no                |
-| `request`    | what is asked for, and why                                 | `request/request.md` (Jira: the ticket)    | no                |
-| `spec`       | what to build, with acceptance criteria                    | `spec/spec.md`, and `capabilities.yaml`   | yes               |
-| `plan`       | how to build it, as ordered tasks                          | `plan/plan.md`                            | yes               |
-| `implement`  | build it, and change the records                           | `implement/round-N.md`, one per attempt   | no                |
-| `review`     | check the change against the spec and plan                 | `review/round-N.md`, each with a verdict  | yes               |
-| `qa`         | check the product's behavior against the request           | `qa/round-N.md` (Jira: the ticket)        | yes               |
-| `completed`  | finished work                                              | nothing                                   | no                |
-| `discarded`  | abandoned work, with the reason                            | nothing                                   | no                |
-| `postmortem` | for a finished item: which stage could first have caught a problem | `postmortem/postmortem.md`        | yes               |
+| Stage        | Purpose                                                            | Writes                                   | Can be turned off |
+| ------------ | ------------------------------------------------------------------ | ---------------------------------------- | ----------------- |
+| `inbox`      | a raw request waits to be taken on                                 | nothing                                  | no                |
+| `request`    | what is asked for, and why                                         | `request/request.md` (Jira: the ticket)  | no                |
+| `spec`       | what to build, with acceptance criteria                            | `spec/spec.md`, and `capabilities.yaml`  | yes               |
+| `plan`       | how to build it, as ordered tasks                                  | `plan/plan.md`                           | yes               |
+| `implement`  | build it, and change the records                                   | `implement/round-N.md`, one per attempt  | no                |
+| `review`     | check the change against the spec and plan                         | `review/round-N.md`, each with a verdict | yes               |
+| `qa`         | check the product's behavior against the request                   | `qa/round-N.md` (Jira: the ticket)       | yes               |
+| `completed`  | finished work                                                      | nothing                                  | no                |
+| `discarded`  | abandoned work, with the reason                                    | nothing                                  | no                |
+| `postmortem` | for a finished item: which stage could first have caught a problem | `postmortem/postmortem.md`               | yes               |
 
 A project attaches its own text to a stage's instructions, its own checks before
 an item moves into a stage, and its own commands after; see
@@ -591,10 +591,10 @@ The details are in [The Work component](docs/guide/work.md#moving-an-item).
 
 #### Skills
 
-| Skill                                        | What it does                                                                                                                                                                       |
-| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Skill                                        | What it does                                                                                                                                                                                                        |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`work`](skills/work/SKILL.md)               | Guides an agent through every stage of an item: deciding on an inbox arrival, writing the request, spec and plan, implementing, reviewing and testing, splitting large items, and filing work into another project. |
-| [`work-create`](skills/work-create/SKILL.md) | Turns an idea for a piece of work into a work item, or adds it to the item that already covers it, after checking what is already tracked.                                          |
+| [`work-create`](skills/work-create/SKILL.md) | Turns an idea for a piece of work into a work item, or adds it to the item that already covers it, after checking what is already tracked.                                                                          |
 
 Most day-to-day work starts from one of the command skills (planning an item,
 driving it to completion, processing the inbox) described in
@@ -604,39 +604,39 @@ driving it to completion, processing the inbox) described in
 
 **Items**
 
-| Command            | What it does                                                    |
-| ------------------ | --------------------------------------------------------------- |
+| Command            | What it does                                                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
 | `tcw work new`     | creates an item and prints its slug; its request from standard input; `tcw -C <folder> work new` creates it in another project |
-| `tcw work list`    | prints the slugs of unfinished items; `--all` adds finished ones |
-| `tcw work show`    | prints an item's properties, its request and its comments       |
-| `tcw work path`    | prints the work store's folder, an item's folder, or where a stage's file goes |
-| `tcw work edit`    | changes an item's properties                                    |
-| `tcw work comment` | adds a comment, from standard input                             |
-| `tcw work rename`  | renames an item's folder                                        |
-| `tcw work tags`    | lists, adds or removes the project's registered tags            |
+| `tcw work list`    | prints the slugs of unfinished items; `--all` adds finished ones                                                               |
+| `tcw work show`    | prints an item's properties, its request and its comments                                                                      |
+| `tcw work path`    | prints the work store's folder, an item's folder, or where a stage's file goes                                                 |
+| `tcw work edit`    | changes an item's properties                                                                                                   |
+| `tcw work comment` | adds a comment, from standard input                                                                                            |
+| `tcw work rename`  | renames an item's folder                                                                                                       |
+| `tcw work tags`    | lists, adds or removes the project's registered tags                                                                           |
 
 **Moving items**
 
-| Command            | What it does                                            |
-| ------------------ | ------------------------------------------------------- |
+| Command            | What it does                                                |
+| ------------------ | ----------------------------------------------------------- |
 | `tcw work advance` | moves an item to its next stage, or to the one `--to` names |
-| `tcw work discard` | abandons an item, with a reason                         |
+| `tcw work discard` | abandons an item, with a reason                             |
 
 **Stage instructions**
 
-| Command                  | What it does                                                                                               |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `tcw work stage prompt`  | prints a stage's instructions, with this project's own text, for one item                                  |
-| `tcw work lifecycle`     | prints every stage, whether it is turned on, and what this project attaches to it                          |
-| `tcw work procedure`     | prints one of TCW's procedures, such as `unattended-work` or `search`, with this project's own text for it |
-| `tcw work docs`          | prints the project's documentation entries: which documents a change must keep up to date                  |
+| Command                 | What it does                                                                                               |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `tcw work stage prompt` | prints a stage's instructions, with this project's own text, for one item                                  |
+| `tcw work lifecycle`    | prints every stage, whether it is turned on, and what this project attaches to it                          |
+| `tcw work procedure`    | prints one of TCW's procedures, such as `unattended-work` or `search`, with this project's own text for it |
+| `tcw work docs`         | prints the project's documentation entries: which documents a change must keep up to date                  |
 
 **Jira**
 
-| Command                 | What it does                                  |
-| ----------------------- | --------------------------------------------- |
-| `tcw work tickets list` | prints the Jira tickets waiting to become items |
-| `tcw work tickets adopt` | makes a Jira ticket an item                  |
+| Command                  | What it does                                    |
+| ------------------------ | ----------------------------------------------- |
+| `tcw work tickets list`  | prints the Jira tickets waiting to become items |
+| `tcw work tickets adopt` | makes a Jira ticket an item                     |
 
 A session with the **filesystem** backend:
 
@@ -675,36 +675,36 @@ across the axes.
 
 **Setting up and configuring**
 
-| Skill                                                      | What it does                                                                                                                                                                                  |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`setup`](skills/setup/SKILL.md)                           | Gets TCW working: installs or repairs the CLI, starts using TCW in a repository, connects a project to Jira, sets up a project on a new machine, and drafts a first taxonomy or capabilities list from existing code. |
+| Skill                                                      | What it does                                                                                                                                                                                                                    |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`setup`](skills/setup/SKILL.md)                           | Gets TCW working: installs or repairs the CLI, starts using TCW in a repository, connects a project to Jira, sets up a project on a new machine, and drafts a first taxonomy or capabilities list from existing code.           |
 | [`configure`](skills/configure/SKILL.md)                   | Changes a working project's configuration: which stages it uses, the text and commands bound to each, the Jira backend, documentation entries, where stores live, connected and inherited projects, and personal configuration. |
-| [`documentation-sync`](skills/documentation-sync/SKILL.md) | Decides which documents a finished change must update (README, changelogs, release notes, guides, skills), and runs the version cut when you ask for one.                                       |
+| [`documentation-sync`](skills/documentation-sync/SKILL.md) | Decides which documents a finished change must update (README, changelogs, release notes, guides, skills), and runs the version cut when you ask for one.                                                                       |
 
 **Command skills: the everyday workflows**
 
-| Skill                                                                                    | What it does                                                                                                                     |
-| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| [`commands-process-inbox`](skills/commands-process-inbox/SKILL.md)                       | Decides on every arrival in the work inbox, then writes the request for each one taken on.                                       |
-| [`commands-plan-work`](skills/commands-plan-work/SKILL.md)                               | Takes an item, or a request made in chat, through the request, spec and plan stages, and stops before any code.                  |
+| Skill                                                                                    | What it does                                                                                                                                                        |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`commands-process-inbox`](skills/commands-process-inbox/SKILL.md)                       | Decides on every arrival in the work inbox, then writes the request for each one taken on.                                                                          |
+| [`commands-plan-work`](skills/commands-plan-work/SKILL.md)                               | Takes an item, or a request made in chat, through the request, spec and plan stages, and stops before any code.                                                     |
 | [`commands-drive-work-to-completion`](skills/commands-drive-work-to-completion/SKILL.md) | Takes an item from wherever it is through implement, review and qa, to completed where the agent may record the qa verdict, or to qa for a person where it may not. |
-| [`commands-pause-work`](skills/commands-pause-work/SKILL.md)                             | Stops the work in hand, writes down what resuming needs in the item, and waits for you to say carry on.                          |
+| [`commands-pause-work`](skills/commands-pause-work/SKILL.md)                             | Stops the work in hand, writes down what resuming needs in the item, and waits for you to say carry on.                                                             |
 
 **Extras: optional, built for one way of working**
 
-| Skill                                                              | What it does                                                                                                                                                                       |
-| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Skill                                                              | What it does                                                                                                                                                                        |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`extras-autonomous-work`](skills/extras-autonomous-work/SKILL.md) | Drives work items to completion unattended, asking read-only advisors wherever the lifecycle would ask you: by default Codex and a read-only subagent, replaceable by your project. |
-| [`extras-triage-issues`](skills/extras-triage-issues/SKILL.md)     | Works through **your** project's GitHub issues and turns the ones worth doing into work items.                                                                                     |
-| [`extras-report`](skills/extras-report/SKILL.md)                   | Files a bug report or suggestion about TCW itself on [this project's issues](https://github.com/brocef/TCW/issues).                                                                |
+| [`extras-triage-issues`](skills/extras-triage-issues/SKILL.md)     | Works through **your** project's GitHub issues and turns the ones worth doing into work items.                                                                                      |
+| [`extras-report`](skills/extras-report/SKILL.md)                   | Files a bug report or suggestion about TCW itself on [this project's issues](https://github.com/brocef/TCW/issues).                                                                 |
 
 **Agents.** Two read-only agents ship with the plugin. Neither edits a file or
 moves an item; each reports back to the session that started it.
 
-| Agent             | What it does                                                                                                                                                         |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent             | What it does                                                                                                                                                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `reviewer`        | For the `review` stage: reads an item's change against its spec, plan and `capabilities.yaml`, runs the project's checks, and recommends a verdict criterion by criterion; the session that started it writes the round. |
-| `backlog-auditor` | Checks one unfinished item against your project's audit-backlog procedure, `tcw work procedure audit-backlog`, checking the item's claims against the code.          |
+| `backlog-auditor` | Checks one unfinished item against your project's audit-backlog procedure, `tcw work procedure audit-backlog`, checking the item's claims against the code.                                                              |
 
 ## TCW Local Web App
 
@@ -745,20 +745,20 @@ Everything else about the app is in
 
 ## Documentation
 
-| Document                                                                          | Covers                                                                                                                                       |
-| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| [The Work component](docs/guide/work.md)                                          | Work items, their stages and folders, moving items, and every `tcw work` command, for both backends                                          |
-| [Using TCW with Jira](docs/guide/jira.md)                                         | The Jira backend: who owns what, writing and following tickets, setting up, statuses, adopting tickets, QA on the ticket                     |
-| [Configuration](docs/guide/configuration.md)                                      | `tcw-config.yaml`: personal configuration, stage bindings, how hooks run, documentation entries, and the opt-in git example                  |
-| [The command line](docs/guide/cli.md)                                             | What every command prints on standard output and standard error, how to name an item, and the exit codes                                     |
-| [Taxonomy and Capabilities](docs/guide/taxonomy-and-capabilities.md)              | Declaring vocabulary, features and capabilities, from a request to the records, drift, and inheriting both from other projects                |
-| [Working across repositories](docs/guide/multi-repo.md)                           | Connecting projects, creating items in another project, keeping a store in another repository, and obtaining what a checkout does not have   |
-| [Linking and validation](docs/guide/linking-and-validation.md)                    | `tcw://` references between objects, and `tcw validate` as a CI check                                                                        |
-| [The local web viewer](docs/guide/web-viewer.md)                                  | Everything about `tcw serve`                                                                                                                 |
-| [Configuration reference](skills/configure/SKILL.md)                              | Every configuration key, and which ones a person may override                                                                                |
-| [The abstraction rules](docs/lifecycle/abstraction.md)                            | Why every operation must work for a backend that is not a filesystem, in full                                                                |
-| [Release notes](docs/release-notes/)                                              | What changed for users in each version                                                                                                       |
-| Migration guides                                                                  | Upgrading across a breaking release: [0.10 → 0.11](docs/migration-guide-0.10.X-to-0.11.0.md), [0.12 → 0.13](docs/migration-guide-0.12.X-to-0.13.0.md), [0.14 → 0.15](docs/migration-guide-0.14.X-to-0.15.0.md), [0.15 → 0.16](docs/migration-guide-0.15.X-to-0.16.0.md), [0.21 → 1.0](docs/migration-guide-0.21.X-to-1.0.0.md), [1.x → 2.0](docs/migration-guide-1.X-to-2.0.0.md), [2.4 → 2.5](docs/migration-guide-2.4.X-to-2.5.0.md), [2.8 → 3.0](docs/migration-guide-2.8-to-3.0.0.md) |
+| Document                                                             | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [The Work component](docs/guide/work.md)                             | Work items, their stages and folders, moving items, and every `tcw work` command, for both backends                                                                                                                                                                                                                                                                                                                                                                                       |
+| [Using TCW with Jira](docs/guide/jira.md)                            | The Jira backend: who owns what, writing and following tickets, setting up, statuses, adopting tickets, QA on the ticket                                                                                                                                                                                                                                                                                                                                                                  |
+| [Configuration](docs/guide/configuration.md)                         | `tcw-config.yaml`: personal configuration, stage bindings, how hooks run, documentation entries, and the opt-in git example                                                                                                                                                                                                                                                                                                                                                               |
+| [The command line](docs/guide/cli.md)                                | What every command prints on standard output and standard error, how to name an item, and the exit codes                                                                                                                                                                                                                                                                                                                                                                                  |
+| [Taxonomy and Capabilities](docs/guide/taxonomy-and-capabilities.md) | Declaring vocabulary, features and capabilities, from a request to the records, drift, and inheriting both from other projects                                                                                                                                                                                                                                                                                                                                                            |
+| [Working across repositories](docs/guide/multi-repo.md)              | Connecting projects, creating items in another project, keeping a store in another repository, and obtaining what a checkout does not have                                                                                                                                                                                                                                                                                                                                                |
+| [Linking and validation](docs/guide/linking-and-validation.md)       | `tcw://` references between objects, and `tcw validate` as a CI check                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| [The local web viewer](docs/guide/web-viewer.md)                     | Everything about `tcw serve`                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| [Configuration reference](skills/configure/SKILL.md)                 | Every configuration key, and which ones a person may override                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| [The abstraction rules](docs/lifecycle/abstraction.md)               | Why every operation must work for a backend that is not a filesystem, in full                                                                                                                                                                                                                                                                                                                                                                                                             |
+| [Release notes](docs/release-notes/)                                 | What changed for users in each version                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Migration guides                                                     | Upgrading across a breaking release: [0.10 → 0.11](docs/migration-guide-0.10.X-to-0.11.0.md), [0.12 → 0.13](docs/migration-guide-0.12.X-to-0.13.0.md), [0.14 → 0.15](docs/migration-guide-0.14.X-to-0.15.0.md), [0.15 → 0.16](docs/migration-guide-0.15.X-to-0.16.0.md), [0.21 → 1.0](docs/migration-guide-0.21.X-to-1.0.0.md), [1.x → 2.0](docs/migration-guide-1.X-to-2.0.0.md), [2.4 → 2.5](docs/migration-guide-2.4.X-to-2.5.0.md), [2.8 → 3.0](docs/migration-guide-2.8-to-3.0.0.md) |
 
 Every command also has `--help`.
 
