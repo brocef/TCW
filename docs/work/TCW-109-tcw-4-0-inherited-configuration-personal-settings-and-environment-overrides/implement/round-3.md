@@ -179,9 +179,49 @@ file, and reverted (the files compared equal to kept copies afterwards):
   `work.tags[0]`).
 - Places recorded as the merged list's numbers: red, the same 3.
 
+## Rebase onto v4
+
+`impl-109` was rebased onto `v4` at `9de3de73`, which holds TCW-111 (state
+files under each object's folder in place of `meta.yaml` and `item.yaml`,
+nested items, object folders). The 22 commits of this item became
+`v4..29bd7c2f`. The hashes named above are from before the rebase:
+`2342ba68` (the fixes of this round) is now `f8d2ccc8`, `f361e21d` (this
+file) `dd183f7f`, and `eacf78cb` (the folded-in fix) `dbafd60e`.
+
+- **One conflict**, in `work_store_problems` (`tcw/work/fs_backend.py`),
+  replaying `TCW-109: a project takes work.tags and work.jira from its
+  parents`. TCW-111 rewrote the function to walk the store at any depth and
+  check its shape; TCW-109 had made it skip the unregistered-tag check when
+  the tags are withheld. Kept TCW-111's walk and shape checks whole, and put
+  TCW-109's `registered = None if isinstance(config.tags, Withheld) else
+  set(config.tags)` in place of its `set(config.tags)`; the line that skips
+  the check when `registered` is None had merged on its own, and now warns
+  at the item's state file, as TCW-111 has it.
+- **One test converted to the state-file form**, with no conflict:
+  `test_ac14_references_into_the_project_are_answered_from_its_folders`
+  added `blocked-by` to an item by rewriting its `item.yaml`, which no
+  longer exists. It now reads and writes the item's `tcw-work-item.yaml`
+  through `tests/statefiles.py` (`read_state`, `write_state_data`, which
+  keeps the version line first), in `29bd7c2f`. Its assertions are
+  unchanged.
+- No other TCW-109 test or fixture writes `item.yaml` or `meta.yaml`. No
+  client source or `tcw/serve/dist` file differs from `v4`, so no client
+  build or check was run.
+
 ## The suite
 
-At `2342ba68`, from the worktree's root, with `-q -p no:cacheprovider`:
+After the rebase, at `29bd7c2f`, from the worktree's root, with `-q -p
+no:cacheprovider`:
+
+- The item's eight files: 483 passed, 3 skipped.
+- `tests/work tests/serve`: 1985 passed, 2 skipped (212 s).
+- `tests --ignore=tests/work --ignore=tests/serve`: 4357 passed, 111 skipped
+  (355 s).
+
+No test failed, so `test_check_versions.py` needed no rerun.
+
+Before the rebase, for round 3 itself, at `2342ba68`, from the worktree's
+root, with `-q -p no:cacheprovider`:
 
 - The item's eight files (`tests/test_inherited_config.py`,
   `tests/test_config_environment.py`, `tests/test_config_keys.py`,
