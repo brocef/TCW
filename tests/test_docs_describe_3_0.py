@@ -443,3 +443,21 @@ def test_the_documentation_index_links_the_guides_it_must():
         assert must in index, must
     assert "docs/work-inbox-template.md" not in index
 
+
+
+def test_the_abstraction_document_bounds_an_object_folder_by_resources():
+    """TCW-111 AC 19 (Design 9.1)."""
+    text = " ".join(ABSTRACTION.read_text(encoding="utf-8").split())
+    assert ("treating an object's folder as an open set of files — _it is bounded: "
+            "its state file and fixed files") in text
+    assert "and one `resources/` folder for anything else" in text
+    assert "`item.yaml`" not in text
+    interface = " ".join(_bullets_under(ABSTRACTION.read_text(encoding="utf-8"),
+                                        "## The backend interface"))
+    assert "id-path" in interface
+    assert "Where a folder sits never declares a parent; `parent` does." in text
+
+
+def test_the_backend_docstring_counts_twelve_operations():
+    import tcw.work.backend
+    assert "Twelve operations" in tcw.work.backend.__doc__

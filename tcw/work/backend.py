@@ -5,7 +5,7 @@ change: its properties, its stage, its request and its comments. The technical
 record (specs, plans, rounds) is files in the item folder in every mode, so
 paths and artifacts are not part of this interface; see `layout.py`.
 
-Eleven operations, small enough that the filesystem backend (TCW-70) and the
+Twelve operations, small enough that the filesystem backend (TCW-70) and the
 Jira backend (TCW-71) can each implement every one of them for real.
 """
 

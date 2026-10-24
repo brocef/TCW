@@ -338,3 +338,14 @@ def test_plan_says_how_to_file_a_part_into_another_project():
                                           "version control")]
     assert order == sorted(order), paragraph
     assert "ticket key printed instead of a slug" in paragraph
+
+
+def test_plan_nests_each_part_in_its_parent():
+    """TCW-111 AC 19: each part is made with --nest, which puts its folder
+    inside the parent's; --parent is what makes it a part."""
+    for backend in ("filesystem", "jira"):
+        paragraph = _paragraph_with(prompt("plan", backend), "Too large for one item")
+        flat = " ".join(paragraph.split())
+        assert "--parent <slug> --nest" in flat, paragraph
+        assert "puts the part's folder inside the parent's folder" in flat
+        assert "`--parent`, not the folder, is what makes it a part" in flat

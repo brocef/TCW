@@ -44,8 +44,12 @@ The interface lives in `tcw/work/backend.py`, which holds the exact
 signatures. In plain words, a backend can:
 
 - **create**: make a new item, with its folder, at a given stage, with its
-  properties and its request.
-- **read**: return one item by its folder name, or report that there is none.
+  properties and its request; inside its parent's folder when asked to nest
+  it and the parent is one of this backend's items.
+- **read**: return one item by its id-path, its folder's path in the work
+  store, which may pass through its parent's folder and organising folders;
+  or report that there is none. **update** and the operations below take an
+  id-path too.
 - **list**: return the items that match a query.
 - **update**: change an item's properties.
 - **set stage**: move an item to a stage, recording a note saying why as part
@@ -53,16 +57,18 @@ signatures. In plain words, a backend can:
   hooks; that is the job of the code that calls it.
 - **comment**: add a comment to an item.
 - **rename**: change the words of an item's folder name, keeping its date or
-  ticket key. The item's title does not change.
+  ticket key. The item's title does not change. It takes an id-path, and
+  refuses an item that has items nested in it.
 - **lookup**: turn a name only this backend uses, such as a Jira key, into the
-  item's folder name.
+  item's id-path.
 - **read request**: return the item's request, the text saying what it asks
   for.
 - **read comments**: return the item's comments, newest first.
 - **current user**: name the person running the command, in the form the
   backend uses for an item's assignee.
-- **is item folder**: say whether a folder under the work path is one of this
-  backend's items, reading the work path alone and never the network.
+- **is item folder**: say whether a folder at any depth under the work path is
+  one of this backend's items, reading the work path alone and never the
+  network.
 
 A backend reports honestly what it cannot map. An item can carry the keys of
 linked tickets that have no item of their own, listed as **untracked** rather
@@ -75,7 +81,8 @@ Express behavior in the model's vocabulary — **item · stage · move
 (`advance`) · slug · reference · project relation · query · properties ·
 request · comments · the item folder's named files** — and let each backend
 realize it. What the filesystem makes easy is a bonus layered on top, never an
-assumption the model depends on.
+assumption the model depends on. Where a folder sits never declares a parent;
+`parent` does.
 
 - **Use freely:**
     - documents next to the code they describe;
@@ -89,9 +96,12 @@ assumption the model depends on.
       exist — _the stage is a property; the "stage ahead of its documents"
       check only warns;_
     - stage names outside the stage table;
-    - treating an item folder as an open set of files — _it is bounded: stage
-      folders, `<stage>.md`, `round-N.md`, handoffs, `comments/`,
-      `capabilities.yaml` and `item.yaml`;_
+    - treating an object's folder as an open set of files — _it is bounded:
+      its state file and fixed files (for a work item, `tcw-work-item.yaml`,
+      `capabilities.yaml`, stage folders holding `<stage>.md`, `round-N.md`
+      and handoffs, and `comments/`; for a taxonomy entry or a capability,
+      its state file and `description.md`), the folders of its child objects,
+      and one `resources/` folder for anything else;_
     - hard-coded paths in references — _use slugs and paths within the store,
       resolved through the store;_
     - project relations read from directory nesting outside the layer that
