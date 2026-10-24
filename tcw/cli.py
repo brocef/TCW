@@ -1,5 +1,5 @@
-"""Top-level `tcw` CLI: dispatches `validate | serve | taxonomy | capabilities |
-work | project`.
+"""Top-level `tcw` CLI: dispatches `validate | serve | migrate | taxonomy |
+capabilities | work | project`.
 
 Built component groups register their own subparsers; the rest stub to "not yet
 implemented" until their phase lands (capabilities = Phase 3, work = Phase 5).
@@ -16,6 +16,7 @@ from tcw.errors import ConfigError, TcwError
 from tcw import __version__
 from tcw import project_cli
 from tcw.capabilities import cli as capabilities_cli
+from tcw.migrate import cli as migrate_cli
 from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
     COMPONENTS, SENTINEL, STORE_CLASSES, FsStoreProvisioner,
@@ -447,6 +448,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help="do not open a browser")
     p_serve.set_defaults(func=_cmd_serve)
 
+    migrate_cli.add_subparser(sub)
+
     for mod in _BUILT:
         mod.add_subparser(sub)
     # After `work`: the suggester names commands in the order the groups are
@@ -567,7 +570,10 @@ def _dispatch(args: argparse.Namespace, command: str) -> int:
         # the command reads the current one (TCW-114 Design 4.5).
         for target in getattr(args, "chdir", None) or ():
             _enter(target, args)
-        _check_here(args)
+        # `tcw migrate` reads the files these checks would refuse, so it
+        # makes none of them (TCW-116 Design 1.2).
+        if not getattr(args, "skips_checks", False):
+            _check_here(args)
         return args.func(args)
     except TcwError as error:
         # A failure after something was created still names it, on stdout

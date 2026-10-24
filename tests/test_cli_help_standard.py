@@ -20,9 +20,10 @@ from tcw.cli import build_parser
 
 # Design 2's 3.0 column, less `config show`, which TCW-72 adds with its own row,
 # and less the four `extends` commands, which TCW 4.0 removes (TCW-112 Design 1),
-# with the five move commands TCW 4.0 adds (TCW-114 Design 5.1).
+# with the five move commands TCW 4.0 adds (TCW-114 Design 5.1), and with
+# `migrate` (TCW-116 Design 1.1).
 SURFACE = {
-    "validate", "serve",
+    "validate", "serve", "migrate",
     "taxonomy list", "taxonomy add", "taxonomy show", "taxonomy path", "taxonomy rm",
     "taxonomy search", "taxonomy rename", "taxonomy move",
     "capabilities list", "capabilities show", "capabilities path", "capabilities add",
@@ -78,7 +79,7 @@ def leaves(commands):
 
 
 def test_the_surface_is_exactly_the_3_0_column(leaves):
-    assert len(SURFACE) == 46
+    assert len(SURFACE) == 47
     assert set(leaves) == SURFACE
 
 

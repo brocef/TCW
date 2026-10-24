@@ -38,7 +38,8 @@ PACKAGE = Path(tcw.__file__).resolve().parent
 SCANNED = sorted([*(PACKAGE / "work").rglob("*.py"), PACKAGE / "validate.py",
                   PACKAGE / "refs.py", PACKAGE / "capabilities" / "cli.py",
                   PACKAGE / "taxonomy" / "cli.py", PACKAGE / "cli.py",
-                  *(PACKAGE / "store").rglob("*.py")])
+                  *(PACKAGE / "store").rglob("*.py"),
+                  *(PACKAGE / "migrate").rglob("*.py")])
 SCANNED = [p for p in SCANNED if (PACKAGE / "work" / "jira") not in p.parents]
 
 WRITERS = {"add", "commit", "mv", "rm", "reset", "checkout", "merge", "push",

@@ -49,6 +49,7 @@ SOURCE = str(Path(tcw.__file__).resolve().parent.parent)
 ROWS: dict[str, tuple[list[str], int]] = {
     "validate": (["validate"], 1),
     "serve": (["serve", "--no-open", "--port", "1"], 1),
+    "migrate": (["migrate", "--dry-run"], 1),
     "project new": (["project", "new", "--id", "fx"], 0),
     "project list": (["project", "list"], 1),
     "project config": (["project", "config"], 1),
