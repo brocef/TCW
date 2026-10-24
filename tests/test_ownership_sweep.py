@@ -100,6 +100,13 @@ WRITER_CALLERS = {
     # never through a backend or store.
     "migrate/stores.py:name_blockers": (NOT_A_STORE, "`seen` is a set made by the "
                                                      "function"),
+    "migrate/config.py:_Converter.convert": (NOT_A_STORE, "`relations.parents` is the "
+                                                          "list of links being planned"),
+    "migrate/config.py:_Converter._classify": (NOT_A_STORE, "`relations.children` is the "
+                                                            "list of children being "
+                                                            "planned"),
+    "migrate/config.py:_Converter.links_of": (NOT_A_STORE, "`absent` and `busy` are the "
+                                                           "converter's sets of IDs"),
     **{f"work/config.py:{name}": (NOT_A_STORE, _PROBLEMS) for name in (
         "_parse_when", "_parse_binding", "parse_bindings", "_parse_hooks", "_parse_stage",
         "_parse_stages", "_parse_procedures", "_parse_tags", "parse_work_config")},
@@ -116,6 +123,9 @@ CURRENT_FOLDER_READS = {
     "project_files.py:find_marker", "output.py:shown", "work/cli.py:project_root",
     "work/cli.py:_procedure", "store/project.py:FsProjectRegistry._resolve_override",
     "store/fs.py:git_root",
+    # TCW-116: TCW 3's reading of a relative TCW_PROJECT_<ID>, against the
+    # folder the command runs in, as 3.x read it.
+    "migrate/legacy.py:override_folder_3x",
 }
 
 
