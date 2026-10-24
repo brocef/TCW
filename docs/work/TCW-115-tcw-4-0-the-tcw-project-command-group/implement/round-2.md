@@ -109,3 +109,8 @@ From the worktree root, `.venv/bin/pytest -q -p no:cacheprovider`:
 
 The full suite was not run in this round; the dispatching session runs it as
 CI runs it.
+
+The full suite as CI runs it, `.venv/bin/pytest -q -p no:cacheprovider`, run by
+the dispatching session on the branch at `318c68cd` (2026-10-24) in two halves
+by folder: `2078 passed, 2 skipped` and `4979 passed, 111 skipped`. `pnpm test`
+`198 passed`; `tsc --noEmit`, `pnpm lint` and `pnpm check:build` clean.
