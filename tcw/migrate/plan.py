@@ -13,9 +13,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tcw.migrate import config, record, stores
+from tcw.errors import TcwError
 from tcw.migrate.legacy import (ROOT_CONFIG, STATE_3X, Layer3, Layers3, objects_3x,
-                                parse_mapping_3x, read_3x_layers, read_layer_3x,
-                                store_folder_3x)
+                                own_jira_layers, parse_mapping_3x, read_3x_layers,
+                                read_layer_3x, store_folder_3x)
 from tcw.migrate.model import PHASES, Blocker, Plan, not_yet
 from tcw.project_files import LOCAL_SENTINEL, SENTINEL, VERSION_KEY, without_version
 
@@ -103,6 +104,34 @@ def part_two_forms(read: Read) -> list[Blocker]:
 
 
 # ---------------------------------------------------------------------------
+# The Jira half (Decided 19)
+
+
+def plan_jira_half(root: Path, project_id: str | None, *, jira_backed: bool,
+                   no_jira: bool):
+    """The Jira half of a run, fresh or following a progress record, or None
+    under `--no-jira` and for a project whose work is kept in files. The only
+    import of `tcw.migrate.jira`, made after those two tests, so a run with
+    the flag never builds a Jira client or backend. A Jira failure raises the
+    backend's own error."""
+    if no_jira or not jira_backed or not project_id:
+        return None
+    from tcw.migrate import jira
+    return jira.half(root, project_id)
+
+
+def no_jira_line(root: Path, project_id: str | None) -> str:
+    """The summary's line for a Jira-backed project run with `--no-jira`
+    (Design 1.1), its Jira project read from the configuration alone."""
+    jira = own_jira_layers(root).jira
+    key = jira.get("project") if isinstance(jira, dict) else None
+    board = f"Jira project {key}" if key else "its Jira project"
+    return (f"tickets not converted (--no-jira): the TCW Item of every ticket of "
+            f"{board} whose TCW Project is '{project_id}' and that holds a 3.x "
+            f"value; run 'tcw migrate' to convert them")
+
+
+# ---------------------------------------------------------------------------
 # The plan
 
 
@@ -127,7 +156,22 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
     if steps and read.git is not None:
         steps += config.plan_ignore(read.root)
     plan.steps = sorted(steps, key=lambda step: PHASES.index(step.phase))
-    if plan.steps or plan.blockers:
+    jira_backed = read.work_backend == "jira"
+    if not plan.blockers:
+        # A blocker refuses the run whatever Jira holds, so Jira is asked
+        # only when there is none (decided by the implementing agent).
+        try:
+            plan.half = plan_jira_half(read.root, shared.project, jira_backed=jira_backed,
+                                       no_jira=no_jira)
+        except TcwError as error:
+            plan.jira_failure = error
+    if plan.half is not None:
+        plan.tickets = list(plan.half.tickets)
+        plan.blockers += plan.half.blockers
+    if plan.steps or plan.blockers or plan.tickets:
         plan.reports = (reports + config.user_reports(read.layers.user)
-                        + config.ignore_reports(read.root))
+                        + config.ignore_reports(read.root)
+                        + (plan.half.reports if plan.half is not None else []))
+    if no_jira and jira_backed and plan.steps:
+        plan.summary.append(no_jira_line(read.root, shared.project))
     return plan

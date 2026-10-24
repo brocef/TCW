@@ -145,6 +145,10 @@ class Plan:
     owners: dict[str, str] = field(default_factory=dict)
     resolved: dict[str, str] = field(default_factory=dict)
     summary: list[str] = field(default_factory=list)
+    #: The Jira half (`jira.JiraHalf`), or None; and the error that stopped
+    #: it while planning, or None (Design 2.3).
+    half: object = None
+    jira_failure: Exception | None = None
 
     @property
     def empty(self) -> bool:

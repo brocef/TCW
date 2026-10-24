@@ -1356,6 +1356,69 @@ class JiraBackend:
             self.client.edit_issue(key_, {item_field: str(new)})
         self.report(f"set {key_}'s TCW Item to {new}")
 
+    # -- tcw migrate's two calls (TCW-116 Design 5.4) ---------------------------------
+
+    def item_values(self) -> list[tuple[str, Any, Any]]:
+        """Every ticket of the Jira project that carries a `TCW Item`, as
+        `(key, TCW Project value, TCW Item value)`, by one paged search with
+        no status filter. Used only by `tcw migrate`, while it plans; not one
+        of the twelve operations. Reads only `self.jira`, `self.client` and
+        the field ids `metadata()` finds, never `self.config` or
+        `self.layout`, so the work section the backend was built with does
+        not change what it finds."""
+        ids = self.metadata().field_ids
+        text = jql.item_query(self.jira.project, ids["item"])
+        with _jira():
+            issues = self.client.search(text, [ids["project"], ids["item"]])
+        return [(str(issue.get("key")), _field(issue, ids["project"]),
+                 _field(issue, ids["item"])) for issue in issues]
+
+    def set_item_values(self, pairs: Iterable[tuple[str, str, str]], *,
+                        edited: Callable[[str], None] | None = None) -> None:
+        """For each `(key, old, new)`, set the ticket's `TCW Item` to `new`
+        when it still holds `old`, by the edit `move` sends; one already
+        holding `new` is done. Every ticket is tried; `edited` is told each
+        key edited. Then, when any is left, raises `Unreachable` if any
+        attempt could not reach Jira, else `BackendError`, each naming the
+        tickets left as `pending`. Swapping each pair's values puts the old
+        ones back. Used only by `tcw migrate`; not one of the twelve
+        operations, and like `item_values` it never reads `self.config`."""
+        pairs = list(pairs)
+        if not pairs:
+            return
+        item_field = self.metadata().field_ids["item"]
+        left: list[str] = []
+        reasons: list[str] = []
+        unreachable = False
+        for key_, old, new in pairs:
+            try:
+                with _jira():
+                    value = _field(self.client.issue(key_, (item_field,)), item_field)
+                    if value == new:
+                        continue
+                    if value != old:
+                        left.append(key_)
+                        reasons.append(f"{key_}'s TCW Item is {value!r}, not {old}")
+                        continue
+                    self.client.edit_issue(key_, {item_field: new})
+            except Unreachable as error:
+                unreachable = True
+                left.append(key_)
+                reasons.append(f"{key_}: {error}")
+                continue
+            except TcwError as error:
+                left.append(key_)
+                reasons.append(f"{key_}: {error}")
+                continue
+            if edited is not None:
+                edited(key_)
+        if left:
+            kind = Unreachable if unreachable else BackendError
+            error = kind(f"the TCW Item of {', '.join(left)} was not set: "
+                         f"{'; '.join(reasons)}")
+            error.pending = left
+            raise error
+
     # -- set_stage (Design 5) --------------------------------------------------------------
 
     def set_stage(self, folder: str, stage: str, note: str | None) -> str | None:

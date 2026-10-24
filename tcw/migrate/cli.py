@@ -42,6 +42,16 @@ def _cmd_migrate(args: argparse.Namespace) -> int:
     return run(found[0], dry_run=args.dry_run, no_jira=args.no_jira)
 
 
+#: What a run says when Jira fails while planning (Design 2.3, 2.6, 2.7).
+NOTHING_WRITTEN = ("nothing was written; 'tcw migrate --no-jira' converts the files "
+                   "without Jira")
+NOTHING_MORE = ("nothing more was written; 'tcw migrate --no-jira' finishes the files "
+                "without Jira")
+NOT_LISTED = "the tickets to edit could not be listed"
+NOT_CHECKED = "nothing to migrate in the files; the tickets could not be checked"
+NOT_CHECKED_NO_JIRA = "nothing to migrate in the files; tickets not checked (--no-jira)"
+
+
 def run(root: Path, *, dry_run: bool, no_jira: bool) -> int:
     """Migrate the project at `root`; the exit code."""
     from tcw.migrate import progress, report
@@ -51,28 +61,87 @@ def run(root: Path, *, dry_run: bool, no_jira: bool) -> int:
         report.blockers([_unreadable(error)])
         return codes.REFUSED
     if record is not None:
-        return follow_progress(root, record, dry_run=dry_run)
+        return follow_progress(root, record, dry_run=dry_run, no_jira=no_jira)
     from tcw.migrate.plan import make_plan
     plan = make_plan(root, no_jira=no_jira)
     if plan.blockers:
-        for step in plan.steps:
-            report.say(report.step_line(step, dry=True))
+        _would(plan.steps, plan.tickets)
         report.reports(plan.reports)
         report.blockers(plan.blockers)
         return codes.REFUSED
+    if plan.jira_failure is not None:
+        return _planning_failed(plan, dry_run)
     if plan.empty:
         report.reports(plan.reports)
-        report.say("nothing to migrate")
+        if no_jira and plan.work_backend == "jira":
+            report.say(NOT_CHECKED_NO_JIRA)
+        else:
+            report.say("nothing to migrate")
         return codes.OK
     if dry_run:
-        for step in plan.steps:
-            report.say(report.step_line(step, dry=True))
+        _would(plan.steps, plan.tickets)
         report.reports(plan.reports)
+        _summary(plan.summary)
         return codes.OK
-    code = apply_plan(plan, root)
+    code = apply_plan(plan, root) if plan.steps else codes.OK
+    if code == codes.OK:
+        code = phase_f(plan.half, plan.tickets)
     if code == codes.OK:
         report.reports(plan.reports)
+        _summary(plan.summary)
     return code
+
+
+def _would(steps, tickets) -> None:
+    from tcw.migrate import report
+    for step in steps:
+        report.say(report.step_line(step, dry=True))
+    for edit in tickets:
+        report.say(report.ticket_line(edit, dry=True))
+
+
+def _summary(lines: list[str]) -> None:
+    from tcw.migrate import report
+    for line in lines:
+        report.say(line)
+
+
+def _planning_failed(plan, dry_run: bool) -> int:
+    """Jira failed while planning: nothing is written (Design 2.3, 2.6)."""
+    from tcw.migrate import report
+    error = plan.jira_failure
+    _would(plan.steps, [])
+    report.reports(plan.reports)
+    report.say(f"error: {error}")
+    if not plan.steps:
+        report.say(NOT_CHECKED)
+    elif dry_run:
+        report.say(NOT_LISTED)
+    else:
+        report.say(NOTHING_WRITTEN)
+    return error.code
+
+
+def phase_f(half, tickets) -> int:
+    """Phase F: the ticket edits, through the function the Jira half
+    returned; each edit made is said as it is made. A failure names the
+    tickets left, and a run again edits only those (Design 5.3)."""
+    from tcw.errors import TcwError
+    from tcw.migrate import report
+    if half is None or not tickets:
+        return codes.OK
+    try:
+        half.apply(lambda edit: report.say(report.ticket_line(edit)))
+    except TcwError as error:
+        left = set(getattr(error, "pending", None) or [t.key for t in tickets])
+        report.say(f"stopped: {error}")
+        report.say("not done:")
+        for edit in tickets:
+            if edit.key in left:
+                report.say(f"  {report.ticket_line(edit)}")
+        report.say(report.RUN_AGAIN)
+        return error.code
+    return codes.OK
 
 
 def _unreadable(error) -> "Blocker":
@@ -98,13 +167,33 @@ def apply_plan(plan, root: Path) -> int:
     return codes.OK
 
 
-def follow_progress(root: Path, record, *, dry_run: bool) -> int:
-    """Finish a run that stopped, from its progress record (Design 2.7); a dry
-    run lists the steps still to do."""
+def follow_progress(root: Path, record, *, dry_run: bool, no_jira: bool = False) -> int:
+    """Finish a run that stopped, from its progress record (Design 2.7). The
+    Jira half is planned first, by the function a fresh run uses, with the
+    project and backend the record holds; a dry run lists the steps still to
+    do and the ticket edits planned."""
+    from tcw.errors import TcwError
     from tcw.migrate import execute, report
+    from tcw.migrate.plan import no_jira_line, plan_jira_half
+    jira_backed = record.work_backend == "jira"
+    try:
+        half = plan_jira_half(root, record.project, jira_backed=jira_backed,
+                              no_jira=no_jira)
+    except TcwError as error:
+        if dry_run:
+            _would(execute.pending(record.steps, root), [])
+        report.say(f"error: {error}")
+        report.say(NOT_LISTED if dry_run else NOTHING_MORE)
+        return error.code
+    tickets = list(half.tickets) if half is not None else []
+    summary = [no_jira_line(root, record.project)] if no_jira and jira_backed else []
+    if half is not None and half.blockers:
+        _would(execute.pending(record.steps, root), tickets)
+        report.blockers(half.blockers)
+        return codes.REFUSED
     if dry_run:
-        for step in execute.pending(record.steps, root):
-            report.say(report.step_line(step, dry=True))
+        _would(execute.pending(record.steps, root), tickets)
+        _summary(summary)
         return codes.OK
     try:
         execute.follow(record.steps, root, lambda step: report.say(report.step_line(step)))
@@ -114,4 +203,9 @@ def follow_progress(root: Path, record, *, dry_run: bool) -> int:
     except execute.MigrateStopped as stop:
         report.stopped(stop.reason, stop.not_done)
         return codes.ERROR
-    return codes.OK
+    code = phase_f(half, tickets)
+    if code == codes.OK:
+        if half is not None:
+            report.reports(half.reports)
+        _summary(summary)
+    return code
