@@ -158,8 +158,8 @@ def _b14(rel: str, layer: Layer3) -> Blocker:
 def plan_file(root: Path, old: Layer3, new: Layer3, *, shared: bool,
               edits: tuple = (), conversions: tuple[str, ...] = ()) -> ConfigPlan:
     """One of the two project files: the 3.x file at the root (`old`) and
-    its `.tcw/` place (`new`). `edits` are the structural edits part 2's
-    conversions make to the shared file (C3, C5, C8), after the renames."""
+    its `.tcw/` place (`new`). `edits` are the structural edits the
+    relation and location conversions make to the shared file (C3, C5, C8), after the renames."""
     out = ConfigPlan()
     old_rel, new_rel = (ROOT_CONFIG, SENTINEL) if shared else (ROOT_LOCAL, LOCAL_SENTINEL)
     for rel, layer in ((old_rel, old), (new_rel, new)):

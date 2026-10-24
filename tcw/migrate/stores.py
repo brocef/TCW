@@ -24,7 +24,8 @@ from tcw.ids import FullId, id_part_problem, length_problem
 from tcw.migrate.config import first_difference
 from tcw.migrate.editors import convert_text
 from tcw.migrate.legacy import STATE_3X, objects_3x, parse_mapping_3x, store_folder_3x
-from tcw.migrate.references import (CAPABILITIES_YAML, Owners, applied, state_fields)
+from tcw.migrate.references import (CAPABILITIES_YAML, Owners, View, applied,
+                                    state_fields)
 from tcw.migrate.loose import (TEXT_SUFFIXES, Loose, Mentions, docs_entry, files_of,
                                loose_entries, move_of, relative_links)
 from tcw.migrate.model import (ABSENT, Blocker, Delete, Move, Report, Step, Write, digest,
@@ -432,6 +433,46 @@ def _text_writes(root: Path, planned, moved: list[Loose], mentions: Mentions,
                     out.steps.append(Write(final, "C", digest(text), ref_text, codes))
 
 
+def view_of(mapping: dict, family, own: dict[str, set[str]]) -> View:
+    """What 3.x's readers resolved a bare reference of this project against
+    (C16): each axis's `extends` sources with their id-paths as they are
+    once migrated, an override of a 3.x source left out, and a taxonomy
+    source's own taxonomy sources too, since 3.x's taxonomy reads followed
+    them (`_inherited_stores`, `tcw/store/fs.py:1751-1766` at v3.0.2); the
+    listed children; and each migrated source's record's `moved:`."""
+    from tcw.migrate.legacy import extends_3x, relations_3x
+    from tcw.migrate.overrides import ancestor_paths
+    from tcw.migrate.record import read_record
+    view = View(own)
+    relations, _ = relations_3x(mapping, ".")
+    view.children = [r.id for r in relations if r.kind == "children"]
+    for axis in ("taxonomy", "capabilities"):
+        try:
+            named = list(extends_3x(mapping.get(axis), axis))
+        except ValueError:
+            continue
+        seen = set()
+        while named:
+            pid = named.pop(0)
+            if pid in seen:
+                continue
+            seen.add(pid)
+            view.sources.setdefault(pid, {})[axis] = ancestor_paths(axis, pid, family)
+            member = family.quiet(pid) if family is not None else None
+            if member is None:
+                continue
+            if not member.three_x:
+                moved = read_record(member.folder).get("moved")
+                if isinstance(moved, dict):
+                    view.moved[pid] = {str(k): str(v) for k, v in moved.items()}
+            elif axis == "taxonomy":
+                try:
+                    named += extends_3x(member.raw.get("taxonomy"), "taxonomy")
+                except ValueError:
+                    pass
+    return view
+
+
 def _own_ids(store: Store, convert: list[str]) -> dict[str, str]:
     """Each of the store's own 3.x capabilities' `cap-…` id, by id-path; an
     override is left out."""
@@ -514,8 +555,13 @@ def plan_stores(root: Path, mapping: dict, project: str, *,
                     relocated.append((old, new))
                 override_moves.append(Move(old, new, "B", files_of(Path(root) / old), codes))
     mentions = Mentions(moved, relocated)
+    own = {store.namespace: set(kept) for store, _, kept in planned
+           if store.namespace != "work"}
+    if "capabilities" in own:
+        own["capabilities"] -= set(out.moved) | {p for (_, p) in found_overrides}
     owners = Owners(project, any(s.namespace == "capabilities" and s.folder.is_dir()
-                                 for s in stores), moved=dict(out.moved))
+                                 for s in stores), moved=dict(out.moved),
+                    view=view_of(mapping, family, own) if three_x else View(own))
     out.steps += override_moves
     out.steps += [move_of(root, m) for m in moved if m.origin is None]
     covered = set()

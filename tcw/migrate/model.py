@@ -119,12 +119,6 @@ class Blocker:
     fix: str = ""
 
 
-def not_yet(where: str, key: str, form: str) -> Blocker:
-    """B5 for a 3.x form only part 2 of the build converts (Decided 17)."""
-    return Blocker("B5", where, f"{key}: tcw migrate does not convert {form} yet",
-                   "keep this project on TCW 3 until a TCW 4 release converts it")
-
-
 @dataclass
 class Plan:
     """Everything one run will do and say, worked out before any write.

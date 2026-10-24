@@ -1,6 +1,5 @@
 """References within the project rewritten to full identifiers (TCW-116
-Design 4.1, C16; B5 and B10 as one project gives them; criteria 41 and 62;
-plan Step 8).
+Design 4.1, C16; B10; criteria 41 and 62; plan Steps 8 and 22).
 
 One small project per row of TCW-110 Design 5.1's table, each run with
 `tcw migrate`; then F-single, whose references all name its own objects.
@@ -169,17 +168,6 @@ def test_only_the_3x_files_a_branch_brought_back_convert(tcw, tmp_path):
 
 # ── what one project cannot convert yet, or at all ───────────────────────────
 
-def test_a_cross_project_blocked_by_is_b5_for_now(tcw, tmp_path):
-    app = make(tmp_path / "app", {
-        "tcw-config.yaml": FILES,
-        f"{W}/2026-10-02-b/item.yaml": "title: B\nstage: inbox\nblocked-by:\n"
-                                       "- other/2026-10-01-x\n"})
-    done = tcw(["migrate"], app)
-    assert done.code == 3
-    assert "B5 docs/work/2026-10-02-b/item.yaml: blocked-by: tcw migrate does not convert " \
-           "a reference to another project's work item yet" in done.err
-
-
 def test_a_capabilities_entry_with_no_ledger_is_b10(tcw, tmp_path):
     app = make(tmp_path / "app", {
         "tcw-config.yaml": FILES,
@@ -190,3 +178,108 @@ def test_a_capabilities_entry_with_no_ledger_is_b10(tcw, tmp_path):
     assert ("B10 docs/work/2026-10-01-a/capabilities.yaml: cli/x: this project ('app') "
             "keeps no capabilities ledger; qualify the path with a child project id "
             "(it declares no child projects)") in done.err
+
+
+# ── references owned by another project (plan Step 22) ──────────────────────
+
+CORE = {"tcw-config.yaml": "id: core\n",
+        f"{T}/auth/meta.yaml": "name: Auth\nkind: Vocabulary\n",
+        f"{C}/auth/login/meta.yaml": "id: cap-aaa111\nname: Login\nStatus: Supported\n"}
+EXTENDS = ("id: app\nwork:\n  backend: filesystem\nprojects:\n  upstream:\n"
+           "    core: ../core\ntaxonomy:\n  extends:\n  - core\ncapabilities:\n"
+           "  extends:\n  - core\n")
+
+
+def migrated(tcw, root: Path):
+    done = tcw(["migrate", "--no-jira"], root)
+    assert done.code == 0, done.err
+    return done
+
+
+def own_state(root: Path, rel: str) -> dict:
+    return yaml.safe_load(read(root, rel))
+
+
+def test_bare_and_prefixed_paths_name_the_source_that_has_them(tcw, tmp_path):
+    make(tmp_path / "core", CORE)
+    app = make(tmp_path / "app", {
+        "tcw-config.yaml": EXTENDS,
+        f"{C}/cli/x/meta.yaml": "name: X\nStatus: Supported\nSubject:\n- core/auth\n"
+                                 "- billing\nBlocked by: auth/login\n",
+        f"{C}/cli/x/description.md": "See [login](tcw://C/auth/login) and "
+                                      "[auth](tcw://T/auth).\n",
+        f"{T}/billing/meta.yaml": "name: Billing\nkind: Vocabulary\n"})
+    migrated(tcw, app)
+    data = own_state(app, f"{C}/cli/x/tcw-capability.yaml")
+    assert data["Subject"] == ["core.taxonomy/auth", "app.taxonomy/billing"]
+    assert data["Blocked by"] == "core.capabilities/auth/login"
+    assert read(app, f"{C}/cli/x/description.md") == (
+        "See [login](tcw://core.capabilities/auth/login) and "
+        "[auth](tcw://core.taxonomy/auth).\n")
+
+
+def test_a_capabilities_yaml_entry_is_routed_as_3_x_routed_it(tcw, tmp_path):
+    make(tmp_path / "core", CORE)
+    make(tmp_path / "kid", {"tcw-config.yaml": "id: kid\n"})
+    app = make(tmp_path / "app", {
+        "tcw-config.yaml": EXTENDS.replace("  upstream:", "  children:\n    kid: ../kid\n"
+                                                         "  upstream:"),
+        f"{C}/cli/x/meta.yaml": "name: X\nStatus: Supported\n",
+        f"{W}/2026-10-01-a/item.yaml": "title: A\nstage: inbox\n",
+        f"{W}/2026-10-01-a/capabilities.yaml": "new:\n- cli/y\nchanged:\n- kid/cli/z\n"
+                                                "- core/auth/login\n- cli/x\n"
+                                                "taxonomy:\n  changed:\n  - auth\n"
+                                                "  new:\n  - fresh\n"})
+    migrated(tcw, app)
+    data = own_state(app, f"{W}/2026-10-01-a/capabilities.yaml")
+    assert data == {"new": ["app.capabilities/cli/y"],
+                    "changed": ["kid.capabilities/cli/z", "core.capabilities/auth/login",
+                                "app.capabilities/cli/x"],
+                    "taxonomy": {"changed": ["core.taxonomy/auth"],
+                                 "new": ["app.taxonomy/fresh"]}}
+
+
+def test_a_cross_project_blocked_by_names_that_project_s_item(tcw, tmp_path):
+    """3.x's `--blocks` wrote `<project>/<folder>` for another project's item."""
+    app = make(tmp_path / "app", {
+        "tcw-config.yaml": FILES,
+        f"{W}/2026-10-02-b/item.yaml": "title: B\nstage: inbox\nblocked-by:\n"
+                                       "- other/2026-10-01-x\n",
+        f"{W}/2026-10-02-b/notes.md": "After [x](tcw://W/other/2026-10-01-x).\n"})
+    migrated(tcw, app)
+    assert own_state(app, f"{W}/2026-10-02-b/tcw-work-item.yaml")["blocked-by"] == \
+        ["other.work/2026-10-01-x"]
+    assert read(app, f"{W}/2026-10-02-b/resources/notes.md") == \
+        "After [x](tcw://other.work/2026-10-01-x).\n"
+
+
+def test_a_reference_to_an_override_a_source_moved_names_its_new_path(tcw, tmp_path):
+    make(tmp_path / "lib", {"tcw-config.yaml": "id: lib\n",
+                            f"{C}/auth/login/meta.yaml": "id: cap-aaa111\nname: Login\n"
+                                                          "Status: Supported\n"})
+    core = make(tmp_path / "core", {
+        "tcw-config.yaml": "id: core\nprojects:\n  upstream:\n    lib: ../lib\n"
+                           "capabilities:\n  extends:\n  - lib\n",
+        f"{C}/ov/login/meta.yaml": "Status: Experimental\noverrides: cap-aaa111\n"})
+    migrated(tcw, core)
+    app = make(tmp_path / "app", {
+        "tcw-config.yaml": EXTENDS,
+        f"{C}/cli/x/meta.yaml": "name: X\nStatus: Supported\nBlocked by: core/ov/login\n"})
+    make(tmp_path / "core", {f"{T}/auth/meta.yaml": "name: Auth\nkind: Vocabulary\n"})
+    migrated(tcw, app)
+    assert own_state(app, f"{C}/cli/x/tcw-capability.yaml")["Blocked by"] == \
+        "core.capabilities/auth/login"
+
+
+def test_a_bare_reference_two_sources_have_is_b10(tcw, tmp_path):
+    make(tmp_path / "core", CORE)
+    make(tmp_path / "lib", {**CORE, "tcw-config.yaml": "id: lib\n"})
+    app = make(tmp_path / "app", {
+        "tcw-config.yaml": EXTENDS.replace("    core: ../core\n",
+                                           "    core: ../core\n    lib: ../lib\n")
+                                  .replace("  - core\n", "  - core\n  - lib\n"),
+        f"{C}/cli/x/meta.yaml": "name: X\nStatus: Supported\nBlocked by: auth/login\n"})
+    done = tcw(["migrate", "--no-jira"], app)
+    assert done.code == 3
+    assert (f"  B10 {C}/cli/x/meta.yaml: Blocked by: auth/login is in more than one "
+            f"project this one inherits from (core, lib), and TCW 3 refused it") in done.err
