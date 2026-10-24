@@ -320,3 +320,129 @@ def test_every_blocker_is_listed_with_the_changes_it_stopped(tcw, tmp_path):
     assert said.index("refused:") > said.index("would write .tcw/tcw-config.local.yaml: C1")
     assert sum(1 for line in said if line.startswith("  B")) == 2
     assert yaml.safe_load((app / "tcw-config.yaml").read_text())["id"] == "app"
+
+
+# ── C3, C6: projects: becomes parents: and children: (plan Step 17) ──────────
+#
+# `config.plan_relations` is called directly: the command still refuses
+# `projects:` until Step 18 writes the manifest entries that locate each
+# converted parent and child.
+
+def relations_of(text: str):
+    from tcw.migrate import config
+    from tcw.migrate.editors import convert_text
+    from tcw.store.config_edit import intended
+    mapping = yaml.safe_load(text)
+    planned = config.plan_relations("tcw-config.yaml", mapping)
+    edits = planned.edits()
+    new = convert_text(".tcw/tcw-config.yaml", text, edits,
+                       expect={"tcw-version": __import__("tcw").__version__,
+                               **intended(mapping, edits)}) if edits else None
+    return planned, new
+
+
+def parsed_links(text: str):
+    from tcw.store.links import parse_children, parse_parents
+    data = yaml.safe_load(text)
+    parents, problems = parse_parents(data.get("parents"), ".tcw/tcw-config.yaml")
+    children, child_problems = parse_children(data.get("children"), ".tcw/tcw-config.yaml",
+                                              own_id=data["id"])
+    assert problems == [] and child_problems == []
+    return data, parents, children
+
+
+def test_a_parent_becomes_a_plain_parent_id(tmp_path):
+    planned, new = relations_of("id: app\nprojects:\n  parent:\n    ws: ..\n")
+    data, parents, children = parsed_links(new.text)
+    assert "projects" not in data
+    assert data["parents"] == ["ws"]
+    assert [(p.id, sorted(p.inherit)) for p in parents] == [
+        ("ws", ["capabilities", "config", "taxonomy"])]
+    assert children == [] and "children" not in data
+    assert new.text == version_line() + "id: app\nparents:\n- ws\n"
+
+
+def test_children_become_children_in_order():
+    planned, new = relations_of(
+        "id: ws\nprojects:\n  children:\n    b: b\n    a:\n      path: a\nwork:\n"
+        "  tags: []\n")
+    data, parents, children = parsed_links(new.text)
+    assert children == ["b", "a"] and "parents" not in data
+    assert data["work"] == {"tags": []}
+
+
+@pytest.mark.parametrize("extends, inherit", [
+    ("taxonomy:\n  extends:\n  - core\n", ["taxonomy"]),
+    ("taxonomy:\n  extends:\n  - core\ncapabilities:\n  extends:\n  - core\n",
+     ["taxonomy", "capabilities"]),
+    ("", "none")])
+def test_an_upstream_passes_the_axes_its_extends_names(extends, inherit):
+    planned, _ = relations_of(
+        f"id: app\nprojects:\n  upstream:\n    core: ../core\n{extends}")
+    assert [link.value() for link in planned.parents] == [{"id": "core", "inherit": inherit}]
+
+
+def test_the_upstream_entry_is_read_by_tcw_4(tmp_path):
+    """The `extends` keys are Step 19's to remove; here only the links."""
+    planned, new = relations_of(
+        "id: app\nprojects:\n  parent:\n    ws: ..\n  upstream:\n    core: ../core\n"
+        "    lib:\n      repository:\n        url: https://example.invalid/lib.git\n"
+        "taxonomy:\n  extends:\n  - core\n")
+    data, parents, _ = parsed_links(new.text)
+    assert data["parents"] == ["ws", {"id": "core", "inherit": ["taxonomy"]},
+                               {"id": "lib", "inherit": "none"}]
+    assert [(p.id, sorted(p.inherit)) for p in parents] == [
+        ("ws", ["capabilities", "config", "taxonomy"]), ("core", ["taxonomy"]),
+        ("lib", [])]
+    assert [r.id for r in planned.entries] == ["ws", "core", "lib"]
+
+
+def test_several_parents_convert_in_the_order_written():
+    """3.x refused more than one parent; a file that has several anyway
+    keeps them in its order."""
+    planned, new = relations_of(
+        "id: app\nprojects:\n  parent:\n    b: ../b\n    a: ../a\n")
+    assert yaml.safe_load(new.text)["parents"] == ["b", "a"]
+
+
+def test_a_jira_block_is_dropped_recorded_and_reported():
+    """Criterion 27."""
+    planned, new = relations_of(
+        "id: ws\nprojects:\n  children:\n    app:\n      path: app\n      jira:\n"
+        "        project: APP\n        credentials:\n          email-env: TCW_X__EMAIL\n")
+    assert yaml.safe_load(new.text) == {"tcw-version": __import__("tcw").__version__,
+                                        "id": "ws", "children": ["app"]}
+    assert planned.removed == [{"file": "tcw-config.yaml",
+                                "key": "projects.children.app.jira",
+                                "value": {"project": "APP",
+                                          "credentials": {"email-env": "TCW_X__EMAIL"}}}]
+    assert [(r.code, r.where) for r in planned.reports] == [("D6", "tcw-config.yaml"),
+                                                            ("A9", "tcw-config.yaml")]
+    assert planned.reports[0].text.startswith("projects.children.app.jira: dropped;")
+    assert "TCW_X__EMAIL starts with TCW_ and holds __" in planned.reports[1].text
+
+
+def test_a_comment_inside_the_block_is_returned_as_dropped():
+    _, new = relations_of("id: ws\n# kept\nprojects:\n  # the children\n  children:\n"
+                          "    app: app\n")
+    assert new.dropped == ["# the children"]
+    assert "# kept\n" in new.text
+
+
+def test_an_anchor_the_block_defines_and_the_file_uses_is_refused():
+    """B12: removing the block would lose the value the alias reads."""
+    from tcw.store.config_edit import ConfigEditRefused
+    with pytest.raises(ConfigEditRefused, match="anchor"):
+        relations_of("id: ws\nprojects:\n  children:\n    app: &where app\n"
+                     "work:\n  path: *where\n")
+
+
+def test_a_projects_block_3x_refused_is_b14():
+    planned, new = relations_of("id: ws\nprojects:\n  children:\n    Bad: x\n")
+    assert [b.code for b in planned.blockers] == ["B14"]
+    assert "children key" in planned.blockers[0].why
+
+
+def test_no_projects_key_plans_nothing():
+    planned, new = relations_of("id: ws\n")
+    assert (planned.present, planned.edits(), new) == (False, [], None)

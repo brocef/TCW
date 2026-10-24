@@ -37,6 +37,7 @@ from tcw.store.config_edit import ConfigEditRefused, RenameKey
 from tcw.store.fs import LOCAL_CONFIG_RULE, LOCAL_MANIFEST_RULE
 
 IGNORE = f"{TCW_FOLDER}/.gitignore"
+RECORD_NAME = f"{TCW_FOLDER}/tcw-migration.yaml"
 
 #: The commands and flags TCW 4 removes, for A13 (S115 Design 1.2; TCW-114):
 #: the commands from the one table that names them (TCW-115's guard allows
@@ -364,3 +365,129 @@ def plan_ignore(root: Path) -> list[Write]:
     if rest:
         out.append(Write(IGNORE, "D", expect, _appended(now, rest), ("C1",)))
     return out
+
+
+# ---------------------------------------------------------------------------
+# `projects:` becomes `parents:` and `children:` (C3, C6; plan Step 17)
+
+#: The axes an `extends` can name, in the order TCW 4 lists them.
+EXTENDED_AXES = ("taxonomy", "capabilities")
+
+
+@dataclass
+class Link:
+    """One planned entry of `parents:`: a project, and the axes it passes,
+    None for all of them (a plain ID)."""
+
+    id: str
+    inherit: tuple[str, ...] | None = None
+
+    def value(self) -> Any:
+        """The entry as `parents:` holds it."""
+        if self.inherit is None:
+            return self.id
+        return {"id": self.id, "inherit": list(self.inherit) if self.inherit else "none"}
+
+    def passes(self, axis: str) -> bool:
+        return self.inherit is None or axis in self.inherit
+
+    def with_axis(self, axis: str) -> "Link":
+        if self.passes(axis):
+            return self
+        axes = {*(self.inherit or ()), axis}
+        return Link(self.id, tuple(a for a in EXTENDED_AXES if a in axes))
+
+
+@dataclass
+class Relations:
+    """What a 3.x `projects:` block becomes: the parent links and children
+    to write, the entries their locations come from (for C4), the values
+    removed with no 4.0 home (Design 7's `removed:`), and the reports."""
+
+    present: bool = False
+    parents: list[Link] = field(default_factory=list)
+    children: list[str] = field(default_factory=list)
+    entries: list = field(default_factory=list)
+    removed: list[dict] = field(default_factory=list)
+    reports: list[Report] = field(default_factory=list)
+    blockers: list[Blocker] = field(default_factory=list)
+
+    def edits(self) -> list:
+        """The edits of the shared file (Decided 9): `projects:` removed, and
+        `parents:` and `children:` set after `id`."""
+        from tcw.store.config_edit import RemoveTop, SetTop
+        if not self.present:
+            return []
+        out: list = [RemoveTop("projects")]
+        if self.parents:
+            out.append(SetTop("parents", [link.value() for link in self.parents],
+                              after="id"))
+        if self.children:
+            out.append(SetTop("children", list(self.children),
+                              after="parents" if self.parents else "id"))
+        return out
+
+
+def extended_by(mapping: dict) -> dict[str, list[str]]:
+    """Each axis's 3.x `extends` list, read as 3.x read it; an axis whose
+    list 3.x refused is left out (its B14 comes from `extends_blockers`)."""
+    from tcw.migrate.legacy import extends_3x
+    out = {}
+    for axis in EXTENDED_AXES:
+        try:
+            out[axis] = extends_3x(mapping.get(axis), f"{axis}.extends")
+        except ValueError:
+            out[axis] = []
+    return out
+
+
+def plan_relations(rel: str, mapping: dict) -> Relations:
+    """C3 and C6 on the shared file `rel`, read as `mapping`: each
+    `projects.parent` entry a plain parent ID; each `projects.upstream` one
+    a parent passing the axes whose `extends` names it, or none; each
+    `projects.children` one a child. Every `jira` block is dropped, recorded
+    and reported (D6), its credential names checked first (A9). Entries are
+    kept in the order written within each relation, parents before
+    upstreams."""
+    from tcw.migrate.legacy import relations_3x
+    out = Relations(present="projects" in mapping)
+    if not out.present:
+        return out
+    found, problems = relations_3x(mapping, rel)
+    if problems:
+        out.blockers += [Blocker("B14", rel, problem.removeprefix(f"{rel}: "),
+                                 "correct the projects: block by hand, then run "
+                                 "'tcw migrate' again") for problem in problems]
+        return out
+    extends = extended_by(mapping)
+    out.entries = found
+    for kind in ("parent", "upstream"):
+        for relation in (r for r in found if r.kind == kind):
+            if kind == "parent":
+                out.parents.append(Link(relation.id))
+            else:
+                axes = tuple(a for a in EXTENDED_AXES if relation.id in extends[a])
+                out.parents.append(Link(relation.id, axes))
+    out.children = [r.id for r in found if r.kind == "children"]
+    for relation in found:
+        if relation.jira is None:
+            continue
+        key = f"projects.{relation.kind}.{relation.id}.jira"
+        out.removed.append({"file": rel, "key": key, "value": relation.jira})
+        out.reports.append(Report("D6", rel, f"{key}: dropped; it filed work into "
+                                             f"another project's Jira, which TCW 4 removes "
+                                             f"(kept in {RECORD_NAME})"))
+        out.reports += _jira_block_credentials(rel, key, relation.jira)
+    return out
+
+
+def _jira_block_credentials(rel: str, key: str, block: Any) -> list[Report]:
+    """A9 for a `projects:` entry's `jira` block (Design 2.9)."""
+    credentials = block.get("credentials") if isinstance(block, dict) else None
+    if not isinstance(credentials, dict):
+        return []
+    return [Report("A9", rel, f"{key}.credentials.{name}: {value} starts with TCW_ and "
+                              f"holds __, which TCW 4 reads as an override of a "
+                              f"configuration value; name another variable")
+            for name, value in credentials.items()
+            if isinstance(value, str) and value.startswith("TCW_") and "__" in value]
