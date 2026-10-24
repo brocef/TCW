@@ -420,11 +420,12 @@ before those files are reset. Step 21's run of it is its rehearsal.
 Each entry of `followups.md` (cited by its line, `F:n`; `F:2` holds three
 entries, 2a-2c) was checked against `v4` at `bb6adc7e` on 2026-10-24, by
 reading the code and, where cheap, reproducing it with the worktree's 4.0
-`tcw` in scratch projects. Counts: **21 fixes in this item** (covering 24
-entries, three pairs being one defect), **2 documentation already answered
-by TCW-117**, **25 new work items to file after release** (covering 28
-entries; F:61 is also in the documentation group), **9 dropped**: 62 entries in
-all. A fix is a verified, small defect in 4.0's
+`tcw` in scratch projects; F:62 to F:66, added while TCW-117's skills were
+written, were checked the same way at `7af7343e`. Counts: **24 fixes in
+this item** (covering 27 entries, three pairs being one defect), **3
+documentation already answered by TCW-117**, **25 new work items to file
+after release** (covering 28 entries; F:61 is also in the documentation
+group), **10 dropped**: 67 entries in all. A fix is a verified, small defect in 4.0's
 behaviour; a defect that is older than 4.0 is fixed here only when it damages
 data or is a line or two, and is otherwise a new item. Web-app changes are new
 items: each needs the committed web build rebuilt (`pnpm check:build`), which
@@ -449,12 +450,15 @@ is not small.
 | 13 | F:33 | test docstrings still describe `list --local`, a flag 4.0 replaced with `--scope` (`tcw taxonomy list --help`): `tests/test_tree_parent_missing.py:58-59`, `:98`, `:193`; `tests/test_overrides_by_path.py:417` | reword each to the `--scope` form the test runs | none: text only; the module passes unchanged |
 | 14 | F:45 | the `unreviewed` line of `tcw capabilities drift` still says "upstream default", a 3.x term (`tcw/capabilities/cli.py:199-200`) | the line becomes `unreviewed: <id>: inherited, and its status is still the one it inherits; never ruled on here`; **[after TCW-117]** the guide line that quotes it, `docs/guide/taxonomy-and-capabilities.md:413` in TCW-117's work, is changed to the same words in the same commit | `tests/work/test_drift_work.py` asserts the new line; `grep -rn 'upstream default' tcw docs/guide skills` prints nothing |
 | 15 | F:48 | `tcw project config --origin`'s help says it "prints even when something is wrong" (`tcw/project_cli.py:94-97`), but it follows TCW-109 Design 7.1, printing nothing when an inherited key is undecided or broken (`tcw/config_cli.py:295-301`) | the help says an undecided or broken inherited key still stops it | the existing help test, if one pins the text; else none (help text) |
-| 16 | F:51 | a `capabilities.yaml` entry for a project the manifest places at a missing folder is an error with exit 1 (reproduced); TCW-110's spec (`:567`) says unresolved | at `tcw/validate.py:729-730` and `:819-820`, report `unresolved` when the problem is an `_UncheckedProblem` | the same setup gives an `unresolved:` line and exit 0 |
+| 16 | F:51 | a `capabilities.yaml` entry for a project the manifest places at a missing folder is an error with exit 1 (reproduced); TCW-110's spec (`:567`) says unresolved | at `tcw/validate.py:729-730` and `:819-820`, report `unresolved` when the problem is an `_UncheckedProblem` (made only from an `Unchecked` answer, `tcw/work/gates.py:169-174`). An entry naming a project ID nobody knows is a `ProjectGraphError`, answered `Invalid` (`tcw/work/gates.py:376-377`), so it stays an error with exit 1, as TCW-117's `skills/work/SKILL.md:138` and `docs/guide/cli.md:193` say (`check the spelling`) | the same setup gives an `unresolved:` line and exit 0; an entry naming an unknown project ID still exits 1 with `check the spelling` |
 | 17 | F:53 | no test covers A14's other source name (`tcw/migrate/config.py:666-667`) | none: test only | `tests/migrate/test_migrate_manifests.py`: the path comes from an ancestor's file and A14 names `<relative>/tcw-config.yaml` |
 | 18 | F:57 | a package migrated before its related projects: the after-run check lists no A12 and the summary does not say the check was cut short; `collect_findings` (`tcw/cli.py:274-278`) returns only the configuration findings and the graph problem, and `check_after` (`tcw/migrate/execute.py:356-360`) drops that as A8 predicted (read in code, not run) | `check_after` returns a flag when `registry.check()` is not empty; `_check_after` (`tcw/migrate/cli.py:103-109`) adds a report line: `check after the run stopped: a related project is still TCW 3.x; run 'tcw validate' once it is migrated` | `tests/migrate/test_migrate_monorepo.py`: migrate `api` first; the line is printed |
 | 19 | F:58 | A8 in a workspace's run lists descendants before a parent: Design 2.10 and 6.2 of TCW-116 say parents first, but `still_3x_reports` (`tcw/migrate/config.py:1050-1070`) keeps the order found | order the non-ancestors by the family's predicted parent links | the order of A8's lines in a workspace run with a parent and a child both 3.x |
 | 20 | F:59 | `1 tickets edited`, `1 files written`: `tcw/migrate/report.py:111-112` never uses the singular | singular for a count of 1; **[after TCW-117]** the migration guide's template of that line (`docs/migration-guide-3.X-to-4.0.0.md:160`, `changed: <n> files written, … <n> tickets edited`) gains "(`file` and `ticket` when the count is 1)"; its example at `:98` (counts 6 and 0) is unchanged | `counts([one write], 1, dry=False) == "changed: 1 file written, 0 moved, 0 deleted; 1 ticket edited"`; `tests/migrate/test_migrate_command.py:163-167` still passes (it asserts `0 tickets edited`, and is changed only if one of its cases writes exactly one file) |
 | 21 | F:60 | a refused run's planned lines describe C12 and D7 for a B9-refused override: it is missing from `resolved` (`tcw/migrate/stores.py:539`), so `_plan_object` plans them | at `tcw/migrate/stores.py:319` and `:345`, also require `"overrides" not in data` | a refused B9 run lists no C12 or D7 for that file |
+| 22 | F:63 | `tcw project new --work-path tcw://…` is refused with `init takes a path relative to the project` (`tcw/cli.py:67-70`); 4.0 has no `init` command (`tcw --help`), and `run_init` is reached only from `tcw project new` (`tcw/project_cli.py:73`, `tcw/cli.py:249-253`) | the message says `` `tcw project new` takes a path relative to the project `` | a test of `tcw project new work --work-path tcw://x.path/board`: exit 2, the message names `tcw project new` and not `init` |
+| 23 | F:64 | a credential name set aside from an override variable is recorded with its variable (`tcw/config.py:674-676`, `Setting.variable`, `:191`) but printed from its file alone, which a variable has none of: `where = … if s.file is not None else ""` (`tcw/config_cli.py:241`), giving `(Jira credential names apply only in a Jira-mode project, )` | when `s.file` is None and `s.variable` is set, name `environment <variable>`, the form the values' own comments use (`# app, environment TCW_USER_NAME__APP`) | `tests/config/test_config_show.py` (beside `:93`): `TCW_WORK_JIRA_CREDENTIALS_EMAIL_ENV__APP` set in a project without Jira; the `# skipped:` line ends `environment TCW_WORK_JIRA_CREDENTIALS_EMAIL_ENV__APP)` |
+| 24 | F:66 | the advice `run tcw project new <axis> --id <id>` (`tcw/project_cli.py:177`, `tcw/move.py:96-97`) names `--id` even inside a project that has one, where `tcw project new <axis>` reads the ID from `.tcw/tcw-config.yaml` (`tcw/cli.py:72-76`); reproduced with `tcw taxonomy path` and `tcw taxonomy move x --top` in a project holding only a work store (`store_folder` is also what `tcw project info` reads, `tcw/project_cli.py:241`) | name `--id <id>` only when no project with an ID is found here; otherwise `run tcw project new <axis> in the project folder` | in a project with only a work store, `tcw taxonomy path`'s and `tcw taxonomy move`'s advice names no `--id`; outside any project the move's still does |
 
 Fixes 18 to 21 are in `tcw migrate`, TCW-116's area, and are made before
 Step 15 runs it on this repository. Any fix found at implement to be larger
@@ -476,8 +480,11 @@ already says what the corrected help says); `skills/configure/references/persona
 and `docs/capabilities/cli/override-configuration-from-the-environment/description.md:7`
 (fix 7: the more specific variable wins, which the fix keeps; neither quotes
 the note); `docs/migration-guide-3.X-to-4.0.0.md:98` (fix 20: counts of 6
-and 0). Nothing quotes the texts of fixes 1, 3, 4, 8, 9, 11, 12, 16, 18, 19
-or 21. Step 2 searches again for each fix's old text before committing it,
+and 0); `skills/work/SKILL.md:138` and `docs/guide/cli.md:193` (fix 16:
+an unknown project ID still exits 1 with `check the spelling`; no fix
+changes that exit code). Nothing quotes the texts of fixes 1, 3, 4, 8, 9,
+11, 12, 18, 19, 21, 22, 23 or 24 (searched for `init takes`, `# skipped:`,
+`Jira-mode project, )` and `<axis> --id`). Step 2 searches again for each fix's old text before committing it,
 since TCW-117 may have added a quotation after `a10e1226`.
 
 ### Documentation already answered by TCW-117
@@ -490,6 +497,16 @@ since TCW-117 may have added a quotation after `a10e1226`.
   `:173-177`) kept as S-9's known gap "unknown top-level keys", which TCW-117
   keeps with "No item yet" (S117:1056). Whether such a key should be an error
   or a warning is a decision, so a new item for it is listed below as well.
+- **F:65** (`tcw validate` in a parent does not report a child project's
+  broken entry): not a defect. `tcw validate` is "one aggregate soundness
+  pass over the current project" (`tcw/validate.py:1`, the same words on
+  `main`, so 3.x did not check every project below either); of a child it
+  checks only what TCW-108 Design 6.5 (b) and (d) give, whether the child
+  can be found and names this project as a parent; a child's own files are
+  read only when a lookup consults them (TCW-115 Design 1.8, as for F:31),
+  and the child's own `tcw validate` reports them. The old skill's sentence
+  was wrong for 3.x as well; TCW-117's setup skill already says it as
+  above.
 
 ### New work items, filed after release by the dispatching session
 
@@ -569,6 +586,14 @@ Each with the evidence above, under TCW, not under TCW-99:
   TCW-116's decision 13, and A12 reports it (now pointing to the 2.x guide,
   fix 5).
 - **F:56**: answered by this plan (Decided 2, and the `way-back.py` script).
+- **F:62**: by design: "A move or rename never changes any object's
+  `parent`, as changing a parent never moves a folder" (TCW-114's spec
+  `:702-703`, from TCW-111 Design 3.4); `tcw/move.py` changes only the
+  folder and the object's own `id:` (`_own_id`, called at `:365`). A term's
+  parent is set with `tcw taxonomy add --parent` and changed by editing its
+  record, since `tcw taxonomy` has no `set` (`tcw taxonomy --help`). If a TCW-117 skill says `--top`
+  clears the parent, that sentence is TCW-117's to correct; Step 6's slice
+  6 checks it.
 
 ## Phase A: ready on `v4` (Design 3)
 
@@ -2061,3 +2086,27 @@ plan's author, as marked).
 9. **Minor.** Step 5 is marked **[after TCW-117]** and first checks that the
    migration guide exists. Step 6 gains slice 6: TCW-117's guides, skills
    and migration guide against the code after Step 2's fixes.
+
+## Revision 2
+
+Five entries added to `followups.md` while TCW-117's skills were written
+(F:62 to F:66), each checked against `v4` at `7af7343e` and reproduced
+where it was a defect, with the worktree's 4.0 `tcw` in a scratch project
+(placements decided by the plan's author):
+
+- **F:62** (`taxonomy move --top` keeps `parent:`): dropped, by design
+  (TCW-114's spec `:702-703`).
+- **F:63** ("init takes a path"): fix 22, reproduced.
+- **F:64** (empty file name in `--origin`'s `# skipped:` line): fix 23,
+  reproduced (`(Jira credential names apply only in a Jira-mode project, )`).
+- **F:65** (validate in a parent does not report a child's broken entry):
+  documentation already answered by TCW-117; validate checks the current
+  project only, in 3.x as in 4.0.
+- **F:66** (`--id` named where it is not needed): fix 24, reproduced with
+  `tcw taxonomy path` and `tcw taxonomy move`.
+
+The dispatching session's note that TCW-117's skills say an unknown project
+exits 1 (`check the spelling`) was checked against every fix: none changes
+that exit code. Fix 16, the nearest, changes only a check that could not
+run (`Unchecked`); an unknown ID is answered `Invalid` and still exits 1.
+Its row now says so and the quotation list names the two lines.
