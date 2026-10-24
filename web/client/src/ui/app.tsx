@@ -54,6 +54,8 @@ import {
     SortControl,
 } from "./content-views"
 import { SettingsControl, Tree } from "./shared-components"
+import { ScopeControl } from "./scope-control"
+import { scopeParams, scopeSearch, withScope } from "../model/scope"
 import { RefusalContext, useRefusals } from "./refusals"
 import { beginResize, loadExpanded } from "./ui-state"
 import { ProjectIdContext } from "./project-context"
@@ -74,6 +76,7 @@ import type {
     TBoard,
     TFileContent,
     TProject,
+    TScopeProject,
     TaxonomyDetail,
     TaxonomyItem,
     TaxonomyList,
@@ -107,12 +110,17 @@ type TBoardState = {
     people: Record<string, string>
     fallback: boolean
     unavailable?: string
+    projects?: TScopeProject[]
 }
 
 export function App() {
     const location = useLocation()
     const navigate = useNavigate()
     const initialRoute = useRef(parsePath(location.pathname)).current
+    // The scope and the project the page covers, kept in the URL's query
+    // string on every path (TCW-113 Design 6.6, plan choice 14).
+    const scopeKey = scopeSearch(scopeParams(location.search))
+    const scopeChoice = useMemo(() => scopeParams(scopeKey), [scopeKey])
     const [axis, setAxis] = useState<Axis>(initialRoute.axis)
     const [selected, setSelected] = useState<string | null>(initialRoute.key)
     const [project, setProject] = useState<TProject | null>(null)
@@ -259,46 +267,64 @@ export function App() {
         return found
     }, [])
 
-    const loadBoard = useCallback(async (search: string) => {
-        const found = await fetchJson<TBoard>(`/api/work${search}`)
-        setData((old) => ({ ...old, work: boardRows(found) }))
-        setBoard({
-            people: found.people,
-            fallback: found.fallback,
-            unavailable: found.unavailable,
-        })
-    }, [])
+    const loadBoard = useCallback(
+        async (search: string) => {
+            const found = await fetchJson<TBoard>(
+                withScope(`/api/work${search}`, scopeChoice)
+            )
+            setData((old) => ({ ...old, work: boardRows(found) }))
+            setBoard({
+                people: found.people,
+                fallback: found.fallback,
+                unavailable: found.unavailable,
+                projects: found.projects,
+            })
+        },
+        [scopeChoice]
+    )
 
-    const loadRecords = useCallback(async (found: TProject) => {
-        // The lists shown, and apart from them what the pickers offer: the
-        // served project's view, `scope=up`, whatever the lists show
-        // (TCW-113 Design 6.6, plan choice 15).
-        const none = { terms: [], capabilities: [] }
-        const [taxonomy, capabilities, taxonomyUp, capabilitiesUp] =
-            await Promise.all([
-                found.axes.taxonomy
-                    ? fetchJson<TaxonomyList>("/api/taxonomy")
-                    : Promise.resolve(none),
-                found.axes.capabilities
-                    ? fetchJson<CapabilityList>("/api/capabilities")
-                    : Promise.resolve(none),
-                found.axes.taxonomy
-                    ? fetchJson<TaxonomyList>("/api/taxonomy?scope=up")
-                    : Promise.resolve(none),
-                found.axes.capabilities
-                    ? fetchJson<CapabilityList>("/api/capabilities?scope=up")
-                    : Promise.resolve(none),
-            ])
-        setData((old) => ({
-            ...old,
-            taxonomy: taxonomy.terms,
-            capabilities: capabilities.capabilities,
-        }))
-        setPickable({
-            taxonomy: taxonomyUp.terms,
-            capabilities: capabilitiesUp.capabilities,
-        })
-    }, [])
+    const loadRecords = useCallback(
+        async (found: TProject) => {
+            // The lists shown, and apart from them what the pickers offer: the
+            // served project's view, `scope=up`, whatever the lists show
+            // (TCW-113 Design 6.6, plan choice 15).
+            const none: TaxonomyList & CapabilityList = {
+                terms: [],
+                capabilities: [],
+            }
+            const [taxonomy, capabilities, taxonomyUp, capabilitiesUp] =
+                await Promise.all([
+                    found.axes.taxonomy
+                        ? fetchJson<TaxonomyList>(
+                              withScope("/api/taxonomy", scopeChoice)
+                          )
+                        : Promise.resolve(none),
+                    found.axes.capabilities
+                        ? fetchJson<CapabilityList>(
+                              withScope("/api/capabilities", scopeChoice)
+                          )
+                        : Promise.resolve(none),
+                    found.axes.taxonomy
+                        ? fetchJson<TaxonomyList>("/api/taxonomy?scope=up")
+                        : Promise.resolve(none),
+                    found.axes.capabilities
+                        ? fetchJson<CapabilityList>(
+                              "/api/capabilities?scope=up"
+                          )
+                        : Promise.resolve(none),
+                ])
+            setData((old) => ({
+                ...old,
+                taxonomy: taxonomy.terms,
+                capabilities: capabilities.capabilities,
+            }))
+            setPickable({
+                taxonomy: taxonomyUp.terms,
+                capabilities: capabilitiesUp.capabilities,
+            })
+        },
+        [scopeChoice]
+    )
 
     const load = useCallback(async () => {
         try {
@@ -348,7 +374,7 @@ export function App() {
         const route = parsePath(location.pathname)
         if (route.axis !== axis || route.key !== selected) {
             if (!confirmLeave()) {
-                navigate(pathFor(axis, selected), { replace: true })
+                navigate(pathFor(axis, selected) + scopeKey, { replace: true })
                 return
             }
             setProblem("")
@@ -373,13 +399,18 @@ export function App() {
         let stale = false
         setLoadingDetail(true)
         setDetailError("")
-        void fetchJson<WorkDetail>(`/api/work/${encodeRef(selected)}`)
+        // The scope decides its `children` and `blocks` (Design 3.3).
+        void fetchJson<WorkDetail>(
+            withScope(`/api/work/${encodeRef(selected)}`, scopeChoice)
+        )
             .then((found) => {
                 if (stale) return
                 setWorkDetail(found)
                 if (found.folder !== selected) {
                     setSelected(found.folder)
-                    navigate(pathFor("work", found.folder), { replace: true })
+                    navigate(pathFor("work", found.folder) + scopeKey, {
+                        replace: true,
+                    })
                 }
             })
             .catch((error: unknown) => {
@@ -395,7 +426,7 @@ export function App() {
         return () => {
             stale = true
         }
-    }, [axis, selected, detailVersion]) // eslint-disable-line react-hooks/exhaustive-deps
+    }, [axis, selected, detailVersion, scopeChoice]) // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (
@@ -409,11 +440,13 @@ export function App() {
             return
         }
         setLoadingDetail(true)
-        void fetchJson<Detail>(`/api/${axis}/${encodeRef(selected)}`)
+        void fetchJson<Detail>(
+            withScope(`/api/${axis}/${encodeRef(selected)}`, scopeChoice)
+        )
             .then(setDetail)
             .catch((error) => setLoadError(String(error)))
             .finally(() => setLoadingDetail(false))
-    }, [axis, selected, data, projectId])
+    }, [axis, selected, data, projectId, scopeChoice])
 
     // Only views that offer items to choose read every item: the forms
     // and editors, and an item page whose record is edited here. The
@@ -490,7 +523,7 @@ export function App() {
         setWorkDetail(null)
         setAxis(nextAxis)
         setSelected(key)
-        navigate(pathFor(nextAxis, key))
+        navigate(pathFor(nextAxis, key) + scopeKey)
         if (key) {
             const ancestors =
                 nextAxis === "work"
@@ -962,6 +995,21 @@ export function App() {
                                 {LABELS[candidate]}
                             </Button>
                         ))}
+                        {project && (
+                            <ScopeControl
+                                scopes={project.scopes}
+                                choice={scopeChoice}
+                                onChange={(next) => {
+                                    if (!confirmLeave()) return
+                                    setDirty(false)
+                                    setEditor(null)
+                                    setWorkMode(null)
+                                    navigate(
+                                        location.pathname + scopeSearch(next)
+                                    )
+                                }}
+                            />
+                        )}
                         <SettingsControl />
                     </nav>
                 </header>

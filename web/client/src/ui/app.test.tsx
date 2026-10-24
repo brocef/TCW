@@ -19,11 +19,15 @@ import {
 import type { TProject } from "../model/types"
 import { App } from "./app"
 
+// Radix's Select scrolls its chosen option into view, which jsdom lacks.
+window.HTMLElement.prototype.scrollIntoView = vi.fn()
+
 function Where() {
     const navigate = useNavigate()
     return (
         <>
             <output data-testid="where">{useLocation().pathname}</output>
+            <output data-testid="search">{useLocation().search}</output>
             <button type="button" onClick={() => void navigate(-1)}>
                 Browser back
             </button>
@@ -75,6 +79,9 @@ function serve(
         ["/api/capabilities$", 200, { capabilities: [] }],
         ["/api/taxonomy?scope=up$", 200, { terms: [] }],
         ["/api/capabilities?scope=up$", 200, { capabilities: [] }],
+        // A list asked for under any other scope (TCW-113 Step 15).
+        [/^GET \/api\/taxonomy\?/, 200, { terms: [] }],
+        [/^GET \/api\/capabilities\?/, 200, { capabilities: [] }],
         ["/api/resolve", 200, {}],
     ])
     globalThis.fetch = fetch as unknown as typeof globalThis.fetch
@@ -732,3 +739,121 @@ test("the Subject picker offers an inherited term the list does not show", async
     expect(lists).toContain("/api/taxonomy")
     expect(lists).toContain("/api/taxonomy?scope=up")
 })
+
+// -- the scope control and the project filter (TCW-113 Design 6.6) ----------
+
+const FAMILY = {
+    own: ["p"],
+    up: ["core", "p"],
+    down: ["p", "desktop"],
+    all: ["core", "p", "desktop"],
+}
+
+const listPaths = (fetch: ReturnType<typeof serve>) =>
+    fetch.calls
+        .map((call) => call.path)
+        .filter((path) =>
+            /^\/api\/(work|taxonomy|capabilities)(\?|$)/.test(path)
+        )
+
+test("choosing down asks for the three lists with scope=down and puts it in the URL", async () => {
+    const fetch = serve({ scopes: FAMILY })
+    renderApp()
+    await screen.findByText("Alpha")
+    fireEvent.click(screen.getByRole("combobox", { name: "Scope" }))
+    fireEvent.click(await screen.findByRole("option", { name: /^down/ }))
+    await waitFor(() =>
+        expect(screen.getByTestId("search")).toHaveTextContent("?scope=down")
+    )
+    await waitFor(() => {
+        const paths = listPaths(fetch)
+        expect(paths).toContain("/api/work?scope=down")
+        expect(paths).toContain("/api/taxonomy?scope=down")
+        expect(paths).toContain("/api/capabilities?scope=down")
+    })
+    // Navigating keeps the scope in the URL.
+    fireEvent.click(screen.getByRole("button", { name: "Taxonomy" }))
+    await waitFor(() =>
+        expect(screen.getByTestId("where")).toHaveTextContent("/taxonomy")
+    )
+    expect(screen.getByTestId("search")).toHaveTextContent("?scope=down")
+})
+
+test("a link naming a scope and a project asks with both", async () => {
+    const fetch = serve({ scopes: FAMILY })
+    renderApp("/work?scope=down&project=desktop")
+    await waitFor(() => {
+        const paths = listPaths(fetch)
+        expect(paths).toContain("/api/work?scope=down&project=desktop")
+        expect(paths).toContain("/api/taxonomy?scope=down&project=desktop")
+        expect(paths).toContain("/api/capabilities?scope=down&project=desktop")
+    })
+    expect(screen.getByRole("combobox", { name: "Project" })).toHaveTextContent(
+        "desktop"
+    )
+})
+
+test("the scope control is not shown for a project with no family", async () => {
+    serve()
+    renderApp()
+    await screen.findByText("Alpha")
+    expect(screen.queryByRole("combobox", { name: "Scope" })).toBeNull()
+})
+
+test.each(["own", "down"])(
+    "under %s the pickers offer the inherited term and no descendant's",
+    async (scope) => {
+        const record = capability("x", {
+            name: "X",
+            status: "Supported",
+            fields: { Status: "Supported" },
+            body: "",
+        })
+        const inherited = term(
+            "money",
+            { name: "Money", kind: "Vocabulary" },
+            "core"
+        )
+        const below = term(
+            "monitor",
+            { name: "Monitor", kind: "Vocabulary" },
+            "desktop"
+        )
+        const fetch = serve({ scopes: FAMILY }, [
+            [
+                /^GET \/api\/capabilities\/x(\?|$)/,
+                200,
+                { capability: record, coreRevision: "r1" },
+            ],
+            ["/api/capabilities$", 200, { capabilities: [record] }],
+            ["/api/capabilities?scope=down$", 200, { capabilities: [record] }],
+            ["/api/taxonomy?scope=up$", 200, { terms: [inherited] }],
+            ["/api/taxonomy?scope=down$", 200, { terms: [below] }],
+            [
+                /^GET \/api\/work\?all=1$/,
+                200,
+                { items: [], people: {}, fallback: false },
+            ],
+        ])
+        renderApp(
+            scope === "own" ? "/capabilities/x" : "/capabilities/x?scope=down"
+        )
+        fireEvent.click(await screen.findByRole("button", { name: "Edit" }))
+        const subject = await screen.findByRole("combobox", { name: "Subject" })
+        fireEvent.focus(subject)
+        fireEvent.change(subject, { target: { value: "Mon" } })
+        await waitFor(() =>
+            expect(
+                Array.from(document.querySelectorAll('[role="option"]')).map(
+                    (option) => option.textContent
+                )
+            ).toEqual(["Moneycore.taxonomy/money"])
+        )
+        const paths = fetch.calls.map((call) => call.path)
+        expect(paths).toContain("/api/taxonomy?scope=up")
+        expect(paths).toContain("/api/capabilities?scope=up")
+        // Every item, for the item pickers, is asked for with no scope.
+        for (const path of paths.filter((path) => path.includes("all=1")))
+            expect(path).toBe("/api/work?all=1")
+    }
+)
