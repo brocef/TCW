@@ -35,13 +35,13 @@ before the next adds to it. The steps are done in this order, which is not
 their numbering (the numbers are kept so the plan's cross-references and the
 review's hold):
 
-| Part | What it delivers | Steps, in order | Ends with |
-| --- | --- | --- | --- |
-| 1 | state files and the version | 0, 1, 3, 4, 5 | Step 5's third commit, suite green |
-| 2 | the walk and organising folders (and bounded folders, nested reading) | 6, 7, 8, 17 | a commit after Step 17, suite green |
-| 3 | nesting, the length limit and rename | 2, 9, 10, 11, 12, 15, 16 | a commit after Step 16, suite green |
-| 4 | parents for terms and capabilities | 13, 14 | a commit after Step 14, suite green |
-| after | records, notes, documentation, the suite as CI runs it | 18, 19, 20, 21 | the move to review |
+| Part  | What it delivers                                                      | Steps, in order          | Ends with                           |
+| ----- | --------------------------------------------------------------------- | ------------------------ | ----------------------------------- |
+| 1     | state files and the version                                           | 0, 1, 3, 4, 5            | Step 5's third commit, suite green  |
+| 2     | the walk and organising folders (and bounded folders, nested reading) | 6, 7, 8, 17              | a commit after Step 17, suite green |
+| 3     | nesting, the length limit and rename                                  | 2, 9, 10, 11, 12, 15, 16 | a commit after Step 16, suite green |
+| 4     | parents for terms and capabilities                                    | 13, 14                   | a commit after Step 14, suite green |
+| after | records, notes, documentation, the suite as CI runs it                | 18, 19, 20, 21           | the move to review                  |
 
 Step 1's module serves Parts 1 and 2 (its walk is unused until Part 2) and
 Step 2's limit serves Part 3, so Step 2 is done at the start of Part 3. The
@@ -67,7 +67,7 @@ are until TCW-116. So:
   here: once Step 5 lands, the 4.0 code finds none of this repository's
   items, terms or capabilities (every folder holds a 3.x file), so
   `.venv/bin/tcw work list` here would print nothing and `.venv/bin/tcw
-  validate` would report every folder.
+validate` would report every folder.
 - Lifecycle commands (`show`, `advance`, `comment`) for this item use the
   `tcw` on `PATH`, checked first with `which tcw` to be the pyenv shim.
 
@@ -120,7 +120,7 @@ are until TCW-116. So:
   Step 1 below moves into the new module so the work layer can use them
   without importing the store module.
 - `tests/fullids.py`: `fid(project, namespace, id_path)` and `wid(project,
-  folder)`, through which every expected identifier is written.
+folder)`, through which every expected identifier is written.
 - `web/client/src/model/identifier.ts` and `work.ts`'s `folderOf`, which
   returns the id-path of a work full identifier (TCW-110 plan, Steps 2 and 4).
 - `tests/test_identifier_sweep.py` (TCW-110 plan, Step 15), which refuses a
@@ -139,7 +139,7 @@ are until TCW-116. So:
   rewrites to write `parents:` and `children:` (TCW-108 plan, the fixture
   step's commit 2, and its handoff to this item, also posted on this item's
   ticket). Step 13 writes AC 15's fixture as
-  `connect_projects(app_root, "parents", "core", inherit="none")`; Step 0
+  `connect_projects(app_root, "parent", "core", inherit="none")`; Step 0
   confirms the relation's spelling against what TCW-108 lands.
 - TCW-108's revised plan does not change `tests/projectfiles.py`'s
   `_versioned` ("nothing in this plan hooks into `_versioned`"), so Step 3's
@@ -242,9 +242,9 @@ imports this module, never imports the work layer at load time. It holds,
 and nothing else holds:
 
 - `STATE_FILES = {"taxonomy": "tcw-taxonomy.yaml", "capabilities":
-  "tcw-capability.yaml", "work": "tcw-work-item.yaml"}` (Design 1.1);
+"tcw-capability.yaml", "work": "tcw-work-item.yaml"}` (Design 1.1);
   `LEGACY_STATE_FILES = {"taxonomy": "meta.yaml", "capabilities":
-  "meta.yaml", "work": "item.yaml"}`, used only by row f's recogniser
+"meta.yaml", "work": "item.yaml"}`, used only by row f's recogniser
   (AC 21); `RESOURCES = "resources"`; `DESCRIPTION = "description.md"`.
 - `fixed_files(namespace)` and `fixed_folders(namespace)` (Design 2.1): for
   taxonomy and capabilities the state file and `description.md`, no fixed
@@ -258,7 +258,7 @@ and nothing else holds:
   from `tcw/store/fs.py` (TCW-110 plan, Step 8) and imported back into it
   under the same names, so every existing caller is unchanged.
 - **The walk** (Design 2.5): one private generator, `_visit(root,
-  namespace)`, which is the only code in TCW that lists a store's folders
+namespace)`, which is the only code in TCW that lists a store's folders
   to find objects. From the root, in name order, skipping hidden names and
   never entering a folder reached through a symbolic link, it classifies
   each folder it meets as an object (holds the state file as a file), an
@@ -294,9 +294,9 @@ and nothing else holds:
   in `folder` itself, named as any of `STATE_FILES` or `LEGACY_STATE_FILES`,
   found with `rglob` so hidden folders, fixed folders and `resources/` are
   all searched; each as `(path relative to the store, "state" or the 3.x
-  name)`. It lists nothing; Step 17's allowlist names it.
+name)`. It lists nothing; Step 17's allowlist names it.
 - `shape_problems(walk, root, namespace, project, *, item_named=None) ->
-  list[Finding]`: rows a–g with Design 2.6's messages, and row h when
+list[Finding]`: rows a–g with Design 2.6's messages, and row h when
   `item_named` (a backend's naming rule for a folder's last part) is given;
   each folder reported once by choice 7. A `skip` argument names files
   another check already reports, which row d leaves out (a tree store's
@@ -313,8 +313,8 @@ and nothing else holds:
   (`yaml.safe_dump(..., sort_keys=False, allow_unicode=True)`).
 - `disagreement(child, folder_parent, parent) -> str | None`: Design 3.2's
   warning text, `<full id> sits in the folder of <folder parent>, but its
-  parent is <parent or "not set">; parent: decides (set it to <folder
-  parent>, or move the folder)`, or None when there is no folder parent or
+parent is <parent or "not set">; parent: decides (set it to <folder
+parent>, or move the folder)`, or None when there is no folder parent or
   the two agree. Every place that warns (Steps 13 and 14) calls it, so the
   text is one.
 
@@ -346,7 +346,7 @@ not `Resources/`. Nothing else uses the module yet.
 **Changes** `tcw/work/model.py`, beside `title_words` (`:78-92`):
 
 - `MIN_TITLE_WORDS = 8` (Design 4.3) and `words_room(project, parent,
-  prefix) -> int`: `ID_LIMIT` minus the project ID, `.work/`, the parent's
+prefix) -> int`: `ID_LIMIT` minus the project ID, `.work/`, the parent's
   id-path and `/` when `parent` is given, and `prefix` (the backend's prefix
   with its `-`).
 - `fitted_words(title, *, project, parent, prefix) -> str`: `title_words`
@@ -368,7 +368,7 @@ of 231 characters with no parent refuses naming it). No caller yet.
 **Creates** `tests/statefiles.py`, in the style of `tests/projectfiles.py`:
 
 - `TAXONOMY_STATE = "tcw-taxonomy.yaml"`, `CAPABILITY_STATE =
-  "tcw-capability.yaml"`, `ITEM_STATE = "tcw-work-item.yaml"`, written as
+"tcw-capability.yaml"`, `ITEM_STATE = "tcw-work-item.yaml"`, written as
   literal strings, **not** taken from `STATE_FILES`, so that the code's names
   and the tests' names are two separate facts and Step 5's second mutation
   check can move one without the other. A test never spells a state file's
@@ -426,7 +426,7 @@ failure here can only come from a renamed file or a version line.
 - AC 2: with `tcw.project_files.__version__` patched to `4.1.0`, a
   `tcw-capability.yaml` and a `tcw-work-item.yaml` whose first line is
   `tcw-version: 4.0.0` keep it after `tcw capabilities set cli/x --status
-  Supported` and `tcw work edit <item> --priority high`.
+Supported` and `tcw work edit <item> --priority high`.
 - AC 3 (trees and files): each of rows a–d written into `cli/x`'s state
   file: `tcw validate` exits 1 naming the file and `tcw-version`;
   `tcw capabilities show cli/x` and `set cli/x --status Supported` exit 1
@@ -495,12 +495,12 @@ Jira case is Step 8's, once a nested folder is read.)
 `tcw/validate.py`):
 
 - `ITEM_FILE` (`tcw/work/fs_backend.py:44`) becomes `STATE_FILE =
-  STATE_FILES["work"]`, imported by `tcw/work/jira/backend.py:34` and
+STATE_FILES["work"]`, imported by `tcw/work/jira/backend.py:34` and
   `tcw/work/jira/tickets.py:22` under the new name; the module docstring
   (`:1-6`) names `tcw-work-item.yaml`.
 - `KEYS` (`:52-54`) gains `tcw-version` and `id`; `_load` (`:94-166`) calls
   `version_problem` first and raises `Unreadable(path, "tcw-version",
-  message)` for rows a–d, so `show` exits 1 naming the file and `list` exits
+message)` for rows a–d, so `show` exits 1 naming the file and `list` exits
   1 as for any unreadable item (`:335-339`). `_write` (`:271-274`) writes
   `state_text`, keeping the existing version line and an existing `id`
   (choice 8); `_dump` (`:169-184`) returns the mapping it builds.
@@ -582,7 +582,7 @@ commit 3 is in.
    the result says nothing.) The one test expected to go red for another
    reason is the helper's own check that the constants equal `STATE_FILES`.
 4. **The tests that stay green under both mutations** are listed, and each is
-   read by hand. A converted test that asserts something is *not* listed,
+   read by hand. A converted test that asserts something is _not_ listed,
    found or reported passes under every mutation whether it is right or
    empty, for instance when the script guessed taxonomy for a capability
    fixture and the fixture became unreadable. Each such test is confirmed to
@@ -611,10 +611,10 @@ what an object folder holds.
 - AC 4 (taxonomy and capabilities): a folder `docs/taxonomy/group/` with no
   state file holding `group/refund`: `tcw taxonomy list` prints
   `demo.taxonomy/group/refund` and not `demo.taxonomy/group`, and `tcw
-  taxonomy show group` exits 4; the same layout lists
+taxonomy show group` exits 4; the same layout lists
   `demo.capabilities/group/x`.
 - AC 6 (the refusals): `tcw taxonomy add Resources` and `tcw capabilities
-  add cli/resources` exit 2 and write nothing; `tcw taxonomy add Review`
+add cli/resources` exit 2 and write nothing; `tcw taxonomy add Review`
   succeeds (reserved names are per store).
 - AC 17 (taxonomy, listing): a taxonomy folder holding only `meta.yaml` is
   not listed.
@@ -638,7 +638,7 @@ what an object folder holds.
   out of the store, `:1382-1391`).
 - Taxonomy `get_local` (`:1748-1761`) and capabilities `get_local`
   (`:2391-2399`) answer only when `is_object(self.root, <namespace>,
-  id_path)` and `_entry_readable`, so `show group` exits 4.
+id_path)` and `_entry_readable`, so `show group` exits 4.
 - `_all_meta_dirs` (`:2258-2271`) becomes `_object_dirs`, which is
   `object_paths(self.root, "capabilities")` filtered by `_entry_readable`;
   `_is_capability` (`:2255-2256`) is `is_object`. Its callers keep separating
@@ -652,8 +652,8 @@ what an object folder holds.
 - The checks before a removal (choice 1, review decision 16): taxonomy
   `remove` (`:1888-1889`) and `_nested_entries` (`:2528-2534`) call
   `removal_blockers(d, …)`. A state-file hit keeps today's message (`nested
-  under it: …`); a 3.x hit refuses first with `<path> holds a TCW 3.x <file>;
-  run 'tcw migrate' in this project first`. Both are `Refused` before
+under it: …`); a 3.x hit refuses first with `<path> holds a TCW 3.x <file>;
+run 'tcw migrate' in this project first`. Both are `Refused` before
   anything is deleted. The comment at `:1880-1887` loses "a sub-folder
   without a `meta.yaml` still lists as a term" and says why the check is not
   the walk; `_nested_entries`' docstring names `removal_blockers`.
@@ -696,7 +696,7 @@ green; the full suite.
   folder in the taxonomy store (e).
 - AC 6: `docs/taxonomy/review/` with a state file passes.
 - AC 7: a term with `resources/diagram.png` and a loose `old.txt`: `tcw
-  taxonomy show <term> --json` has `attachments: ["resources/diagram.png"]`
+taxonomy show <term> --json` has `attachments: ["resources/diagram.png"]`
   and `tcw validate` reports `old.txt` (a); a capability with
   `appendedDocs: [resources/camera.md]` shows that file's text at the end of
   its body; `appendedDocs: [camera.md]` with `camera.md` beside the state
@@ -709,7 +709,7 @@ green; the full suite.
   existing `no longer read since TCW 2.5.0` error, and no row d warning; a
   `resources/sample.yaml` holding `a: [unclosed` in a term's folder gives no
   finding, and a capability beside it with `appendedDocs:
-  [resources/ghost.md]` and no such file still gives `missing attachment`, and
+[resources/ghost.md]` and no such file still gives `missing attachment`, and
   the note `taxonomy and capabilities checks skipped` is absent; the same
   `sample.yaml` loose in the term's folder, not under `resources/`, is still a
   YAML error and still switches the checks off, as today; a
@@ -735,7 +735,7 @@ green; the full suite.
   reports any loose file, `.md` or not.
 - Both `check()`s, when not scoped to one object (`identifier is None`), add
   `shape_problems(walk(self.root, ns), self.root, ns, self.project_id,
-  skip={self.root / self.LEGACY_CONFIG_NAME})` when `LEGACY_CONFIG_NAME` is
+skip={self.root / self.LEGACY_CONFIG_NAME})` when `LEGACY_CONFIG_NAME` is
   set: rows a–g, with row d leaving out the file `_legacy_config_problems`
   (`:1619-1640`) already reports. A scoped check (the web app's after a save)
   adds only the rows that name a file or folder inside that object's own
@@ -765,7 +765,7 @@ Known now, each listed in the round with its rule:
 - `tests/test_capabilities_federation.py:210-214`
   (`test_check_unlisted_extra_doc`): the "unlisted extra doc" check is
   deleted; the loose `stray.md` is now row a, so the test asserts `is not one
-  of` … `move it into resources/`.
+of` … `move it into resources/`.
 - `tests/test_taxonomy.py:877-889`
   (`test_a_config_yaml_in_a_term_folder_is_still_not_an_attachment`): with
   attachments read only from `resources/`, neither the loose `config.yaml` nor
@@ -806,9 +806,9 @@ listed and checked in both backends. Creating one is Step 9.
   it (AC 9's reading half).
 - AC 10: two folders holding the state file with the key `TCW-5`, one at the
   top and one nested: `tcw work show TCW-5` exits 1 naming both; `tcw
-  validate --remote` reports a nested item's `TCW Item` that names another
+validate --remote` reports a nested item's `TCW Item` that names another
   id-path; an organising folder `2026/` holding an item passes `tcw
-  validate` and the item is listed; a key-named folder `TCW-7-x/` with no
+validate` and the item is listed; a key-named folder `TCW-7-x/` with no
   state file is an error (h), `tcw work show TCW-7` exits 4, and a fresh
   `tcw work tickets adopt TCW-7` (the fake's ticket naming no item, its
   summary giving other words) exits 3 naming `TCW-7-x`, records no edit on
@@ -829,19 +829,19 @@ listed and checked in both backends. Creating one is Step 9.
 **Changes, the layout and the files backend**
 
 - `Layout.item_folders` (`tcw/work/layout.py:102-109`) is `object_paths(
-  self.work_root, "work")`: id-paths, which callers filter with
+self.work_root, "work")`: id-paths, which callers filter with
   `is_item_folder` (Design 5). `Layout.item_dir` (`:90-91`) is unchanged; it
   joins an id-path already.
 - `tcw/work/fs_backend.py`: the module function `is_item_folder(path)`
   (`:57-67`) becomes `item_named(name)` (the last part's rule: `ITEM_FOLDER`,
   a real date, at most `FOLDER_LIMIT`); `FsWorkBackend.is_item_folder(id_path)`
   (`:483-484`) is `item_named(last part) and is_object(work_path, "work",
-  id_path)` (row 12). `_folder` (`:258-262`) refuses through it, with no `/`
+id_path)` (row 12). `_folder` (`:258-262`) refuses through it, with no `/`
   test. `read_all` (`:193-208`) reads `Layout.item_folders()` filtered by
   `item_named`. `_load` takes the id-path and reads `created` from its last
   part (`:157`, Design 7.1).
 - `work_store_problems` (`:528-566`): the walk once; `shape_problems(walk,
-  …, item_named=item_named)` for rows a–h, replacing the top-level loop's
+…, item_named=item_named)` for rows a–h, replacing the top-level loop's
   "is not part of a work store" warning and "is not an item folder" error
   (`:541-548`); row i for a folder holding the state file whose last part
   breaks `item_named` ("is not an item folder: its name must be a date, then
@@ -853,7 +853,7 @@ listed and checked in both backends. Creating one is Step 9.
   part (Design 6.1), which corrects every caller that passes `slug.folder`
   (`:454`, `:475`, `:585`, `tickets.py:239`) at once.
 - `link_exists` (`:104-109`) takes an id-path and is `folder_key(id_path)
-  and is_object(work_path, "work", id_path)` (row 12): a key-named folder
+and is_object(work_path, "work", id_path)` (row 12): a key-named folder
   without the state file is no longer an item (Design 6.1's change in
   behaviour). Its callers all take the new rule with no change of their own,
   and each is named in the round: `is_item_folder` (`:311-312`) and `_key`
@@ -932,7 +932,7 @@ Known now:
 
 - `tests/work/test_fs_backend.py:353-375` (`test_work_store_problems`): the
   empty `inbox/` at the top is still an error, now row c (`'inbox' is
-  reserved in the work store`), and `dod.yaml` is still a warning, now row d
+reserved in the work store`), and `dod.yaml` is still a warning, now row d
   (`is not part of any object`). Neither of the new messages carries today's
   pointer to the 2.8-to-3.0 migration guide, so the two `MIGRATION_GUIDE`
   assertions (`:373-374`) become assertions of the row c and row d messages.
@@ -988,7 +988,7 @@ inventory; the full suite.
   the contract runs.
 - A nested create's `created` date (the `folder[:10]` read below): in the
   files backend, with the clock set to 2026-10-22, `tcw work new 'Part'
-  --parent 2026/2026-10-01-epic --nest`, the parent inside an organising
+--parent 2026/2026-10-01-epic --nest`, the parent inside an organising
   folder `2026/` as AC 4 allows, exits 0 with no traceback, makes
   `2026/2026-10-01-epic/2026-10-22-part/`, and `tcw work show` of it says
   `created: 2026-10-22`; and under a parent at the top
@@ -998,14 +998,14 @@ inventory; the full suite.
 **Changes**
 
 - `tcw/work/backend.py`: `create(self, title, props, *, stage, request,
-  nest=False)` (`:75-77`), with its docstring; the parameter of every other
+nest=False)` (`:75-77`), with its docstring; the parameter of every other
   operation is renamed `id_path`, with "an item's id-path: its folder's path
   in the work store" in the docstrings (Design 5); `is_item_folder`'s
   docstring (`:108-113`) reads "a folder at any depth under the work path".
   A module function `nesting_parent(backend, parent, nest) -> tuple[str |
-  None, str | None]` gives the parent's id-path when `nest` is true and the
+None, str | None]` gives the parent's id-path when `nest` is true and the
   parent is one of this backend's items (`parent.project ==
-  backend.project` and `backend.is_item_folder(parent.folder)`), else None,
+backend.project` and `backend.is_item_folder(parent.folder)`), else None,
   with the "not nested: <P> belongs to <project>" note when `nest` is true
   and the parent belongs to another project.
 - `tcw/work/fs_backend.py` `create` (`:295-330`): the parent is read with
@@ -1055,7 +1055,7 @@ parent given (AC 18, the client half).
 **Changes**
 
 - `tcw/serve/work.py` `create` (`:468-520`): `nest = request.field("nest",
-  bool, required=False, default=False)`, refused without a parent before
+bool, required=False, default=False)`, refused without a parent before
   anything is made, and passed to `new_item` (`:512`).
 - `web/client/src/ui/work-forms.tsx` `NewItemForm` (`:491-…`): a state
   `nest` (default `false`) and, under the Parent input (`:705-713`), a
@@ -1115,7 +1115,7 @@ gate (header).
   (`:2472-2500`) call `length_problem(FullId(self.project_id, ns, path))`
   before the first `mkdir`, as a `UsageError`.
 - `tcw/work/fs_backend.py` `create`: the words are `fitted_words(title,
-  project=self.project, parent=<parent id-path or None>, prefix=11)` (a date
+project=self.project, parent=<parent id-path or None>, prefix=11)` (a date
   and `-`).
 - `fitted_words` gains `refuse=True`. With `refuse=False`, the rule for after
   a ticket exists (spec Design 4.3), it never raises: it cuts the words to
@@ -1127,7 +1127,7 @@ gate (header).
   refusal only; after Jira answers with the key (`:693`), the words are
   `fitted_words(..., prefix=len(key) + 1, refuse=False)`. A None stops before
   the `TCW Item` edit (`:705-711`) with the existing message, `created Jira
-  ticket <KEY>, but …; finish with tcw work tickets adopt <KEY>`, the reason
+ticket <KEY>, but …; finish with tcw work tickets adopt <KEY>`, the reason
   being that no room is left under the parent for this key.
 - `tcw/work/jira/tickets.py:160`: a fresh adoption's words are
   `fitted_words(..., parent=None, prefix=len(key) + 1)`, refusing before step
@@ -1135,7 +1135,7 @@ gate (header).
   written, so this one may refuse.
 - `tcw/work/jira/tickets.py:385` (`delegate_to_jira`, until TCW-114 removes
   it): the words are `fitted_words(..., project=project_id, parent=None,
-  prefix=len(key) + 1, refuse=False)`, after the ticket exists; a None skips
+prefix=len(key) + 1, refuse=False)`, after the ticket exists; a None skips
   the `TCW Item` edit and raises the existing `did not finish` error
   (`:391-394`). Adopt and delegation now both go through `fitted_words`, so
   the rule lives in one place.
@@ -1165,7 +1165,7 @@ gate (header).
   same last part under another parent, is not.
 - AC 16 (fake): the same nested rename sets the part's `TCW Item` to the new
   id-path; with the fake set to fail the folder move, it exits 1 and `TCW
-  Item` is set back.
+Item` is set back.
 - AC 14 (rename): `tcw work rename <item> <words>` that would make the item's
   identifier 256 characters exits 2 and moves nothing.
 
@@ -1174,7 +1174,7 @@ gate (header).
 - `tcw/work/fs_backend.py` `rename` (`:424-477`): first, `objects_below`
   filtered by `item_named` (Design 5 row 7); any item found is `Refused`
   (exit 3) with `<full id> has items nested in it (<first nested full id>,
-  …); renaming it waits for TCW-114`. The prefix is the date of the last part
+…); renaming it waits for TCW-114`. The prefix is the date of the last part
   (`:426`, Design 7.1); the new id-path keeps the parent part; then
   `length_problem` of the new identifier as a `UsageError` (Design 4.2);
   `os.rename` within the folder that holds the item (`:452`, Design 7.2);
@@ -1198,12 +1198,12 @@ gate (header).
 
 - AC 11: `tcw taxonomy add Refund --parent invoice` writes
   `docs/taxonomy/invoice/refund/tcw-taxonomy.yaml` holding `parent:
-  demo.taxonomy/invoice`; `tcw taxonomy show invoice/refund --json` has
+demo.taxonomy/invoice`; `tcw taxonomy show invoice/refund --json` has
   `"parent": "demo.taxonomy/invoice"` and a term with no parent `"parent":
-  null`. With capabilities `cli/x` and `cli/y`: `tcw capabilities add cli/w
-  --parent cli/x` writes `parent: demo.capabilities/cli/x`, exits 0 and
+null`. With capabilities `cli/x` and `cli/y`: `tcw capabilities add cli/w
+--parent cli/x` writes `parent: demo.capabilities/cli/x`, exits 0 and
   prints nothing on standard error; `tcw capabilities add cli/x/z --parent
-  cli/y` writes `parent: demo.capabilities/cli/y`, exits 0, and prints a
+cli/y` writes `parent: demo.capabilities/cli/y`, exits 0, and prints a
   warning containing `sits in the folder of demo.capabilities/cli/x` and
   `parent: decides`; `tcw capabilities set cli/w --parent ''` removes
   `parent`.
@@ -1212,7 +1212,7 @@ gate (header).
   forms a loop with another capability's `parent`.
 - AC 15: two projects side by side in two git repositories, `app` with
   `parents: [{id: core, inherit: none}]` written by
-  `connect_projects(app_root, "parents", "core", inherit="none")` (TCW-108's
+  `connect_projects(app_root, "parent", "core", inherit="none")` (TCW-108's
   form of TCW-110's helper), and `core` placed by `write_manifest`: a term of `app` with
   `parent: core.taxonomy/payment` passes `tcw validate` when `core` has that
   term, fails when it does not, and is `unresolved` with exit 0 when `core`'s
@@ -1221,7 +1221,7 @@ gate (header).
 - Choice 3: in a project whose parent project `core` (linked with
   `connect_projects(..., inherit=["capabilities"])`) holds `cli/v`,
   `tcw capabilities set core.capabilities/cli/v --parent cli/x --status
-  Supported` exits 3 naming `core`, and a tree hash of both projects is
+Supported` exits 3 naming `core`, and a tree hash of both projects is
   unchanged: the `--status` half is not applied either (spec Design 3.4,
   AC 11).
 - Choice 9: `tcw taxonomy add X --parent core.taxonomy/payment` writes the
@@ -1241,7 +1241,7 @@ gate (header).
 - Taxonomy `add` (`:1830-1865`): `--parent` goes through `find_tree`; when
   it names a term of this project's own store the folder is made inside it, as
   today (`:1839-1843`), otherwise at the root; `parent: <its full
-  identifier>` is written in both cases (Design 3.3).
+identifier>` is written in both cases (Design 3.3).
 - Capabilities `add` (`:2472-2500`) takes `parent` (through `find_tree`),
   writes it, and returns the folder parent's `disagreement` for the CLI to
   print; `set` (`:2707-2716`) takes `parent` (`''` clears it) and returns the
@@ -1286,9 +1286,9 @@ gate (header).
   file, holding only a part whose `parent` is `demo.work/<date>-old-words`.
   `tcw validate` exits 1 reporting the old folder (h) and the part's `parent`
   (choice 5: today's warning naming the missing item); `tcw work show
-  <date>-old-words/<part>` shows the part; after moving the part's folder into
+<date>-old-words/<part>` shows the part; after moving the part's folder into
   `<date>-new-words/`, removing the old folder and `tcw work edit
-  <date>-new-words/<part> --parent <date>-new-words`, `tcw validate` passes.
+<date>-new-words/<part> --parent <date>-new-words`, `tcw validate` passes.
 
 **Changes**
 
@@ -1484,7 +1484,7 @@ implement round first):
   `meta.yaml` files by name (`:17-18`, `:31`, `:45-46`, `:52`) and must change
   when this repository is migrated; until a store is migrated, `rm` of a
   term or capability with a 3.x folder below it is refused naming `tcw
-  migrate` (review decision 16); the example commit hook leaves out folders
+migrate` (review decision 16); the example commit hook leaves out folders
   holding `tcw-work-item.yaml`, so after migration a nested child here is
   committed with its own moves only (intended); `tcw migrate` must also give a
   hand-written `id:` that differs from the folder's name a report.
@@ -1497,16 +1497,16 @@ implement round first):
 
 Each documentation entry, evaluated with the `documentation-sync` skill:
 
-| Entry | Fires? | Answer |
-| --- | --- | --- |
-| `README.md` [Public-API] | yes: the state files, `resources/`, `--nest` | Deferred to TCW-117, which rewrites the user-facing documents for 4.0 in one pass (TCW-99 design, "How 4.0 is built"); what it must say is in the spec's handoff and Step 19; recorded in the implement round. |
-| `docs/guide/jira.md` [Jira-Change] | yes: the item folder holds `tcw-work-item.yaml`; `TCW Item` holds a nested id-path; a key is found at any depth | Deferred to TCW-117, as above. |
-| `docs/guide/<topic>.md` [Guide-Topic-Change] | yes: which files TCW treats as its records, `resources/`, organising folders | Deferred to TCW-117. |
-| `docs/release-notes/upcoming/<folder>.md` [Public-API] | yes | Written: each kind of record has its own named file with a version; an object's folder holds its own files, its children and `resources/`; folders can group records; `tcw work new --parent … --nest` and the web option; `tcw validate`'s new reports; names stay within 255 characters; 3.x files are reported with `tcw migrate`, and removing a record above one is refused. Plain language, no module names. It does **not** say that renaming an item with nested items waits for a later release: TCW-114 is part of the same 4.0 release, every `upcoming/` file is merged at TCW-118's cut, so by then the sentence would be false, and the house rule stops TCW-114 from editing this item's file. The limitation is told to TCW-114 instead (Step 19). |
-| `docs/changelogs/upcoming/<folder>.md` [Any-Code-Change] | yes | Written, under Added (`tcw/object_folders.py`, `--nest`, `capabilities add|set --parent`, `parent` on term and capability records, `ID_LIMIT`, `fitted_words`, the web option), Changed (state file names, the version line on every state file, the walk replacing every top-level listing, `Layout.item_folders` returning id-paths, the backend operations taking id-paths and `create`'s `nest`, Jira key-named folders needing the state file, attachments and composed documents from `resources/`, `tcw validate` skipping YAML under `resources/`, the removal checks naming `tcw migrate`, the commit hook, the plan stage prompt, `abstraction.md`; not the rename refusal of an item with nested items, for the release note's reason), Removed (`ITEM_FILE`, `_entry_reserved`, the "unlisted extra doc" check, the top-level "is not an item folder" error), Internal (`tests/statefiles.py`, the sweep guard). |
-| `skills/<component>/SKILL.md` [Skill-Driven-Component] | yes: the `work`, `taxonomy` and `capabilities` skills | Deferred to TCW-117 (spec Design 9.3, Non-goals). |
-| `skills/configure/references/<document>.md` [Configuration-Key-Change] | no | No configuration key is added or changed. |
-| `docs/use-cases.md` [Project-Setup-Change] | yes: S-10's "item folder" becomes "object folder" | Deferred to TCW-117 (spec handoff). |
+| Entry                                                                  | Fires?                                                                                                          | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `README.md` [Public-API]                                               | yes: the state files, `resources/`, `--nest`                                                                    | Deferred to TCW-117, which rewrites the user-facing documents for 4.0 in one pass (TCW-99 design, "How 4.0 is built"); what it must say is in the spec's handoff and Step 19; recorded in the implement round.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `docs/guide/jira.md` [Jira-Change]                                     | yes: the item folder holds `tcw-work-item.yaml`; `TCW Item` holds a nested id-path; a key is found at any depth | Deferred to TCW-117, as above.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `docs/guide/<topic>.md` [Guide-Topic-Change]                           | yes: which files TCW treats as its records, `resources/`, organising folders                                    | Deferred to TCW-117.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `docs/release-notes/upcoming/<folder>.md` [Public-API]                 | yes                                                                                                             | Written: each kind of record has its own named file with a version; an object's folder holds its own files, its children and `resources/`; folders can group records; `tcw work new --parent … --nest` and the web option; `tcw validate`'s new reports; names stay within 255 characters; 3.x files are reported with `tcw migrate`, and removing a record above one is refused. Plain language, no module names. It does **not** say that renaming an item with nested items waits for a later release: TCW-114 is part of the same 4.0 release, every `upcoming/` file is merged at TCW-118's cut, so by then the sentence would be false, and the house rule stops TCW-114 from editing this item's file. The limitation is told to TCW-114 instead (Step 19). |
+| `docs/changelogs/upcoming/<folder>.md` [Any-Code-Change]               | yes                                                                                                             | Written, under Added (`tcw/object_folders.py`, `--nest`, `capabilities add                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | set --parent`, `parent`on term and capability records,`ID_LIMIT`, `fitted_words`, the web option), Changed (state file names, the version line on every state file, the walk replacing every top-level listing, `Layout.item_folders`returning id-paths, the backend operations taking id-paths and`create`'s `nest`, Jira key-named folders needing the state file, attachments and composed documents from `resources/`, `tcw validate`skipping YAML under`resources/`, the removal checks naming `tcw migrate`, the commit hook, the plan stage prompt, `abstraction.md`; not the rename refusal of an item with nested items, for the release note's reason), Removed (`ITEM_FILE`, `_entry_reserved`, the "unlisted extra doc" check, the top-level "is not an item folder" error), Internal (`tests/statefiles.py`, the sweep guard). |
+| `skills/<component>/SKILL.md` [Skill-Driven-Component]                 | yes: the `work`, `taxonomy` and `capabilities` skills                                                           | Deferred to TCW-117 (spec Design 9.3, Non-goals).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `skills/configure/references/<document>.md` [Configuration-Key-Change] | no                                                                                                              | No configuration key is added or changed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `docs/use-cases.md` [Project-Setup-Change]                             | yes: S-10's "item folder" becomes "object folder"                                                               | Deferred to TCW-117 (spec handoff).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 The two `upcoming/` files are named
 `TCW-111-tcw-4-0-object-folders-tcw-state-files-and-nested-work-items.md`
@@ -1521,7 +1521,7 @@ not run on `v4`:
 - the `pytest` job: bare `.venv/bin/pytest` from the worktree's root, never
   `python -m pytest`;
 - the `web-build` job: `pnpm install --frozen-lockfile` and `pnpm
-  check:build`, which fails if `tcw/serve/dist` differs from a fresh build;
+check:build`, which fails if `tcw/serve/dist` differs from a fresh build;
 
 and, beyond CI, `pnpm test`, `pnpm exec tsc --noEmit`, `pnpm lint`, and
 `pnpm exec prettier --check` over every file this item changed or created
@@ -1537,9 +1537,9 @@ to, not with a skip.
   only, never this repository's board, at qa.
 - **This repository's lifecycle still runs on `v4`** with the lifecycle `tcw`
   (header) after Step 5 and after Step 16: `which tcw` first, then `tcw work
-  show TCW-111` and `tcw validate` from the worktree; and the first lifecycle
+show TCW-111` and `tcw validate` from the worktree; and the first lifecycle
   move after Step 16 commits this item's folder as the old hook did (`git
-  show --stat HEAD`).
+show --stat HEAD`).
 - **A case-insensitive disk.** The reserved-name refusal of `Resources`, the
   walk's exact-spelling rule, and a term folder holding `Resources/x.png`
   (not `resources/`) whose `tcw taxonomy show --json` has no attachment
@@ -1558,34 +1558,34 @@ to, not with a skip.
 
 ## Self-review against the spec
 
-| AC | Step |
-| --- | --- |
-| 1 | 5 |
-| 2 | 5 |
-| 3 | 5 (trees, files, a flat Jira item); 8 (the nested Jira item) |
-| 4 | 6 (taxonomy, capabilities); 8 (work) |
-| 5 | 7 (b, c, d, f, g, e in a tree; passing with `resources/`; d's skip of a leftover `config.yaml`; YAML under `resources/` skipped and the tree checks still run; a non-UTF-8 `.md` there a warning); 8 (a, h, i, e in the work store; passing with `resources/`) |
-| 6 | 6 (refusals, `review` as a term); 8 (`review` as a work organising folder) |
-| 6a | 8 |
-| 7 | 7 |
-| 8 | 5 |
-| 9 | 8 (reading a nested item); 9 (creating it, both backends, `not nested`, `--nest` without `--parent`; the nested `created` date) |
-| 9a | 9 |
-| 10 | 8 (including adopt beside a stateless key-named folder) |
-| 11 | 13 (including `set --parent` on an inherited capability) |
-| 12 | 14 |
-| 13 | 13 |
-| 14 | 11 (add, new, both backends, the project ID, adopt, delegation, a long key after the ticket exists, row n in `tcw validate`); 12 (rename) |
-| 15 | 13 |
-| 16 | 12 (including `report_mentions` by id-path) |
-| 16a | 14 |
-| 17 | 6 (taxonomy listing); 7 (taxonomy validate); 8 (work) |
-| 17a | 6 |
-| 18 | 8 (record and board); 10 (create with and without `nest`, the client) |
-| 19 | 15 |
-| 20 | 16 (including the `resources/` sample and the unreadable folder) |
-| 21 | 17 |
-| 22 | 21 |
+| AC  | Step                                                                                                                                                                                                                                                           |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 5                                                                                                                                                                                                                                                              |
+| 2   | 5                                                                                                                                                                                                                                                              |
+| 3   | 5 (trees, files, a flat Jira item); 8 (the nested Jira item)                                                                                                                                                                                                   |
+| 4   | 6 (taxonomy, capabilities); 8 (work)                                                                                                                                                                                                                           |
+| 5   | 7 (b, c, d, f, g, e in a tree; passing with `resources/`; d's skip of a leftover `config.yaml`; YAML under `resources/` skipped and the tree checks still run; a non-UTF-8 `.md` there a warning); 8 (a, h, i, e in the work store; passing with `resources/`) |
+| 6   | 6 (refusals, `review` as a term); 8 (`review` as a work organising folder)                                                                                                                                                                                     |
+| 6a  | 8                                                                                                                                                                                                                                                              |
+| 7   | 7                                                                                                                                                                                                                                                              |
+| 8   | 5                                                                                                                                                                                                                                                              |
+| 9   | 8 (reading a nested item); 9 (creating it, both backends, `not nested`, `--nest` without `--parent`; the nested `created` date)                                                                                                                                |
+| 9a  | 9                                                                                                                                                                                                                                                              |
+| 10  | 8 (including adopt beside a stateless key-named folder)                                                                                                                                                                                                        |
+| 11  | 13 (including `set --parent` on an inherited capability)                                                                                                                                                                                                       |
+| 12  | 14                                                                                                                                                                                                                                                             |
+| 13  | 13                                                                                                                                                                                                                                                             |
+| 14  | 11 (add, new, both backends, the project ID, adopt, delegation, a long key after the ticket exists, row n in `tcw validate`); 12 (rename)                                                                                                                      |
+| 15  | 13                                                                                                                                                                                                                                                             |
+| 16  | 12 (including `report_mentions` by id-path)                                                                                                                                                                                                                    |
+| 16a | 14                                                                                                                                                                                                                                                             |
+| 17  | 6 (taxonomy listing); 7 (taxonomy validate); 8 (work)                                                                                                                                                                                                          |
+| 17a | 6                                                                                                                                                                                                                                                              |
+| 18  | 8 (record and board); 10 (create with and without `nest`, the client)                                                                                                                                                                                          |
+| 19  | 15                                                                                                                                                                                                                                                             |
+| 20  | 16 (including the `resources/` sample and the unreadable folder)                                                                                                                                                                                               |
+| 21  | 17                                                                                                                                                                                                                                                             |
+| 22  | 21                                                                                                                                                                                                                                                             |
 
 Every design rule of the spec's Coverage table reaches a step through these
 criteria; in addition 1.1's "one module" is Step 1 and its guard Step 17;
@@ -1633,7 +1633,7 @@ table), checked against the callers each step leaves behind:
   the same step as the first writer of it, so no capability ever shows it as
   an unknown field. Step 14's row m does fire on fixtures that exist today:
   every term or capability nested in another's folder by hand (`write_cap(root,
-  "routes/login")` under `routes`, a term written under another term's
+"routes/login")` under `routes`, a term written under another term's
   folder) has no `parent`, so it now warns. Warnings do not change an exit
   code, but a test that asserts no findings, or counts them, goes red; each
   is found by the full suite, read, and given the `parent` its folder
