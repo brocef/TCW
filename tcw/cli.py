@@ -261,6 +261,11 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     findings: list[Finding] = registry.availability_findings(inherited)
     findings += registry.manifest_findings(inherited)
     findings += registry.warning_findings()
+    # Design 4.5: the fallback order is said here and in `projects list
+    # --json`, and by no other command.
+    warning = registry.load_order().warning
+    if warning is not None:
+        findings.append(Finding("warning", str(project_root / SENTINEL), warning))
     findings += checked
     for note in notes:
         print(note, file=sys.stderr)

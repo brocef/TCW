@@ -634,3 +634,155 @@ def test_ac9_a_siblings_extends_is_read_from_its_own_load_order(tmp_path):
     shown = tcw(a, "taxonomy", "show", "b.taxonomy/t")
     assert shown.code == 0 and "t" in shown.out, shown
     assert FsProjectRegistry.open(a).get("bp") is None
+
+
+# -- Design 8.2: `tcw projects list --json` ---------------------------------------------
+
+
+def listing(cwd: Path, env: dict | None = None) -> dict:
+    ran = tcw(cwd, "projects", "list", "--json", env=env)
+    assert ran.code == 0, ran
+    return json.loads(ran.out)
+
+
+@pytest.mark.parametrize("entry, inherit", [
+    ("core", ["taxonomy", "capabilities", "config"]),
+    ({"id": "core"}, ["taxonomy", "capabilities", "config"]),
+    ({"id": "core", "inherit": "all"}, ["taxonomy", "capabilities", "config"]),
+    ({"id": "core", "inherit": "none"}, []),
+    ({"id": "core", "inherit": ["config", "taxonomy"]}, ["taxonomy", "config"]),
+    ({"id": "core", "inherit": ["taxonomy", "capabilities", "config"]},
+     ["taxonomy", "capabilities", "config"]),
+])
+def test_ac1_each_parent_row_says_what_it_passes(tmp_path, entry, inherit):
+    app = proj(tmp_path / "app", "app", parents=[entry])
+    proj(tmp_path / "core", "core")
+    row = rows(app)["core"]
+    assert (row["relation"], row["inherit"]) == ("parent", inherit)
+    assert "personal" not in row
+
+
+def test_ac5_each_child_row_says_whether_it_is_personal(five, tmp_path):
+    found = {row["id"]: row for row in listing(five, personal_env(tmp_path))["projects"]}
+    assert (found["a"]["personal"], found["b"]["personal"]) == (False, True)
+    assert "inherit" not in found["a"] and "personal" not in found["ws"]
+
+
+def test_ac23_exactly_five_top_level_keys(tmp_path):
+    gg = proj(tmp_path / "gg", "gg", parents=["cc", "ff"], children=["xx", "yy"])
+    for name in ("cc", "ff"):
+        proj(tmp_path / name, name)
+    for name in ("xx", "yy"):
+        proj(tmp_path / name, name, parents=["gg"])
+    document = listing(gg)
+    assert list(document) == ["schema", "projects", "load-order", "load-order-complete",
+                              "load-order-warning"]
+    assert document["schema"] == 2
+    assert document["load-order"] == ["cc", "ff", "gg"]
+    assert (document["load-order-complete"], document["load-order-warning"]) == (True, None)
+
+
+def test_ac12_c3_gives_no_warning(tmp_path):
+    zz = proj(tmp_path / "zz", "zz", parents=["xx", "yy"])
+    proj(tmp_path / "xx", "xx", parents=["bb"])
+    proj(tmp_path / "yy", "yy", parents=["aa", "bb"])
+    proj(tmp_path / "aa", "aa")
+    proj(tmp_path / "bb", "bb")
+    document = listing(zz)
+    assert document["load-order"] == ["aa", "bb", "xx", "yy", "zz"]
+    assert document["load-order-warning"] is None
+    ran, lines = findings(zz)
+    assert ran.code == 0 and not [line for line in lines if "load order" in line], lines
+
+
+def test_ac13_the_fallback_warning_in_validate_and_the_listing(tmp_path):
+    zz = proj(tmp_path / "zz", "zz", parents=["xx", "yy"])
+    proj(tmp_path / "xx", "xx", parents=["aa", "bb"])
+    proj(tmp_path / "yy", "yy", parents=["bb", "aa"])
+    proj(tmp_path / "aa", "aa")
+    proj(tmp_path / "bb", "bb")
+    text = ("load order: no order keeps every project's own order of parents (at 'zz': "
+            "'aa', 'bb' cannot be placed); using depth-first order aa, bb, xx, yy, zz; "
+            "to choose a value yourself, set it in 'zz'")
+    document = listing(zz)
+    assert document["load-order"] == ["aa", "bb", "xx", "yy", "zz"]
+    assert document["load-order-warning"] == text
+    ran, lines = findings(zz)
+    assert ran.code == 0, ran
+    assert lines == [f"warning: .tcw/tcw-config.yaml: {text}"], lines
+
+
+def test_ac18_and_ac20_the_load_order_is_not_complete(tmp_path):
+    app = proj(tmp_path / "app", "app", parents=[{"id": "ws", "inherit": "none"}, "core"])
+    proj(tmp_path / "core", "core")
+    document = listing(app)
+    assert document["load-order"] == ["ws", "core", "app"]
+    assert document["load-order-complete"] is False
+    lib_app = proj(tmp_path / "two" / "app", "app", parents=["lib"])
+    proj(tmp_path / "two" / "lib", "lib", parents=["core"])
+    document = listing(lib_app)
+    assert document["load-order"] == ["core", "lib", "app"]
+    assert document["load-order-complete"] is False
+
+
+def test_ac6_a_child_not_here_is_not_present(tmp_path):
+    ws = proj(tmp_path / "ws", "ws", children=["a"])
+    row = rows(ws)["a"]
+    assert (row["present"], row["read-only"], row["personal"]) == (False, None, False)
+
+
+def test_ac21_and_ac33_read_only_rows(family):
+    found = rows(family["app"])
+    assert (found["lib"]["read-only"], found["ws"]["read-only"]) == (True, False)
+    assert "read-only" not in found["app"]
+    assert "upstream" not in json.dumps(found)
+    found = rows(family["ws"])
+    assert (found["app"]["read-only"], found["sib"]["read-only"]) == (False, False)
+
+
+def test_ac27_a_single_project_pays_nothing(tmp_path, monkeypatch, capsys):
+    import builtins
+    import pathlib
+
+    from tcw import cli
+    alone = make_project(tmp_path / "alone", "solo")
+    beside = make_project(tmp_path / "beside", "solo")
+    make_project(tmp_path / "beside", "other")
+    commit_all(alone)
+    commit_all(beside)
+
+    def outputs(root: Path) -> list:
+        monkeypatch.chdir(root)
+        found = []
+        for argv in (["work", "list"], ["projects", "list"], ["validate"],
+                     ["projects", "list", "--json"]):
+            code = cli.main(argv)
+            out, err = capsys.readouterr()
+            found.append((code, out.replace(str(root), "<root>"), err))
+        return found
+
+    other = (tmp_path / "beside" / "other").resolve()
+    opened: list[str] = []
+    real_open, real_read = builtins.open, pathlib.Path.read_text
+
+    def watch_open(file, *args, **kwargs):
+        opened.append(str(file))
+        return real_open(file, *args, **kwargs)
+
+    def watch_read(self, *args, **kwargs):
+        opened.append(str(self))
+        return real_read(self, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", watch_open)
+    monkeypatch.setattr(pathlib.Path, "read_text", watch_read)
+    beside_out = outputs(tmp_path / "beside" / "solo")
+    # The watch sees the project's own configuration read, so it would see
+    # the other's.
+    own = str((tmp_path / "beside" / "solo" / ".tcw" / "tcw-config.yaml").resolve())
+    assert own in {str(Path(p).resolve()) for p in opened}, opened
+    assert not [p for p in opened if str(Path(p).resolve()).startswith(str(other))], opened
+    assert beside_out == outputs(tmp_path / "alone" / "solo")
+    document = json.loads(beside_out[3][1])
+    assert [row["id"] for row in document["projects"]] == ["solo"]
+    assert document["load-order"] == ["solo"]
+    assert (document["load-order-complete"], document["load-order-warning"]) == (True, None)

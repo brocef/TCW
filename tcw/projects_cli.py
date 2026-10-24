@@ -2,7 +2,8 @@
 
 `tcw projects list` prints one project ID per line: this project first, then
 its parents in listing order, then its children (TCW-108 Design 8.1), each
-once, whether or not it is on this machine.
+once, whether or not it is on this machine. `--json` adds what each link
+passes and the load order (Design 8.2).
 """
 
 from __future__ import annotations
@@ -17,35 +18,46 @@ from tcw.output import print_json
 NAME = "projects"
 
 
-def connected(root: Path) -> list[dict]:
+def connected(root: Path, registry=None) -> list[dict]:
     """This project and the ones it is connected to, in the order `list`
     prints them, each as `{id, relation, present, path, found}`; `found` says
     how TCW found a project on this machine other than this one (TCW-107
-    Design 6.1), and is None for this one and for one not here."""
+    Design 6.1), and is None for this one and for one not here.
+
+    A parent row adds `inherit`, the axes it passes in `AXES` order; a child
+    row adds `personal`, true when only the personal file lists it; every
+    row but this project's adds `read-only` (Design 7.1): null for a project
+    not here, which is refused for that reason instead (TCW-108 Design 8.2)."""
+    from tcw.store.base import AXES
     from tcw.store.project import FsProjectRegistry
     # A registry problem — an invalid ID, a listed child that does not name
     # this project back — is an error, as `validate` reports it, never a project
     # quietly left off the list.
-    registry = FsProjectRegistry.open(root).require_valid()
+    if registry is None:
+        registry = FsProjectRegistry.open(root).require_valid()
     here = registry.current
     rows = [{"id": here.id, "relation": "current", "present": True,
              "path": str(here.locator), "found": None}]
     seen = {here.id}
 
-    def add(project_id: str | None, relation: str) -> None:
+    def add(project_id: str | None, relation: str, **extra) -> None:
         if project_id is None or project_id in seen:
             return
         seen.add(project_id)
         project = registry.get(project_id)
+        read_only = None if project is None else \
+            registry.read_only_reason(project_id) is not None
         rows.append({"id": project_id, "relation": relation,
                      "present": project is not None,
                      "path": str(project.locator) if project is not None else None,
-                     "found": registry.found(project_id)})
+                     "found": registry.found(project_id), **extra,
+                     "read-only": read_only})
 
     for link in registry.parents():
-        add(link.id, "parent")
+        add(link.id, "parent", inherit=[axis for axis in AXES if axis in link.inherit])
+    personal = registry.personal_child_ids()
     for child in registry.declared_child_ids():
-        add(child, "child")
+        add(child, "child", personal=child in personal)
     return rows
 
 
@@ -54,9 +66,14 @@ def _list(args: argparse.Namespace) -> int:
     root = find_project_root(Path.cwd())
     if root is None:
         raise BackendError(NO_PROJECT)
-    rows = connected(root)
+    from tcw.store.project import FsProjectRegistry
+    registry = FsProjectRegistry.open(root).require_valid()
+    rows = connected(root, registry)
     if args.json:
-        print_json("projects", rows)
+        order = registry.load_order()
+        print_json(None, {"projects": rows, "load-order": list(order.ids),
+                          "load-order-complete": not order.missing and not order.unreadable,
+                          "load-order-warning": order.warning})
         return codes.OK
     for row in rows:
         print(row["id"])
@@ -71,6 +88,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                 prints="one project ID per line, this project first, or --json",
                 writes="nothing", examples=["projects list", "projects list --json"])
     p.add_argument("--json", action="store_true",
-                   help="print each project's relation, presence, path, and how "
-                        "it was found")
+                   help="print each project's relation, presence, path, how it "
+                        "was found, what a parent passes down ('inherit'), whether "
+                        "a child is listed only in the personal file ('personal') "
+                        "and whether it is read-only from here ('read-only'); then "
+                        "'load-order', 'load-order-complete' and "
+                        "'load-order-warning'")
     p.set_defaults(func=_list)
