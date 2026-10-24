@@ -353,6 +353,11 @@ def _read(path: Path, required: bool, root: Path) -> tuple[dict | None, list[Pro
         bad = error.object[error.start:error.start + 1].hex()
         return None, [Problem(path, (), f"is not valid UTF-8 text (byte 0x{bad} at "
                                         f"position {error.start})", root)]
+    return _parse_text(text, path, root)
+
+
+def _parse_text(text: str, path: Path, root: Path | None) -> tuple[dict | None, list[Problem]]:
+    """`_read`'s reading of a file's text, named as the file at `path`."""
     try:
         data = _load_named_yaml(text, path, UniqueKeyLoader)
     except yaml.YAMLError as error:
@@ -364,6 +369,28 @@ def _read(path: Path, required: bool, root: Path) -> tuple[dict | None, list[Pro
         return None, [Problem(path, (), f"must be a mapping, not a "
                                         f"{type(data).__name__}", root)]
     return data, []
+
+
+def parse_project_file_text(text: str, file: Path, *, layer: str) -> list[Problem]:
+    """Every problem 4.0 finds in a configuration file whose text is `text`,
+    as if it were the file at `file`, read from no disk (TCW-116 Design 2.1,
+    B3; plan Decided 8). `layer` is `shared` (`.tcw/tcw-config.yaml`, read as
+    `load_config` reads it, with no personal file) or `personal`
+    (`.tcw/tcw-config.local.yaml`, read as its layer is)."""
+    file = Path(file)
+    root = file.parent.parent
+    if layer == "shared":
+        return load_config(root, personal=False, text=text).problems
+    mapping, problems = _parse_text(text, file, root)
+    if not mapping:
+        return problems
+    mapping, found = _file_problems(file, mapping, root, versioned=True)
+    problems += found
+    if not mapping:
+        return problems
+    origin = Origin("local", file)
+    mapping, found = _allowed(mapping, origin, root, [])
+    return [*problems, *found, *_list_problems(mapping, origin, root)]
 
 
 def read_project_file(project_root: Path) -> tuple[dict | None, list[Problem]]:
@@ -802,7 +829,7 @@ def _origin_for(key_path: KeyPath, origins: dict, project: Origin) -> Origin:
 
 
 def load_config(project_root: Path, *, personal: bool = True,
-                registry=None) -> Config:
+                registry=None, text: str | None = None) -> Config:
     """The effective configuration of the project at `project_root`, folded
     over its configuration sources (TCW-109 Design 2.1): the built-in values,
     then for each source, farthest first and this project last, its shared
@@ -822,6 +849,9 @@ def load_config(project_root: Path, *, personal: bool = True,
     `parents:`, and `TypeError` is raised without it. For the project a
     command acts on, one is opened at `project_root` when none is passed, and
     only when the project declares `parents:`.
+
+    `text`, when given, is read as the shared file's text in place of the
+    file on disk (`parse_project_file_text`).
     """
     from tcw.work.config import parse_work_config
     root = Path(project_root).absolute()
@@ -838,7 +868,8 @@ def load_config(project_root: Path, *, personal: bool = True,
     config = Config(root, values, origins, None, written=written)
 
     shared = root / SENTINEL
-    raw, problems = _read(shared, True, shown)
+    raw, problems = (_read(shared, True, shown) if text is None
+                     else _parse_text(text, shared, shown))
     config.problems += problems
     if raw is not None:
         raw, problems = _file_problems(shared, raw, shown, versioned=True)

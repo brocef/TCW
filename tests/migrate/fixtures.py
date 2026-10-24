@@ -32,6 +32,17 @@ CAPABILITY_IDS = {"cli/x": "cap-1a2b3c", "cli/x/y": "cap-2b3c4d",
                   "cli/v": "cap-5e6f70", "roles/admin": "cap-6f7081",
                   "conditions/online": "cap-708192"}
 
+#: 4.0's `tcw validate` findings on F-single after a run that are no report's
+#: prediction, as `(where, message)`: each the counterpart of a finding 3.x's
+#: own `tcw validate` gave before it (`golden/f-single.json`, `validate`),
+#: written by hand once (plan Decided 13). 3.x's `cli/v/resources` findings
+#: have none, since TCW 4 reads that folder as the capability's resources.
+F_SINGLE_A12 = [
+    ("docs/capabilities/cli/w/tcw-capability.yaml",
+     "app.capabilities/cli/w is incomplete: it overrides nothing, and has no Status; "
+     "if it overrode an object that moved or was removed, complete it or remove it"),
+]
+
 #: A work item folder name long enough that its 4.0 value
 #: `app.work/<folder>` is 256 characters, one over the limit.
 LONG_FOLDER = "APP-6-" + "x" * (256 - len("app.work/") - len("APP-6-"))

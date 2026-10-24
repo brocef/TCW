@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Callable
 
 from tcw.migrate import progress
-from tcw.migrate.model import (ABSENT, Blocker, Delete, Move, Plan, Step, Write,
-                               digest, file_digest, resolve)
+from tcw.migrate.model import (ABSENT, Blocker, Delete, Move, Plan, Report, Step,
+                               Write, digest, file_digest, resolve)
 from tcw.store import fs
 from tcw.store.config_edit import read_text
 
@@ -231,3 +231,39 @@ def _finish(steps: list[Step], root: Path, say: Say) -> None:
 def pending(steps: list[Step], root: Path) -> list[Step]:
     """The steps of a progress record not yet done, for a dry run."""
     return [step for step in steps if step.phase != "A" and state(step, root) != DONE]
+
+
+# ---------------------------------------------------------------------------
+# The check after the run (Design 2.1, 2.9; Decided 13)
+
+#: How a 4.0 finding's kind is told from its message, for each kind a report
+#: predicts.
+KINDS = {"not_tags": "'not_tags'", "id": "is not its folder's name",
+         "resources": "resources/", "mention": "names "}
+
+
+def _same_file(a: str, b: str, root: Path) -> bool:
+    return resolve(root, a).resolve() == resolve(root, b).resolve()
+
+
+def check_after(root: Path, predicts: list[tuple[str, str]], *, work: bool) -> list[Report]:
+    """4.0's offline `tcw validate` of the project as now written, each
+    finding no report predicts listed as A12 in 4.0's words. A finding is
+    predicted by a report naming its file and its kind; one in the same file
+    but of another kind is not. `work=False` leaves out the work-store
+    checks, which would open the Jira backend (Design 1.1). The configuration
+    read so far is dropped first, since the run has just rewritten it."""
+    from tcw import config as layered
+    from tcw.cli import _located, collect_findings
+    layered.end_command()
+    layered.begin_command()
+    out = []
+    for finding in collect_findings(Path(root), work=work):
+        finding = _located(finding, Path(root))
+        where = finding.where.rsplit(":", 1)[0] if finding.where.rsplit(":", 1)[-1] \
+            .isdigit() else finding.where
+        if any(_same_file(where, file, root) and KINDS.get(kind, "\0") in finding.message
+               for file, kind in predicts):
+            continue
+        out.append(Report("A12", finding.where, " ".join(finding.message.split())))
+    return out

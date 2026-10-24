@@ -26,6 +26,13 @@ DO_NOT_SAVE = ("do not save these files in version control until 'tcw migrate' "
                "finishes")
 
 
+#: The summary's lines about the check after the run (Design 1.1, 2.1).
+NOT_CHECKED_WORK = ("work store not checked after the run (--no-jira): run 'tcw validate' "
+                    "to check it")
+KNOWN_AFTER = ("tcw validate's findings on the converted project are known only after "
+               "a real run")
+
+
 def say(line: str = "") -> None:
     print(line, file=sys.stderr)
 
@@ -93,3 +100,13 @@ def stopped(reason: str, not_done: list[Step]) -> None:
             say(f"  {step_line(step)}")
     say(RUN_AGAIN)
     say(DO_NOT_SAVE)
+
+
+def counts(steps: list[Step], tickets: int, *, dry: bool) -> str:
+    """The summary's count of the changes (Design 2.10): files written (each
+    once), moves, deletions and tickets edited."""
+    written = len({s.path for s in steps if isinstance(s, Write)})
+    moved = sum(isinstance(s, Move) for s in steps)
+    deleted = sum(isinstance(s, Delete) for s in steps)
+    return (f"{'would change' if dry else 'changed'}: {written} files written, "
+            f"{moved} moved, {deleted} deleted; {tickets} tickets edited")

@@ -260,41 +260,27 @@ def _not_yet(name: str):
     return run
 
 
-def _cmd_validate(args: argparse.Namespace) -> int:
-    """Findings on stdout, one per line; overrides in effect, what was skipped
-    and the closing count on stderr (TCW-73 Design 6). Exit 1 with any error,
-    5 when `--remote` could not reach Jira, else 0."""
-    from tcw.errors import NO_PROJECT, BackendError, UsageError
+def collect_findings(project_root: Path, *, notes: list[str] | None = None,
+                     work: bool = True) -> list:
+    """Every finding of an offline `tcw validate` of the project, unprinted,
+    with the lines about the run itself appended to `notes`. `work=False`
+    leaves out the work-store checks (`validate`'s section e). Called by
+    `_cmd_validate` and by `tcw migrate`'s check after its run (TCW-116
+    Design 2.1)."""
     from tcw.findings import Finding
     from tcw.validate import config_findings, validate
-    project_root = find_project_root()
-    if project_root is None:
-        raise BackendError(NO_PROJECT)
-    if args.remote and _not_jira_mode(project_root):
-        raise UsageError("--remote checks a Jira-mode project, and this project's "
-                         "work.backend is not jira")
+    notes = [] if notes is None else notes
     registry = FsProjectRegistry.open(project_root)
-    # An override is set in an environment rather than in any file this
-    # checkout holds, so a graph that resolves because of one resolves for a
-    # reason no reader can grep. Narration, never a finding: an override is a
-    # statement about this machine, not a defect. Said first, because a graph
-    # problem below ends the run.
-    for override in registry.overrides():
-        print(f"connected project '{override.id}' is overridden by "
-              f"{override.source} to {override.locator}", file=sys.stderr)
-        if override.warning:
-            print(f"warning: {override.warning}", file=sys.stderr)
     graph = registry.check()
     if graph:
         # `validate` is not reached, so the configuration findings it would
         # have led with are added here.
-        return _report([*config_findings(project_root), *graph], project_root)
+        return [*config_findings(project_root), *graph]
     # A project of the family that is not available here, one finding each
     # (TCW-108 Design 6.5); one that this project's own manifests place is
     # reported once, by `manifest_findings` (TCW-107 Design 5.1).
-    notes: list[str] = []
     unavailable: list = []
-    checked = validate(project_root, notes=notes, unavailable=unavailable)
+    checked = validate(project_root, notes=notes, unavailable=unavailable, work=work)
     # Where a store check stopped at a project it inherits from (Design 6.5
     # row c), said in that project's one finding.
     inherited = [(e.project, e.axis) for e in unavailable]
@@ -311,7 +297,36 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     warning = registry.load_order().warning
     if warning is not None:
         findings.append(Finding("warning", str(project_root / SENTINEL), warning))
-    findings += checked
+    return findings + checked
+
+
+def _cmd_validate(args: argparse.Namespace) -> int:
+    """Findings on stdout, one per line; overrides in effect, what was skipped
+    and the closing count on stderr (TCW-73 Design 6). Exit 1 with any error,
+    5 when `--remote` could not reach Jira, else 0."""
+    from tcw.errors import NO_PROJECT, BackendError, UsageError
+    project_root = find_project_root()
+    if project_root is None:
+        raise BackendError(NO_PROJECT)
+    if args.remote and _not_jira_mode(project_root):
+        raise UsageError("--remote checks a Jira-mode project, and this project's "
+                         "work.backend is not jira")
+    # An override is set in an environment rather than in any file this
+    # checkout holds, so a graph that resolves because of one resolves for a
+    # reason no reader can grep. Narration, never a finding: an override is a
+    # statement about this machine, not a defect. Said first, because a graph
+    # problem below ends the run.
+    registry = FsProjectRegistry.open(project_root)
+    for override in registry.overrides():
+        print(f"connected project '{override.id}' is overridden by "
+              f"{override.source} to {override.locator}", file=sys.stderr)
+        if override.warning:
+            print(f"warning: {override.warning}", file=sys.stderr)
+    notes: list[str] = []
+    findings = collect_findings(project_root, notes=notes)
+    if registry.check():
+        # A graph problem ends the run here, before any note or remote check.
+        return _report(findings, project_root)
     for note in notes:
         print(note, file=sys.stderr)
     if args.remote:

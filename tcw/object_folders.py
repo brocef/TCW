@@ -424,8 +424,19 @@ def read_state(path: Path, load: Callable[[Path], object] | None = None
     path = Path(path)
     if not path.is_file():
         return {}, None
-    data = load(path) if load is not None else \
-        yaml.safe_load(path.read_text(encoding="utf-8"))
+    if load is not None:
+        return _versioned(load(path))
+    return parse_state_text(path.read_text(encoding="utf-8"), path)
+
+
+def parse_state_text(text: str, file: Path) -> tuple[dict | None, str | None]:
+    """`read_state` of a state file whose text is `text`, read from no disk
+    (TCW-116 B3; plan Decided 8). What `yaml.safe_load` raises is the
+    caller's, as for `read_state`."""
+    return _versioned(yaml.safe_load(text))
+
+
+def _versioned(data) -> tuple[dict | None, str | None]:
     problem = version_problem(data)
     if problem is not None:
         return None, problem

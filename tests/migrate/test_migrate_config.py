@@ -231,8 +231,8 @@ def test_an_unreadable_file_is_b14(tcw, tmp_path):
 # ── reports: A4, A5, A9, A13, D5 ─────────────────────────────────────────────
 
 def test_a9_and_d5(tcw, tmp_path):
-    shared = ("id: app\nwork:\n  tags: null\n  jira:\n    site: https://example.invalid\n"
-              "    credentials:\n      email-env: TCW_JIRA__EMAIL\n      token-env: APP_TOKEN\n")
+    from tests.migrate.fixtures import _CONFIG
+    shared = _CONFIG.replace("APP_JIRA_TOKEN", "APP_TOKEN")
     app = make(tmp_path / "app", {"tcw-config.yaml": shared})
     done = tcw(["migrate", "--dry-run", "--no-jira"], app)
     assert done.code == 0, done.err

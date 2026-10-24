@@ -12,12 +12,14 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 from tcw.migrate import config, record, stores
 from tcw.errors import TcwError
 from tcw.migrate.legacy import (ROOT_CONFIG, STATE_3X, Layer3, Layers3, objects_3x,
                                 own_jira_layers, parse_mapping_3x, read_3x_layers,
                                 read_layer_3x, store_folder_3x)
-from tcw.migrate.model import PHASES, Blocker, Plan, not_yet
+from tcw.migrate.model import PHASES, Blocker, Plan, Write, not_yet
 from tcw.project_files import LOCAL_SENTINEL, SENTINEL, VERSION_KEY, without_version
 
 
@@ -104,6 +106,51 @@ def part_two_forms(read: Read) -> list[Blocker]:
 
 
 # ---------------------------------------------------------------------------
+# The planned files, checked as 4.0 reads them (B3; Decided 8)
+
+B3_FIX = "correct it in the TCW 3 file it is converted from, then run 'tcw migrate' again"
+#: Keys a personal layer may set, which the shared file alone may lack.
+_PERSONAL_REQUIRED = (("work", "jira", "credentials"),)
+
+
+def _refused(rel: str, detail: str) -> Blocker:
+    return Blocker("B3", rel, f"TCW 4 would refuse the file as planned: {detail}", B3_FIX)
+
+
+def planned_file_blockers(root: Path, steps) -> list[Blocker]:
+    """B3 for each planned configuration or state file that 4.0's own parser
+    of that kind of file refuses, given its planned text; nothing is read
+    from the planned paths. The shared file is read as `load_config` reads
+    it with no personal layer, so a key a personal layer may set (the Jira
+    credentials) is not required of it; the personal file is checked as its
+    layer is."""
+    from tcw import config as layered
+    from tcw import object_folders
+    out = []
+    for step in steps:
+        if not isinstance(step, Write):
+            continue
+        path = Path(root) / step.path
+        if step.path in (SENTINEL, LOCAL_SENTINEL):
+            layer = "shared" if step.path == SENTINEL else "personal"
+            for problem in layered.parse_project_file_text(step.text, path, layer=layer):
+                if problem.file is not None and Path(problem.file) != path:
+                    continue
+                if problem.message == "required" and any(
+                        tuple(problem.key_path[:len(k)]) == k for k in _PERSONAL_REQUIRED):
+                    continue
+                out.append(_refused(step.path, problem.detail))
+        elif path.name in object_folders.STATE_FILES.values():
+            try:
+                _, problem = object_folders.parse_state_text(step.text, path)
+            except yaml.YAMLError as error:
+                problem = f"is not valid YAML: {' '.join(str(error).split())}"
+            if problem is not None:
+                out.append(_refused(step.path, problem))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # The Jira half (Decided 19)
 
 
@@ -156,6 +203,7 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
     if steps and read.git is not None:
         steps += config.plan_ignore(read.root)
     plan.steps = sorted(steps, key=lambda step: PHASES.index(step.phase))
+    plan.blockers += planned_file_blockers(read.root, plan.steps)
     jira_backed = read.work_backend == "jira"
     if not plan.blockers:
         # A blocker refuses the run whatever Jira holds, so Jira is asked

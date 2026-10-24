@@ -210,6 +210,13 @@ def _scalar_text(value: str, style: str | None) -> str:
     return value if same else "'" + value.replace("'", "''") + "'"
 
 
+def _reads_as_text(value: str) -> bool:
+    try:
+        return isinstance(yaml.safe_load(value), str)
+    except yaml.YAMLError:
+        return True
+
+
 def _asked(replace: Replace) -> Callable[[str, Field], tuple[str, str | None]]:
     """A `_swap` that asks `replace`; it never finds one already done."""
     def swap(token: str, row: Field) -> tuple[str, str | None]:
@@ -232,7 +239,9 @@ def rewrite_yaml(text: str, fields: Iterable[Field], changes: Changes | Replace
 
     `changes` may instead be a function, asked for every reference at a field
     `fields` names, which returns what replaces it (`tcw migrate`'s
-    conversions, TCW-116 Decided 9)."""
+    conversions, TCW-116 Decided 9). It is never asked about a plain value
+    YAML reads as anything but text (`Roles: 5`), which names nothing."""
+    asked = callable(changes)
     if callable(changes):
         swap = _asked(changes)
     else:
@@ -248,6 +257,8 @@ def rewrite_yaml(text: str, fields: Iterable[Field], changes: Changes | Replace
     for key_path, event in _scalars(text):
         row = paths.get(key_path)
         if row is None or not isinstance(event.value, str):
+            continue
+        if asked and event.style is None and not _reads_as_text(event.value):
             continue
         listed = row.many and key_path[-1] != "[]"
         pieces = event.value.split(",") if listed else [event.value]

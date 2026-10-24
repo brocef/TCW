@@ -32,13 +32,16 @@ from tcw.project_files import (_RENAMED_KEYS, LOCAL_SENTINEL, SENTINEL, TCW_FOLD
                                VERSION_KEY, key_problems, version_line,
                                without_version)
 from tcw.store.base import MIGRATION_GUIDE, RETIRED_PROJECTS_KEY
+from tcw.cli_suggest import REMOVED_COMMANDS
 from tcw.store.config_edit import ConfigEditRefused, RenameKey
 from tcw.store.fs import LOCAL_CONFIG_RULE, LOCAL_MANIFEST_RULE
 
 IGNORE = f"{TCW_FOLDER}/.gitignore"
 
-#: The commands and flags TCW 4 removes, for A13 (S115 Design 1.2; TCW-114).
-_REMOVED = ("tcw provision", "tcw projects", "tcw init", "--project", "--blocks")
+#: The commands and flags TCW 4 removes, for A13 (S115 Design 1.2; TCW-114):
+#: the commands from the one table that names them (TCW-115's guard allows
+#: no other), then the two flags.
+_REMOVED = (*(f"tcw {name}" for name in REMOVED_COMMANDS), "--project", "--blocks")
 _REMOVED_RE = re.compile(r"(?<![\w-])(" + "|".join(re.escape(w) for w in _REMOVED)
                          + r")(?![\w-])")
 #: The keys whose value is a command TCW runs.

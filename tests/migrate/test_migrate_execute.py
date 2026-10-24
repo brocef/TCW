@@ -286,8 +286,8 @@ def test_a_dry_run_with_a_progress_record_lists_what_is_left(tmp_path, monkeypat
     before = tree(root)
     dry = run(root, dry_run=True)
     assert dry.code == 0
-    assert [line for line in dry.err.splitlines()      # the --no-jira summary (Step 9)
-            if not line.startswith("tickets not converted")] == [
+    assert [line for line in dry.err.splitlines()      # less the summary (Steps 9, 10)
+            if line.startswith(("would write", "would move", "would delete"))] == [
         "would write .tcw/tcw-config.yaml: C1", "would delete tcw-config.yaml: C1"]
     assert tree(root) == before
 

@@ -81,15 +81,32 @@ def run(root: Path, *, dry_run: bool, no_jira: bool) -> int:
     if dry_run:
         _would(plan.steps, plan.tickets)
         report.reports(plan.reports)
-        _summary(plan.summary)
+        _summary([report.counts(plan.steps, len(plan.tickets), dry=True), *plan.summary,
+                  *([report.KNOWN_AFTER] if plan.steps else [])])
         return codes.OK
     code = apply_plan(plan, root) if plan.steps else codes.OK
+    after = []
+    if code == codes.OK and plan.steps:
+        after = _check_after(root, [r.predicts for r in plan.reports if r.predicts],
+                             plan.work_backend, no_jira, plan.reports)
+    edited: list = []
     if code == codes.OK:
-        code = phase_f(plan.half, plan.tickets)
+        code = phase_f(plan.half, plan.tickets, edited)
     if code == codes.OK:
         report.reports(plan.reports)
-        _summary(plan.summary)
+        _summary([report.counts(plan.steps, len(edited), dry=False), *plan.summary,
+                  *after])
     return code
+
+
+def _check_after(root: Path, predicts, work_backend: str, no_jira: bool,
+                 reports: list) -> list[str]:
+    """The check after the local phases, its A12 reports added to `reports`;
+    the summary's line when the work store was left out."""
+    from tcw.migrate import execute, report
+    work = not (no_jira and work_backend == "jira")
+    reports += execute.check_after(root, predicts, work=work)
+    return [] if work else [report.NOT_CHECKED_WORK]
 
 
 def _would(steps, tickets) -> None:
@@ -122,16 +139,22 @@ def _planning_failed(plan, dry_run: bool) -> int:
     return error.code
 
 
-def phase_f(half, tickets) -> int:
+def phase_f(half, tickets, edited: list | None = None) -> int:
     """Phase F: the ticket edits, through the function the Jira half
     returned; each edit made is said as it is made. A failure names the
-    tickets left, and a run again edits only those (Design 5.3)."""
+    tickets left, and a run again edits only those (Design 5.3). Each edit
+    made is appended to `edited`."""
     from tcw.errors import TcwError
     from tcw.migrate import report
     if half is None or not tickets:
         return codes.OK
+    edited = [] if edited is None else edited
+
+    def made(edit) -> None:
+        edited.append(edit)
+        report.say(report.ticket_line(edit))
     try:
-        half.apply(lambda edit: report.say(report.ticket_line(edit)))
+        half.apply(made)
     except TcwError as error:
         left = set(getattr(error, "pending", None) or [t.key for t in tickets])
         report.say(f"stopped: {error}")
@@ -192,20 +215,29 @@ def follow_progress(root: Path, record, *, dry_run: bool, no_jira: bool = False)
         report.blockers(half.blockers)
         return codes.REFUSED
     if dry_run:
-        _would(execute.pending(record.steps, root), tickets)
-        _summary(summary)
+        pending = execute.pending(record.steps, root)
+        _would(pending, tickets)
+        _summary([report.counts(pending, len(tickets), dry=True), *summary,
+                  report.KNOWN_AFTER])
         return codes.OK
+    done: list = []
+
+    def made(step) -> None:
+        done.append(step)
+        report.say(report.step_line(step))
     try:
-        execute.follow(record.steps, root, lambda step: report.say(report.step_line(step)))
+        execute.follow(record.steps, root, made)
     except execute.MigrateRefused as refused:
         report.blockers([refused.blocker])
         return codes.REFUSED
     except execute.MigrateStopped as stop:
         report.stopped(stop.reason, stop.not_done)
         return codes.ERROR
-    code = phase_f(half, tickets)
+    reports = list(half.reports) if half is not None else []
+    after = _check_after(root, record.predicts, record.work_backend, no_jira, reports)
+    edited: list = []
+    code = phase_f(half, tickets, edited)
     if code == codes.OK:
-        if half is not None:
-            report.reports(half.reports)
-        _summary(summary)
+        report.reports(reports)
+        _summary([report.counts(done, len(edited), dry=False), *summary, *after])
     return code

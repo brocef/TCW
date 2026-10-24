@@ -542,10 +542,13 @@ def config_findings(project_root: Path) -> list[Finding]:
 
 def validate(project_root: Path, *, target: ValidationTarget | None = None,
              notes: list[str] | None = None,
-             unavailable: list | None = None) -> list[Finding]:
+             unavailable: list | None = None, work: bool = True) -> list[Finding]:
     """Every finding for the project ([] = clean). Lines about the run itself
     are appended to `notes` when given; an inherited project a store check
-    could not reach goes in `unavailable` when given (see `_run_check`)."""
+    could not reach goes in `unavailable` when given (see `_run_check`).
+    `work=False` leaves out the work checks (e), and nothing else: `tcw
+    migrate --no-jira` checks a Jira-backed project so, since those checks
+    open the Jira backend (TCW-116 Design 1.1)."""
     notes = [] if notes is None else notes
     from tcw.store.project import FsProjectRegistry
 
@@ -623,7 +626,7 @@ def validate(project_root: Path, *, target: ValidationTarget | None = None,
 
     # (e) The work checks. Not skipped after a YAML problem: they read only the
     # work store, and an unreadable item is one of their own findings.
-    if target is None and "work" not in unusable and _checks_work(project_root):
+    if work and target is None and "work" not in unusable and _checks_work(project_root):
         findings, note = _work_findings(project_root, registry)
         problems += findings
         if note is not None:

@@ -141,7 +141,7 @@ def test_no_jira_makes_the_local_changes_and_no_request(tcw, fake, tmp_path):
     done = tcw(["migrate", "--no-jira"], first)
     assert done.code == 0, done.err
     assert fake.log == []
-    assert lines(done)[-1] == NO_JIRA_SUMMARY
+    assert NO_JIRA_SUMMARY in lines(done)
     fake.down = None
     second = build_f_single(tmp_path / "two")
     plain = tcw(["migrate"], second)
@@ -409,10 +409,13 @@ def test_credentials_only_in_the_3x_personal_file_are_used(tcw, fake, tmp_path, 
 
 
 def test_a_missing_jira_project_key_is_exit_1_naming_it(tcw, fake, app):
-    shared = app / "tcw-config.yaml"
+    assert tcw(["migrate", "--no-jira"], app).code == 0
+    fake.log.clear()
+    shared = app / ".tcw/tcw-config.yaml"
     shared.write_text(shared.read_text().replace("    project: APP\n", ""))
     before = snapshot(app, times=False)
     done = tcw(["migrate"], app)
     assert done.code == 1, done.err
-    assert "tcw-config.yaml: work.jira.project: required; 'tcw migrate --no-jira'" in done.err
+    assert ("error: .tcw/tcw-config.yaml: work.jira.project: required; 'tcw migrate "
+            "--no-jira' converts the files without Jira") in done.err
     assert snapshot(app, times=False) == before and fake.log == []

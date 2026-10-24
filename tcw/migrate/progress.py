@@ -15,7 +15,7 @@ a git repository it is ignored from phase A on.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -41,6 +41,9 @@ class Progress:
     project: str | None
     work_backend: str
     steps: list[Step]
+    #: The 4.0 finding each report of the run predicts, as `(file, kind)`,
+    #: so the check after a finishing run tells them from A12 (Decided 13).
+    predicts: list[tuple[str, str]] = field(default_factory=list)
 
 
 def _step(step: Step) -> dict:
@@ -63,7 +66,8 @@ def dump(plan: Plan) -> str:
     data = {VERSION_KEY: __version__, "project": plan.project,
             "work-backend": plan.work_backend,
             "steps": [_step(step) for step in plan.steps],
-            "owners": dict(plan.owners), "resolved": dict(plan.resolved)}
+            "owners": dict(plan.owners), "resolved": dict(plan.resolved),
+            "predicts": [list(r.predicts) for r in plan.reports if r.predicts]}
     return yaml.safe_dump(data, sort_keys=False, allow_unicode=True,
                           width=float("inf"))
 
@@ -102,7 +106,8 @@ def load(root: Path) -> Progress | None:
         if data["work-backend"] not in ("jira", "filesystem"):
             raise KeyError("work-backend")
         steps = [_read_step(raw) for raw in data["steps"]]
+        predicts = [(str(f), str(k)) for f, k in data.get("predicts") or ()]
     except (yaml.YAMLError, KeyError, TypeError, AttributeError, UnicodeDecodeError) as error:
         raise ProgressUnreadable(f"{PROGRESS} is not a progress record tcw migrate "
                                  f"wrote ({error})") from None
-    return Progress(data["project"], data["work-backend"], steps)
+    return Progress(data["project"], data["work-backend"], steps, predicts)
