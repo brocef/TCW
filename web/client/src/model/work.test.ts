@@ -113,8 +113,17 @@ test("the assignee filter offers everyone on the rows and the user", () => {
 })
 
 test("the stage line names the command that moves an item", () => {
-    expect(moveHint("p.work/2026-01-01-x")).toBe(
+    expect(moveHint("p.work/2026-01-01-x", "p")).toBe(
         "Move it with `tcw work advance p.work/2026-01-01-x`."
+    )
+})
+
+test("another project's item is moved in its own project, with tcw -C", () => {
+    expect(moveHint("p.work/2026-01-01-x", "p")).toBe(
+        "Move it with `tcw work advance p.work/2026-01-01-x`."
+    )
+    expect(moveHint("q.work/2026-01-01-x", "p")).toBe(
+        "Move it with `tcw -C tcw://q.path/ work advance q.work/2026-01-01-x`."
     )
 })
 

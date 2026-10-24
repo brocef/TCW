@@ -118,9 +118,16 @@ export function isLocal(fullId: string, project: TProject): boolean {
     return owner === null || owner === project.id
 }
 
-/** The sentence the stage line carries: the viewer never moves an item. */
-export function moveHint(fullId: string): string {
-    return `Move it with \`tcw work advance ${fullId}\`.`
+/** The sentence the stage line carries: the viewer never moves an item.
+ * Another project's item is moved in its own project, which refuses the
+ * move from here, so the command runs there with `tcw -C`. */
+export function moveHint(fullId: string, servedProject: string): string {
+    const owner = projectOf(fullId)
+    const there =
+        owner !== null && owner !== servedProject
+            ? `tcw -C tcw://${owner}.path/ `
+            : "tcw "
+    return `Move it with \`${there}work advance ${fullId}\`.`
 }
 
 /** The `verdict:` value in a round's front matter, or "" when unset. */

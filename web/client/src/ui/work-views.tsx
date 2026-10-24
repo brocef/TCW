@@ -330,7 +330,7 @@ export function WorkPage({
                 <>
                     <Text as="p" className="stage-line" size="2">
                         Stage: <strong>{item!.stage ?? "no stage"}</strong>.{" "}
-                        <StageHint slug={slug} />
+                        <StageHint slug={slug} project={project.id} />
                     </Text>
                     <Properties
                         item={item!}
@@ -387,9 +387,10 @@ export function WorkPage({
     )
 }
 
-/** "Move it with `tcw work advance <slug>`.", the command in code type. */
-function StageHint({ slug }: { slug: string }) {
-    const [before, command, after] = moveHint(slug).split("`")
+/** "Move it with `tcw work advance <slug>`.", the command in code type;
+ * for another project's item, the `tcw -C` form that runs it there. */
+function StageHint({ slug, project }: { slug: string; project: string }) {
+    const [before, command, after] = moveHint(slug, project).split("`")
     return (
         <>
             {before}

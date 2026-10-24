@@ -31,6 +31,17 @@ test("the stage is shown with the command that moves it, and nothing moves it", 
         expect(screen.queryByRole("button", { name })).toBeNull()
 })
 
+test("another project's item names the command that moves it there", () => {
+    renderPage(
+        workDetail("x", {
+            item: workItem("x", { "full-id": "q.work/x", owner: "q" }),
+        })
+    )
+    expect(screen.getByText(/^Stage:/).querySelector("code")).toHaveTextContent(
+        "tcw -C tcw://q.path/ work advance q.work/x"
+    )
+})
+
 test("links to this project's items navigate; another project's are labelled", () => {
     renderPage(
         workDetail("x", {
