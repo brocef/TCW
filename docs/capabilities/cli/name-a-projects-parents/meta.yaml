@@ -1,6 +1,7 @@
-id: cap-3d97a5
-name: Read from an upstream project
+id: cap-e10aa2
+name: Name a project's parents
 Status: Supported
 Subject:
     - project
+    - parent-link
 Feature: project-registry

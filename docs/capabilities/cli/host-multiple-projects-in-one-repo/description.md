@@ -1,24 +1,28 @@
-As a user, I give every TCW project a canonical ID and explicitly declare its
-direct parent and children under `projects:` in its `.tcw/tcw-config.yaml`,
-by ID only. Where each one is on this machine is not written there: it is in a
+As a user, I give every TCW project a canonical ID and name its parents under
+`parents:` in its `.tcw/tcw-config.yaml`, by ID only and in order; a project
+may have several parents (see [Name a project's
+parents](tcw://C/cli/name-a-projects-parents)). A parent may list its children
+under `children:` (see [List a project's
+children](tcw://C/cli/list-a-projects-children)). Where each one is on this machine is not written there: it is in a
 manifest (see [Record where other projects are in a
 manifest](tcw://C/cli/record-where-other-projects-are-in-a-manifest)), or TCW
 finds the folder from the ID (see [Find a project's folder from its
 ID](tcw://C/cli/find-a-projects-folder-from-its-id)). Declared projects may be
 nested, siblings, or anywhere else on the filesystem: the location says where
 TCW can open a project on this machine, while the ID remains its stable
-identity. Connections are declared on both sides and fail closed when a
-declaration is *inconsistent* — an entry placing a folder that holds another
-project, one ID found in two folders, a cycle, configuration that cannot be
-read. A connected project that is simply not on this machine is a different
+identity. Connections fail closed when a declaration is _inconsistent_ — an
+entry placing a folder that holds another project, one ID found in two
+folders, a loop of parents, a listed child that does not name its parent back,
+configuration that cannot be read. A connected project that is simply not on this machine is a different
 thing and is treated as one: the project drops out of the graph, my other
 commands keep working, and `tcw validate` reports it as `unresolved` every run.
 A command that needs the absent project tells me where its manifest entry
 places it, and how to fetch it when the entry names its repository, rather
-than claiming I never declared it. A `projects:` entry that still holds a
-location, as in TCW 3, is refused with the manifest entry to write instead.
-From an enclosing project I address descendant work as `<project-id>/<folder>`,
-and TCW derives deeper ancestry from the declared connections rather than from
+than claiming I never declared it. The TCW 3 `projects:` key is refused, with
+a message saying to name parents under `parents:` and children under
+`children:`. From an enclosing project I address another project's work by its
+full identifier, `<project-id>.work/<folder>`, and TCW derives deeper ancestry
+from the declared connections rather than from
 where things sit on disk: no relation is inferred from nesting or git layout,
 and the search for a folder never looks inside a project. Inside a linked git
 worktree TCW reads git metadata for one narrow purpose — working out where a

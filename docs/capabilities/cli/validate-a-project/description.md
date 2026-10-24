@@ -26,28 +26,33 @@ There are three severities, and only one fails the run:
   stay personal; a committed manifest entry overridden on this machine by the
   personal manifest or a `TCW_PROJECT_<ID>`, whose problem would otherwise be
   an error; a TCW 3.x `tcw-config.yaml` left at
-  the root of a TCW 4 project, which is not read; a parent or blocker that names no item, an item whose
+  the root of a TCW 4 project, which is not read; a load order that no order
+  can keep (see [Read a project's ancestors in one load
+  order](tcw://C/cli/read-ancestors-in-one-load-order)); a parent or blocker that names no item, an item whose
   latest verdict round is invalid, or a stage ahead of its artifacts. The run
   still exits 0.
 - `unresolved` — something declared that cannot be checked from here: a project
   that is not on this machine, or a reference into one. The run still exits 0.
 
-**Connections between projects.** Missing or invalid IDs, malformed entries
-under `projects:` (including one that still holds a location, which belongs in
-the manifest), a manifest entry placing a folder that holds another project or
-none, one ID found in two folders, a parent and child that do not name each
-other, and cycles are errors, with guidance on how to fix them. Every entry of
-this project's two manifests is checked, whether or not `projects:` names it:
-an entry whose folder is not here, or is empty, is `unresolved`, and one whose
-folder is wrong is an error. A project not on this machine is reported with
-where its manifest entry places it and, when the entry gives a repository, the
-command that fetches it. A parent/child
-connection is declared on both sides; an `upstream` connection is declared only
-by the reader and needs no counterpart. An upstream is never validated as part
-of the reader: only its own config is read, and problems in its connections are
-its own. A project declared as its own upstream, or declared upstream while also
-reachable as family, is an error. A former child still naming a parent that now
-reads it as an upstream is a warning, so neither project is blocked mid-change.
+**Connections between projects.** Missing or invalid IDs, a malformed
+`parents:` or `children:` entry, a project named both as a parent and as a
+child, a manifest entry placing a folder that holds another project or none,
+one ID found in two folders, a listed child that does not name this project
+among its parents, and a loop of parents are errors, with guidance on how to
+fix them. The TCW 3 `projects:` key is an error saying to name parents under
+`parents:` and children under `children:`. Every entry of this project's two
+manifests is checked, whether or not a link names it: an entry whose folder is
+not here, or is empty, is `unresolved`, and one whose folder is wrong is an
+error. A project not on this machine is reported with where its manifest entry
+places it and, when the entry gives a repository, the command that fetches it.
+
+A parent, a project further up, or a listed child that is not on this machine
+is one `unresolved` finding saying what could not be checked: what it passes
+down to this project, or that it names its parent back. So is a parent whose
+own `parents:` cannot be read, or still holds the 3.x `projects:` key: its
+problem is its own, and this project's run goes on. When a taxonomy or
+capabilities check stops at such a project, the same finding adds that the
+taxonomy or capabilities inherited from it could not be checked.
 The key 2.x used before `projects` was named is an error naming
 `docs/migration-guide-2.8-to-3.0.0.md`. A connected project still in the TCW
 3.x layout, or whose `.tcw/tcw-config.yaml` records a version this TCW cannot

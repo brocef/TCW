@@ -1,0 +1,5 @@
+name: Parent link
+kind: Vocabulary
+relatesTo:
+    - project
+    - load-order

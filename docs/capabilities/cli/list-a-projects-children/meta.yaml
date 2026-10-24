@@ -1,0 +1,8 @@
+id: cap-a0e87e
+name: List a project's children
+Status: Supported
+Subject:
+    - project
+    - parent-link
+    - personal-configuration
+Feature: project-registry

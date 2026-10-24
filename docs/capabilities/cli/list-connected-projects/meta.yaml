@@ -3,5 +3,6 @@ name: List connected projects
 Status: Supported
 Subject:
     - project
-    - upstream-project
+    - parent-link
+    - load-order
 Feature: project-registry

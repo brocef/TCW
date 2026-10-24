@@ -8,7 +8,9 @@ lists. A declaration the parser cannot read opens as plain text with the
 parser's message, so it can be fixed. In filesystem mode I also change the
 item's properties, add `blocks` links one at a time, and add comments; a
 comment is never edited. I create items, in this project or, with only a
-title, request text and priority, in a connected one. In Jira mode I adopt
+title, request text and priority, in a connected one; the form marks a
+project that is read-only from here, as the command line decides it, and one
+that is not on this machine. In Jira mode I adopt
 inbox tickets as items, which runs the request stage's `post` hooks as
 `tcw work tickets adopt` does.
 

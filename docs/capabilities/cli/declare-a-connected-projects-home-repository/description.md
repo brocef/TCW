@@ -1,5 +1,5 @@
 As a user working in a checkout that holds only some of my connected projects'
-repositories, I declare where a *connected project* comes from, beside the
+repositories, I declare where a _connected project_ comes from, beside the
 path that says where it sits on my own machine. Both are in the project's
 manifest entry, `.tcw/tcw-manifest.yaml`: the entry's `path`, and its
 `repository`, written `<url>#<branch>` (the branch optional), with a
@@ -23,5 +23,5 @@ against the manifest entries that give that repository.
 Declaring a connected project's home repository does not make any command
 reach the network.
 
-`upstream` entries are placed the same way: an upstream's manifest entry may
-give its repository too.
+Every connected project is placed the same way, whether it is a parent, a
+child, or a project further up or down the family.

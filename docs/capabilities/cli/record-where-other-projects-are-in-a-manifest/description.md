@@ -1,6 +1,7 @@
 As a user, I record where the projects mine connects to are on disk in a
 manifest, not in `.tcw/tcw-config.yaml`, so a project's location is written
-once, in one place, and `projects:` names connected projects by ID only.
+once, in one place, and `parents:` and `children:` name connected projects by
+ID only.
 
 There are two manifests in a project's `.tcw/` folder.
 `.tcw/tcw-manifest.yaml` is committed and shared by everyone who checks the
@@ -31,11 +32,13 @@ project, or files and no project, is an error naming both, and an entry whose
 folder is not here, or is empty, means the project is not on this machine,
 which `tcw validate` reports as `unresolved` with the command that fetches it
 when the entry names a repository. `tcw validate` checks every entry of the
-current project's two manifests, whether or not `projects:` names it, and
+current project's two manifests, whether or not a parent or child link names
+it, and
 reports a committed entry that my personal manifest or `TCW_PROJECT_<ID>`
 overrides on this machine as a warning rather than an error.
 
-A `projects:` entry that still holds a location, as in TCW 3, is refused with
-the manifest entry to write instead. See [Find a project's folder from its
+The TCW 3 `projects:` key in `.tcw/tcw-config.yaml` is refused, with a message
+saying where parents, children and locations now go. See [Find a project's
+folder from its
 ID](tcw://C/cli/find-a-projects-folder-from-its-id) for how TCW uses the
 manifests.

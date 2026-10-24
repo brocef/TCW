@@ -1,3 +1,5 @@
 name: Project
 kind: Vocabulary
-relatesTo: []
+relatesTo:
+    - parent-link
+    - load-order
