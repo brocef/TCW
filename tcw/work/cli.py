@@ -489,10 +489,12 @@ def _personal_note(project: str, root: Path, key_path: tuple) -> None:
     from tcw.output import shown
     if project != project_facts(root).project:
         return
-    files = effective(root).personal_files(key_path)
-    if files:
+    config = effective(root)
+    named = [shown(f) for f in config.personal_files(key_path)]
+    named += config.personal_variables(key_path)
+    if named:
         _say("note: this prompt was changed by personal configuration: "
-             + ", ".join(shown(f) for f in files))
+             + ", ".join(named))
 
 
 def _print_resolution(res, label: str, no_exec: bool) -> int:

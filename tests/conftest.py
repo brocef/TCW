@@ -189,8 +189,12 @@ def _no_personal_config(tmp_path, monkeypatch):
     `XDG_CONFIG_HOME` points the user-wide file into the test's own folder, so
     a test that switches personal files back on (`monkeypatch.delenv`) still
     reads nothing from the real home folder. A test of the home-folder path
-    sets `HOME` itself.
+    sets `HOME` itself. Every override variable (`TCW_<KEY>__<PROJECT>`,
+    TCW-109 Design 4) is removed too, so none of the developer's reaches a
+    test that switches personal configuration back on.
     """
+    for name in [k for k in os.environ if k.startswith("TCW_") and "__" in k]:
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("TCW_NO_PERSONAL_CONFIG", "1")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
 

@@ -242,6 +242,11 @@ class Config:
         return [o.file for o in self.written.get(tuple(key_path), ())
                 if o.personal and o.file is not None]
 
+    def personal_variables(self, key_path: KeyPath) -> list[str]:
+        """The override variables that set the chain list at `key_path`."""
+        return [o.variable for o in self.written.get(tuple(key_path), ())
+                if o.variable is not None]
+
 
 class Withheld:
     """A configuration value that cannot be used (TCW-109 Design 3.4): an
@@ -615,7 +620,7 @@ def _without_credentials(mapping: dict, origin: Origin,
     for key, value in credentials.items():
         skipped.append(Setting(origin.file, (*_CREDENTIALS, key), value,
                                "Jira credential names apply only in a Jira-mode "
-                               "project"))
+                               "project", origin.variable))
     mapping = copy.deepcopy(mapping)
     del mapping["work"]["jira"]["credentials"]
     if not mapping["work"]["jira"]:
@@ -752,6 +757,14 @@ def _confinement(values: dict, origins: dict, root: Path) -> list[Problem]:
             folder = origin.folder.resolve()
             target = (folder / entry["file"].strip()).resolve()
             if target != folder and folder not in target.parents:
+                if origin.variable is not None:
+                    # A variable's binding is read from the root of the
+                    # project it names (TCW-109 Design 4.8).
+                    problems.append(Problem(
+                        None, (), f"{origin.variable}: {dotted((*path, i))}: file "
+                                  f"'{entry['file']}' resolves outside {origin.folder}, "
+                                  f"the root of the project it names", root))
+                    continue
                 problems.append(Problem(
                     origin.file, (*path, i),
                     f"file '{entry['file']}' resolves outside {origin.folder}, the "
@@ -857,6 +870,13 @@ def load_config(project_root: Path, *, personal: bool = True,
     if user is not None:
         user_kept, user_problems = _user_layer(user, root, config, jira_mode)
 
+    # A variable's problem is the active project's, reported once; a project
+    # read for itself takes only the variables that passed (Design 4.4,
+    # plan choice 13).
+    overrides, override_problems = _command_overrides()
+    if personal:
+        config.problems += override_problems
+
     fold = _Fold(values, origins, written, jira_mode)
     for position, entry in enumerate(entries):
         if position == here:
@@ -872,9 +892,24 @@ def load_config(project_root: Path, *, personal: bool = True,
                     mapping = _personal_layer(origin, root, config, jira_mode)
                 if mapping:
                     fold.merge(mapping, origin)
+            for override in overrides.get(own_id, ()):
+                origin = Origin("environment", variable=override.name, project=own_id,
+                                position=position, root=root)
+                mapping = override.mapping
+                if not jira_mode:
+                    mapping = _without_credentials(mapping, origin, config.skipped)
+                if mapping:
+                    fold.merge(mapping, origin)
         elif entry.state == "here":
             fold.ancestor(entry, position, user if user_kept else None, user_kept,
                           layers, config)
+            q_root = Path(entry.project.locator)
+            for override in overrides.get(entry.id, ()):
+                part = _inherited_part(override.mapping, jira_mode)
+                if part:
+                    fold.merge(part, Origin("environment", variable=override.name,
+                                            project=entry.id, position=position,
+                                            root=q_root))
         else:
             fold.gaps.append((position, entry))
 
@@ -1215,6 +1250,26 @@ def _withhold(config: Config, fold: _Fold, undecided: set, registry, own_id) -> 
 #: read and checked once (Design 2.3). None outside a command: a library
 #: caller, such as a test, always reads the files afresh.
 _EFFECTIVE: dict | None = None
+#: The override variables, read and checked once while a command runs
+#: (TCW-109 plan choice 9), so each problem is reported once.
+_OVERRIDES: tuple | None = None
+
+
+def _command_overrides() -> tuple[dict, list]:
+    """The override variables of this process (TCW-109 Design 4): those that
+    passed every check, by the project they name, and the problems of the
+    others. None of either when `TCW_NO_PERSONAL_CONFIG` is set to anything
+    (Design 5.3): they are then neither read nor checked."""
+    global _OVERRIDES
+    if personal_files_skipped():
+        return {}, []
+    if _EFFECTIVE is None:
+        from tcw.config_keys import read_overrides
+        return read_overrides(os.environ)
+    if _OVERRIDES is None:
+        from tcw.config_keys import read_overrides
+        _OVERRIDES = read_overrides(os.environ)
+    return _OVERRIDES
 
 
 def begin_command() -> None:
@@ -1222,15 +1277,17 @@ def begin_command() -> None:
     (TCW-107 Design 2.13), are each read once until `end_command`. The
     registry is dropped after the command writes a configuration or a
     manifest; this configuration cache is still not, as in 3.x."""
-    global _EFFECTIVE
+    global _EFFECTIVE, _OVERRIDES
     _EFFECTIVE = {}
+    _OVERRIDES = None
     from tcw.store import project
     project.begin_command()
 
 
 def end_command() -> None:
-    global _EFFECTIVE
+    global _EFFECTIVE, _OVERRIDES
     _EFFECTIVE = None
+    _OVERRIDES = None
     from tcw.store import project
     project.end_command()
 
