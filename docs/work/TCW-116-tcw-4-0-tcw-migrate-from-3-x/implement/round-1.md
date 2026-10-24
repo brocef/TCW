@@ -345,3 +345,21 @@ For the dispatching session to post.
 - **TCW-99.** C5 departs from the design in one point, decision 4: a
   store's `repository` declaration stays on the store in 4.0, as the
   request's constraints require; it is not moved into a manifest.
+
+## Added by the dispatching session
+
+Rebased onto `v4` at `f1755e1b` (TCW-113 completed) with no conflicts, then landed
+in `v4`. The full suite as CI runs it, `.venv/bin/pytest -q -p
+no:cacheprovider` with every `TCW_*` variable unset, run by the dispatching
+session on the rebased branch at `6c16a8d2` (2026-10-24) in two halves by
+folder: `2246 passed, 2 skipped` and `5474 passed, 111 skipped, 1 failed`. The
+one failure, `tests/test_shipped_prompts.py::test_the_wheel_carries_exactly_the_prompts_and_procedures`,
+is the worktree's `node_modules` link (`IsADirectoryError` on it); the same
+file run in `v4`, where `node_modules` is a real folder, gives `120 passed`.
+`pnpm test` `247 passed`; `tsc --noEmit`, `pnpm lint` and `pnpm check:build`
+clean.
+
+The live-board dry run (Steps 14 and 25, step 1) is not run here: it runs
+the new `tcw migrate` against the real Jira site, so it is left for
+TCW-118's gate 2 rehearsal, under the user's go. Decided by the dispatching
+session, 2026-10-24.
