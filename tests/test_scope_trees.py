@@ -193,7 +193,10 @@ def test_explicit_own_show_by_id_path_names_the_projects_own_object(family):
     family.remove("shared")
     gone = family.run("desktop", "capabilities", "show", "ghi", "--scope", "own")
     assert gone.code == 4, gone.err
-    assert "inherits" not in gone.err
+    # The hint is left out (Design 4.8); the warning `list` gives says why
+    # (Design 4.9).
+    assert "there: add --scope up" not in gone.err
+    assert "showing only 'desktop''s own declarations" in gone.err
 
 
 # -- AC 18, 19, 32 ---------------------------------------------------------------------
@@ -450,6 +453,33 @@ def test_ac17_show_by_id_path_follows_the_default_scope(family):
     assert up.json["capability"]["full-id"] == GHI
     family.remove("shared")
     assert family.run("desktop", "capabilities", "show", "ghi").code == 4
+
+
+def _unfetched(family, project_id: str, axis: str) -> None:
+    """`project_id`'s `axis` store declared in a repository and not fetched."""
+    document = family.config(project_id)
+    document[axis] = {"path": f"docs/{axis}-elsewhere",
+                      "repository": {"url": f"https://example.invalid/{axis}.git",
+                                     "path": f"docs/{axis}"}}
+    family.write_config(project_id, document)
+    shutil.rmtree(family[project_id] / "docs" / axis)
+
+
+@pytest.mark.parametrize("axis, given", [("taxonomy", "invoice"), ("capabilities", "ghi")])
+def test_show_under_own_of_a_path_not_its_own_warns_when_the_view_cannot_be_built(
+        family, axis, given):
+    # Design 4.9: under `own` an inherited store that cannot be read is a
+    # warning, as `list` gives it, naming the command that fetches it; the
+    # path the project does not own is still not found (exit 4).
+    _unfetched(family, "shared", axis)
+    ran = family.run("desktop", axis, "show", given)
+    assert ran.code == 4, ran.err
+    fetch = f"tcw -C {family['shared'].resolve()} project provision --component {axis}"
+    [warning] = [line for line in ran.err_lines if line.startswith("warning: ")]
+    assert fetch in warning and "showing only 'desktop''s own declarations" in warning
+    listed = family.run("desktop", axis, "list")
+    assert warning in listed.err_lines
+    assert ran.err_lines.index(warning) < len(ran.err_lines) - 1
 
 
 def test_ac21_own_keeps_working_without_the_view(family):

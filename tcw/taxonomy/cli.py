@@ -54,7 +54,7 @@ def _search(args: argparse.Namespace) -> int:
 def _show(args: argparse.Namespace) -> int:
     covered = _covered(args)
     st = active_store(covered, NAME)
-    row = show_row(covered, NAME, args.path)
+    row = show_row(covered, NAME, args.path, say=say)
     term = row.obj
     covered.warn(LEFT_OUT[NAME][1], say)
     if term.partial and st.view_error is not None:

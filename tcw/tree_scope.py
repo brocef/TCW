@@ -20,6 +20,7 @@ from typing import Any, Callable
 
 from tcw.errors import BackendError, InheritedUnavailable, NotFound, UsageError
 from tcw.ids import FullId, identity, inherited_keys, parent_text, sort_input
+from tcw.output import own_only_line
 from tcw.scope import UNAVAILABLE, Covered, not_its_project
 from tcw.store.base import (UNAVAILABILITY_ERRORS, ProjectView, ScopeObject, ScopeRow,
                             row_order, scope_rows, text_matches)
@@ -141,7 +142,7 @@ def _p_own(store, say: Callable[[str], None]) -> tuple[list, bool]:
     try:
         return store.list_all(local_only=True), True
     except InheritedUnavailable as error:
-        say(f"warning: {error}; showing only '{store.project_id}''s own declarations")
+        say(own_only_line(error, store.project_id))
         return store.own_declarations(), False
 
 
@@ -278,8 +279,11 @@ def _sets_status(store, own: dict[str, Any]) -> dict[str, bool]:
     return out
 
 
-def show_row(covered: Covered, axis: str, text: str) -> TreeRow:
-    """The object `text` names under the scope (Design 4.8, 2.3)."""
+def show_row(covered: Covered, axis: str, text: str, *,
+             say: Callable[[str], None] | None = None) -> TreeRow:
+    """The object `text` names under the scope (Design 4.8, 2.3). `say`,
+    when given, prints the warning of an id-path not found under `own`
+    when `P`'s view cannot be built (Design 4.9)."""
     from tcw.locate import _no_such, find_tree
     found = sort_input(text, axis)
     store = active_store(covered, axis)
@@ -306,7 +310,7 @@ def show_row(covered: Covered, axis: str, text: str) -> TreeRow:
         if store.has_own(x):
             return TreeRow(find_tree(store, text))
         raise NotFound(_no_such(axis, text) + _hints(store, axis, x)
-                       + _inherits_hint(store, x))
+                       + _inherits_hint(store, x, say))
     if rows_scope(covered) == "up":
         store.list_all()        # `P`'s view, which `up` needs (Design 4.9)
         return TreeRow(find_tree(store, text))
@@ -328,13 +332,16 @@ def _hints(store, axis: str, id_path: str) -> str:
     return _spelled(store, id_path) + _three_x_hint(store, axis, id_path)
 
 
-def _inherits_hint(store, id_path: str) -> str:
+def _inherits_hint(store, id_path: str, say: Callable[[str], None] | None) -> str:
     """Design 4.8's hint, when `P` has no object of its own at `id_path` but
     its view has one. Building the view never changes the outcome: when it
-    cannot be built, there is no hint."""
+    cannot be built, there is no hint, and `say` gets the warning `list`
+    gives under `own` (Design 4.9), which names what to fetch."""
     try:
         seen = store.get_view(id_path)
-    except UNAVAILABILITY_ERRORS:
+    except UNAVAILABILITY_ERRORS as error:
+        if say is not None:
+            say(own_only_line(error, store.project_id))
         return ""
     if seen is None:
         return ""

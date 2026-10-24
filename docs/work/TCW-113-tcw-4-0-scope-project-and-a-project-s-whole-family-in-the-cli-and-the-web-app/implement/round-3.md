@@ -1,6 +1,7 @@
 # Implement round 3 — TCW-113
 
-Answers review round 2 (`review/round-2.md`, rejected). Made on the branch
+Answers review round 2 (`review/round-2.md`, rejected), items (a) and (b), and
+item (c), found by TCW-115's review round 3 on the combined `v4` tree. Made on the branch
 `v4` in the worktree `.claude/worktrees/v4`, with that worktree's own virtual
 environment. No lifecycle command was run, no ticket was moved or written to,
 and nothing was pushed: the dispatching session makes every move. No hand run
@@ -59,6 +60,34 @@ run `tcw` in the test's own scratch family (`tests/families.py`).
     conflicted; it uses `detailScope` all the same, so the rule is one rule.
     The bundle is rebuilt.
 
+## (c) Found by TCW-115 review round 3
+
+**`show` under `own` said nothing when the inherited store could not be
+read.** In `desktop`, whose parent `shared` declares its taxonomy store in a
+repository that is not fetched, `tcw taxonomy show invoice` printed only
+`no such term: 'invoice'` (exit 4). With the store present it adds the hint
+that `desktop` inherits `shared.taxonomy/invoice` there. Design 4.9 makes an
+inherited store that cannot be read under `own` a warning, which `list`
+already gives, naming TCW-115's `tcw -C <parent folder> project provision
+--component <axis>`.
+
+Done: `_inherits_hint` (`tcw/tree_scope.py`), which builds `P`'s view only
+for the hint, now passes the reason the view could not be built to a `say`
+that `show_row` takes, and `tcw taxonomy show` and `tcw capabilities show`
+pass theirs. The warning line is printed before the not-found line, and its
+words are `list`'s: the line is now built once, by `own_only_line`
+(`tcw/output.py`), which `own_only` and `list_rows`' own-only warning both
+use. The hint is still left out and the exit is still 4 (Design 4.8, AC 17).
+`capabilities show` had the same gap and is fixed the same way. `tcw serve`
+gives `show_row` no `say`, as its other reads print nothing, so its 404
+answer is unchanged.
+
+`test_explicit_own_show_by_id_path_names_the_projects_own_object` asserted
+that the word `inherits` was absent from that command's standard error, to
+check the hint was left out; the warning names the inheritance, so the
+assertion now checks the hint's own words are absent and the warning is
+present.
+
 ## Decisions
 
 - Honor `project` for a plain work key on the detail route, rather than
@@ -69,6 +98,10 @@ run `tcw` in the test's own scratch family (`tests/families.py`).
   object rather than navigating to a view without the filter: the filter is
   the list's, the key already names the object, and the scope still decides
   its `children`, `blocks` and `statuses`. Decided by the implementing agent.
+
+- Print the warning beside the not-found error rather than fold it into the
+  error's text: it is the line `list` prints, and folding it in would give
+  `show` a second wording of it. Decided by the implementing agent.
 
 ## Tests
 
@@ -93,6 +126,14 @@ Before the fix the work refusal test and the folder-name test were red; the
 capabilities and taxonomy ones were green, which is how the two existing
 routes were found to be correct already.
 
+- `tests/test_scope_trees.py`:
+  `test_show_under_own_of_a_path_not_its_own_warns_when_the_view_cannot_be_built[taxonomy|capabilities]`
+  (`shared`'s store declared in a repository and removed; `show` in
+  `desktop` exits 4 with one warning line, naming `tcw -C <shared's folder>
+project provision --component <axis>` and `showing only 'desktop''s own
+declarations`, identical to `list`'s line, and before the error). Red
+  before the fix (no warning line).
+
 ## Mutation results
 
 Each change was reverted alone, the tests run, and the change put back.
@@ -104,6 +145,9 @@ Each change was reverted alone, the tests run, and the change put back.
 | `show_row`: its conflict check                        | the capabilities refusal test and the term test red  |
 | client: `detailScope` returning the page's choice     | the unit test and the two conflicting-link tests red |
 | client: the work fetch passed `scopeChoice` unchanged | the two conflicting-link tests red                   |
+| (c): the warning in `_inherits_hint`                  | both (c) tests red                                   |
+| (c): `taxonomy show` passing no `say`                 | the taxonomy (c) test red                            |
+| (c): `capabilities show` passing no `say`             | the capabilities (c) test red                        |
 
 ## Checks run
 
@@ -112,6 +156,12 @@ tests/serve/test_other_project.py`: `50 passed`.
 - `tests/test_scope_members.py tests/test_scope_reader.py
 tests/test_scope_rows.py tests/test_scope_trees.py`: `105 passed`;
   `tests/work/test_scope_work.py`: `25 passed`.
+- For (c): `tests/test_scope_trees.py tests/test_tree_parent_missing.py
+tests/test_tree_inheritance.py tests/test_project_provision.py
+tests/test_capabilities_federation.py`: `230 passed`; the taxonomy and
+  capabilities CLI files (`tests/test_capabilities*.py`,
+  `tests/test_capability_ref_wording.py`, `tests/test_taxonomy*.py`):
+  `258 passed, 10 skipped`; the serve files again: `50 passed`.
 - `pnpm test` `233 passed`; `pnpm exec tsc --noEmit` and `pnpm lint` clean;
   the changed client files are formatted; `pnpm check:build` after the
   rebuilt bundle was committed.

@@ -59,10 +59,14 @@ def left_out(unreadable: dict) -> int:
     return 1 if unreadable else 0
 
 
-def own_only(error: Exception, project_id: str) -> None:
+def own_only_line(error: Exception, project_id: str) -> str:
     """The one line a reader prints when it shows a project's own objects
     without their inherited content (TCW-112 Design 3.4)."""
-    say(f"warning: {error}; showing only '{project_id}''s own declarations")
+    return f"warning: {error}; showing only '{project_id}''s own declarations"
+
+
+def own_only(error: Exception, project_id: str) -> None:
+    say(own_only_line(error, project_id))
 
 
 def print_json(key: str | None, value: Any) -> None:

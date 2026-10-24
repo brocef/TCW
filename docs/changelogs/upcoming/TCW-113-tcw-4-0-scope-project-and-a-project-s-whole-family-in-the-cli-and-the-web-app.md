@@ -63,6 +63,10 @@ list|show|search` and `tcw capabilities list|show|search`; `projects`,
   for the CLI and the server), and a work folder name or ticket key names
   `project`'s item. The web client sends `project` on a detail request only
   when it is the object's own project (`detailScope`). (TCW-113)
+- `tcw taxonomy show` and `tcw capabilities show` of an id-path the project
+  does not own, under `own`, print `list`'s warning when the inherited store
+  cannot be read, naming what to fetch, before the not-found error;
+  `tcw.output.own_only_line` builds that line for both. (TCW-113)
 
 ## Removed
 
