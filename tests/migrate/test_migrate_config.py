@@ -289,26 +289,9 @@ def test_a13_names_each_binding_and_leaves_its_bytes(tcw, tmp_path):
     assert (app / ".tcw/tcw-config.yaml").read_text() == version_line() + shared
 
 
-# ── part 2's forms, refused for now (Decided 17) ─────────────────────────────
-
-@pytest.mark.parametrize("text, form", [
-    ("id: app\nwork:\n  path: ../elsewhere/work\n", "a work store outside the project"),
-    ("id: app\ntaxonomy:\n  repository:\n    url: https://example.invalid/t.git\n",
-     "a taxonomy store with only a repository"),
-])
-def test_each_part_two_form_is_b5_and_nothing_is_written(tcw, tmp_path, text, form):
-    app = make(tmp_path / "app", {"tcw-config.yaml": text})
-    before = tree(app)
-    done = tcw(["migrate"], app)
-    assert done.code == 3
-    assert f"tcw migrate does not convert {form} yet" in done.err
-    assert any(line.startswith("  B5 tcw-config.yaml:") for line in lines(done.err))
-    assert tree(app) == before
-
-
 def test_every_blocker_is_listed_with_the_changes_it_stopped(tcw, tmp_path):
     app = make(tmp_path / "app", {"tcw-config.yaml": "id: app\nwork:\n  work_tags: [x]\n"
-                                  "  path: ../elsewhere/work\n",
+                                  "  path: /nonexistent-tcw116/work\n",
                                   "tcw-config.local.yaml": LOCAL})
     done = tcw(["migrate"], app)
     assert done.code == 3

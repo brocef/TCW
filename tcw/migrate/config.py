@@ -550,7 +550,8 @@ def plan_manifests(root: Path, located: list[Located], project_id: str) -> Manif
     """C4: for each project `located` names, the 3.x entry's location as an
     entry of `.tcw/tcw-manifest.yaml` (shared) or
     `.tcw/tcw-manifest.local.yaml` (personal), by TCW-107's mapping (M1 to
-    M6), each planned manifest checked by 4.0's parser (B3). An entry is
+    M6); `finish_manifests` plans their writes, each checked by 4.0's parser
+    (B3), once C5 has added its entries. An entry is
     decided from the declared locations, never from `TCW_PROJECT_<ID>`
     (A11), and M6 compares only with what 4.0's search from this project
     would find, never a parent's manifests."""
@@ -559,8 +560,6 @@ def plan_manifests(root: Path, located: list[Located], project_id: str) -> Manif
     out = ManifestPlan()
     for item in located:
         _plan_entry(root, item, out, legacy, family_module)
-    out.steps, more = _manifest_writes(root, out.shared, out.personal)
-    out.blockers += more
     return out
 
 
@@ -1019,3 +1018,103 @@ def still_3x_reports(family, order: tuple[str, ...] = ()) -> list[Report]:
                                       f"with 'tcw -C {folder} migrate'",
                    predicts=(str(folder), "legacy"))
             for pid, folder in seen.items()]
+
+
+# ---------------------------------------------------------------------------
+# Store locations (C5, B6; plan Step 20)
+
+
+@dataclass
+class LocationPlan:
+    edits: list = field(default_factory=list)
+    reports: list[Report] = field(default_factory=list)
+    blockers: list[Blocker] = field(default_factory=list)
+
+
+def enclosing_project(folder: Path) -> Path | None:
+    """The nearest folder at or above `folder` that holds a TCW project in
+    either form, or None."""
+    from tcw.migrate.legacy import holds_project
+    folder = Path(folder)
+    for candidate in (folder, *folder.parents):
+        if holds_project(candidate):
+            return candidate
+    return None
+
+
+def plan_locations(root: Path, mapping: dict, project_id: str,
+                   manifests: ManifestPlan) -> LocationPlan:
+    """C5: each store location so that 4.0 accepts it and it names the
+    folder 3.x resolved: a relative path inside the project unchanged; one
+    leading out of it, into a project 4.0 locates from here at the same
+    folder, as that project's `.path` address, else kept; an absolute or `~`
+    one inside the project as the relative path, inside another project as
+    its address (with a personal manifest entry for that project when
+    nothing else places it), inside no project B6. A store's `repository`
+    is kept unchanged."""
+    import os
+    from tcw.ids import FolderAddress
+    from tcw.migrate import family as family_module
+    from tcw.migrate.legacy import store_folder_3x
+    from tcw.store.config_edit import SetScalar
+    out = LocationPlan()
+    here = Path(os.path.realpath(root))
+    for component in ("taxonomy", "capabilities", "work"):
+        section = mapping.get(component)
+        configured = section.get("path") if isinstance(section, dict) else None
+        if not isinstance(configured, str):
+            continue
+        found = store_folder_3x(root, component, section)
+        if found.folder is None:
+            continue
+        absolute = os.path.isabs(configured) or configured.startswith("~")
+        if not absolute and found.form != "outside":
+            continue
+        folder = Path(os.path.realpath(os.path.normpath(found.folder.absolute())))
+        if folder == here or here in folder.parents:
+            out.edits.append(SetScalar(component, "path", _relative(here, folder)))
+            continue
+        owner = enclosing_project(folder)
+        owner_id = family_module.declared_id(owner) if owner is not None else None
+        if owner is None or owner_id is None or owner_id == project_id:
+            if absolute:
+                out.blockers.append(Blocker(
+                    "B6", ROOT_CONFIG, f"{component}.path: {configured} lies inside no "
+                                       f"TCW project; TCW 4 takes a store's path relative "
+                                       f"to the project, or as a .path address of another "
+                                       f"project", "move the store into a project and set "
+                                                   "the path to it, then run 'tcw migrate' "
+                                                   "again"))
+            continue
+        owner = Path(os.path.realpath(owner))
+        if not _locates(here, owner_id, owner, manifests):
+            if not absolute:
+                continue                        # kept: 4.0 accepts it as written
+            manifests.personal.setdefault(owner_id, {"path": str(owner)})
+        rest = folder.relative_to(owner).as_posix()
+        address = str(FolderAddress(owner_id, None, "" if rest == "." else rest))
+        out.edits.append(SetScalar(component, "path", address))
+    return out
+
+
+def _locates(root: Path, project_id: str, folder: Path, manifests: ManifestPlan) -> bool:
+    """Whether 4.0, from the project at `root`, would find `project_id` at
+    `folder`: through an entry the run writes, or by its search."""
+    import os
+    from tcw.migrate import family as family_module
+    for entries in (manifests.personal, manifests.shared):
+        entry = entries.get(project_id)
+        if entry is not None:
+            target = Path(entry["path"]).expanduser()
+            target = target if target.is_absolute() else root / target
+            return Path(os.path.realpath(target)) == folder
+    found = family_module.search_4(root, project_id)
+    return len(found) == 1 and Path(os.path.realpath(found[0])) == folder
+
+
+def finish_manifests(root: Path, manifests: ManifestPlan) -> None:
+    """The manifests' writes, once every entry is known."""
+    steps, blockers = _manifest_writes(Path(root).resolve(), manifests.shared,
+                                       manifests.personal)
+    manifests.steps = steps
+    manifests.blockers += blockers

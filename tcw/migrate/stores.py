@@ -69,18 +69,28 @@ class StorePlan:
 
 
 def stores_of(root: Path, mapping: dict) -> list[Store]:
-    """The project's three stores, where 3.x put them; one whose location
-    part 1 cannot convert is left out (it is B5)."""
+    """The project's three stores, where 3.x put them, wherever that is
+    (Design 1.4): inside the project, in another project's folder, or in
+    3.x's clone of a store's repository. `rel` is the folder relative to the
+    project's root, `..` parts included; a store whose folder 3.x could not
+    say, or that is not on this machine, is left out."""
+    import os
+    from tcw.migrate.legacy import cache_folder_3x, parse_repository_3x
     out = []
+    base = Path(os.path.realpath(root))
     for namespace in NAMESPACES:
-        found = store_folder_3x(root, namespace, mapping.get(namespace))
-        if found.folder is None or found.form is not None:
+        section = mapping.get(namespace)
+        found = store_folder_3x(root, namespace, section)
+        folder = found.folder
+        if found.form == "repository":
+            declaration, _ = parse_repository_3x(section.get("repository"),
+                                                 f"{namespace}.repository")
+            folder = cache_folder_3x(root, declaration) if declaration else None
+        if folder is None or found.problem:
             continue
-        try:
-            rel = found.folder.resolve().relative_to(Path(root).resolve()).as_posix()
-        except ValueError:
-            continue
-        out.append(Store(namespace, rel, found.folder))
+        folder = Path(os.path.realpath(os.path.normpath(Path(folder).absolute())))
+        rel = Path(os.path.relpath(folder, base)).as_posix()
+        out.append(Store(namespace, rel, folder))
     return out
 
 
@@ -102,9 +112,13 @@ def objects(store: Store, *, bare_terms: bool) -> tuple[list[str], set[str]]:
     project already in 4.0 form it is an organising folder."""
     ns = store.namespace
     four = set(walk(store.folder, ns).objects)
+    # 3.x listed every taxonomy folder, hidden ones too, so a store at a
+    # clone's root listed its `.git` folders as terms; no hidden folder is
+    # converted.
     three = [p for p in objects_3x(store.folder, ns)
-             if (store.folder / p / STATE_3X[ns]).is_file()
-             or (bare_terms and p not in four)]
+             if not any(part.startswith(".") for part in p.split("/"))
+             and ((store.folder / p / STATE_3X[ns]).is_file()
+                  or (bare_terms and p not in four))]
     kept: set[str] = set()
     for id_path in sorted({*three, *four}, key=lambda p: (p.count("/"), p)):
         parts = id_path.split("/")
@@ -160,6 +174,80 @@ def nesting_blockers(stores: list[Store]) -> list[Blocker]:
             elif pa in pb.parents:
                 out.append(Blocker("B7", b.rel, f"the {b.namespace} store is inside the "
                                                 f"{a.namespace} store {a.rel}", fix))
+    return out
+
+
+def related_stores(member) -> list[tuple[str, Path]]:
+    """A related project's stores, each `(namespace, folder)`: a 3.x one's
+    where 3.x put them, a 4.0 one's plain paths where 4.0 puts them (an
+    address is left out: it names another project's folder)."""
+    import os
+    if member.three_x:
+        return [(s.namespace, s.folder) for s in stores_of(member.folder, member.raw)]
+    out = []
+    for namespace in NAMESPACES:
+        section = member.raw.get(namespace)
+        configured = section.get("path") if isinstance(section, dict) else None
+        if isinstance(configured, str) and configured.startswith("tcw://"):
+            continue
+        folder = Path(configured).expanduser() if isinstance(configured, str) \
+            else Path("docs") / namespace
+        folder = folder if folder.is_absolute() else member.folder / folder
+        out.append((namespace, Path(os.path.realpath(os.path.normpath(folder)))))
+    return out
+
+
+def related_store_blockers(stores: list[Store], family) -> list[Blocker]:
+    """B7 for one of the project's stores and a related project's store in
+    one folder, or one inside the other (S110 Design 7.4)."""
+    out = []
+    fix = "give each store a folder of its own, then run 'tcw migrate' again"
+    for pid in list(family.placed):
+        member = family.quiet(pid)
+        if member is None:
+            continue
+        for namespace, theirs in related_stores(member):
+            for store in stores:
+                mine = store.folder.resolve()
+                if mine == theirs:
+                    out.append(Blocker("B7", store.rel, f"the {store.namespace} store is "
+                                                        f"'{pid}''s {namespace} store",
+                                       fix))
+                elif theirs in mine.parents:
+                    out.append(Blocker("B7", store.rel, f"the {store.namespace} store is "
+                                                        f"inside '{pid}''s {namespace} "
+                                                        f"store {theirs}", fix))
+                elif mine in theirs.parents:
+                    out.append(Blocker("B7", store.rel, f"'{pid}''s {namespace} store "
+                                                        f"{theirs} is inside the "
+                                                        f"{store.namespace} store", fix))
+    return out
+
+
+def left_elsewhere(root: Path, mapping: dict, steps, git: Path | None) -> list[str]:
+    """Design 1.4's lines: for each store outside the project's own
+    repository, `left in another repository: <folder>`, then each file the
+    run changes there."""
+    from tcw.migrate.model import Move
+    from tcw.store.fs import git_root
+    out = []
+    for store in stores_of(root, mapping):
+        repository = git_root(store.folder) if store.folder.is_dir() else None
+        if repository is not None and git is not None and \
+                Path(repository).resolve() == Path(git).resolve():
+            continue
+        if repository is None and git is None and Path(root).resolve() in \
+                (store.folder, *store.folder.parents):
+            continue
+        prefix = store.rel.rstrip("/") + "/"
+        files = sorted({path for step in steps
+                        for path in ((step.old, step.new) if isinstance(step, Move)
+                                     else (step.path,))
+                        if path.startswith(prefix)})
+        if files:
+            shown = repository if repository is not None else store.folder
+            out.append(f"left in another repository: {shown}")
+            out += [f"  {path}" for path in files]
     return out
 
 
@@ -333,13 +421,17 @@ def _text_writes(root: Path, planned, moved: list[Loose], mentions: Mentions,
 
 
 def plan_stores(root: Path, mapping: dict, project: str, *,
-                three_x: bool = True, work_backend: str = "filesystem") -> StorePlan:
+                three_x: bool = True, work_backend: str = "filesystem",
+                family=None) -> StorePlan:
     """Every store's state files and loose entries. `three_x`: the project's
     configuration is still in 3.x form, so a bare taxonomy folder is a 3.x
-    term."""
+    term. `family` is the project's related projects, whose stores B7 also
+    compares with."""
     out = StorePlan()
     stores = stores_of(root, mapping)
     out.blockers += nesting_blockers(stores)
+    if family is not None:
+        out.blockers += related_store_blockers(stores, family)
     planned, moved = [], []
     for store in stores:
         convert, kept = objects(store, bare_terms=three_x)

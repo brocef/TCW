@@ -79,28 +79,6 @@ def part_two_forms(read: Read) -> list[Blocker]:
     part 2 removes the forms it converts."""
     rel, mapping = read.shared
     out = []
-    for component in ("taxonomy", "capabilities", "work"):
-        section = mapping.get(component)
-        store = store_folder_3x(read.root, component, section)
-        configured = section.get("path") if isinstance(section, dict) else None
-        if isinstance(configured, str) and (os.path.isabs(configured)
-                                            or configured.startswith("~")):
-            if _project_holding(Path(configured).expanduser()) is None:
-                out.append(Blocker(
-                    "B6", rel, f"{component}.path: {configured} lies inside no TCW "
-                               f"project; TCW 4 takes a store's path relative to the "
-                               f"project, or as a .path address of another project",
-                    "move the store into a project and set the path to it, then run "
-                    "'tcw migrate' again"))
-            else:
-                out.append(not_yet(rel, f"{component}.path",
-                                    f"an absolute {component} store path"))
-        elif store.form == "outside":
-            out.append(not_yet(rel, f"{component}.path",
-                                f"a {component} store outside the project"))
-        elif store.form == "repository":
-            out.append(not_yet(rel, f"{component}.repository",
-                                f"a {component} store with only a repository"))
     for store in stores.stores_of(read.root, mapping):
         if store.namespace != "capabilities":
             continue
@@ -193,29 +171,39 @@ def no_jira_line(root: Path, project_id: str | None) -> str:
 # The plan
 
 
-def _links(read: Read, mapping: dict) -> "config.Links":
-    """C3 and C8 for a 3.x shared file with `projects:` or an `extends`."""
+def _links(read: Read, mapping: dict):
+    """The family of a 3.x shared file, and its links (C3, C8) when it has
+    `projects:` or an `extends`."""
     has = "projects" in mapping or any(
         isinstance(mapping.get(axis), dict) and "extends" in mapping[axis]
         for axis in config.EXTENDED_AXES)
     project_id = mapping.get("id")
-    if not (read.three_x and has and isinstance(project_id, str)):
-        return config.Links(config.Relations())
+    if not (read.three_x and isinstance(project_id, str)):
+        return config.Links(config.Relations()), None
     from tcw.migrate.family import read_family
     found = read_family(read.root, project_id, mapping)
-    return config.plan_links(read.root, project_id, mapping, found)
+    if not has:
+        return config.Links(config.Relations()), found
+    return config.plan_links(read.root, project_id, mapping, found), found
 
 
 def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
     """Everything one run will do and say, worked out before any write."""
     read = read_project(root)
     rel, mapping = read.shared
-    links = _links(read, mapping)
+    links, family = _links(read, mapping)
     relations = links.relations
+    project_id = mapping.get("id") if isinstance(mapping.get("id"), str) else None
+    manifests = config.plan_manifests(read.root, links.located, project_id) \
+        if project_id else config.ManifestPlan()
+    locations = config.plan_locations(read.root, mapping, project_id, manifests) \
+        if project_id and read.three_x else config.LocationPlan()
+    config.finish_manifests(read.root, manifests)
     conversions = (("C3",) if relations.present else ()) + (
-        ("C8",) if links.extends_edits else ())
+        ("C8",) if links.extends_edits else ()) + (("C5",) if locations.edits else ())
     shared = config.plan_file(read.root, read.layers.shared, read.shared4, shared=True,
-                              edits=tuple(links.edits()), conversions=conversions)
+                              edits=tuple(links.edits() + locations.edits),
+                              conversions=conversions)
     personal = config.plan_file(read.root, read.layers.personal, read.personal4,
                                 shared=False)
     plan = Plan(shared.project, read.work_backend)
@@ -225,14 +213,13 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
     reports = relations.reports + shared.reports + personal.reports
     plan.summary += [f"a comment is dropped from {line}" for line in shared.dropped]
     plan.summary += links.already
-    if links.located and shared.project:
-        manifests = config.plan_manifests(read.root, links.located, shared.project)
-        plan.blockers += manifests.blockers
-        reports += manifests.reports
-        steps += manifests.steps
+    plan.blockers += manifests.blockers + locations.blockers
+    reports += manifests.reports + locations.reports
+    steps += manifests.steps
     if shared.project:
         found = stores.plan_stores(read.root, read.shared[1], shared.project,
-                                   three_x=read.three_x, work_backend=read.work_backend)
+                                   three_x=read.three_x, work_backend=read.work_backend,
+                                   family=family)
         plan.owners = found.owners
         plan.blockers += found.blockers
         reports += found.reports
@@ -241,6 +228,7 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
     if steps and read.git is not None:
         steps += config.plan_ignore(read.root)
     plan.steps = sorted(steps, key=lambda step: PHASES.index(step.phase))
+    plan.summary += stores.left_elsewhere(read.root, read.shared[1], plan.steps, read.git)
     plan.blockers += planned_file_blockers(read.root, plan.steps)
     jira_backed = read.work_backend == "jira"
     if not plan.blockers:
