@@ -32,9 +32,9 @@ from tcw.work.model import (
     STAGES, UNSET, Changes, Slug, completion_stage, inbox_stage, stage as table_stage,
     start_stage,
 )
-from tcw.work.open import (delegate, existing_item, external_stages_of, name_item,
-                           open_backend, open_for_update, project_facts, read_layered,
-                           read_work_config, resolve_work_input)
+from tcw.work.open import (existing_item, external_stages_of, name_item, open_backend,
+                           project_facts, read_layered, read_work_config,
+                           resolve_work_input)
 from tcw.work.record import item_record, readable
 
 NAME = "work"
@@ -184,16 +184,42 @@ def new_item(backend: WorkBackend, title: str, changes: Changes, *,
                           request=request, nest=nest)
 
 
-def blocks_target(slug: Slug, target: Slug, backend: WorkBackend, root: Path):
-    """The backend holding `target` and the target as read, before `slug` is
-    added to its blocked-by (`edit --blocks`). Another project's item is
-    opened through `open_for_update`, which never creates anything; a refused
-    or missing target raises, having written nothing."""
-    if target == slug:
-        raise UsageError(f"{slug} cannot block itself")
-    other = backend if target.project == slug.project else \
-        open_for_update(target.project, root)
-    return other, other.read(target.folder)
+def _quoted(text: str) -> str:
+    """`text` as one shell word, for a command a message names."""
+    import shlex
+    return shlex.quote(text)
+
+
+def _blocks_removed(args) -> UsageError:
+    """TCW-114 Design 2.2's refusal of `--blocks`, naming the command that
+    records the link on the blocked item. The first target is read only to
+    word it: for another project's item the command runs in that project's
+    folder, found without changing the exit."""
+    from tcw.ids import IdError
+    from tcw.ownership import active_project_id
+    target = args.blocks[0]
+    where = ""
+    try:
+        found = sort_input(target, "work", KEY)
+        owner = found.full_id.project if found.form in ("a", "c") else None
+    except IdError:
+        owner = None
+    if owner is not None:
+        folder = f"tcw://{owner}.path/"
+        try:
+            root = project_root()
+            if owner == active_project_id(root):
+                folder = None
+            else:
+                from tcw.locate import Locator
+                locator = Locator.of(root)
+                folder = str(locator.owner_root(owner, named_by=locator.root).resolve())
+        except Exception:               # looking never changes the exit (2.2)
+            pass
+        where = f" -C {folder}" if folder else ""
+    return UsageError(f"work edit --blocks is removed in TCW 4: record it on the "
+                      f"blocked item instead: tcw{where} work edit {target} "
+                      f"--blocked-by {args.slug}")
 
 
 # -- commands ----------------------------------------------------------------------------
@@ -214,36 +240,17 @@ def _new(args) -> int:
         raise UsageError("--nest puts the item's folder inside its parent's; "
                          "give the parent with --parent")
     if args.project:
-        # Before the read of piped input, so a usage error never waits on it.
-        if args.project == FsProjectRegistry.open(root).current.id:
-            raise UsageError(f"--project {args.project} names this project; "
-                             f"leave --project out to create the item here")
-        if args.assign_me:
-            raise UsageError(f"--assign-me cannot be used with --project; "
-                             f"project '{args.project}' assigns its own items")
-        given = [f for f in PROPERTY_FLAGS if getattr(args, f) is not None]
-        if given:
-            flag = "--" + given[0].replace("_", "-")
-            raise UsageError(f"{flag} cannot be used with --project; only "
-                             f"--priority can. Set it in that project afterwards")
-        if args.stage is not None:
-            # Not "its inbox": a Jira-mode project's ticket waits in Jira
-            # for `tickets adopt` instead.
-            raise UsageError("--stage cannot be used with --project; only "
-                             "--priority can. An item created in another "
-                             "project starts where that project's intake puts it")
-    backend = None
-    if not args.project:
-        # Before the read of piped input too, so `--stage` refused in this
-        # project never waits on it. Opening the backend makes no request.
-        backend = open_backend(root)
-        creation_stage(backend, args.stage)   # before `--assign-me` asks who
+        # Before the read of piped input and before anything is opened, so
+        # the refusal never waits on either (TCW-114 Design 2.1).
+        raise UsageError(f"work new --project is removed in TCW 4: an item is created "
+                         f"in its own project; run tcw -C tcw://{args.project}.path/ "
+                         f"work new {_quoted(args.title)} --parent <full id>")
+    # Before the read of piped input too, so `--stage` refused in this
+    # project never waits on it. Opening the backend makes no request.
+    backend = open_backend(root)
+    creation_stage(backend, args.stage)   # before `--assign-me` asks who
     request = read_piped_stdin()
     request = request if request.strip() else None
-    if args.project:
-        print(delegate(args.project, args.title, request, args.priority,
-                       here=root, report=_say))
-        return codes.OK
     assignee = _me(backend) if args.assign_me else _optional(args.assignee)
     changes = Changes(
         priority=_optional(args.priority), effort=_optional(args.effort),
@@ -353,6 +360,9 @@ def _path(args) -> int:
 
 
 def _edit(args) -> int:
+    if args.blocks:
+        # Before anything is opened (TCW-114 Design 2.2).
+        raise _blocks_removed(args)
     if args.assign_me:
         _alone(args, "--assign-me")
     slug, backend, root = resolve_item(args.slug, writing=True)
@@ -363,34 +373,22 @@ def _edit(args) -> int:
         add_tags=tuple(args.tag or ()), remove_tags=tuple(args.untag or ()),
         add_blocked_by=tuple(args.blocked_by or ()),
         remove_blocked_by=tuple(args.unblocked_by or ()))
-    if changes == Changes() and not args.blocks and not args.assign_me:
+    if changes == Changes() and not args.assign_me:
         raise UsageError("nothing to change; give at least one property flag")
     own = backend
     own.read(slug.folder)
     changes = _references(changes, own, root)
-    # A full identifier is taken as written: `blocks_target` opens its owner
-    # for writing, which reads it, and refuses a project only `--project`
-    # reaches rather than looking it up here.
-    targets = [name_item(t, lambda: own, root) for t in args.blocks or ()]
     if args.assign_me:
         # Asked of this project's own backend, after the ownership check
         # has refused another project's item and the read has found it, and
         # before anything is written.
         changes = replace(changes, assignee=_me(own))
-    # Every target is opened and read before anything is written, so a
-    # refused or missing one (exit 3 or 4) leaves every item as it was.
-    blocked = []
-    for target in targets:
-        other, _ = blocks_target(slug, target, backend, root)
-        blocked.append((other, target))
     if changes != Changes():
         updated = own.update(slug.folder, changes)
         if changes.parent is not UNSET:
             # Changing a parent never moves a folder (TCW-111 Design 3.4).
             if (warning := folder_disagreement(own, updated)):
                 print(f"warning: {warning}", file=sys.stderr)
-    for other, target in blocked:
-        other.update(target.folder, Changes(add_blocked_by=(slug,)))
     return codes.OK
 
 
@@ -774,9 +772,8 @@ def _properties(p: argparse.ArgumentParser, *, editing: bool) -> None:
                        help="a tag to take off; repeat the option for more")
         p.add_argument("--unblocked-by", dest="unblocked_by", action="append",
                        help="an item to take off blocked-by; repeat for more")
-        p.add_argument("--blocks", action="append",
-                       help="add this item to another item's blocked-by; repeat "
-                            "for more")
+        # Removed in TCW 4; kept only to say so (TCW-114 Design 2.2).
+        p.add_argument("--blocks", action="append", help=argparse.SUPPRESS)
 
 
 def add_subparser(sub: argparse._SubParsersAction) -> None:
@@ -795,10 +792,12 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                        "stopped after creating a ticket)",
                 writes="the item, and in Jira mode its ticket",
                 examples=["new 'Refund a payment' --priority high < ask.md",
-                          "new 'Support SSO' --project platform --tag auth",
+                          "new 'Support SSO' --parent planning.work/2026-10-01-sso "
+                          "--tag auth",
                           "new 'Part' --parent 2026-10-01-epic --nest"])
     p.add_argument("title", help="the item's title; the folder name is made from it")
-    p.add_argument("--project", help="create it in this connected project instead")
+    # Removed in TCW 4; kept only to say so (TCW-114 Design 2.1).
+    p.add_argument("--project", help=argparse.SUPPRESS)
     p.add_argument("--stage", help=f"{inbox_stage()}, to start it there (filesystem "
                                    f"mode only)")
     _properties(p, editing=False)

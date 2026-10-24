@@ -550,21 +550,6 @@ def test_a_project_read_for_itself_takes_its_parents_and_keeps_its_id(tmp_path, 
     assert facts.layered.work.tags == ("b",)
 
 
-def test_each_reading_of_another_project_passes_the_registry(tmp_path, run):
-    """Filing into a descendant and `edit --blocks` read it for itself, its
-    parents found through the command's registry: no `TypeError`."""
-    made(tmp_path, "base", work={"tags": ["b"]})
-    kid = made(tmp_path, "kid", parents=["app", "base"])
-    app = made(tmp_path, "app", children=["kid"])
-    commit_all(kid)
-    filed = run(app, "work", "new", "--project", "kid", "filed")
-    assert filed.code == 0, filed
-    commit_all(kid)
-    mine = run(app, "work", "new", "mine").out.strip()
-    edited = run(app, "work", "edit", mine, "--blocks", filed.out.strip())
-    assert edited.code == 0, edited
-
-
 # -- a problem in an inherited value (Step 7b, Design 1.6, AC 10) ------------------------
 
 
@@ -1066,7 +1051,6 @@ def test_an_unknown_key_set_to_an_empty_mapping_is_reported_behind_a_gap(tmp_pat
                    work=jira_mode(jira={"project": "APP", "bogus": {}}))
         found = [p for p in problems(load_config(app)) if "unknown key" in p]
         assert len(found) == 1 and "work.jira.bogus" in found[0], (parents, found)
-
 
 
 @pytest.mark.parametrize("parents,warned", [(["core", "lib"], True), (["lib", "core"], False),

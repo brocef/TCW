@@ -124,7 +124,7 @@ def test_checkout_of_finds_an_upstream_by_its_repository(tmp_path):
     assert registry.checkout_of(url) == (tmp_path / "core").resolve()
 
 
-# ── the write rule ───────────────────────────────────────────────────────────
+# ── an upstream and the family ───────────────────────────────────────────────
 
 def _family(tmp_path: Path) -> Path:
     """Root `r` with children `a` and `b`; `a` names `core` as a parent
@@ -137,35 +137,15 @@ def _family(tmp_path: Path) -> Path:
     return tmp_path / "r"
 
 
-def test_an_upstream_is_read_only_from_its_declarer(tmp_path):
-    root = _family(tmp_path)
-    registry = FsProjectRegistry.open(root / "a")
-    reason = registry.read_only_reason("core")
-    assert reason is not None and "read-only" in reason and "'a'" in reason
-
-
 def test_an_upstream_is_outside_the_family_of_the_declarers_sibling_and_parent(tmp_path):
     """From `b` and from `r`, `core` is a sibling's or a descendant's other
-    parent, outside the family (TCW-108 Design 3.1, 3.3), so nothing there
-    may write into it: `_check_declared` refuses a project the family does
-    not hold."""
+    parent, outside the family (TCW-108 Design 3.1, 3.3), so the registry
+    there does not hold it."""
     root = _family(tmp_path)
     for node in (root / "b", root):
         registry = FsProjectRegistry.open(node)
         assert registry.check() == [], registry.check()
         assert registry.get("core") is None, node
-
-
-def test_family_members_stay_writable(tmp_path):
-    root = _family(tmp_path)
-    registry = FsProjectRegistry.open(root / "b")
-    for project_id in ("b", "r", "a"):
-        assert registry.read_only_reason(project_id) is None, project_id
-
-
-def test_the_upstream_writes_to_itself_from_its_own_checkout(tmp_path):
-    _family(tmp_path)
-    assert FsProjectRegistry.open(tmp_path / "core").read_only_reason("core") is None
 
 
 # ── graph rules ──────────────────────────────────────────────────────────────

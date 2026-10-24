@@ -1060,6 +1060,21 @@ REMOVED_AFTER_3_0: dict[str, str] = {
         "removed in TCW 4.0: a project inherits from its parents (TCW-112 Design 1)",
     "tcw capabilities extends rm <id>":
         "removed in TCW 4.0: a project inherits from its parents (TCW-112 Design 1)",
+    "tcw work new <title> --project <id>":
+        "the --project option of tcw work new is removed in TCW 4.0: an item is made in "
+        "its own project, with tcw -C (TCW-114 Design 2.1)",
+    "tcw work new <title> [--project <id>] [--stage inbox] [--priority <name>] [--effort] [--complexity] [--tag] [--assignee] [--assign-me] [--parent] [--blocked-by]":
+        "the --project option of tcw work new is removed in TCW 4.0: an item is made in "
+        "its own project, with tcw -C (TCW-114 Design 2.1)",
+    "tcw work new --project":
+        "the --project option of tcw work new is removed in TCW 4.0: an item is made in "
+        "its own project, with tcw -C (TCW-114 Design 2.1)",
+    "tcw work new --project <id> --stage <stage>":
+        "the --project option of tcw work new is removed in TCW 4.0: an item is made in "
+        "its own project, with tcw -C (TCW-114 Design 2.1)",
+    "tcw work edit <slug> [--title] [--priority <name>] [--effort] [--complexity] [--tag] [--untag] [--assignee] [--assign-me] [--parent] [--blocked-by] [--unblocked-by] [--blocks]":
+        "the --blocks option of tcw work edit is removed in TCW 4.0: the relation is "
+        "recorded on the blocked item, with --blocked-by (TCW-114 Design 2.2)",
 }
 
 

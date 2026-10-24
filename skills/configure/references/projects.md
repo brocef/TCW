@@ -167,8 +167,11 @@ nothing here declares is exit code 4.
 
 ## Creating an item in another project
 
-`tcw work new "<title>" --project <id>` creates the item in another project's
-inbox. What happens depends on where that project is:
+An item for another project is created in that project, with
+`tcw -C <folder> work new "<title>"`, where `<folder>` is its folder or
+`tcw://<id>.path/`. The `--project` option of `tcw work new`, which created it
+from here, is removed in 4.0; in 3.x, what it did depended on where that
+project was:
 
 1. **Nothing here declares it:** refused, exit code 3.
 2. **It is an upstream project:** refused, exit code 3, since upstream
@@ -196,9 +199,11 @@ inbox. What happens depends on where that project is:
 5. **It is declared but not on this machine, with no `jira` block:** refused,
    exit code 3.
 
-`tcw work edit <folder> --blocks <project>/<folder>` changes an existing item
-in another project and never creates one. It follows cases 1 to 3, and is
-refused, exit code 3, for a project known here only through a `jira` block.
+The `--blocks` option of `tcw work edit`, removed in 4.0, changed an existing
+item in another project and never created one. It followed cases 1 to 3, and
+was refused, exit code 3, for a project known here only through a `jira` block.
+A blocker is recorded on the blocked item, in its own project, with
+`tcw -C <folder> work edit <item> --blocked-by <full id>`.
 
 ## A connected project's `jira` block
 

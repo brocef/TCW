@@ -163,7 +163,7 @@ To **drop an override** and re-inherit the original, `tcw capabilities reset <pa
 
 An agent working one project does **not** read another project's ledger to
 decide product-layer wording. To ask for it, file an item in the project that
-owns the wording: `tcw work new "capability wording: <name>" --project <parent>`.
+owns the wording: `tcw -C tcw://<parent>.path/ work new "capability wording: <name>"`.
 That project answers through its own work.
 
 Never wait on the answer. If canonical wording is not available when needed,
@@ -192,4 +192,4 @@ To seed a new capabilities ledger from an existing codebase, use the `setup` ski
 | find drift                       | `tcw capabilities drift` — inherited capabilities never ruled on, and what completed items declared that the records do not show  |
 | find / read                      | `tcw capabilities search <term>` · `tcw capabilities show <path>`                                                                 |
 | locate the store                 | `tcw capabilities path` — prints only the absolute, resolved store folder                                                         |
-| ask another project for wording  | `tcw work new "capability wording: <name>" --project <parent>`                                                                    |
+| ask another project for wording  | `tcw -C tcw://<parent>.path/ work new "capability wording: <name>"`                                                               |

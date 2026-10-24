@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from tcw.errors import BackendError, NotFound, TcwError, Unreachable
-from tcw.ids import FullId, MalformedId, identity, looks_full, sort_input
+from tcw.ids import FullId, MalformedId, identity, sort_input
 from tcw.serve import files as item_files
 from tcw.serve.records import checked
 from tcw.serve.server import (Request, Written, creates, not_found, read_only, route,
@@ -156,11 +156,9 @@ def _axes(root: Path) -> dict[str, bool]:
 
 def _projects(root: Path) -> list[dict[str, Any]]:
     """The projects this one is connected to, as `tcw projects list` names
-    them, for the create form's target; `readOnly` is that command's
-    `read-only` (TCW-108 Design 8.5)."""
+    them."""
     from tcw.projects_cli import connected
-    return [{"id": row["id"], "relation": row["relation"], "present": row["present"],
-             "readOnly": row["read-only"]}
+    return [{"id": row["id"], "relation": row["relation"], "present": row["present"]}
             for row in connected(root) if row["relation"] != "current"]
 
 
@@ -466,40 +464,21 @@ def add_comment(request: Request):
     return HTTPStatus.CREATED, {"folder": folder}
 
 
-def add_blocks(request: Request):
-    """The item blocks `target`: this item is added to the target's
-    `blocked-by`, as `tcw work edit <item> --blocks <target>` does. One target
-    per request, so a refusal never leaves half a batch written."""
-    from tcw.work.cli import blocks_target
-    ctx = context(request)
-    writable(ctx)
-    folder = item_folder(ctx, request.param(1))
-    slug = ctx.slug(folder)
-    target = name_item(request.field("target"), lambda: ctx.backend, ctx.root)
-    if request.body.get("expected") is not False:
-        raise usage("expected must be false: the target as loaded did not list "
-                    "this item")
-    if target.project == slug.project:
-        checked_reference(ctx, "blocks", str(target))
-    with request.lock:
-        other, found = blocks_target(slug, target, ctx.backend, ctx.root)
-        if slug in found.blocked_by:
-            raise StaleRevision(f"{target} already lists {slug} in blocked-by")
-        other.update(target.folder, Changes(add_blocked_by=(slug,)))
-    return HTTPStatus.OK, {"target": str(target)}
-
-
 CREATE_PROPERTIES = ("priority", "effort", "complexity", "tags", "assignee", "parent",
                      "blocked-by")
 
 
 def create(request: Request):
-    """`new` in this project, or delegation into a connected one, which takes
-    only a title, request text and priority. Answers what the CLI prints: the
-    new item's full identifier, or the key of a ticket made in a project not
-    here."""
+    """`new` in this project. Answers what the CLI prints: the new item's
+    full identifier. An item is created only in its own project (TCW-114
+    Design 2.3): another project's is made there, with `tcw -C`."""
     from tcw.work.cli import new_item
     ctx = context(request)
+    target = request.field("project", required=False)
+    if target and target != ctx.backend.project:
+        raise usage(f"an item is created only in its own project; create it in "
+                    f"'{target}' with tcw -C tcw://{target}.path/ work new \"<title>\" "
+                    f"--parent <full id>")
     title = request.field("title")
     if not title.strip():
         raise usage("a title must not be empty")
@@ -514,17 +493,6 @@ def create(request: Request):
     nest = request.field("nest", bool, required=False, default=False)
     if nest and not props.get("parent"):
         raise usage("nest puts the item's folder inside its parent's; give the parent")
-    target = request.field("project", required=False)
-    if target and target != ctx.backend.project:
-        others = sorted(k for k, v in props.items() if k != "priority" and v)
-        if others:
-            raise usage(f"{others[0]} cannot be set on an item created in another "
-                        f"project; only priority can")
-        with request.lock:
-            made = request.services.delegate(target, title, text,
-                                             props.get("priority") or None, ctx.root)
-        key = "full-id" if looks_full(made) else "ticket"
-        return HTTPStatus.CREATED, {key: made}
     changes = parse_changes({
         **{k: props[k] for k in ("priority", "effort", "complexity", "assignee",
                                  "parent") if props.get(k)},
@@ -642,8 +610,6 @@ ROUTES = [
     route("GET", r"/api/work" + ONE, detail),
     route("PATCH", r"/api/work" + ONE, edit, writes=written_item),
     route("POST", r"/api/work" + ONE + r"/comments", add_comment, writes=written_item),
-    # Removed in Step 7 of TCW-114's plan.
-    route("POST", r"/api/work" + ONE + r"/blocks", add_blocks, writes=written_item),
     route("GET", r"/api/tickets", tickets),
     route("POST", r"/api/tickets" + ONE + r"/adopt", adopt, writes=creates),
     route("GET", r"/api/options" + ONE, options),

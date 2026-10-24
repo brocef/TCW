@@ -33,7 +33,6 @@ project's own order of parents, or `null`.
 
 That makes it the command to run first when something in another project is not
 behaving: the projects listed here as present are the ones
-[Delegate a work item to another project](tcw://C/work/delegate-a-work-item-to-another-project)
-and full identifiers can reach. If a project I expected is missing, the
+delegation and full identifiers can reach. If a project I expected is missing, the
 problem is its declaration or its manifest entry, not the command I was trying
 to run.

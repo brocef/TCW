@@ -567,25 +567,6 @@ def test_naming_projects_that_are_not_here(graph):
     assert f"places it at {(graph['fx'].parent / 'absent').resolve()}" in absent.err
 
 
-@pytest.mark.parametrize("target, says", [("ghost", None), ("absent", None),
-                                          ("up", "read-only")])
-def test_delegation_that_is_refused_writes_nothing(graph, target, says):
-    before = {name: snapshot(root) for name, root in graph.items()}
-    result = run(graph["fx"], "work", "new", "x", "--project", target)
-    assert result.code == 3, result
-    if says:
-        assert says in result.err
-    assert {name: snapshot(root) for name, root in graph.items()} == before
-
-
-def test_blocks_into_a_project_not_here_is_refused(graph, monkeypatch):
-    # TCW 4.0 files only into a project on this machine (TCW-108 Design 7.2).
-    monkeypatch.chdir(graph["fx"])
-    mine = new(graph["fx"], "Mine")
-    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
-    assert main(["work", "edit", mine, "--blocks", "absent.work/x"]) == 3
-
-
 # -- AC 28: people in Jira mode ---------------------------------------------------
 
 

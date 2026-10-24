@@ -16,17 +16,14 @@ from tests.serve.memory import RecordingBackend
 from tests.serve.test_process import URL_LINE, _launch, _stop
 from tests.serve.test_work_read import new
 from tests.serve.test_work_write import family  # noqa: F401  (a fixture)
-from tests.work.projects import commit_all, connect, make_project
 from tests.statefiles import ITEM_STATE
 
 SERVE = Path(__file__).resolve().parents[2] / "tcw" / "serve"
 
 
-def every_route(served, folder: str, other: str) -> list:
-    """One valid request to every route, a create into project `q` and a
-    `blocks` link to item `other` of project `s` included. Two projects,
-    because each write leaves its target's work store with an uncommitted
-    change, which a second write into it rightly refuses."""
+def every_route(served, folder: str) -> list:
+    """One valid request to every route, a create in the served project
+    included."""
     calls = [
         ("GET", "/api/project", None), ("GET", "/api/work", None),
         ("GET", "/api/work?all=1&tag=ui", None), ("GET", f"/api/work/{folder}", None),
@@ -41,9 +38,6 @@ def every_route(served, folder: str, other: str) -> list:
                                           "expected": {"priority": "medium"}}),
         ("POST", f"/api/work/{folder}/comments", {"text": "hi"}),
         ("POST", "/api/work", {"title": "Here"}),
-        ("POST", "/api/work", {"title": "There", "project": "q"}),
-        ("POST", f"/api/work/{folder}/blocks", {"target": f"s.work/{other}",
-                                                "expected": False}),
         ("GET", "/api/tickets", None),
         ("GET", "/api/options/work?q=a", None),
         ("GET", "/api/taxonomy", None), ("GET", "/api/capabilities", None),
@@ -65,15 +59,9 @@ def expected_failures(answers) -> list:
 
 
 @pytest.fixture
-def prepared(family, tcw, tmp_path):
-    s = make_project(tmp_path, "s")
-    connect(family.p, s, "children")
-    connect(s, family.p, "parent")
-    other = new(tcw, s, "Theirs")
-    commit_all(s)
-    commit_all(family.p)
+def prepared(family, tcw):
     mine = new(tcw, family.p, "Mine")
-    return family, mine, other
+    return family, mine
 
 
 def _allowed(argv) -> bool:
@@ -107,7 +95,7 @@ def test_the_shared_read_only_git_rule():
 
 
 def test_only_read_only_git_runs_while_answering(prepared, monkeypatch):
-    family, mine, other = prepared
+    family, mine = prepared
     started: list = []
     real = subprocess.Popen
 
@@ -117,22 +105,22 @@ def test_only_read_only_git_runs_while_answering(prepared, monkeypatch):
             super().__init__(args, *rest, **kwargs)
 
     monkeypatch.setattr(subprocess, "Popen", Recording)
-    answers = every_route(family.served, mine, other)
+    answers = every_route(family.served, mine)
     monkeypatch.undo()
     assert expected_failures(answers) == []
-    assert started, "no git check ran: the create and blocks routes were not reached"
+    assert started, "no git check ran: the create route was not reached"
     assert [a for a in started if not _allowed(a)] == []
 
 
 def test_the_child_process_starts_no_child(prepared, tmp_path):
-    family, mine, other = prepared
+    family, mine = prepared
     process = _launch(family.p, tmp_path, "--port", "0")
     try:
         port = int(URL_LINE.match(process.stdout.readline().strip()).group(1))
         children = subprocess.run(["pgrep", "-P", str(process.pid)],
                                   capture_output=True, text=True)
         assert children.stdout.strip() == ""
-        answers = every_route(Served(family.p, None, port), mine, other)
+        answers = every_route(Served(family.p, None, port), mine)
         children = subprocess.run(["pgrep", "-P", str(process.pid)],
                                   capture_output=True, text=True)
         assert children.stdout.strip() == "", children.stdout

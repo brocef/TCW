@@ -575,26 +575,6 @@ def test_ac22_provision_fetches_no_project(tmp_path):
         assert "`tcw provision`" not in output and "run tcw provision" not in output
 
 
-@pytest.mark.parametrize("entry", ["placed", "none"])
-def test_delegating_to_a_project_not_on_this_machine_says_where(tmp_path, entry):
-    """Exit 3 for a project not here carries Design 6.2's message, so the
-    instruction it gives can be passed on (the work skill's rule)."""
-    app = proj(tmp_path / "app", "app", children=["lib"])
-    (app / "docs" / "work").mkdir(parents=True)
-    expected = (f"project 'lib' is not on this machine: {NO_ENTRY.format(app)}; add it "
-                f"to .tcw/tcw-manifest.yaml or .tcw/tcw-manifest.local.yaml")
-    if entry == "placed":
-        manifest = write_manifest(app, {"lib": {
-            "path": "../lib", "repository": "https://example.invalid/lib.git"}})
-        expected = (f"project 'lib' is not on this machine: {manifest.resolve()} places it "
-                    f"at {gone(tmp_path, 'lib')}, from https://example.invalid/lib.git; "
-                    f"fetch it with "
-                    f"'tcw project provision lib'")
-    ran = tcw(app, "work", "new", "x", "--project", "lib")
-    assert ran.code == 3, ran
-    assert ran.err == f"tcw work new: {expected}\n", ran
-
-
 @pytest.mark.parametrize("raw, shown", [
     ("../lib", "lib: ../lib"),
     ({"path": "../lib"}, "lib: ../lib"),

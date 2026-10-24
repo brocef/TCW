@@ -29,6 +29,9 @@ PAIRS = [(sid, backend) for sid in sorted(SHIPPED) for backend in BACKENDS]
 pairs = pytest.mark.parametrize("sid, backend", PAIRS, ids=lambda v: str(v))
 
 
+PACKAGE = Path(__file__).resolve().parent.parent / "tcw"
+
+
 def prompt(sid: str, backend: str) -> str:
     return filter_backend(load_builtins().stage_prompts[sid], backend)
 
@@ -329,15 +332,19 @@ def test_spec_says_what_to_do_when_the_requester_revises_the_request(backend):
 
 
 def test_plan_says_how_to_file_a_part_into_another_project():
-    """TCW-101: --project takes no --parent; the parent is set from inside
-    that project, and only then is everything recorded in its version
-    control, because the edit itself writes a file there; a ticket key in
-    place of a slug means there is no item to edit."""
+    """TCW-114 Design 2.1, 9.2: a part for another project is made in that
+    project, with `tcw -C` and `--parent`; the removed `--project` is not
+    named, and neither is anything it needed afterwards."""
     paragraph = _paragraph_with(prompt("plan", "filesystem"), "Too large for one item")
-    order = [paragraph.index(w) for w in ("--project", "tcw work edit",
-                                          "version control")]
-    assert order == sorted(order), paragraph
-    assert "ticket key printed instead of a slug" in paragraph
+    assert 'tcw -C tcw://<id>.path/ work new "<title>" --parent <slug>' in paragraph
+    for gone in ("--project", "ticket key printed", "version control"):
+        assert gone not in paragraph, gone
+
+
+def test_no_shipped_procedure_or_prompt_names_project_filing():
+    assert "--project" not in prompt("plan", "filesystem")
+    assert "--project" not in (PACKAGE / "work" / "procedures" /
+                               "audit-backlog.md").read_text(encoding="utf-8")
 
 
 def test_plan_nests_each_part_in_its_parent():

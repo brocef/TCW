@@ -25,9 +25,7 @@ def connected(root: Path, registry=None) -> list[dict]:
     Design 6.1), and is None for this one and for one not here.
 
     A parent row adds `inherit`, the axes it passes in `AXES` order; a child
-    row adds `personal`, true when only the personal file lists it; every
-    row but this project's adds `read-only` (Design 7.1): null for a project
-    not here, which is refused for that reason instead (TCW-108 Design 8.2)."""
+    row adds `personal`, true when only the personal file lists it."""
     from tcw.store.base import AXES
     from tcw.store.project import FsProjectRegistry
     # A registry problem — an invalid ID, a listed child that does not name
@@ -45,13 +43,10 @@ def connected(root: Path, registry=None) -> list[dict]:
             return
         seen.add(project_id)
         project = registry.get(project_id)
-        read_only = None if project is None else \
-            registry.read_only_reason(project_id) is not None
         rows.append({"id": project_id, "relation": relation,
                      "present": project is not None,
                      "path": str(project.locator) if project is not None else None,
-                     "found": registry.found(project_id), **extra,
-                     "read-only": read_only})
+                     "found": registry.found(project_id), **extra})
 
     for link in registry.parents():
         add(link.id, "parent", inherit=[axis for axis in AXES if axis in link.inherit])

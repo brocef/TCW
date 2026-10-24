@@ -1,11 +1,10 @@
-"""The work API's writes: properties, comments, creating, blocks, tickets and
+"""The work API's writes: properties, comments, creating, tickets and
 suggestions (TCW-77 criteria 4's credential marker, 8, 9, 10's write parts
 and 12's server half)."""
 
 from __future__ import annotations
 
 import os
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -173,67 +172,6 @@ def test_malformed_changes_are_refused(fs, two, changes):
     assert item_yaml(fs.root, a) == before
 
 
-# -- blocks ----------------------------------------------------------------------------------
-
-
-def test_blocks_adds_this_item_to_the_targets_blocked_by(fs, two):
-    a, b = two
-    ok(fs.post(f"/api/work/{a}/blocks", {"target": b, "expected": False}))
-    assert item_yaml(fs.root, b)["blocked-by"] == [f"p.work/{a}"]
-    assert ok(fs.get(f"/api/work/{a}"))["item"]["blocks"] == [f"p.work/{b}"]
-    again = fs.post(f"/api/work/{a}/blocks", {"target": b, "expected": False})
-    assert_refused(again, 409, "stale-revision")
-
-
-def test_blocks_needs_expected_false(fs, two):
-    a, b = two
-    assert fs.post(f"/api/work/{a}/blocks", {"target": b}).status == 400
-
-
-def test_blocks_an_unknown_local_item_is_refused(fs, two):
-    a, _ = two
-    answer = fs.post(f"/api/work/{a}/blocks", {"target": "2026-01-01-nothing",
-                                                "expected": False})
-    assert_refused(answer, 400, "usage")
-
-
-def test_blocks_into_a_connected_project(family, tcw):
-    theirs = new(tcw, family.q, "Theirs")
-    commit_all(family.q)
-    mine = new(tcw, family.p, "Mine")
-    ok(family.served.post(f"/api/work/{mine}/blocks", {"target": f"q.work/{theirs}",
-                                                        "expected": False}))
-    assert item_yaml(family.q, theirs)["blocked-by"] == [f"p.work/{mine}"]
-
-
-def test_blocks_into_an_upstream_is_refused(family, tcw):
-    mine = new(tcw, family.p, "Mine")
-    before = state(family.r)
-    answer = family.served.post(f"/api/work/{mine}/blocks", {
-        "target": f"r.work/{family.upstream_item}", "expected": False})
-    assert_refused(answer, 409, "refused", "read-only")
-    assert state(family.r) == before
-
-
-def test_ac33_the_project_answer_marks_a_read_only_project(tmp_path, personal_on,
-                                                            serve_project, tcw):
-    """AC 21's layout: `app: [lib, ws]`, and only `ws` lists `app`."""
-    app = fs_project(tmp_path)
-    lib = make_project(tmp_path, "lib")
-    ws = make_project(tmp_path, "ws")
-    connect(app, lib, "parent")
-    connect(app, ws, "parent")
-    connect(ws, app, "children")
-    for root in (app, lib, ws):
-        commit_all(root)
-    projects = ok(serve_project(app).get("/api/project"))["projects"]
-    assert {row["id"]: row["readOnly"] for row in projects} == {"lib": True, "ws": False}
-    assert not [row for row in projects if "upstream" in row]
-    listed = tcw(["projects", "list", "--json"], app).json["projects"]
-    assert {row["id"]: row["read-only"] for row in listed if row["relation"] != "current"} \
-        == {"lib": True, "ws": False}
-
-
 # -- comments ----------------------------------------------------------------------------------
 
 
@@ -275,39 +213,6 @@ def test_creating_at_the_inbox(fs):
     assert item_yaml(fs.root, answer.json["full-id"].split("/")[1])["stage"] == "inbox"
 
 
-def test_creating_into_a_connected_project(family):
-    before = state(family.p)
-    answer = family.served.post("/api/work", {
-        "title": "Please help", "requestText": "details\n", "project": "q",
-        "properties": {"priority": "high"}})
-    assert answer.status == 201, answer.body
-    slug = answer.json["full-id"]
-    assert slug.startswith("q.work/")
-    data = item_yaml(family.q, slug.split("/")[1])
-    assert (data["stage"], data["priority"]) == ("inbox", "high")
-    assert state(family.p) == before
-
-
-def test_another_project_takes_only_title_request_and_priority(family):
-    before = sorted(os.listdir(family.q / "docs" / "work"))
-    answer = family.served.post("/api/work", {
-        "title": "Please help", "project": "q",
-        "properties": {"priority": "high", "tags": ["ui"]}})
-    assert_refused(answer, 400, "usage", "tags")
-    assert sorted(os.listdir(family.q / "docs" / "work")) == before
-
-
-def test_targets_delegation_refuses(family, tmp_path):
-    cases = {"nobody": "no project", "r": "read-only"}
-    for target, message in cases.items():
-        answer = family.served.post("/api/work", {"title": "T", "project": target})
-        assert_refused(answer, 409, "refused", message)
-    assert state(family.r)[1] == ""
-    shutil.rmtree(family.q)
-    absent = family.served.post("/api/work", {"title": "T", "project": "q"})
-    assert_refused(absent, 409, "refused", "not on this machine")
-
-
 @pytest.mark.parametrize("properties", [
     {"parent": "2026-01-01-nothing"}, {"blocked-by": ["2026-01-01-nothing"]},
     {"tags": ["unregistered"]}, {"priority": "urgent"}, {"effort": "huge"},
@@ -330,9 +235,7 @@ def test_jira_owned_content_is_read_only(jira):
     served = jira.served
     for answer in (
             patch(served, "TCW-1-first", {"priority": "high"}, {"priority": "medium"}),
-            served.post("/api/work/TCW-1-first/comments", {"text": "hi"}),
-            served.post("/api/work/TCW-1-first/blocks", {"target": "TCW-2-second",
-                                                         "expected": False})):
+            served.post("/api/work/TCW-1-first/comments", {"text": "hi"})):
         assert_refused(answer, 403, "read-only")
     assert not jira.backend.named("update") and not jira.backend.named("comment")
 
@@ -413,7 +316,6 @@ def every_route(served, folder: str) -> list:
         ("PATCH", f"/api/work/{folder}", {"changes": {"priority": "high"},
                                           "expected": {"priority": "medium"}}),
         ("POST", f"/api/work/{folder}/comments", {"text": "hi"}),
-        ("POST", f"/api/work/{folder}/blocks", {"target": "nothing", "expected": False}),
         ("POST", "/api/work", {"title": "New one"}),
         ("GET", "/api/tickets", None), ("POST", "/api/tickets/TCW-7/adopt", {}),
         ("GET", "/api/options/assignee?q=a", None), ("GET", "/api/options/work?q=a", None),

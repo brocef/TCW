@@ -682,19 +682,6 @@ class ProjectRegistry(ABC):
         committed list, then the personal list's additions (Design 2.1)."""
         return [child.id for child in self.children(project_id)]
 
-    def read_only_reason(self, project_id: str,
-                         from_id: str | None = None) -> str | None:
-        """Why `from_id` (default: the current project) may not write to
-        `project_id`, or None when it may.
-
-        **The one place the write rule lives** until TCW-114 (Design 7.1). A
-        project is writable only when reached across links both sides
-        declare: up to a parent that lists the child, or down to a listed
-        child. A project reached across a parent link the parent does not
-        list is read-only. A registry whose links are always declared both
-        ways has nothing read-only."""
-        return None
-
     def warnings(self) -> list[str]:
         """Graph facts worth saying that are neither defects nor unreachable
         projects — printed by `tcw validate`, never fatal."""

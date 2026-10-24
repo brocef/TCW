@@ -1,7 +1,7 @@
 ---
 name: work
 description: Drives the `tcw work` change-tracking CLI — the Work axis of TCW (Taxonomy · Capabilities · Work). Use when planning, implementing, reviewing or testing a tcw work item; resuming one across sessions; deciding on an arrival in the inbox; splitting an item into child items; or filing work into another project. Does not reimplement the CLI.
-when_to_use: Use when starting, continuing, triaging, planning, implementing, reviewing, testing or splitting tcw work items — when a user asks to plan work, drive work to completion, decide on inbox arrivals, move an item to its next stage, resume an item across sessions, break a large item into child items (`tcw work new --parent`), or file work into another project (`tcw work new --project`). Also when searching the board, auditing unfinished work, or asking which stage could have caught a problem.
+when_to_use: Use when starting, continuing, triaging, planning, implementing, reviewing, testing or splitting tcw work items — when a user asks to plan work, drive work to completion, decide on inbox arrivals, move an item to its next stage, resume an item across sessions, break a large item into child items (`tcw work new --parent`), or make a part in another project (`tcw -C <folder> work new --parent`). Also when searching the board, auditing unfinished work, or asking which stage could have caught a problem.
 allowed-tools: Bash(tcw *), Read, Edit, Write
 metadata:
     author: Brian Cefali
@@ -90,26 +90,22 @@ every arrival it names.
 - **Epics are parents.** An item with children is an epic; add one with
   `tcw work new "<title>" --parent <slug>`, and `tcw work list --parent <slug>`
   lists them.
-- **Delegation is filing into another project**, with
-  `tcw work new "<title>" --project <id>`; `tcw projects list` names the
-  projects this one declares under `projects:` (the configure skill's
-  reference on projects explains the key). It sets no parent, tags or
-  blockers: set those afterwards with `tcw work edit` from inside that
-  project, then record the uncommitted changes TCW left there in that
-  project's version control before filing there again. A ticket key printed
-  instead of a slug means no item exists there yet. The plan prompt's step 6
-  gives the order for an epic's parts.
+- **A part for another project is made in that project**, with
+  `tcw -C <folder> work new "<title>" --parent <full id>`, where `<folder>`
+  is that project's folder or `tcw://<id>.path/`; `tcw projects list` names
+  the projects this one declares under `projects:` (the configure skill's
+  reference on projects explains the key). The plan prompt's step 6 gives the
+  order for an epic's parts.
 
 ## Another project's exit codes
 
 - Reading a project nothing declares exits 4; one declared but not on this
   machine exits 5.
-- `tcw work new --project` into a project nothing declares exits 3; into a
-  declared but absent project exits 3, unless its entry has a `jira` block:
-  then it exits 0 and prints the new ticket's key, which lands in that
-  project's inbox. Report the key.
-- Filing into an upstream project, which is read-only, exits 3; so does
-  `tcw work edit --blocks` into a project that exists only as a `jira` block.
+- The `--project` option of `tcw work new` and the `--blocks` option of
+  `tcw work edit` are removed in TCW 4: each exits 2 and names the command to
+  run instead.
+- A change to another project's item, term or capability exits 3 and names
+  its folder: run it there, with `tcw -C <folder>`.
 
 On exit 5, or exit 3 for an absent project, report it and pass on the
 instruction its message gives (the manifest entry to add or correct, or the

@@ -35,8 +35,6 @@ EXEMPT = {
     ("store/fs.py", "personal_file_tracked"),         # TCW-72's read-only status check
     ("store/fs.py", "FsStoreProvisioner"),            # `tcw provision` clones
     ("cli.py", "run_provision"),
-    ("work/open.py", "uncommitted_changes"),          # TCW-70's read-only check
-    ("work/open.py", "_check_target"),                # the delegation condition using it
     ("store/project.py", "FsProjectRegistry._other_branch_warning"),
     # TCW-107: an entry folder holding only `.git` is named as such, because
     # the command that fetches the project refuses it (TCW-115's handoff).

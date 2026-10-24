@@ -1,9 +1,9 @@
 """TCW never changes git state (TCW-70 AC 12, the behavior).
 
 Each command runs between two snapshots of both repositories: `HEAD`, every
-ref, the index, and what is staged. A delegation leaves the target's work
-store with uncommitted files, which the next write into it rightly refuses, so
-the test commits between commands itself, outside the snapshots.
+ref, the index, and what is staged. A write leaves its project's work store
+with uncommitted files, so the test commits between commands itself, outside
+the snapshots.
 """
 
 import io
@@ -49,25 +49,26 @@ def pq(tmp_path):
     return p, q
 
 
+# Each command, with the project it runs in.
 COMMANDS = [
-    ("new", "A thing"),
-    ("edit", f"{TODAY}-a-thing", "--priority", "high"),
-    ("comment", f"{TODAY}-a-thing"),
-    ("advance", f"{TODAY}-a-thing", "--to", "plan", "--force", "--reason", "r"),
-    ("rename", f"{TODAY}-a-thing", "another-thing"),
-    ("edit", f"{TODAY}-another-thing", "--blocks", "q.work/2026-10-01-x"),
-    ("new", "Delegated", "--project", "q"),
-    ("discard", f"{TODAY}-another-thing", "--reason", "done with it"),
-    ("tags", "add", "x"),
-    ("tags", "rm", "x"),
+    ("p", ("new", "A thing")),
+    ("p", ("edit", f"{TODAY}-a-thing", "--priority", "high")),
+    ("p", ("comment", f"{TODAY}-a-thing")),
+    ("p", ("advance", f"{TODAY}-a-thing", "--to", "plan", "--force", "--reason", "r")),
+    ("p", ("rename", f"{TODAY}-a-thing", "another-thing")),
+    ("p", ("edit", f"{TODAY}-another-thing", "--blocked-by", "q.work/2026-10-01-x")),
+    ("q", ("new", "Made there", "--parent", f"p.work/{TODAY}-another-thing")),
+    ("p", ("discard", f"{TODAY}-another-thing", "--reason", "done with it")),
+    ("p", ("tags", "add", "x")),
+    ("p", ("tags", "rm", "x")),
 ]
 
 
 def test_no_command_changes_git_state(pq, monkeypatch, capsys):
     p, q = pq
-    for argv in COMMANDS:
+    for where, argv in COMMANDS:
         before = [snapshot(root) for root in (p, q)]
-        tcw(monkeypatch, capsys, p, *argv, stdin="text\n")
+        tcw(monkeypatch, capsys, {"p": p, "q": q}[where], *argv, stdin="text\n")
         assert [snapshot(root) for root in (p, q)] == before, argv
         for root in (p, q):
             commit_all(root, " ".join(argv))

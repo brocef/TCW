@@ -314,25 +314,6 @@ def test_named_both_in_a_parent_is_not_checked(tmp_path):
     assert registry.check() == []
 
 
-# -- Design 7.1: the write rule ---------------------------------------------------------
-
-
-def test_ac21_the_write_rule(tmp_path):
-    app = proj(tmp_path / "app", "app", parents=["lib", "ws"])
-    proj(tmp_path / "lib", "lib", parents=["top"])
-    proj(tmp_path / "ws", "ws", children=["app", "sib"])
-    proj(tmp_path / "top", "top", children=["lib"])
-    proj(tmp_path / "sib", "sib", parents=["ws"])
-    registry = FsProjectRegistry.open(app).require_valid()
-    assert registry.read_only_reason("lib") == (
-        "'lib' is read-only from here: 'lib' does not list 'app' among its children")
-    assert registry.read_only_reason("ws") is None
-    assert registry.read_only_reason("top") == (
-        "'top' is read-only from here: 'lib' does not list 'app' among its children")
-    assert registry.get("sib") is None
-    assert FsProjectRegistry.open(tmp_path / "ws").read_only_reason("sib") is None
-
-
 # -- Design 2.1-2.4: personal children ---------------------------------------------------
 
 

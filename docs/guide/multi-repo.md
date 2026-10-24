@@ -138,8 +138,11 @@ saying where to run them.
 
 ## Creating an item in another project
 
-`tcw work new "<title>" --project <id>` creates an item in another project's
-inbox, the way a request is handed to the team that owns the code. Text piped
+An item for another project is created in that project, with
+`tcw -C <folder> work new "<title>"`, where `<folder>` is its folder or
+`tcw://<id>.path/`. In 3.x, the `--project` option of `tcw work new`, removed
+in 4.0, created it in another project's inbox from here, the way a request is
+handed to the team that owns the code. Text piped
 on standard input becomes its request, and `--priority` is the only property
 that can be set; the target project sets the rest itself. Creating an item
 runs no hooks, in either project.
@@ -176,18 +179,14 @@ What happens depends on where the target is:
 5. **It is declared but not on this machine, with no `jira` block:** refused,
    exit code 3.
 
-To file an epic's part into another project, file it with `--project`. If
-that prints a ticket key rather than a slug, no item exists there yet, and the
-parent is set once that project adopts the ticket. Otherwise set its parent,
-tags and blockers with `tcw work edit` from inside that project (a Jira
-project accepts as parent only a ticket on its own Jira site), then commit
-everything TCW wrote there, the edit included, before the next filing, for the
-reasons above.
+An epic's part in another project is made in that project, with
+`tcw -C <folder> work new "<title>" --parent <full id>`; the `--project` option
+that filed it from here is removed in 4.0.
 
-`tcw work edit <folder> --blocks <project>/<folder>` changes an item in
-another project, adding this item to its `blocked-by`, and never creates one.
-It follows cases 1 to 3, and is refused, exit code 3, for a project known here
-only through a `jira` block.
+The `--blocks` option of `tcw work edit`, removed in 4.0, changed an item in
+another project, adding this item to its `blocked-by`, and never created one.
+A blocker is now recorded on the blocked item, in its own project, with
+`tcw -C <folder> work edit <item> --blocked-by <full id>`.
 
 ## Stores in another repository
 

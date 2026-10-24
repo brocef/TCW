@@ -25,8 +25,9 @@ whether a check can be handed out one item at a time.
   capabilities that have since been removed or replaced. Line numbers cited
   in a plan are a common casualty.
 - **Wrong project:** the item belongs in another TCW project, or should be
-  split across projects. Recommend `tcw work new "<title>" --project <id>` for
-  each part there, and discarding this one.
+  split across projects. Recommend creating each part in its own project,
+  with `tcw -C tcw://<id>.path/ work new "<title>" --parent <slug>`, and
+  discarding this one.
 - **Unactionable or too large:** no acceptance criteria, a vague request, no
   clear next step, or work that should be split with
   `tcw work new "<part>" --parent <slug>`.

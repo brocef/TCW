@@ -1,11 +1,8 @@
 """The operations the web viewer calls, gathered in one value.
 
 Every one of them is an operation the CLI also uses: the backend and its
-operations, delegation into another project, and the Jira-only helpers beside
-`tickets list`. (A `blocks` link into another project goes through the
-function behind `tcw work edit --blocks`, which opens that project with
-`open_for_update` itself.) The server holds no second
-version of any. Tests replace them through this value, to serve TCW-69's
+operations, reading another project's items, and the Jira-only helpers
+beside `tickets list`. The server holds no second version of any. Tests replace them through this value, to serve TCW-69's
 in-memory backend with the spec's stubs for the Jira-only helpers.
 """
 
@@ -29,12 +26,6 @@ def _open_backend(root: Path):
 def _open_project(project_id: str, root: Path):
     from tcw.work.open import open_project
     return open_project(project_id, root)
-
-
-def _delegate(project_id: str, title: str, request: str | None,
-              priority: str | None, root: Path) -> str:
-    from tcw.work.open import delegate
-    return delegate(project_id, title, request, priority, here=root, report=_stderr)
 
 
 def _ticket_link(backend, folder: str):
@@ -83,7 +74,6 @@ def _create_fields(backend):
 class Services:
     open_backend: Callable[[Path], Any] = _open_backend
     open_project: Callable[[str, Path], Any] = _open_project
-    delegate: Callable[..., str] = _delegate
     ticket_link: Callable[[Any, str], tuple[str, str]] = _ticket_link
     user_name: Callable[[Any, str], "str | None"] = _user_name
     assignable_users: Callable[[Any, str, int], list] = _assignable_users

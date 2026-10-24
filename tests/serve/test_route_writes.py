@@ -17,8 +17,6 @@ from tests.serve.test_records import assert_error
 
 WRITES = {
     ("POST", "/api/work"), ("PATCH", "/api/work/x"), ("POST", "/api/work/x/comments"),
-    # The `/blocks` route is removed in Step 7 of the plan.
-    ("POST", "/api/work/x/blocks"),
     ("POST", "/api/tickets/X-1/adopt"), ("PUT", "/api/work/x/files/spec/spec.md"),
     ("POST", "/api/work/x/files"), ("PUT", "/api/work/x/declaration"),
     ("POST", "/api/taxonomy"), ("PATCH", "/api/taxonomy/x"),
@@ -131,3 +129,31 @@ def test_a_work_route_naming_another_projects_item(family, serve_project, method
     answer = serve_project(app).request(method, path, body)
     assert_error(answer, 403, "read-only")
     assert "core.work/2026-10-01-c belongs to project 'core'" in answer.json["error"]
+
+
+# -- TCW-114 Design 2.3: no filing into another project, no `/blocks` --------------------
+
+
+def test_creating_in_another_project_is_a_usage_error(family, serve_project):
+    app, core = family
+    before = sorted(p.name for p in (core / "docs" / "work").iterdir()), \
+        sorted(p.name for p in (app / "docs" / "work").iterdir())
+    answer = serve_project(app).post("/api/work", {"title": "x", "project": "core"})
+    assert_error(answer, 400, "usage")
+    assert "tcw -C tcw://core.path/ work new" in answer.json["error"]
+    assert (sorted(p.name for p in (core / "docs" / "work").iterdir()),
+            sorted(p.name for p in (app / "docs" / "work").iterdir())) == before
+
+
+def test_the_blocks_route_is_gone(family, serve_project):
+    app, _ = family
+    obj(app, "work", "2026-10-01-a", title="A", stage="request")
+    answer = serve_project(app).post("/api/work/2026-10-01-a/blocks",
+                                     {"target": "2026-10-01-b", "expected": False})
+    assert_error(answer, 404, "not-found")
+
+
+def test_the_project_answer_has_no_read_only_rows(family, serve_project):
+    app, _ = family
+    rows = serve_project(app).get("/api/project").json["projects"]
+    assert rows and all("readOnly" not in row for row in rows)

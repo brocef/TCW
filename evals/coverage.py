@@ -62,7 +62,7 @@ PARTIAL = {
         "stage prompts, and B2 the inbox. The `request` stage is unmeasured: "
         "its job is asking the user questions, which a non-interactive harness "
         "cannot answer. Searching the board, auditing unfinished work, child "
-        "items and filing into another project are unmeasured too.",
+        "items and making a part in another project are unmeasured too.",
     "configure":
         "B11 measures the documentation-entries route only. `work.md`, "
         "`jira.md`, `stores.md`, `projects.md` and `personal.md` are "

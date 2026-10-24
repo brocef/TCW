@@ -606,7 +606,7 @@ driving it to completion, processing the inbox) described in
 
 | Command            | What it does                                                    |
 | ------------------ | --------------------------------------------------------------- |
-| `tcw work new`     | creates an item and prints its slug; its request from standard input; `--project` creates it in another project |
+| `tcw work new`     | creates an item and prints its slug; its request from standard input; `tcw -C <folder> work new` creates it in another project |
 | `tcw work list`    | prints the slugs of unfinished items; `--all` adds finished ones |
 | `tcw work show`    | prints an item's properties, its request and its comments       |
 | `tcw work path`    | prints the work store's folder, an item's folder, or where a stage's file goes |

@@ -329,8 +329,8 @@ tcw work edit demo/2026-10-15-refund-a-payment --assignee sam --effort medium
 - **`tcw work new "<title>"`** creates an item at `request` (or at `inbox` with
   `--stage inbox`, filesystem mode only) and prints its slug. Text piped on
   standard input becomes its request. Properties can be set as it is created.
-  `--project <id>` creates it in another project instead
-  ([Working across repositories](multi-repo.md)).
+  An item for another project is made in that project, with
+  `tcw -C <folder> work new` ([Working across repositories](multi-repo.md)).
 - **`tcw work list`** prints the slugs of unfinished items, and of items with
   no stage the model knows. `--all` adds finished items. `--stage` limits it to
   the stages named, `--parent` to one item's children, `--assignee` or
@@ -348,8 +348,9 @@ tcw work edit demo/2026-10-15-refund-a-payment --assignee sam --effort medium
   `tcw work tags add billing` registers one, `tcw work tags rm billing`
   unregisters it.
 - **Blocking.** `--blocked-by <slug>` says an item must wait for another;
-  `--unblocked-by` takes one off. `tcw work edit <a> --blocks <b>` is the same
-  link written from the other side: it adds `a` to `b`'s `blocked-by`.
+  `--unblocked-by` takes one off. The link is always written on the blocked
+  item; the `--blocks` option of `tcw work edit`, which wrote it from the other
+  side, is removed in 4.0.
 - **Parents and epics.** `--parent <slug>` puts an item under another. An item
   with children is an **epic**; `tcw work show` lists its children, and
   `tcw work list --parent <slug>` prints them.

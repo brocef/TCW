@@ -90,8 +90,7 @@ def test_connected_projects_are_listed(tmp_path, personal_on, serve_project):
     connect(root, child, "children")
     connect(child, root, "parent")
     projects = ok(serve_project(root).get("/api/project"))["projects"]
-    assert projects == [{"id": "kid", "relation": "child", "present": True,
-                         "readOnly": False}]
+    assert projects == [{"id": "kid", "relation": "child", "present": True}]
 
 
 # -- the board -----------------------------------------------------------------------------

@@ -232,8 +232,10 @@ A rejection's reason is the comment the implementation reads next.
 
 ## Creating an item in another project
 
-`tcw work new "<title>" --project <id>` creates an item in another connected
-project's inbox. Standard output is the new item's slug, or the ticket's key
+An item for another connected project is created in that project, with
+`tcw -C <folder> work new "<title>"`, where `<folder>` is its folder or
+`tcw://<id>.path/`. In 3.x, the `--project` option of `tcw work new`, removed
+in 4.0, created it in that project's inbox from here. Standard output is the new item's slug, or the ticket's key
 when TCW stopped after creating the ticket. When the target is on this
 machine, TCW reads its own `tcw-config.yaml` and uses that project's Jira
 settings, never this one's. When it is declared but is not on this machine:

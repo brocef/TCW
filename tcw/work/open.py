@@ -1,31 +1,27 @@
-"""Opening a project's work backend, and delegating work into another project.
+"""Opening a project's work backend, and naming the items command input names.
 
 `open_backend` is how every `tcw work` command reaches the items of the
-project it runs in. `open_project` reads another project's items.
-`delegate` and `open_for_update` are the only two ways a command writes into
-another project, and both check the same conditions first.
-
-Git is only read here: the uncommitted-changes check runs
-`git --no-optional-locks status`, which never takes the index lock.
+project it runs in. `open_project` reads another project's items; nothing
+here writes into another project, since only the owning project changes
+anything (TCW-114 Design 1), and a command is run in another project with
+`tcw -C`.
 """
 
 from __future__ import annotations
 
-import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from tcw.errors import (BackendError, ConfigError, NotFound, ProjectGraphError, Refused,
+from tcw.errors import (BackendError, ConfigError, NotFound, ProjectGraphError,
                         Unreachable)
 from tcw.ids import FullId, sort_input
-from tcw.store.fs import FsProjectRegistry, WorkLocation, git_root
+from tcw.store.fs import FsProjectRegistry, WorkLocation
 from tcw.work.backend import WorkBackend
 from tcw.work.config import WorkConfig
 from tcw.work.jira.backend import KEY, JiraBackend, link_exists
 from tcw.work.fs_backend import FsWorkBackend
-from tcw.work.model import Changes, Slug, inbox_stage
+from tcw.work.model import Slug
 
 
 def work_path(project_root: Path) -> Path:
@@ -154,13 +150,6 @@ def item_folders(project_root: Path, *, personal: bool = True, registry=None
                          facts.layered.user_name)
 
 
-def _registry(here: Path) -> FsProjectRegistry:
-    try:
-        return FsProjectRegistry.open(Path(here))
-    except ValueError as error:
-        raise BackendError(str(error)) from None
-
-
 def open_project(project_id: str, here: Path) -> WorkBackend:
     """Another project's backend, for reading: any project TCW can locate,
     not only one `projects:` names (TCW-110 Design 6.1). `Unreachable` when
@@ -254,115 +243,6 @@ def existing_item(text, active: Callable[[], WorkBackend], root: Path
     if not backend.is_item_folder(slug.folder):
         raise NotFound(f"no work item {slug}")
     return slug, backend
-
-
-# ---------------------------------------------------------------------------
-# Writing into another project
-
-
-def uncommitted_changes(path: Path, project_id: str | None = None) -> list[str]:
-    """Paths under `path` that git has not committed, ignored files excepted.
-
-    Refuses when `path` is not inside a git repository, because then it cannot
-    be checked. Runs `git --no-optional-locks status`, which neither refreshes
-    the index nor takes `index.lock` in someone else's repository.
-    """
-    who = (f"the work store of project '{project_id}'" if project_id
-           else "the project's work store")
-    repository = git_root(Path(path))
-    if repository is None:
-        raise Refused(f"{who} is not in a git repository, so TCW "
-                      f"cannot check it for uncommitted changes")
-    result = subprocess.run(
-        ["git", "--no-optional-locks", "-C", str(repository), "status",
-         "--porcelain", "--untracked-files=all", "--", str(path)],
-        capture_output=True, text=True, stdin=subprocess.DEVNULL)
-    if result.returncode != 0:
-        raise BackendError(f"cannot check {path} for uncommitted changes: "
-                           f"{result.stderr.strip()}")
-    return [line[3:] for line in result.stdout.splitlines() if line.strip()]
-
-
-def _check_declared(registry: FsProjectRegistry, project_id: str) -> None:
-    """The first two conditions of delegation: in the family, and reached
-    across links both sides declare (TCW-108 Design 7.1)."""
-    if registry.get(project_id) is None \
-            and registry.unreachable_project(project_id) is None:
-        raise Refused(f"no project '{project_id}' is declared here")
-    reason = registry.read_only_reason(project_id)
-    if reason is not None:
-        raise Refused(reason)
-
-
-def _check_target(registry: FsProjectRegistry, project_id: str) -> Path:
-    """The five conditions of delegation, in order; the first that fails
-    refuses. Returns the target's work path."""
-    _check_declared(registry, project_id)
-    project = registry.get(project_id)
-    if project is None:
-        absent = registry.unreachable_project(project_id)
-        if absent is not None and absent.message:
-            # TCW-107 Design 6.2, as `open_project` reports it.
-            raise Refused(absent.message)
-        raise Refused(f"project '{project_id}' is declared but is not on this "
-                      f"machine")
-    try:
-        path = work_path(Path(project.locator))
-    except ValueError:
-        raise Refused(f"'{project_id}' has no work store on this machine") from None
-    changed = uncommitted_changes(path, project_id)
-    if changed:
-        raise Refused(f"the work store of '{project_id}' has uncommitted changes: "
-                      f"{', '.join(changed)} — resolve them in that project first")
-    return path
-
-
-def delegate(project_id: str, title: str, request: str | None,
-             priority: str | None, *, here: Path,
-             report: Callable[[str], None] | None = None) -> str:
-    """Create an item in another project's inbox, and return its full slug;
-    for a Jira-mode target, the ticket's key when no item could be made
-    (TCW-71 Design 8)."""
-    registry = _registry(here)
-    _check_declared(registry, project_id)
-    say = report or (lambda line: print(line, file=sys.stderr))
-    project = registry.get(project_id)
-    # The target is read for itself, its parents found through this
-    # command's registry (TCW-109 Design 5.2).
-    if project is not None and read_work_config(Path(project.locator), personal=False,
-                                                registry=registry).backend == "jira":
-        from tcw.work.jira.tickets import delegate_to_jira
-        return delegate_to_jira(project_id, title, request, priority,
-                                root=Path(project.locator), report=say,
-                                registry=registry)
-    path = _check_target(registry, project_id)
-    backend = open_backend(Path(registry.get(project_id).locator),
-                           report=_uncommitted_in(path, say), personal=False,
-                           registry=registry)
-    props = Changes() if priority is None else Changes(priority=priority)
-    item = backend.create(title, props, stage=inbox_stage(), request=request)
-    return str(item.slug)
-
-
-def open_for_update(project_id: str, here: Path, *,
-                    report: Callable[[str], None] | None = None) -> WorkBackend:
-    """Another project's backend, so `edit --blocks` can change an existing
-    item there. It never creates anything. Each file it writes is named with
-    where it is left uncommitted, as delegation names its files (Design 1.2)."""
-    registry = _registry(here)
-    path = _check_target(registry, project_id)
-    say = report or (lambda line: print(line, file=sys.stderr))
-    return open_backend(Path(registry.get(project_id).locator),
-                        report=_uncommitted_in(path, say), personal=False,
-                        registry=registry)
-
-
-def _uncommitted_in(path: Path, say: Callable[[str], None]) -> Callable[[str], None]:
-    """A reporter that adds, to each line, the repository holding the work
-    store at `path`, where the files are left uncommitted; it need not be the
-    project's own."""
-    repository = git_root(path) or path
-    return lambda line: say(f"{line} (uncommitted in {repository})")
 
 
 def reference_resolver(project_root: Path) -> Callable[[Slug], str]:

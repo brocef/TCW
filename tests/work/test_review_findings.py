@@ -11,10 +11,7 @@ import pytest
 import yaml
 
 from tcw.cli import main
-from tcw.errors import Refused
-from tcw.work.open import delegate
-from tests.work.projects import commit_all, connect, git, make_project, write_item
-from tests.projectfiles import write_config
+from tests.work.projects import make_project, write_item
 from tests.statefiles import ITEM_STATE
 
 TODAY = date.today().isoformat()
@@ -35,19 +32,6 @@ def item_yaml(root, folder):
     return yaml.safe_load((root / "docs" / "work" / folder / ITEM_STATE).read_text())
 
 
-@pytest.fixture
-def pq(tmp_path):
-    p = make_project(tmp_path, "p")
-    q = make_project(tmp_path, "q")
-    connect(p, q, "children")
-    connect(q, p, "parent")
-    write_item(q, "2026-10-01-x", {"title": "x", "stage": "spec"})
-    write_item(p, "2026-10-01-a", {"title": "a", "stage": "spec"})
-    commit_all(p)
-    commit_all(q)
-    return p, q
-
-
 # -- init deletes nothing but an empty store ------------------------------------------
 
 
@@ -65,37 +49,6 @@ def test_init_refuses_to_move_a_store_holding_anything(tmp_path, monkeypatch, ca
     assert code == 1, err
     assert path.read_text() == "keep me"
     assert not (root / "elsewhere").exists()
-
-
-# -- a refused edit changes nothing ------------------------------------------------------
-
-
-def test_a_refused_blocks_target_leaves_the_item_unchanged(pq, monkeypatch, capsys):
-    p, q = pq
-    (q / "docs" / "work" / "stray.md").write_text("x")
-    code, out, _ = run(monkeypatch, capsys, p, "work", "edit", "2026-10-01-a",
-                       "--priority", "high", "--blocks", "q.work/2026-10-01-x")
-    assert (code, out) == (3, "")
-    assert "priority" not in item_yaml(p, "2026-10-01-a")
-
-
-@pytest.mark.parametrize("target", ["q.work/2026-10-01-nothing", "2026-10-01-nothing"])
-def test_a_missing_blocks_target_leaves_the_item_unchanged(pq, monkeypatch, capsys,
-                                                           target):
-    p, _ = pq
-    code, _, _ = run(monkeypatch, capsys, p, "work", "edit", "2026-10-01-a",
-                     "--priority", "high", "--blocks", target)
-    assert code == 4
-    assert "priority" not in item_yaml(p, "2026-10-01-a")
-
-
-def test_a_second_refused_target_leaves_the_first_unchanged(pq, monkeypatch, capsys):
-    p, q = pq
-    write_item(p, "2026-10-01-b", {"title": "b", "stage": "spec"})
-    code, _, _ = run(monkeypatch, capsys, p, "work", "edit", "2026-10-01-a",
-                     "--blocks", "2026-10-01-b", "--blocks", "q.work/2026-10-01-nothing")
-    assert code == 4
-    assert "blocked-by" not in item_yaml(p, "2026-10-01-b")
 
 
 # -- files TCW writes are readable by others ---------------------------------------------
@@ -176,51 +129,7 @@ def test_a_failed_comment_write_leaves_no_file(tmp_path, monkeypatch, links):
     assert list(comments.iterdir()) == []
 
 
-# -- delegation messages -------------------------------------------------------------------
-
-
-def test_the_uncommitted_message_names_the_project_once(pq):
-    p, q = pq
-    (q / "docs" / "work" / "stray.md").write_text("x")
-    with pytest.raises(Refused) as error:
-        delegate("q", "T", None, None, here=p)
-    message = str(error.value)
-    assert message.startswith("the work store of 'q' has uncommitted changes")
-    assert message.count("'q'") == 1
-
-
-def test_delegation_names_the_repository_holding_the_store(tmp_path, monkeypatch,
-                                                           capsys):
-    p = make_project(tmp_path, "p")
-    q = make_project(tmp_path, "q")
-    store = tmp_path / "store"
-    store.mkdir()
-    git(store, "init", "-q")
-    (store / "work").mkdir()
-    (store / "work" / ".gitkeep").write_text("")
-    git(store, "-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
-    git(store, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "s")
-    doc = yaml.safe_load((q / ".tcw/tcw-config.yaml").read_text())
-    doc.setdefault("work", {})["path"] = os.path.relpath(store / "work", q)
-    write_config(q, yaml.safe_dump(doc))
-    connect(p, q, "children")
-    connect(q, p, "parent")
-    commit_all(p)
-    commit_all(q)
-    code, _, err = run(monkeypatch, capsys, p, "work", "new", "T", "--project", "q")
-    assert code == 0, err
-    assert f"uncommitted in {store.resolve()}" in err
-
-
 # -- flags -----------------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("flag", ["--assignee", "--effort"])
-def test_an_empty_property_with_project_is_a_usage_error(pq, monkeypatch, capsys, flag):
-    p, q = pq
-    code, _, err = run(monkeypatch, capsys, p, "work", "new", "T", "--project", "q",
-                       flag, "")
-    assert code == 2 and flag in err
 
 
 @pytest.mark.parametrize("stage", ["bogus", "Request"])
@@ -239,14 +148,6 @@ def test_tags_work_without_a_work_folder(tmp_path, monkeypatch, capsys):
     assert run(monkeypatch, capsys, root, "work", "tags", "list")[:2] == (0, "ui\n")
     assert run(monkeypatch, capsys, root, "work", "tags", "add", "api")[0] == 0
     assert run(monkeypatch, capsys, root, "work", "tags", "rm", "api")[0] == 0
-
-
-def test_new_with_its_own_project_is_a_usage_error(pq, monkeypatch, capsys):
-    p, _ = pq
-    code, out, err = run(monkeypatch, capsys, p, "work", "new", "T", "--project", "p")
-    assert (code, out) == (2, "") and "--project" in err
-    assert sorted(x.name for x in (p / "docs" / "work").iterdir()) == [
-        ".gitkeep", "2026-10-01-a"]
 
 
 def test_a_filesystem_error_is_a_message_not_a_traceback(tmp_path, monkeypatch, capsys):

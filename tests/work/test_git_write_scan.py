@@ -238,11 +238,12 @@ def test_status_without_optional_locks_is_reported():
 
 def test_the_status_check_sees_the_real_calls():
     """If it stopped finding `status` calls, the test below would pass by
-    seeing nothing."""
+    seeing nothing. One is left: TCW-114 removed the uncommitted-changes
+    check with delegation (Design 2.4)."""
     statuses = [node for path in SCANNED
                 for node in _git_literals(ast.parse(path.read_text(encoding="utf-8")))
                 if _verb(node.elts[1:]) == "status"]
-    assert len(statuses) >= 2
+    assert len(statuses) >= 1
 
 
 @pytest.mark.parametrize("path", SCANNED, ids=lambda p: str(p.relative_to(PACKAGE)))

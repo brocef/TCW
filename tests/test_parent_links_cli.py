@@ -187,52 +187,6 @@ def test_ac15_a_loop_stops_every_command(tmp_path):
     assert any("loop in parents: aa -> bb -> aa" in line for line in lines), lines
 
 
-# -- AC 21: writing into another project, until TCW-114 ----------------------------------
-
-
-@pytest.fixture
-def family(tmp_path):
-    """`app: [lib, ws]`; `ws` lists `app` and `sib`; `lib: [top]`, and `top`
-    lists `lib`; every project has a work store with nothing uncommitted."""
-    app = link(make_project(tmp_path, "app"), parents=["lib", "ws"])
-    lib = link(make_project(tmp_path, "lib"), parents=["top"])
-    ws = link(make_project(tmp_path, "ws"), children=["app", "sib"])
-    top = link(make_project(tmp_path, "top"), children=["lib"])
-    sib = link(make_project(tmp_path, "sib"), parents=["ws"])
-    roots = {"app": app, "lib": lib, "ws": ws, "top": top, "sib": sib}
-    for root in roots.values():
-        commit_all(root)
-    return roots
-
-
-def work_files(root: Path) -> list[str]:
-    return sorted(p.name for p in (root / "docs" / "work").iterdir())
-
-
-def test_ac21_writing_into_another_project(family):
-    app = family["app"]
-    before = work_files(family["lib"])
-    ran = tcw(app, "work", "new", "x", "--project", "lib")
-    assert ran.code == 3, ran
-    assert "read-only" in ran.err and "'lib' does not list 'app'" in ran.err
-    assert work_files(family["lib"]) == before
-    assert tcw(app, "work", "new", "x", "--project", "ws").code == 0
-    assert tcw(app, "work", "new", "x", "--project", "top").code == 3
-    before = work_files(family["sib"])
-    assert tcw(app, "work", "new", "x", "--project", "sib").code == 3
-    assert work_files(family["sib"]) == before
-    commit_all(family["ws"])
-    assert tcw(family["ws"], "work", "new", "x", "--project", "sib").code == 0
-
-
-def test_ac21_a_parent_not_here_is_refused_with_no_jira_block(family):
-    import shutil
-    shutil.rmtree(family["ws"])
-    ran = tcw(family["app"], "work", "new", "x", "--project", "ws")
-    assert ran.code == 3, ran
-    assert "jira" not in ran.err
-
-
 # -- AC 23: the plain listing -----------------------------------------------------------
 
 
@@ -733,16 +687,7 @@ def test_ac18_and_ac20_the_load_order_is_not_complete(tmp_path):
 def test_ac6_a_child_not_here_is_not_present(tmp_path):
     ws = proj(tmp_path / "ws", "ws", children=["a"])
     row = rows(ws)["a"]
-    assert (row["present"], row["read-only"], row["personal"]) == (False, None, False)
-
-
-def test_ac21_and_ac33_read_only_rows(family):
-    found = rows(family["app"])
-    assert (found["lib"]["read-only"], found["ws"]["read-only"]) == (True, False)
-    assert "read-only" not in found["app"]
-    assert "upstream" not in json.dumps(found)
-    found = rows(family["ws"])
-    assert (found["app"]["read-only"], found["sib"]["read-only"]) == (False, False)
+    assert (row["present"], row["personal"]) == (False, False)
 
 
 def test_ac27_a_single_project_pays_nothing(tmp_path, monkeypatch, capsys):

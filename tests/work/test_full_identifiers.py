@@ -207,13 +207,13 @@ def test_ac7_a_3x_reference_is_not_found_with_the_identifier_to_write(tcw, demo)
     assert f"write demo.work/{TODAY}-add-login" in found.err
 
 
-def test_ac7_list_parent_and_edit_blocks_take_a_full_identifier(tcw, demo):
+def test_ac7_list_parent_and_edit_blocked_by_take_a_full_identifier(tcw, demo):
     epic = _new(tcw, demo, "Epic")
     child = _new(tcw, demo, "Part")
     assert tcw(["work", "edit", child, "--parent", epic], demo).code == 0
     assert tcw(["work", "list", "--parent", epic], demo).out == f"{child}\n"
     other = _new(tcw, demo, "Other")
-    edited = tcw(["work", "edit", other, "--blocks", epic], demo)
+    edited = tcw(["work", "edit", epic, "--blocked-by", other], demo)
     assert edited.code == 0, edited.err
     assert _item_yaml(demo, f"{TODAY}-epic")["blocked-by"] == [other]
 

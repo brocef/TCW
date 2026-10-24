@@ -605,67 +605,6 @@ class FsProjectRegistry(ProjectRegistry):
         """The same warnings as findings, the file each concerns as `where`."""
         return list(self._warning_findings)
 
-    def read_only_reason(self, project_id: str,
-                         from_id: str | None = None) -> str | None:
-        """Design 7.1: None when `project_id` is reached from `from_id`
-        (default: the active project) across links both sides declare, up to
-        a parent whose `children:` lists the child, or down to a listed
-        child; otherwise the refusal, naming the first one-sided link on the
-        first route up in walk order. None for a project the family does not
-        hold, which the caller refuses on its own."""
-        self._load_graph()
-        target = self._by_id.get(project_id)
-        start = self._config_for(from_id)
-        if target is None or start is None:
-            return None
-        seen = {start.project.id}
-        frontier = [start]
-        while frontier:
-            cfg = frontier.pop(0)
-            if cfg.project.id == project_id:
-                return None
-            for neighbor in self._declared_both_ways(cfg):
-                if neighbor.project.id not in seen:
-                    seen.add(neighbor.project.id)
-                    frontier.append(neighbor)
-        route = self._route_up(start, project_id, set())
-        for child, parent in route or []:
-            if child.project.id not in parent.children:
-                return (f"'{project_id}' is read-only from here: '{parent.project.id}' "
-                        f"does not list '{child.project.id}' among its children")
-        return f"'{project_id}' is read-only from here"
-
-    def _declared_both_ways(self, cfg: _Config) -> list[_Config]:
-        """The family's projects one link from `cfg` that both sides declare:
-        each parent listing it as a child, then each listed child (which must
-        name it back, a graph problem otherwise, Design 2.5)."""
-        found = []
-        for link in cfg.links or []:
-            parent = self._by_id.get(link.id)
-            if parent is not None and cfg.project.id in parent.children:
-                found.append(parent)
-        for child_id in cfg.children:
-            child = self._by_id.get(child_id)
-            if child is not None:
-                found.append(child)
-        return found
-
-    def _route_up(self, cfg: _Config, project_id: str,
-                  seen: set[str]) -> list[tuple[_Config, _Config]] | None:
-        """The first route from `cfg` up its parent links to `project_id`,
-        depth first in listing order, as (child, parent) pairs."""
-        for link in cfg.links or []:
-            parent = self._by_id.get(link.id)
-            if parent is None or link.id in seen:
-                continue
-            seen.add(link.id)
-            if link.id == project_id:
-                return [(cfg, parent)]
-            rest = self._route_up(parent, project_id, seen)
-            if rest is not None:
-                return [(cfg, parent), *rest]
-        return None
-
     def overrides(self) -> list[ProjectOverride]:
         """The `TCW_PROJECT_*` locators that took effect in this graph.
 

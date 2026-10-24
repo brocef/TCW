@@ -158,8 +158,9 @@ from the readers' side.
   ([`guide/multi-repo.md`](guide/multi-repo.md), "Reading a project that does
   not name you").
 - From the reader, the library is read-only. Creating or changing anything in
-  it (including `tcw work new --project` and `tcw work edit --blocks`) is
-  refused with exit code 3.
+  it (in 3.x, also through the `--project` option of `tcw work new` and the
+  `--blocks` option of `tcw work edit`, both removed in 4.0) is refused
+  with exit code 3.
 - The library's own `projects:` connections are not followed from the reader,
   and a problem in them does not stop the reader.
 - Renaming or removing a taxonomy term or capability in the library is a
@@ -209,11 +210,11 @@ project (UC-5), and their work stores sit in a different repository (UC-4).
   reach it. A bare reference to a name defined in two inherited projects is
   refused as ambiguous, never resolved to one of them (`get` in
   `tcw/store/fs.py`). A local term with the same name wins without a warning.
-- An epic in the root project can have parts in the children. Filing a part
-  into a child is a cross-project filing (`tcw work new --project`). It
-  refuses every property flag except `--priority`, so the parent is set
-  afterwards with `tcw work edit` from inside the child (`tcw/work/cli.py`,
-  the `--project` checks; the plan prompt's step 6). `tcw work edit` accepts
+- An epic in the root project can have parts in the children. In 3.x, filing a
+  part into a child went through the `--project` option of `tcw work new`,
+  which is removed in 4.0; a part is made in the child, with
+  `tcw -C <folder> work new "<title>" --parent <full id>` (the plan prompt's
+  step 6). `tcw work edit` accepts
   a parent in another project; its check for parent cycles covers only the
   item's own project (`tcw/work/model.py`).
 - A hook runs once per move, with the root of the project whose item moved

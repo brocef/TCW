@@ -148,8 +148,9 @@ Every command exits with one of these codes. The numbers live in
 | 6    | The item moved, but something after the move failed.                         | A `post` hook failed; the trace comment that records why the item moved could not be written. The move stands.                                                                                                                                                                         |
 | 7    | Something this project inherits is not available here.                       | A project it inherits from is not on this machine, or that project's parent links could not be read, and the command needs what it passes down.                                                                                                                                        |
 
-Creating an item in another project (`tcw work new --project <id>`) shows how
-the codes fit together. TCW creates the item only in a project that is on this
+Creating an item in another project (in 3.x, through the `--project` option
+of `tcw work new`, removed in 4.0, where an item for another project is made
+there with `tcw -C <folder> work new`) shows how the codes fit together. TCW creates the item only in a project that is on this
 machine and that this project may write into (a Jira-mode project gets a ticket
 in its Jira inbox), prints its name and exits 0. Every case where the target
 cannot be written to (it is read-only from here, nothing here declares it, or it

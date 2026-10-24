@@ -134,7 +134,7 @@ def test_the_2x_key_is_an_error_naming_the_guide(graph, monkeypatch, capsys):
     ("projects", "list"),
     ("provision",),
     ("work", "list"),
-    ("work", "new", "x", "--project", "c1"),
+    ("work", "new", "x"),
     ("taxonomy", "list"),
 ])
 def test_every_command_refuses_the_2x_key(graph, monkeypatch, capsys, argv):

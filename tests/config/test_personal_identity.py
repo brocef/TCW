@@ -17,8 +17,7 @@ from tcw.work.model import Changes
 from tcw.work.open import open_backend
 from tests.config.conftest import tcw
 from tests.work.memory_backend import MemoryBackend
-from tests.work.projects import commit_all, connect, make_project
-from tests.projectfiles import write_local_config
+from tests.work.projects import make_project
 from tests.statefiles import ITEM_STATE
 
 PACKAGE = Path(__file__).resolve().parents[2] / "tcw"
@@ -110,8 +109,8 @@ def test_edit_of_a_missing_item_says_it_is_missing_before_who(personal, no_ident
 
 
 def test_a_project_usage_error_does_not_wait_for_piped_input(tmp_path):
-    # Review finding C8: `--project` is checked before any wait for a pipe
-    # that is open but silent.
+    # Review finding C8: `--project` is refused before any wait for a pipe
+    # that is open but silent (it is removed in TCW 4, TCW-114 Design 2.1).
     import os
     import time
     from tests.config.conftest import SOURCE
@@ -128,7 +127,7 @@ def test_a_project_usage_error_does_not_wait_for_piped_input(tmp_path):
         out, err = child.stdout.read(), child.stderr.read()
         child.stdin.close()
     assert (code, out) == (2, ""), err
-    assert "--assign-me cannot be used with --project" in err
+    assert err.startswith("tcw work new: work new --project is removed in TCW 4:"), err
     assert elapsed < 3, elapsed
 
 
@@ -194,25 +193,6 @@ def test_a_backend_with_no_identity(recording):
     code, out, err = recording("list", "--mine")
     assert (code, out) == (1, "")
     assert err.startswith("tcw work list: no identity is configured: ")
-
-
-# -- AC 9: identity stays in the acting project ---------------------------------------
-
-
-def test_assign_me_with_another_project_is_a_usage_error(tmp_path, monkeypatch):
-    parent = make_project(tmp_path, "parent")
-    child = make_project(tmp_path, "child")
-    connect(parent, child, "children")
-    connect(child, parent, "parent")
-    commit_all(parent)
-    commit_all(child)
-    monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
-    write_local_config(parent, "user:\n  name: Brian\n")
-    before = sorted((child / "docs" / "work").rglob("*"))
-    result = tcw(parent, "work", "new", "--project", "child", "--assign-me", "x")
-    assert (result.code, result.out) == (2, ""), result
-    assert "child" in result.err
-    assert sorted((child / "docs" / "work").rglob("*")) == before
 
 
 # -- AC 14: no fallback left -------------------------------------------------------------

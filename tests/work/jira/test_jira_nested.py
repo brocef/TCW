@@ -288,22 +288,6 @@ def test_a_256_character_nested_folder_is_reported_offline(jira_project, validat
             f"characters; a full identifier is at most 255") in checked.out, checked.out
 
 
-def test_a_delegation_into_a_project_with_little_room_fits_its_item(tmp_path, fake, tcw):
-    from tests.work.jira.conftest import jira_config
-    from tests.work.projects import commit_all, connect, make_project
-    long = "t" * 237
-    target = make_project(tmp_path, long, config=jira_config(long), name="target")
-    here = make_project(tmp_path, "p", config={})
-    connect(here, target, "children")
-    commit_all(target)
-    commit_all(here)
-    made = tcw(["new", "Add export", "--project", long], here)
-    assert made.code == 0, made.err
-    item = fake.tickets["TCW-1"].custom[ITEM]
-    # Whole words, as title_words cuts them: `add-ex` would fit, `add` is kept.
-    assert item == f"{long}.work/TCW-1-add" and len(item) <= 255
-
-
 # -- AC 16: renaming in Jira mode ----------------------------------------------------
 
 def test_a_nested_rename_sets_the_item_field_to_the_new_id_path(jira_project, tcw):

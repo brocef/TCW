@@ -13,7 +13,7 @@ import pytest
 import yaml
 
 from tcw.cli import main
-from tests.work.projects import commit_all, connect, git, make_project, write_item
+from tests.work.projects import commit_all, connect, make_project, write_item
 from tests.projectfiles import write_config
 from tests.statefiles import ITEM_STATE
 from tests.statefiles import read_state
@@ -290,7 +290,7 @@ def test_rename(tcw, tmp_path):
     assert (root / "docs/work/2026-09-01-d").is_dir()
 
 
-# -- AC 9: delegation through the commands ----------------------------------------------------
+# -- another project's items through the commands --------------------------------------------
 
 @pytest.fixture
 def pq(tmp_path):
@@ -301,58 +301,6 @@ def pq(tmp_path):
     commit_all(root)
     commit_all(q)
     return root, q
-
-
-def test_new_into_another_project(tcw, pq):
-    root, q = pq
-    head = git(q, "rev-parse", "HEAD")
-    r = tcw(["new", "T", "--priority", "high", "--project", "q"], root)
-    assert (r.code, r.out) == (0, f"q.work/{TODAY}-t\n")
-    assert item_yaml(q, f"{TODAY}-t") == {"title": "T", "stage": "inbox",
-                                          "priority": "high"}
-    assert "uncommitted" in r.err and ITEM_STATE in r.err
-    assert git(q, "rev-parse", "HEAD") == head
-
-
-def test_new_with_project_takes_only_priority(tcw, pq):
-    root, q = pq
-    r = tcw(["new", "T", "--project", "q", "--tag", "ui"], root)
-    assert r.code == 2 and "--tag" in r.err
-    assert sorted(os.listdir(q / "docs/work")) == [".gitkeep"]
-
-
-def test_new_with_project_refuses_stage(tcw, pq):
-    """`--stage` was dropped without a word: the delegated project never saw it.
-    The reason given holds whatever that project's backend: a Jira-mode
-    project's ticket waits in Jira for `tickets adopt`, not in an inbox."""
-    root, q = pq
-    r = tcw(["new", "T", "--project", "q", "--stage", "inbox"], root)
-    assert r.code == 2, r
-    assert r.err.strip().endswith(
-        "--stage cannot be used with --project; only --priority can. An item "
-        "created in another project starts where that project's intake puts it"), r.err
-    assert sorted(os.listdir(q / "docs/work")) == [".gitkeep"]
-
-
-def test_new_into_an_undeclared_project(tcw, pq):
-    root, _ = pq
-    assert tcw(["new", "T", "--project", "nobody"], root).code == 3
-
-
-def test_edit_blocks_into_another_project(tcw, pq):
-    root, q = pq
-    write_item(q, "2026-10-01-x", {"title": "x", "stage": "spec"})
-    commit_all(q)
-    write_item(root, "2026-10-01-a", {"title": "a", "stage": "spec"})
-    r = tcw(["edit", "2026-10-01-a", "--blocks", "q.work/2026-10-01-x"], root)
-    assert (r.code, r.out) == (0, ""), r.err
-    assert item_yaml(q, "2026-10-01-x")["blocked-by"] == ["p.work/2026-10-01-a"]
-    assert sorted(os.listdir(q / "docs/work")) == [".gitkeep", "2026-10-01-x"]
-    # Review fix N3: the file written in the other repository says it is left
-    # uncommitted there, as delegation's lines do (TCW-73 Design 1.2).
-    other = [line for line in r.err.splitlines() if "2026-10-01-x/tcw-work-item.yaml" in line]
-    assert other and all(line.startswith("wrote ") and "(uncommitted in " in line
-                         for line in other), r.err
 
 
 def test_any_other_write_into_another_project_is_refused(tcw, pq):
@@ -370,13 +318,6 @@ def test_show_of_an_absent_or_undeclared_project(tcw, pq):
     assert tcw(["show", "q.work/2026-10-01-x"], root).code == 5
     unknown = tcw(["show", "nobody.work/2026-10-01-x"], root)
     assert unknown.code == 1 and "check the spelling" in unknown.err
-
-
-def test_blocks_into_a_project_not_here_is_refused(tcw, pq):
-    root, q = pq
-    shutil.rmtree(q)
-    write_item(root, "2026-10-01-a", {"title": "a", "stage": "spec"})
-    assert tcw(["edit", "2026-10-01-a", "--blocks", "q.work/2026-10-01-x"], root).code == 3
 
 
 # -- AC 11: streams and exits ------------------------------------------------------------------
