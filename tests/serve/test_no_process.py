@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.processes import allowed_read_only_git, git_command
 from tests.serve.conftest import Served, fs_project
 from tests.serve.memory import RecordingBackend
 from tests.serve.test_process import URL_LINE, _launch, _stop
@@ -76,20 +77,14 @@ def prepared(family, tcw, tmp_path):
 
 
 def _allowed(argv) -> bool:
-    """`git rev-parse`, or `git --no-optional-locks status`, each allowed a
-    `-C <folder>` before the command: the read-only checks the operations
-    the viewer calls make. Anything else, `git add` and `git commit`
-    included, is not."""
-    words = [str(w) for w in argv]
-    if not words or Path(words[0]).name != "git":
-        return False
-    rest, options = words[1:], set()
-    while rest and rest[0].startswith("-"):
-        options.add(rest[0])
-        rest = rest[2:] if rest[0] == "-C" else rest[1:]
-    command = rest[0] if rest else None
-    return command == "rev-parse" or \
-        (command == "status" and "--no-optional-locks" in options)
+    """`git rev-parse` (the shared rule, `tests/processes.py`), or
+    `git --no-optional-locks status`, each allowed a `-C <folder>` before
+    the command: the read-only checks the operations the viewer calls make.
+    Anything else, `git add` and `git commit` included, is not."""
+    if allowed_read_only_git(argv):
+        return True
+    command, options = git_command(argv)
+    return command == "status" and "--no-optional-locks" in options
 
 
 def test_the_git_rule():
@@ -99,6 +94,16 @@ def test_the_git_rule():
     for refused in (["git", "add", "-A"], ["git", "-C", "/x", "commit", "-m", "x"],
                     ["node", "x.js"], ["open", "x"], ["xdg-open", "x"]):
         assert not _allowed(refused), refused
+
+
+def test_the_shared_read_only_git_rule():
+    """The rule a move and `tcw -C` are held to (TCW-114 Design 4.6): only
+    `git rev-parse`, with any options before it; never `status`."""
+    assert allowed_read_only_git(["git", "-C", "/x", "rev-parse", "--show-toplevel"])
+    assert allowed_read_only_git(["git", "rev-parse", "--git-common-dir"])
+    for refused in (["git", "status"], ["git", "--no-optional-locks", "status"],
+                    ["git", "-C", "/x", "add", "."], ["git", "commit"], ["ls"]):
+        assert not allowed_read_only_git(refused), refused
 
 
 def test_only_read_only_git_runs_while_answering(prepared, monkeypatch):
