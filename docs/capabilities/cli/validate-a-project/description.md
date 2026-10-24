@@ -73,7 +73,7 @@ refuses like every other command.
 
 **Stores.** Validation tells a store's three failure modes apart: a
 `<component>.path` that is simply wrong, a store declared in another repository
-but not yet provisioned here (naming the declared remote and `tcw provision`),
+but not yet provisioned here (naming the declared remote and `tcw project provision`),
 and a malformed `repository` block (naming the configuration key). The last is
 reported even when no local store can be opened to report it through. A store
 that cannot be opened is one finding beside the others rather than the end of

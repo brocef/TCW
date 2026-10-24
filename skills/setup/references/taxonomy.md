@@ -10,7 +10,7 @@ refine loop below. Bootstrap both taxonomy entry kinds:
 
 ## 1. Ensure the tree exists
 
-`tcw init taxonomy` in the project's folder if `tcw taxonomy path` fails (it does nothing if the tree exists).
+`tcw project new taxonomy` in the project's folder if `tcw taxonomy path` fails (it does nothing if the tree exists).
 
 ## 2. Inheritance
 

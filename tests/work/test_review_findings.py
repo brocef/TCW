@@ -44,7 +44,7 @@ def test_init_refuses_to_move_a_store_holding_anything(tmp_path, monkeypatch, ca
     path = root / "docs" / "work" / leftover
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("keep me")
-    code, _, err = run(monkeypatch, capsys, root, "init", "work",
+    code, _, err = run(monkeypatch, capsys, root, "project", "new", "work",
                        "--work-path", "elsewhere")
     assert code == 1, err
     assert path.read_text() == "keep me"
@@ -206,7 +206,7 @@ def test_init_refuses_to_move_a_store_holding_a_hidden_file_with_content(
     root = make_project(tmp_path, "p")
     notes = root / "docs" / "work" / ".notes"
     notes.write_text("my notes")
-    code, _, _ = run(monkeypatch, capsys, root, "init", "work", "--work-path", "elsewhere")
+    code, _, _ = run(monkeypatch, capsys, root, "project", "new", "work", "--work-path", "elsewhere")
     assert code == 1 and notes.read_text() == "my notes"
 
 
@@ -214,6 +214,6 @@ def test_init_moves_a_store_holding_only_empty_or_finder_files(tmp_path, monkeyp
                                                               capsys):
     root = make_project(tmp_path, "p")
     (root / "docs" / "work" / ".DS_Store").write_bytes(b"\0\0\0\1Bud1")
-    code, _, err = run(monkeypatch, capsys, root, "init", "work", "--work-path", "elsewhere")
+    code, _, err = run(monkeypatch, capsys, root, "project", "new", "work", "--work-path", "elsewhere")
     assert code == 0, err
     assert not (root / "docs" / "work").exists()

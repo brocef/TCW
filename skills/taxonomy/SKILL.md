@@ -32,10 +32,10 @@ capabilities axis is **REQUIRED SUB-SKILL: Use the `capabilities` skill**.
 
 **The taxonomy tree is not necessarily `docs/taxonomy`.** `taxonomy.path` in
 `tcw-config.yaml` can put it anywhere, and a `taxonomy.repository` block can put
-it in another repository entirely, fetched here by `tcw provision`. So never
+it in another repository entirely, fetched here by `tcw project provision`. So never
 compose a store path from the project root — ask `tcw taxonomy path`. A command
 that needs a declared but missing tree fails, names where it lives, and tells
-you to run `tcw provision`; do not work around that by running `tcw init`,
+you to run `tcw project provision`; do not work around that by running `tcw project new`,
 which would create a second, empty tree beside the real one. A malformed
 `taxonomy.repository` fails the same way and names the offending config line.
 

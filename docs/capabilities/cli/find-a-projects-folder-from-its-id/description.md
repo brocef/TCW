@@ -24,7 +24,7 @@ it keep working, and one that does says where its manifest entry places it, or
 that no manifest lists it and which file to add it to. One command finds each
 ID in one folder only: two lookups finding the ID in two folders are reported
 as a duplicate naming both. Each folder is read once per command, however many
-projects ask. `tcw projects list --json` says, for each project, how it was
+projects ask. `tcw project list --json` says, for each project, how it was
 found. Inside a linked git worktree the search outside the repository is made
 from the main checkout (see [Run TCW from inside a git
 worktree](tcw://C/cli/run-from-a-git-worktree)).

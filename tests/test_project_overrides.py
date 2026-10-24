@@ -212,7 +212,7 @@ def test_the_override_is_honoured_by_every_command(provisionable, monkeypatch, c
     assert main(["work", "list", "--include-descendants"]) == 0
     assert "core-project" in capsys.readouterr().out
 
-    assert main(["projects", "list"]) == 0
+    assert main(["project", "list"]) == 0
     assert "core-project" in capsys.readouterr().out
 
     assert main(["taxonomy", "list"]) == 0
@@ -254,7 +254,7 @@ def test_with_no_variable_set_the_nested_layout_is_untouched(tmp_path, monkeypat
 
 # --- a broken override stops the one command that touches the network --------
 #
-# The registry refuses a present-and-wrong override everywhere. `tcw provision`
+# The registry refuses a present-and-wrong override everywhere. `tcw project provision`
 # reads declarations straight from config, so without a gate of its own it
 # fetched a second copy while `tcw validate` was refusing — the refusal was real
 # everywhere except the command that acts on it.
@@ -267,7 +267,7 @@ def _assert_refused_before_fetching(capsys, cache: Path, variable: str) -> str:
     claims, and a sibling test that checked only the first would look identical
     in review.
 
-    Since TCW-107 `tcw provision` fetches no connected project, so for
+    Since TCW-107 `tcw project provision` fetches no connected project, so for
     `core-project` the "fetched nothing" half holds whatever the variable says.
     It is kept as a guard against a later change that fetches before refusing.
     """
@@ -284,7 +284,7 @@ def test_provision_refuses_an_override_that_is_not_a_node(
     not_a_node = tmp_path / "notes"
     not_a_node.mkdir()
     monkeypatch.setenv("TCW_PROJECT_CORE_PROJECT", str(not_a_node))
-    assert main(["provision"]) == 1
+    assert main(["project", "provision"]) == 1
     err = _assert_refused_before_fetching(capsys, cache, "TCW_PROJECT_CORE_PROJECT")
     assert "tcw-config.yaml" in err
 
@@ -299,7 +299,7 @@ def test_provision_refuses_an_override_naming_the_wrong_node(
     _orchestrator, _local_core, cache = provisionable
     _node(tmp_path / "wrong", "id: other-project\n")
     monkeypatch.setenv("TCW_PROJECT_CORE_PROJECT", str(tmp_path / "wrong"))
-    assert main(["provision"]) == 1
+    assert main(["project", "provision"]) == 1
     err = _assert_refused_before_fetching(capsys, cache, "TCW_PROJECT_CORE_PROJECT")
     assert "other-project" in err
 

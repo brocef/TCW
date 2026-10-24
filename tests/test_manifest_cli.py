@@ -55,7 +55,7 @@ def proj(root: Path, project_id: str, **relations) -> Path:
 
 
 def listed(cwd: Path, env: dict | None = None) -> dict:
-    ran = tcw(cwd, "projects", "list", "--json", env=env)
+    ran = tcw(cwd, "project", "list", "--json", env=env)
     assert ran.code == 0, ran
     return {row["id"]: row for row in json.loads(ran.out)["projects"]}
 
@@ -129,7 +129,7 @@ def test_ac2_a_manifest_format_problem(tmp_path, text, words):
         (app / ".tcw" / "tcw-manifest.yaml").write_text(text)   # no version line
     else:
         write_manifest(app, text)
-    assert tcw(app, "projects", "list").code == 1
+    assert tcw(app, "project", "list").code == 1
     ran, lines = validated(app)
     assert ran.code == 1
     errors = [line for line in lines if line.startswith("error: .tcw/tcw-manifest.yaml:")]
@@ -150,7 +150,7 @@ def test_ac3_the_personal_manifest(tmp_path):
     write_manifest(app, {"lib": "~/copies/lib"}, local=True)
     assert listed(app, env)["lib"]["path"] == str(copy)
     assert listed(app, {**env, "TCW_NO_PERSONAL_CONFIG": "1"})["lib"]["path"] == str(lib)
-    ran = tcw(app, "projects", "list", env={**env, "TCW_NO_PERSONAL_CONFIG": "true"})
+    ran = tcw(app, "project", "list", env={**env, "TCW_NO_PERSONAL_CONFIG": "true"})
     assert ran.code == 1 and "TCW_NO_PERSONAL_CONFIG must be 1" in ran.err
 
 
@@ -158,7 +158,7 @@ def test_ac4_a_manifest_entry_connects_nothing(tmp_path):
     app, _ = pair(tmp_path)
     proj(tmp_path / "other", "other")
     write_manifest(app, {"lib": "../lib", "other": "../other"})
-    assert tcw(app, "projects", "list").out.split() == ["app", "lib"]
+    assert tcw(app, "project", "list").out.split() == ["app", "lib"]
 
 
 def test_ac5_an_ancestors_manifest(tmp_path):
@@ -401,7 +401,7 @@ def test_ac10_never_downwards(tmp_path):
 def test_ac11_two_matches(tmp_path):
     app, lib = pair(tmp_path)
     copy = proj(tmp_path / "lib-copy", "lib")
-    assert tcw(app, "projects", "list").code == 1
+    assert tcw(app, "project", "list").code == 1
     ran, lines = validated(app)
     errors = " ".join(line for line in lines if line.startswith("error:"))
     assert ran.code == 1
@@ -490,19 +490,19 @@ def test_ac20_init_and_the_ignore_rule(tmp_path):
     root = tmp_path / "p"
     root.mkdir()
     git(root, "init", "-q")
-    assert tcw(root, "init", "--id", "demo").code == 0
+    assert tcw(root, "project", "new", "--id", "demo").code == 0
     ignore = root / ".tcw" / ".gitignore"
     rules = ["/tcw-config.local.yaml", "/tcw-manifest.local.yaml"]
     assert ignore.read_text().splitlines() == rules
     assert not list((root / ".tcw").glob("tcw-manifest*"))
-    assert tcw(root, "init").code == 0
+    assert tcw(root, "project", "new").code == 0
     assert ignore.read_text().splitlines() == rules
     ignore.write_text("/tcw-config.local.yaml\n")
-    assert tcw(root, "init").code == 0
+    assert tcw(root, "project", "new").code == 0
     assert ignore.read_text().splitlines() == rules
     outside = tmp_path / "q"
     outside.mkdir()
-    ran = tcw(outside, "init", "--id", "demo")
+    ran = tcw(outside, "project", "new", "--id", "demo")
     assert ran.code == 0 and not (outside / ".tcw" / ".gitignore").exists()
     assert ".tcw/tcw-manifest.local.yaml" in ran.err
     write_manifest(root, {"lib": "../lib"}, local=True)
@@ -515,7 +515,7 @@ def test_ac20_init_and_the_ignore_rule(tmp_path):
 def test_ac21_a_single_project_pays_nothing(tmp_path):
     def run(root: Path) -> list[str]:
         outputs = []
-        for argv in (("work", "list"), ("projects", "list"), ("validate",)):
+        for argv in (("work", "list"), ("project", "list"), ("validate",)):
             ran = tcw(root, *argv)
             outputs.append(f"{ran.code}\n{ran.out}\n{ran.err}".replace(str(root), "<root>"))
         return outputs
@@ -524,7 +524,7 @@ def test_ac21_a_single_project_pays_nothing(tmp_path):
     alone = tmp_path / "alone" / "app"
     for root in (crowded, alone):
         root.mkdir(parents=True)
-        assert tcw(root, "init", "--id", "app").code == 0
+        assert tcw(root, "project", "new", "--id", "app").code == 0
     write_config_file(tmp_path / "crowd" / "broken" / ".tcw" / "tcw-config.yaml", "id: [\n")
     proj(tmp_path / "crowd" / "twin", "app")
     assert run(crowded.resolve()) == run(alone.resolve())
@@ -539,14 +539,14 @@ def test_ac25_one_answer_whichever_project_runs(tmp_path):
     assert (row["path"], row["found"]["file"]) == (str(k), manifest_path(app))
     ran, lines = validated(a)
     assert ran.code == 0 and not [line for line in lines if "unresolved" in line], ran
-    # `tcw projects list` in `app` shows its children only, so the registry
+    # `tcw project list` in `app` shows its children only, so the registry
     # the command would use is asked for the grandchild directly.
     from tcw.store.project import FsProjectRegistry
     assert Path(FsProjectRegistry.open(app).get("k").locator) == k
 
 
 def test_ac22_provision_fetches_no_project(tmp_path):
-    """`tcw provision` fetches the declared component stores only; a project
+    """`tcw project provision` fetches the declared component stores only; a project
     not on this machine names `tcw project provision` (TCW-115) instead."""
     app, _ = pair(tmp_path)
     shutil.rmtree(tmp_path / "lib")
@@ -560,7 +560,7 @@ def test_ac22_provision_fetches_no_project(tmp_path):
                                f"exec {shutil.which('git')} \"$@\"\n")
     (tools / "git").chmod(0o755)
     env = {"PATH": f"{tools}{os.pathsep}{os.environ['PATH']}"}
-    ran = tcw(app, "provision", "--dry-run", env=env)
+    ran = tcw(app, "project", "provision", "--dry-run", env=env)
     assert ran.code == 0, ran
     assert ran.err.strip() == ("Nothing to provision: no component declares a home "
                                "repository in .tcw/tcw-config.yaml."), ran
@@ -594,7 +594,7 @@ def test_ac15_a_location_in_projects_is_refused(tmp_path, raw, shown):
         "error: .tcw/tcw-config.yaml: 'projects' is not a TCW 4.0 key: name parents "
         "under 'parents:' and children under 'children:', by ID, and say where "
         "projects are in .tcw/tcw-manifest.yaml"], ran
-    listed = tcw(app, "projects", "list")
+    listed = tcw(app, "project", "list")
     assert listed.code == 1 and ".tcw/tcw-manifest.yaml" in listed.err, listed
     for output in (ran.out + ran.err, listed.err):
         assert "does not point back" not in output

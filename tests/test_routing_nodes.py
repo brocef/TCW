@@ -70,7 +70,7 @@ def stacked(tmp_path) -> Path:
 def test_projects_list_prints_the_direct_topology(routed, monkeypatch, capsys):
     import json
     monkeypatch.chdir(routed)
-    assert main(["projects", "list", "--json"]) == 0
+    assert main(["project", "list", "--json"]) == 0
     rows = json.loads(capsys.readouterr().out)["projects"]
     assert [p["id"] for p in rows if p["relation"] == "child"] == ["mid"]
 

@@ -7,4 +7,4 @@ through parents and down through listed children, never to a sibling; checks
 that every listed child names its parent back, that there is no loop of
 parents, and that no ID is found in two folders; computes the load order; and
 lists the connected projects, with how each was found, with
-`tcw projects list`.
+`tcw project list`.

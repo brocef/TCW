@@ -7,7 +7,7 @@ procedures (`tests/test_shipped_text.py`), and TCW-75's scan of the README and
 guides. Each entry is a regular expression, matched case-insensitively,
 Markdown code included, and the reason it goes.
 
-`builtin: true` is deliberately not here: `tcw config show` prints it for a
+`builtin: true` is deliberately not here: `tcw project config` prints it for a
 built-in entry, so TCW-75's documents show it in that output (TCW-75 spec,
 criterion 2). TCW-74's own scan adds it, with its other extra patterns.
 """

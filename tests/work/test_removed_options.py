@@ -179,7 +179,7 @@ def test_projects_list_has_no_read_only_key(tcw, app_core):
     from tests.projectfiles import connect_projects
     app, _ = app_core
     connect_projects(app, "parent", "core")
-    result = tcw(["projects", "list", "--json"], app)
+    result = tcw(["project", "list", "--json"], app)
     assert result.code == 0, result.err
     rows = json.loads(result.out)["projects"]
     assert len(rows) == 2

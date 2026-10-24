@@ -92,7 +92,7 @@ every arrival it names.
   lists them.
 - **A part for another project is made in that project**, with
   `tcw -C <folder> work new "<title>" --parent <full id>`, where `<folder>`
-  is that project's folder or `tcw://<id>.path/`; `tcw projects list` names
+  is that project's folder or `tcw://<id>.path/`; `tcw project list` names
   the projects this one declares under `projects:` (the configure skill's
   reference on projects explains the key). The plan prompt's step 6 gives the
   order for an epic's parts.

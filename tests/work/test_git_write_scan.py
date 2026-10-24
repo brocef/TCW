@@ -13,7 +13,7 @@ HTTP calls.
 Allowances name the method the literal sits in, as `Class.method`, never a
 file or a whole class:
 
-- `FsStoreProvisioner._obtain`, for `tcw provision`: `clone`, and `checkout`
+- `FsStoreProvisioner._obtain`, for `tcw project provision`: `clone`, and `checkout`
   of the declared ref in the fresh clone. Since TCW-73 it never fetches into
   or merges an existing checkout (its Design 8.4: `--refresh` is gone).
 

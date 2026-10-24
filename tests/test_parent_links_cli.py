@@ -49,7 +49,7 @@ def findings(cwd: Path, env: dict | None = None):
 
 
 def rows(cwd: Path) -> dict:
-    ran = tcw(cwd, "projects", "list", "--json")
+    ran = tcw(cwd, "project", "list", "--json")
     assert ran.code == 0, ran
     return {row["id"]: row for row in json.loads(ran.out)["projects"]}
 
@@ -78,7 +78,7 @@ def test_ac2_parent_problems_in_the_active_project(tmp_path, document, words):
          and "core" in document["children"] else None)
     path = config_file(app)
     write_config_file(path, yaml.safe_dump({"id": "app", **document}, sort_keys=False))
-    listed = tcw(app, "projects", "list")
+    listed = tcw(app, "project", "list")
     assert listed.code == 1, listed
     ran, lines = findings(app)
     assert ran.code == 1, ran
@@ -114,7 +114,7 @@ def test_ac4_a_one_sided_parent(tmp_path):
     ran, lines = findings(app)
     assert ran.code == 0 and not [line for line in lines if "core" in line], lines
     assert rows(app)["core"]["present"] is True
-    assert tcw(core, "projects", "list").out == "core\n"
+    assert tcw(core, "project", "list").out == "core\n"
 
 
 # -- AC 6: a listed child must name its parent ------------------------------------------
@@ -127,7 +127,7 @@ def test_ac6_a_listed_child_must_name_its_parent(tmp_path):
     assert ran.code == 1
     assert any("'a' is listed as a child of 'ws' but does not name 'ws' among its "
                "parents" in line for line in lines), lines
-    assert tcw(ws, "projects", "list").code == 1
+    assert tcw(ws, "project", "list").code == 1
     import shutil
     shutil.rmtree(a)
     ran, lines = findings(ws)
@@ -148,7 +148,7 @@ def test_ac9_a_siblings_item_is_read_by_its_full_identifier(tmp_path):
     write_item(b, "2026-10-01-x", {"title": "Theirs", "stage": "inbox"})
     for root in (ws, a, b):
         commit_all(root)
-    assert tcw(a, "projects", "list").out.split() == ["a", "ws"]
+    assert tcw(a, "project", "list").out.split() == ["a", "ws"]
     shown = tcw(a, "work", "show", "b.work/2026-10-01-x")
     assert shown.code == 0 and "Theirs" in shown.out, shown
     import shutil
@@ -180,7 +180,7 @@ def test_ac13_the_fallback_warning_is_not_printed_by_other_commands(tmp_path):
 def test_ac15_a_loop_stops_every_command(tmp_path):
     aa = link(make_project(tmp_path, "aa"), parents=["bb"])
     proj(tmp_path / "bb", "bb", parents=["aa"])
-    assert tcw(aa, "projects", "list").code == 1
+    assert tcw(aa, "project", "list").code == 1
     assert tcw(aa, "work", "list").code == 1
     ran, lines = findings(aa)
     assert ran.code == 1
@@ -196,7 +196,7 @@ def test_ac23_the_plain_listing(tmp_path):
     proj(tmp_path / "ff", "ff")
     proj(tmp_path / "xx", "xx", parents=["gg"])
     proj(tmp_path / "yy", "yy", parents=["gg"])
-    assert tcw(gg, "projects", "list").out.split() == ["gg", "cc", "ff", "xx", "yy"]
+    assert tcw(gg, "project", "list").out.split() == ["gg", "cc", "ff", "xx", "yy"]
 
 
 # -- AC 31: a problem in a parent's links ----------------------------------------------
@@ -205,14 +205,14 @@ def test_ac23_the_plain_listing(tmp_path):
 def test_ac31_a_problem_in_a_parents_links_does_not_stop_the_reader(tmp_path):
     app = link(make_project(tmp_path, "app"), parents=["lib"])
     lib = proj(tmp_path / "lib", "lib", parents="core")
-    assert tcw(app, "projects", "list").code == 0
+    assert tcw(app, "project", "list").code == 0
     assert tcw(app, "work", "list").code == 0
     ran, lines = findings(app)
     assert ran.code == 0, ran
     unresolved = [line for line in lines if line.startswith("unresolved:")]
     assert len(unresolved) == 1 and "'lib'" in unresolved[0], lines
     assert "could not check what 'lib' passes down to 'app'" in unresolved[0]
-    assert tcw(lib, "projects", "list").code == 1
+    assert tcw(lib, "project", "list").code == 1
 
 
 def test_ac31_a_loop_above_a_parent_stops_the_reader(tmp_path):
@@ -229,7 +229,7 @@ def test_ac31_named_both_in_a_parent_is_not_the_readers_problem(tmp_path):
     ran, lines = findings(app)
     assert ran.code == 0, ran
     assert not [line for line in lines if "'top'" in line or "'lib'" in line], lines
-    ran = tcw(app, "projects", "list", "--json")
+    ran = tcw(app, "project", "list", "--json")
     assert ran.code == 0, ran
 
 
@@ -273,7 +273,7 @@ def test_ac8_the_3x_key_is_refused(tmp_path, key):
     proj(tmp_path / "ws", "ws", children=["a"])
     a = tmp_path / "a"
     write_config(a, yaml.safe_dump({"id": "a", key: {"parent": {"ws": None}}}))
-    listed = tcw(a, "projects", "list")
+    listed = tcw(a, "project", "list")
     assert listed.code == 1, listed
     ran, lines = findings(a)
     assert ran.code == 1, ran
@@ -310,7 +310,7 @@ def test_a_parent_passing_some_axes_is_read_by_every_command(tmp_path):
                         {"id": "core", "inherit": ["taxonomy"]}])
     proj(tmp_path / "ws", "ws")
     proj(tmp_path / "core", "core")
-    for argv in (("projects", "list"), ("work", "list"), ("validate",)):
+    for argv in (("project", "list"), ("work", "list"), ("validate",)):
         ran = tcw(app, *argv)
         assert ran.code == 0, (argv, ran)
 
@@ -335,8 +335,8 @@ def five(tmp_path):
 
 def test_ac5_the_personal_children_follow_the_committed_ones(five, tmp_path):
     env = personal_env(tmp_path)
-    assert tcw(five, "projects", "list", env=env).out.split() == ["ws", "a", "b"]
-    assert tcw(five, "projects", "list").out.split() == ["ws", "a"]
+    assert tcw(five, "project", "list", env=env).out.split() == ["ws", "a", "b"]
+    assert tcw(five, "project", "list").out.split() == ["ws", "a"]
     assert tcw(five, "validate", env=env).code == 0
 
 
@@ -381,7 +381,7 @@ def test_ac6_a_personal_child_must_name_its_parent(tmp_path):
     assert ran.code == 1, ran
     assert any("'a' is listed as a child of 'ws' but does not name 'ws' among its "
                "parents" in line for line in lines), lines
-    assert tcw(ws, "projects", "list", env=env).code == 1
+    assert tcw(ws, "project", "list", env=env).code == 1
 
 
 def test_ac24_a_worktree_uses_the_main_checkouts_personal_children(tmp_path):
@@ -394,14 +394,14 @@ def test_ac24_a_worktree_uses_the_main_checkouts_personal_children(tmp_path):
     b = proj(tmp_path / "b", "b", parents=["ws"])
     write_manifest(ws, {"b": "../b"}, local=True)
     write_manifest(worktree, {"a": "../../a", "b": "../../b"}, local=True)
-    ran = tcw(worktree, "projects", "list", env=personal_env(tmp_path))
+    ran = tcw(worktree, "project", "list", env=personal_env(tmp_path))
     assert ran.code == 0, ran
     assert ran.out.split() == ["ws", "a", "b"], ran
     assert b.is_dir()
 
 
 def test_choice6_config_show_gives_each_childs_file(five, tmp_path):
-    ran = tcw(five, "config", "show", "--origin", env=personal_env(tmp_path))
+    ran = tcw(five, "project", "config", "--origin", env=personal_env(tmp_path))
     assert ran.code == 0, ran
     lines = [line.strip() for line in ran.out.splitlines()]
     at = lines.index("children:")
@@ -595,11 +595,11 @@ def test_ac9_a_siblings_inheritance_is_read_from_its_own_load_order(tmp_path):
     assert FsProjectRegistry.open(a).get("bp") is None
 
 
-# -- Design 8.2: `tcw projects list --json` ---------------------------------------------
+# -- Design 8.2: `tcw project list --json` ---------------------------------------------
 
 
 def listing(cwd: Path, env: dict | None = None) -> dict:
-    ran = tcw(cwd, "projects", "list", "--json", env=env)
+    ran = tcw(cwd, "project", "list", "--json", env=env)
     assert ran.code == 0, ran
     return json.loads(ran.out)
 
@@ -704,8 +704,8 @@ def test_ac27_a_single_project_pays_nothing(tmp_path, monkeypatch, capsys):
     def outputs(root: Path) -> list:
         monkeypatch.chdir(root)
         found = []
-        for argv in (["work", "list"], ["projects", "list"], ["validate"],
-                     ["projects", "list", "--json"]):
+        for argv in (["work", "list"], ["project", "list"], ["validate"],
+                     ["project", "list", "--json"]):
             code = cli.main(argv)
             out, err = capsys.readouterr()
             found.append((code, out.replace(str(root), "<root>"), err))

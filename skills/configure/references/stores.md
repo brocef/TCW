@@ -38,9 +38,9 @@ The rules for every `<component>.path`:
 - **Changing a path moves nothing.** Entries in the old folder stay there and
   TCW does not read them. Move them yourself, then change the path.
 
-`tcw init` takes `--work-path <path>`, `--taxonomy-path <path>` and
+`tcw project new` takes `--work-path <path>`, `--taxonomy-path <path>` and
 `--capabilities-path <path>`; each writes the key and creates the store
-there. Run without them, `tcw init` uses the paths already in
+there. Run without them, `tcw project new` uses the paths already in
 `tcw-config.yaml`.
 
 ### `taxonomy.path`
@@ -85,8 +85,8 @@ The block, the same for all three stores:
 - `checkout`: where to put the copy on this machine; by default a cache
   folder.
 
-`tcw provision` makes the copy of every declared store and project that is
-missing, and never updates one that is already here. `tcw provision --dry-run`
+`tcw project provision` makes the copy of every declared store and project that is
+missing, and never updates one that is already here. `tcw project provision --dry-run`
 prints what it would contact first. Keeping a copy up to date is the
 project's own job: TCW never changes the copy once it exists. The
 configuration guide's
@@ -117,8 +117,8 @@ may inherit differently.
 ## After changing a store's location
 
 1. Run `tcw validate`. It names a malformed `repository` block by its key.
-2. Where a `repository` block was added, run `tcw provision` to get the store.
-   Never run `tcw init` to get past a declared store that is missing here:
+2. Where a `repository` block was added, run `tcw project provision` to get the store.
+   Never run `tcw project new` to get past a declared store that is missing here:
    that would create a second, empty store beside the real one.
 3. Confirm with `tcw work path`, `tcw taxonomy path` or
    `tcw capabilities path`, which print the folder each store resolved to.

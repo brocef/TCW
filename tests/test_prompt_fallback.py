@@ -57,7 +57,7 @@ def replayed(tmp_path_factory):
     root = scratch / "unconfigured"
     root.mkdir(parents=True)
     subprocess.run(["git", "init", "-q", str(root)], check=True)
-    subprocess.run(["tcw", "init", "--id", "fallback", "work"], cwd=root,
+    subprocess.run(["tcw", "project", "new", "--id", "fallback", "work"], cwd=root,
                    capture_output=True, check=True, stdin=subprocess.DEVNULL,
                    env=env)
     slug = subprocess.run(["tcw", "work", "new", "Baseline item"], cwd=root,

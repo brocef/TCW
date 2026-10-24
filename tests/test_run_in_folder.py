@@ -99,7 +99,7 @@ def test_init_in_a_fresh_folder_inside_another_project(tcw, tmp_path):
     """AC 10's last part: relative paths are the chosen folder's."""
     ws = project(tmp_path, "workspace", work={})
     (ws / "fresh").mkdir()
-    result = tcw(["-C", "fresh", "init", "--id", "fresh", "--work-path", "board"], ws)
+    result = tcw(["-C", "fresh", "project", "new", "--id", "fresh", "--work-path", "board"], ws)
     assert result.code == 0, result.err
     assert (ws / "fresh" / ".tcw" / "tcw-config.yaml").is_file()
     assert (ws / "fresh" / "board").is_dir()

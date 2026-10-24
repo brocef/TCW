@@ -100,12 +100,12 @@ def test_a_routing_node_is_a_legal_graph(tmp_path):
 
 
 def _projects(monkeypatch, capsys, where):
-    """`tcw projects list --json` run in `where`, as `{id: relation}`."""
+    """`tcw project list --json` run in `where`, as `{id: relation}`."""
     import json
     from tcw.cli import main
 
     monkeypatch.chdir(where)
-    assert main(["projects", "list", "--json"]) == 0
+    assert main(["project", "list", "--json"]) == 0
     return {p["id"]: p["relation"] for p in json.loads(capsys.readouterr().out)["projects"]}
 
 

@@ -53,7 +53,7 @@ def repository_with_worktree(main: Path, worktree: Path) -> Path:
 
 
 def listed(cwd: Path, env: dict | None = None) -> dict:
-    ran = tcw(cwd, "projects", "list", "--json", env=env)
+    ran = tcw(cwd, "project", "list", "--json", env=env)
     assert ran.code == 0, ran
     return {row["id"]: row for row in json.loads(ran.out)["projects"]}
 
@@ -94,7 +94,7 @@ def test_ac17_the_main_checkouts_personal_configuration(tmp_path):
     (app / "docs" / "x.md").write_text("WORDS FROM THE MAIN CHECKOUT\n")
     (worktree / "docs" / "x.md").write_text("WORDS FROM THE WORKTREE\n")
     env = personal_env(tmp_path)
-    shown = tcw(worktree, "config", "show", "--origin", env=env)
+    shown = tcw(worktree, "project", "config", "--origin", env=env)
     assert shown.code == 0, shown
     assert f"name: Someone Else  # local: {local}" in shown.out, shown.out
     prompt = tcw(worktree, "work", "stage", "prompt", "spec", env=env)

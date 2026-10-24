@@ -1,4 +1,4 @@
-"""`tcw config show [--origin]` (TCW-72 Design 8; AC 12 and AC 8's case)."""
+"""`tcw project config [--origin]` (TCW-72 Design 8; AC 12 and AC 8's case)."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def comments(out: str) -> list[str]:
 
 def test_plain_show_reads_back_as_the_merged_values(personal):
     root = project(personal)
-    result = tcw(root, "config", "show")
+    result = tcw(root, "project", "config")
     assert result.code == 0, result
     values = load_config(root).values
     assert yaml.safe_load(result.out) == values
@@ -40,7 +40,7 @@ def test_plain_show_reads_back_as_the_merged_values(personal):
 
 def test_origin_comments_without_personal_files(personal):
     root = project(personal, {"tags": ["a"]})
-    result = tcw(root, "config", "show", "--origin")
+    result = tcw(root, "project", "config", "--origin")
     assert result.code == 0, result
     assert yaml.safe_load(result.out) == load_config(root).values
     found = comments(result.out)
@@ -52,25 +52,25 @@ def test_origin_comments_without_personal_files(personal):
 def test_the_same_output_every_run(personal, flags):
     root = project(personal, {"tags": ["b", "a"]})
     personal.local({"work": {"stages": {"spec": {"prompt": [{"blob": "x"}]}}}})
-    first = tcw(root, "config", "show", *flags)
+    first = tcw(root, "project", "config", *flags)
     assert first.code == 0, first
-    assert tcw(root, "config", "show", *flags).out == first.out
+    assert tcw(root, "project", "config", *flags).out == first.out
 
 
 def test_a_refused_key_stops_plain_show(personal):
     root = project(personal)
     personal.local({"id": "other",
                     "work": {"stages": {"spec": {"prompt": [{"blob": "x"}]}}}})
-    result = tcw(root, "config", "show")
+    result = tcw(root, "project", "config")
     assert (result.code, result.out) == (1, ""), result
-    assert result.err.startswith("tcw config show: .tcw/tcw-config.local.yaml: id: ")
+    assert result.err.startswith("tcw project config: .tcw/tcw-config.local.yaml: id: ")
 
 
 def test_origin_still_prints_and_marks_the_refused_key(personal):
     root = project(personal)
     personal.local({"id": "other",
                     "work": {"stages": {"spec": {"prompt": [{"blob": "x"}]}}}})
-    result = tcw(root, "config", "show", "--origin")
+    result = tcw(root, "project", "config", "--origin")
     assert result.code == 1, result
     assert yaml.safe_load(result.out) == load_config(root).values
     assert yaml.safe_load(result.out)["id"] == "p"
@@ -87,7 +87,7 @@ def test_credential_names_outside_jira_mode_are_listed_as_skipped(personal):
     personal.user({"work": {"jira": {"credentials": {"email-env": "MY_EMAIL"}}}})
     config = load_config(root)
     assert config.problems == [] and "jira" not in config.values["work"]
-    result = tcw(root, "config", "show", "--origin")
+    result = tcw(root, "project", "config", "--origin")
     assert result.code == 0, result
     skipped = [l for l in result.out.splitlines() if l.startswith("# skipped:")]
     assert len(skipped) == 1
@@ -99,7 +99,7 @@ def test_credential_names_outside_jira_mode_are_listed_as_skipped(personal):
 def test_an_unreadable_personal_file_contributes_nothing(personal):
     root = project(personal)
     personal.local("work: [unclosed\n")
-    result = tcw(root, "config", "show", "--origin")
+    result = tcw(root, "project", "config", "--origin")
     assert result.code == 1, result
     assert yaml.safe_load(result.out) == load_config(root).values
     assert ".tcw/tcw-config.local.yaml" in result.err
@@ -108,7 +108,7 @@ def test_an_unreadable_personal_file_contributes_nothing(personal):
 def test_an_unreadable_project_file_prints_nothing(personal):
     root = project(personal)
     write_config_file(personal.project_file, "id: [unclosed\n")
-    result = tcw(root, "config", "show", "--origin")
+    result = tcw(root, "project", "config", "--origin")
     assert (result.code, result.out) == (1, ""), result
 
 
@@ -128,9 +128,9 @@ def test_any_string_reads_back_as_itself(personal, value):
 
 
 def test_config_show_outside_a_project(tmp_path):
-    result = tcw(tmp_path, "config", "show")
+    result = tcw(tmp_path, "project", "config")
     assert (result.code, result.out) == (1, "")
-    assert result.err.startswith("tcw config show: ")
+    assert result.err.startswith("tcw project config: ")
 
 
 # -- A secret pasted where a variable's name belongs (review finding C1) -----------------
@@ -152,10 +152,10 @@ def test_a_pasted_token_is_never_printed(personal, where):
     if where == "local":
         personal.local({"work": {"jira": {"credentials": {"token-env": SECRET}}}})
     for flags in ((), ("--origin",)):
-        result = tcw(root, "config", "show", *flags)
+        result = tcw(root, "project", "config", *flags)
         assert result.code == 1, result
         assert SECRET not in result.out and SECRET not in result.err, result
-    shown = tcw(root, "config", "show", "--origin").out
+    shown = tcw(root, "project", "config", "--origin").out
     [line] = [l for l in shown.splitlines() if "token-env:" in l]
     assert '"(value not shown)"' in line, line
     assert yaml.safe_load(shown)["work"]["jira"]["credentials"]["token-env"] == \
@@ -165,7 +165,7 @@ def test_a_pasted_token_is_never_printed(personal, where):
 def test_a_variable_name_is_printed_as_itself(personal):
     root = project(personal, _jira_work())
     personal.local({"work": {"jira": {"credentials": {"token-env": "MY_TOKEN"}}}})
-    result = tcw(root, "config", "show")
+    result = tcw(root, "project", "config")
     assert result.code == 0, result
     assert yaml.safe_load(result.out) == load_config(root).values
     assert "token-env: MY_TOKEN" in result.out
@@ -175,7 +175,7 @@ def test_a_refused_token_is_never_printed(personal):
     root = project(personal)
     personal.local({"projects": {"x": {"jira": {"credentials": {"token-env": SECRET}}},
                                  "y": [{"token-env": SECRET}]}})
-    result = tcw(root, "config", "show", "--origin")
+    result = tcw(root, "project", "config", "--origin")
     assert result.code == 1, result
     assert SECRET not in result.out and SECRET not in result.err, result
 
@@ -218,7 +218,7 @@ def test_values_of_unknown_keys_keep_their_type(personal):
 
 def test_config_show_prints_a_blob_of_three_dots(personal):
     root = project(personal, {"stages": {"spec": {"prompt": [{"blob": "..."}]}}})
-    result = tcw(root, "config", "show")
+    result = tcw(root, "project", "config")
     assert result.code == 0, result
     assert yaml.safe_load(result.out) == load_config(root).values
 
@@ -239,7 +239,7 @@ def test_an_ordered_map_and_pairs_read_back_as_themselves(personal):
     assert config.values["x-extra"]["om"] == [("a", 1), ("b", 2)]
     assert config.values["x-extra"]["pairs"] == [("a", 1), ("a", [2, 3])]
     for flags in ((), ("--origin",)):
-        result = tcw(root, "config", "show", *flags)
+        result = tcw(root, "project", "config", *flags)
         assert result.code == 0, result
         assert yaml.safe_load(result.out) == config.values, result.out
 

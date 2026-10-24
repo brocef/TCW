@@ -703,7 +703,7 @@ def test_cli_extends_is_a_usage_error_not_a_term_path(tmp_path, monkeypatch, cap
 # ── the inherited store is resolved, not composed ────────────────────────────
 
 def test_a_parent_that_moved_its_tree_can_still_be_inherited(tmp_path):
-    """`taxonomy.path` is exactly what `tcw init --taxonomy-path` writes.
+    """`taxonomy.path` is exactly what `tcw project new --taxonomy-path` writes.
 
     The inherited project's store used to be composed as `docs/taxonomy` under
     its root, so a project that had moved its tree could not be inherited and the

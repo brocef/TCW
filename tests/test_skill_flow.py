@@ -25,7 +25,7 @@ def item(tmp_path, monkeypatch, capsys):
     root = tmp_path / "shop"
     root.mkdir()
     monkeypatch.chdir(root)
-    assert main(["init", "--id", "shop", "work", "capabilities"]) == 0
+    assert main(["project", "new", "--id", "shop", "work", "capabilities"]) == 0
     monkeypatch.setattr("sys.stdin", io.StringIO("Refund a captured payment.\n"))
     assert main(["work", "new", "Refund a payment"]) == 0
     slug = capsys.readouterr().out.strip().splitlines()[-1]

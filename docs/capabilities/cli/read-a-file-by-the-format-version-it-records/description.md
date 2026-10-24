@@ -1,11 +1,11 @@
 As a user, I can trust that TCW never misreads one of its own files written in a
 format it does not know. Every `tcw-*.yaml` file TCW writes records, in a
 `tcw-version` key on its first line, the version of the TCW that created it or
-last migrated it: `tcw init` writes `tcw-version: 4.0.0` at the top of
+last migrated it: `tcw project new` writes `tcw-version: 4.0.0` at the top of
 `.tcw/tcw-config.yaml`. The line is set when TCW creates the file and changed
-only by a migration; `tcw init` giving the file an ID, `tcw work tags` and every
+only by a migration; `tcw project new` giving the file an ID, `tcw work tags` and every
 other edit TCW makes leave it as it is. It is information about the file, not a
-setting, so `tcw config show` does not print it.
+setting, so `tcw project config` does not print it.
 
 **Before reading a file, TCW checks its version**, and every command stops with
 exit 1 when it cannot read it, naming the file and saying what to do:
@@ -34,7 +34,7 @@ error.
 
 **A TCW 3.x project is recognised, not misread.** A folder with
 `tcw-config.yaml` at its root and no `.tcw/` folder is a 3.x project, and every
-command run in or below it, `tcw validate` and `tcw init` included, refuses with
+command run in or below it, `tcw validate` and `tcw project new` included, refuses with
 one line naming the folder and the command that converts it to TCW 4, and
 writes nothing. `tcw --version`
 and `--help` still answer.

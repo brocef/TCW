@@ -1,4 +1,4 @@
-"""`tcw projects list` (TCW-73 Design 2; AC 7's last part).
+"""`tcw project list` (TCW-73 Design 2; AC 7's last part).
 
 One project ID per line, this project first, then its parents and its
 children, present or not; `--json` says which is which.
@@ -62,7 +62,7 @@ def run(monkeypatch, capsys, cwd, *argv):
 
 
 def test_one_id_per_line_current_first(graph, monkeypatch, capsys):
-    code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
+    code, out, err = run(monkeypatch, capsys, graph, "project", "list")
     assert code == 0, err
     # TCW-108 Design 8.1: the parents in listing order, then the children;
     # the 3.x upstream is a parent.
@@ -70,7 +70,7 @@ def test_one_id_per_line_current_first(graph, monkeypatch, capsys):
 
 
 def test_json_says_relation_and_presence(graph, monkeypatch, capsys):
-    code, out, _ = run(monkeypatch, capsys, graph, "projects", "list", "--json")
+    code, out, _ = run(monkeypatch, capsys, graph, "project", "list", "--json")
     data = json.loads(out)
     assert data["schema"] == 2
     rows = {p["id"]: p for p in data["projects"]}
@@ -83,13 +83,13 @@ def test_json_says_relation_and_presence(graph, monkeypatch, capsys):
 
 def test_a_lone_project_lists_itself(tmp_path, monkeypatch, capsys):
     root = make_project(tmp_path, "solo")
-    assert run(monkeypatch, capsys, root, "projects", "list")[:2] == (0, "solo\n")
+    assert run(monkeypatch, capsys, root, "project", "list")[:2] == (0, "solo\n")
 
 
 def test_outside_a_project(tmp_path, monkeypatch, capsys):
-    code, out, err = run(monkeypatch, capsys, tmp_path, "projects", "list")
+    code, out, err = run(monkeypatch, capsys, tmp_path, "project", "list")
     assert (code, out) == (1, "")
-    assert err.startswith("tcw projects list: no TCW project here")
+    assert err.startswith("tcw project list: no TCW project here")
 
 
 def test_work_nodes_is_gone(graph, monkeypatch, capsys):
@@ -131,8 +131,8 @@ def test_the_2x_key_is_an_error_naming_the_guide(graph, monkeypatch, capsys):
 
 
 @pytest.mark.parametrize("argv", [
-    ("projects", "list"),
-    ("provision",),
+    ("project", "list"),
+    ("project", "provision"),
     ("work", "list"),
     ("work", "new", "x"),
     ("taxonomy", "list"),
@@ -142,7 +142,7 @@ def test_every_command_refuses_the_2x_key(graph, monkeypatch, capsys, argv):
     code, out, err = run(monkeypatch, capsys, graph, *argv)
     assert (code, out) == (1, ""), (out, err)
     assert err.count("\n") == 1, err
-    assert err.startswith(f"tcw {' '.join(argv[:2]) if argv[0] != 'provision' else 'provision'}"), err
+    assert err.startswith(f"tcw {' '.join(argv[:2])}"), err
     assert REFUSED in err
 
 
@@ -182,7 +182,7 @@ def test_an_upstreams_own_2x_key_is_not_its_readers_problem(graph, monkeypatch, 
     document = yaml.safe_load(path.read_text())
     document["connected-projects"] = {"children": {"zz": "../zz"}}
     write_config_file(path, yaml.safe_dump(document, sort_keys=False))
-    code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
+    code, out, err = run(monkeypatch, capsys, graph, "project", "list")
     assert code == 0, err
 
 
@@ -192,8 +192,8 @@ def test_projects_list_reports_a_registry_problem(graph, monkeypatch, capsys):
     document = yaml.safe_load(path.read_text())
     document["children"].append("Bad ID")
     write_config_file(path, yaml.safe_dump(document, sort_keys=False))
-    code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
+    code, out, err = run(monkeypatch, capsys, graph, "project", "list")
     assert (code, out) == (1, ""), (out, err)
     index = document["children"].index("Bad ID")
-    assert err.startswith("tcw projects list: "), err
+    assert err.startswith("tcw project list: "), err
     assert f"fx/.tcw/tcw-config.yaml: children[{index}]: project ID must match" in err, err

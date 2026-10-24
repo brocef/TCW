@@ -16,7 +16,7 @@ Every key here is shared: personal configuration cannot set any of them.
 Shared: personal configuration cannot set it.
 
 The project's ID: lower-case letters and digits joined by `-`, such as
-`my-app`. `tcw init --id <id>` writes it once. Other projects and every item's
+`my-app`. `tcw project new --id <id>` writes it once. Other projects and every item's
 full slug (`project/folder`) refer to the project by it, so it is not changed
 afterwards. Paths only say where a project is; the ID says which project it
 is.
@@ -56,7 +56,7 @@ projects:
 - `upstream` is the exception: a connection declared by one side only. See
   below.
 
-`tcw projects list` prints this project and every project connected to it,
+`tcw project list` prints this project and every project connected to it,
 one ID per line; `--json` adds each one's relation, whether it is on this
 machine, and its path.
 
@@ -73,7 +73,7 @@ Shared: personal configuration cannot set it.
 
 Where to get the parent project when it is not at its `path`: the same block
 a store takes (`url`, and optionally `ref`, `path` and `checkout`; see
-`stores.md`). A project at its `path` always wins; `tcw provision` makes the
+`stores.md`). A project at its `path` always wins; `tcw project provision` makes the
 copy when it is not there.
 
 ### `projects.children.*.path`
@@ -154,13 +154,13 @@ Reach for it when a workspace is laid out differently from what the
 configuration describes, before editing a shared file to match one machine.
 A variable naming a folder that does not exist falls through to the entry's
 `repository`; one naming a folder that exists but holds a different project
-is refused, by `tcw provision` too. `tcw validate` lists the variables in
+is refused, by `tcw project provision` too. `tcw validate` lists the variables in
 effect.
 
 ## A project that is declared but not on this machine
 
 A command that has to read a declared project that is not on this machine
-exits with code 5, and says that `tcw provision` obtains it. `tcw provision`
+exits with code 5, and says that `tcw project provision` obtains it. `tcw project provision`
 clones each declared project and store that is missing, from its
 `repository`, and never updates one that is already here. A project that
 nothing here declares is exit code 4.
@@ -384,5 +384,5 @@ reports a `docs/taxonomy/config.yaml` or `docs/capabilities/.config.yaml` left
 from before TCW 2.5.0, which is not read; delete it, and name under `parents:`
 any project it listed.
 
-After editing any of this, run `tcw validate`, then `tcw provision` if a
+After editing any of this, run `tcw validate`, then `tcw project provision` if a
 `repository` was added.

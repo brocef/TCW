@@ -6,7 +6,7 @@ ID only.
 There are two manifests in a project's `.tcw/` folder.
 `.tcw/tcw-manifest.yaml` is committed and shared by everyone who checks the
 project out; `.tcw/tcw-manifest.local.yaml` is mine alone, kept out of version
-control (`tcw init` lists it in `.tcw/.gitignore`), and is read first, so I can
+control (`tcw project new` lists it in `.tcw/.gitignore`), and is read first, so I can
 place a project where it is on my disk without changing anyone else's
 checkout. Each starts with the `tcw-version` of its format, and lists entries
 under `projects:`:

@@ -23,7 +23,7 @@ def test_a_list_as_a_key_names_the_file_without_a_traceback(personal, which):
         write_config_file(target, "id: p\n" + LIST_KEY)
     else:
         personal.local(LIST_KEY)
-    result = tcw(personal.root, "config", "show")
+    result = tcw(personal.root, "project", "config")
     assert result.code == 1, result
     assert target.name in result.err
     assert "Traceback" not in result.err
@@ -36,7 +36,7 @@ def test_a_list_as_a_key_names_the_file_without_a_traceback(personal, which):
 def test_an_empty_mapping_written_twice_is_blamed_on_the_higher_layer(personal):
     personal.project({"work": {"procedures": {"custom": {}}}})
     personal.local({"work": {"procedures": {"custom": {}}}})
-    result = tcw(personal.root, "config", "show", "--origin")
+    result = tcw(personal.root, "project", "config", "--origin")
     [line] = [l for l in result.out.splitlines() if "custom:" in l]
     assert line.endswith("custom: {}  # local: .tcw/tcw-config.local.yaml"), line
 
@@ -57,7 +57,7 @@ def test_config_show_writes_an_unknown_keys_binary_and_set_on_one_line(personal)
     write_config_file(personal.project_file,
         "id: p\nextra:\n  blob: !!binary AGJpbmFyef8=\n"
         "  members: !!set {1: null, a: null}\n")
-    result = tcw(personal.root, "config", "show")
+    result = tcw(personal.root, "project", "config")
     assert result.code == 0, result
     lines = [l.strip() for l in result.out.splitlines()
              if l.strip().startswith(("blob:", "members:"))]

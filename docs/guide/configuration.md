@@ -23,7 +23,7 @@ documents, which this guide links to:
 
 See also [The Work component](work.md) and
 [Working across repositories](multi-repo.md). After any change, run
-`tcw validate`; `tcw config show --origin` prints the configuration commands
+`tcw validate`; `tcw project config --origin` prints the configuration commands
 actually use, and where each value came from.
 
 ## Layers: the team's file and your own
@@ -295,7 +295,7 @@ work:
   describes.
 - A work store kept in another repository is brought up to date **only** by
   this instruction, when an agent starts a stage. Nothing refreshes it between
-  stages, and `tcw provision` never updates a copy that already exists.
+  stages, and `tcw project provision` never updates a copy that already exists.
 
 ### Pushing, if you want it
 

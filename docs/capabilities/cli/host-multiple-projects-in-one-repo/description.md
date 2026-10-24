@@ -28,7 +28,7 @@ and the search for a folder never looks inside a project. Inside a linked git
 worktree TCW reads git metadata for one narrow purpose — working out where a
 relative path was written from, so it still points where it was meant to (see
 [Run TCW from inside a git worktree](tcw://C/cli/run-from-a-git-worktree)).
-That never adds, removes, or re-parents a project. `tcw projects list` shows the
+That never adds, removes, or re-parents a project. `tcw project list` shows the
 result — see [List connected projects](tcw://C/cli/list-connected-projects).
 
 Several declared projects may place independent work stores in one

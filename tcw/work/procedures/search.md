@@ -24,7 +24,7 @@ should not be spent on:
 - `--json` when you need the fields rather than the slugs.
 
 For a question that spans another project, run the same commands with that
-project's slugs (`<project>/<folder>`); `tcw projects list` names the projects
+project's slugs (`<project>/<folder>`); `tcw project list` names the projects
 this one declares. Keep the project in every slug you report: a bare folder
 name from another project addresses nothing.
 

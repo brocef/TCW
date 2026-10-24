@@ -2,7 +2,7 @@
 11, 12, 20, 26, 28).
 
 Filesystem cases run `python -m tcw.cli` as a subprocess, in a project made by
-`tcw init --id fx` itself, so what is checked is what a shell sees: the two
+`tcw project new --id fx` itself, so what is checked is what a shell sees: the two
 streams and the exit code. Jira cases run in-process (plan choice 1): TCW-71's
 fake replaces the client inside the running interpreter, which a subprocess
 cannot receive.
@@ -198,7 +198,7 @@ def unnamed(before: dict, after: dict, err: str) -> tuple[set[str], set[str]]:
 def fx(tmp_path):
     root = tmp_path / "fx"
     root.mkdir()
-    ok(root, "init", "--id", "fx")
+    ok(root, "project", "new", "--id", "fx")
     return root
 
 
@@ -264,7 +264,7 @@ def written(root: Path, *argv: str, stdin: str = "", code: int = 0) -> Result:
 
 
 def test_init_prints_nothing_and_names_everything(tmp_path):
-    result = written(tmp_path, "init", "--id", "fx")
+    result = written(tmp_path, "project", "new", "--id", "fx")
     assert result.out == "" and named(result.err)
 
 
@@ -347,7 +347,7 @@ def test_every_json_output_is_one_object_with_schema_2(fx):
     ok(fx, "capabilities", "add", "ns/do-a-thing")
     for argv in (["work", "list", "--json"], ["work", "show", slug, "--json"],
                  ["work", "lifecycle", "--json"], ["work", "docs", "--json"],
-                 ["projects", "list", "--json"], ["taxonomy", "list", "--json"],
+                 ["project", "list", "--json"], ["taxonomy", "list", "--json"],
                  ["taxonomy", "show", "widget", "--json"],
                  ["taxonomy", "search", "w", "--json"],
                  ["capabilities", "list", "--json"],
@@ -551,7 +551,7 @@ def graph(tmp_path, fake):  # noqa: F811
     for name in ("fx", "other", "up"):
         roots[name] = tmp_path / name
         roots[name].mkdir()
-        ok(roots[name], "init", "--id", name)
+        ok(roots[name], "project", "new", "--id", name)
     document = yaml.safe_load((roots["fx"] / ".tcw/tcw-config.yaml").read_text())
     document["parents"] = [{"id": "up", "inherit": "none"}]
     document["children"] = ["other", "absent"]
@@ -654,7 +654,7 @@ def test_the_reading_commands_in_a_project(fx):
     checked(fx, "work", "tags", "list", out="a\nb\n")
     docs = checked(fx, "work", "docs", out="")
     assert "agent guide" in docs.err
-    checked(fx, "projects", "list", out="fx\n")
+    checked(fx, "project", "list", out="fx\n")
     checked(fx, "taxonomy", "list", out="fx.taxonomy/widget\n")
     checked(fx, "taxonomy", "show", "widget",
             out=lambda o: o.startswith("full-id: fx.taxonomy/widget\nowner: fx\nname: Widget\n")
@@ -708,8 +708,8 @@ def test_config_show_in_a_project(fx):
     loader's values; it writes nothing (TCW-72 Design 8)."""
     from tcw.config import load_config
     expected = load_config(fx).values
-    checked(fx, "config", "show", out=lambda o: yaml.safe_load(o) == expected)
-    checked(fx, "config", "show", "--origin",
+    checked(fx, "project", "config", out=lambda o: yaml.safe_load(o) == expected)
+    checked(fx, "project", "config", "--origin",
             out=lambda o: yaml.safe_load(o) == expected)
 
 
@@ -726,7 +726,7 @@ def test_tags_rm_of_an_unregistered_tag_is_not_found(fx):
 def test_the_writing_tree_commands_in_a_project(tmp_path, fx):
     up = tmp_path / "up"
     up.mkdir()
-    ok(up, "init", "--id", "up")
+    ok(up, "project", "new", "--id", "up")
     ok(up, "taxonomy", "add", "Gear")
     ok(up, "capabilities", "add", "auth/login")
     document = yaml.safe_load((fx / ".tcw/tcw-config.yaml").read_text())

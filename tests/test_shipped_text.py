@@ -69,7 +69,7 @@ EXTRA_PATTERNS = (
 VOCABULARY_ALLOWED: dict[str, dict[str, str]] = {
     "skills/configure/references/personal.md": {
         "- builtin: true  # built-in, tcw/work/prompts/spec.md":
-            "`tcw config show` prints it for a built-in entry (review decision R8)",
+            "`tcw project config` prints it for a built-in entry (review decision R8)",
     },
 }
 

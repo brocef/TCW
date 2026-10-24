@@ -480,7 +480,7 @@ def test_capabilities_extends_in_the_projects_own_file_is_refused(tmp_path):
 
 
 def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
-    """`capabilities.path` is exactly what `tcw init --capabilities-path` writes.
+    """`capabilities.path` is exactly what `tcw project new --capabilities-path` writes.
 
     The extended project's store used to be composed as `docs/capabilities` under
     its root, so moving it made the project unextendable and the error blamed a

@@ -1,4 +1,4 @@
-As a user, I run `tcw projects list` to see which projects the current project
+As a user, I run `tcw project list` to see which projects the current project
 is connected to. It prints one project ID per line: this project first, then its
 parents in the order it lists them, then its children, each once. Projects are
 named by ID, never by folder, because the ID is a project's identity and a
@@ -12,7 +12,7 @@ relationship, and listing a project in a manifest does not connect it either.
 A declared project that is not on this machine is still listed, so a project
 with children never reads as one without any.
 
-`tcw projects list --json` prints `{"schema": 2, "projects": [...],
+`tcw project list --json` prints `{"schema": 2, "projects": [...],
 "load-order": [...], "load-order-complete": ..., "load-order-warning": ...}`.
 Each project has its ID, its relation to this one (`current`, `parent` or
 `child`), whether it is present on this machine, its folder when it is, and

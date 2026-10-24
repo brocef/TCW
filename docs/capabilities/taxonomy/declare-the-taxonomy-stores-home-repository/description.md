@@ -1,7 +1,7 @@
 As a project owner whose taxonomy lives in a repository other than the code
 repository, I can record that repository under `taxonomy.repository` — its URL,
 optionally a ref, the tree's path within it, and optionally where a working copy
-should live on this machine — and obtain it with `tcw provision`, exactly as I
+should live on this machine — and obtain it with `tcw project provision`, exactly as I
 can for work items.
 
 The declaration is a fallback, never an override: a tree already present at
@@ -10,7 +10,7 @@ that has the folder and a session that cloned only the code. Where the tree is
 absent, every command says so, names the declared remote and the command that
 fetches it, and never reports the project as having no taxonomy — which was the
 old answer for a checkout that simply had no `docs/taxonomy/` folder, and the
-answer that sent me to `tcw init`.
+answer that sent me to `tcw project new`.
 
 **What this promises is deliberately weak.** A taxonomy tree names nothing: it
 is a directory of term folders, with no required marker — as a work store is a

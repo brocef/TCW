@@ -35,7 +35,7 @@ whether one person may set it for themselves.
 set it.
 
 Two settings are not changed here by hand. The project `id` is written once by
-`tcw init` and is not changed afterwards. Tags are registered with
+`tcw project new` and is not changed afterwards. Tags are registered with
 `tcw work tags add` while filing work, which the `work` skill covers.
 
 After any change, run `tcw validate`. The document you opened says which

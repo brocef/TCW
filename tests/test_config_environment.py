@@ -98,8 +98,8 @@ def test_ac21_a_mapping_with_one_shared_key(app, on):
 
 
 def test_ac21_an_allowed_key_of_a_project_not_read_changes_nothing(app, on):
-    before = tcw(app, "config", "show", env=on)
-    ran = tcw(app, "config", "show", env={**on, "TCW_USER_NAME__ELSEWHERE": "x"})
+    before = tcw(app, "project", "config", env=on)
+    ran = tcw(app, "project", "config", env={**on, "TCW_USER_NAME__ELSEWHERE": "x"})
     assert ran.code == 0 and ran.out == before.out, ran
     assert tcw(app, "work", "list", env={**on, "TCW_USER_NAME__ELSEWHERE": "x"}).code == 0
 
@@ -198,7 +198,7 @@ def test_ac24_a_post_hook_from_a_variable(app, on, tmp_path):
 def test_ac25_no_personal_config_turns_the_variables_off(app):
     env = {"TCW_USER_NAME__APP": "Robin", "TCW_WORK_TAGS__APP": "[a]", "TCW__ALL__X": "1"}
     assert tcw(app, "work", "list", env=env).code == 0
-    shown = tcw(app, "config", "show", env=env)
+    shown = tcw(app, "project", "config", env=env)
     assert "Robin" not in shown.out
     ran = tcw(app, "work", "list", env={"TCW_NO_PERSONAL_CONFIG": "true",
                                        "TCW_USER_NAME__APP": "Robin"})
@@ -209,7 +209,7 @@ def test_ac27_a_single_project_pays_nothing(app, on, monkeypatch):
     unrelated = {"TCW_PROJECT_X": "/nowhere", "TCW_JIRA_EMAIL": "x",
                  "TCW_STDIN_TIMEOUT": "3"}
     for argv in (("work", "list"), ("work", "tags", "list"),
-                 ("config", "show", "--origin"), ("validate",)):
+                 ("project", "config", "--origin"), ("validate",)):
         plain = tcw(app, *argv, env=on)
         busy = tcw(app, *argv, env={**on, **unrelated})
         assert (plain.code, plain.out, plain.err) == (busy.code, busy.out, busy.err), argv

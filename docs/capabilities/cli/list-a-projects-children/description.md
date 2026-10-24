@@ -9,7 +9,7 @@ twice, or `children: null` in the personal file, is refused too.
 project's personal file is never read.
 
 Every listed child must name my project among its parents; one that does not is
-an error in `tcw validate`, and stops `tcw projects list`. A listed child that
+an error in `tcw validate`, and stops `tcw project list`. A listed child that
 is not on this machine is still listed, and `tcw validate` reports that whether
-it names its parent could not be checked. `tcw projects list --json` marks a
+it names its parent could not be checked. `tcw project list --json` marks a
 child that only my personal file lists with `personal: true`.

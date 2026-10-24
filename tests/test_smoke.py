@@ -18,7 +18,7 @@ def _ignored(repo: Path, rel: str) -> bool:
 def test_init_named_subset_only(tmp_path, monkeypatch):
     _git_init(tmp_path)
     monkeypatch.chdir(tmp_path)
-    assert main(["init", "--id", "test-project", "taxonomy"]) == 0
+    assert main(["project", "new", "--id", "test-project", "taxonomy"]) == 0
     assert (tmp_path / "docs" / "taxonomy").is_dir()
     assert not (tmp_path / "docs" / "work").exists()
 
@@ -27,8 +27,8 @@ def test_init_ignores_resolved_work_folders(tmp_path, monkeypatch):
     _git_init(tmp_path)
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
-    assert main(["init", "--id", "test-project", "work"]) == 0
-    assert main(["init", "--id", "test-project", "work"]) == 0        # idempotent
+    assert main(["project", "new", "--id", "test-project", "work"]) == 0
+    assert main(["project", "new", "--id", "test-project", "work"]) == 0        # idempotent
 
     lines = (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert lines[0] == "__pycache__/"                                 # pre-existing kept
@@ -44,7 +44,7 @@ def test_init_without_work_writes_no_work_ignore_rule(tmp_path, monkeypatch):
     # TCW-107 Design 1.9).
     _git_init(tmp_path)
     monkeypatch.chdir(tmp_path)
-    assert main(["init", "--id", "test-project", "taxonomy"]) == 0
+    assert main(["project", "new", "--id", "test-project", "taxonomy"]) == 0
     assert (tmp_path / ".tcw/.gitignore").read_text() == \
         "/tcw-config.local.yaml\n/tcw-manifest.local.yaml\n"
     assert not (tmp_path / ".gitignore").exists()
@@ -52,13 +52,13 @@ def test_init_without_work_writes_no_work_ignore_rule(tmp_path, monkeypatch):
 
 def test_init_without_an_id_is_a_usage_error(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)  # a new project, so `--id` is required
-    assert main(["init"]) == 2
+    assert main(["project", "new"]) == 2
 
 
 def test_init_rejects_unknown_component(tmp_path, monkeypatch):
     _git_init(tmp_path)
     monkeypatch.chdir(tmp_path)
-    assert main(["init", "bogus"]) == 2
+    assert main(["project", "new", "bogus"]) == 2
 
 
 def test_init_scaffolds_in_current_subfolder(tmp_path, monkeypatch):
@@ -66,7 +66,7 @@ def test_init_scaffolds_in_current_subfolder(tmp_path, monkeypatch):
     proj = tmp_path / "project-b"
     proj.mkdir()
     monkeypatch.chdir(proj)                   # cwd is a subfolder, not the git root
-    assert main(["init", "--id", "project-b", "work"]) == 0
+    assert main(["project", "new", "--id", "project-b", "work"]) == 0
     assert (proj / ".tcw/tcw-config.yaml").is_file()
     assert (proj / "docs" / "work").is_dir()
     assert not (tmp_path / "docs").exists()   # scaffolded at cwd, not the git root

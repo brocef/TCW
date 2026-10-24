@@ -182,7 +182,7 @@ def _node(tmp_path: Path, documentation) -> Path:
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     for k, v in (("user.email", "t@t"), ("user.name", "t")):
         subprocess.run(["git", "-C", str(tmp_path), "config", k, v], check=True)
-    subprocess.run(["tcw", "init", "--id", "docs-node", "work"], cwd=tmp_path,
+    subprocess.run(["tcw", "project", "new", "--id", "docs-node", "work"], cwd=tmp_path,
                    capture_output=True, check=True, stdin=subprocess.DEVNULL)
     cfg = config_file(tmp_path)
     conf = yaml.safe_load(cfg.read_text()) or {}

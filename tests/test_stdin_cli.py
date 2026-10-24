@@ -32,7 +32,7 @@ def node(tmp_path):
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     for k, v in (("user.email", "t@t.t"), ("user.name", "t")):
         subprocess.run(["git", "-C", str(tmp_path), "config", k, v], check=True)
-    r = _run(tmp_path, ["init", "--id", "stdin-probe"], stdin=subprocess.DEVNULL)
+    r = _run(tmp_path, ["project", "new", "--id", "stdin-probe"], stdin=subprocess.DEVNULL)
     assert r.returncode == 0, r.stderr
     return tmp_path
 

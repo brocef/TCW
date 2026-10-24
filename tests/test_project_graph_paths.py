@@ -31,7 +31,7 @@ def test_a_locator_in_other_letter_case_loads_the_node_once(tmp_path):
 
 
 def test_an_override_in_other_letter_case_is_the_node_it_names(tmp_path, monkeypatch):
-    """`tcw provision` asks whether each override delivered its project; that
+    """`tcw project provision` asks whether each override delivered its project; that
     check compared path text and refused what the walk had accepted."""
     if not case_insensitive(tmp_path):
         pytest.skip("the disk is case-sensitive")

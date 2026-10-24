@@ -10,7 +10,7 @@ first with `taxonomy.md`.
 
 ## 1. Ensure the tree exists
 
-`tcw init capabilities` in the project's folder if `tcw capabilities path` fails.
+`tcw project new capabilities` in the project's folder if `tcw capabilities path` fails.
 
 ## 2. Deep-dive (draft)
 

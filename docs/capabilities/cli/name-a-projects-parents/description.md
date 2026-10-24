@@ -20,5 +20,5 @@ names an axis twice or one that is not an axis, a parent listed twice, or a
 project named both as a parent and as a child — stops every command with exit
 1, naming the file and the entry. The same problem in a parent's own file is
 that parent's: my commands go on, and `tcw validate` reports that what it
-passes down could not be checked. `tcw projects list --json` shows each
+passes down could not be checked. `tcw project list --json` shows each
 parent's `inherit`.

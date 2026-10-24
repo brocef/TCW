@@ -124,7 +124,7 @@ the others: a change can work here and nowhere else.
   or reads the network for other projects.
 - Every store defaults to `docs/<component>/` inside the project, with no
   configuration.
-- The project works as soon as `tcw init` has run, before any stage, hook or
+- The project works as soon as `tcw project new` has run, before any stage, hook or
   procedure is configured (TCW's built-in stage instructions apply).
 - The project root is the nearest folder above the current directory holding
   a `tcw-config.yaml` file (`find_project_root` in `tcw/store/fs.py`), so any
@@ -300,7 +300,7 @@ committed separately.
   `docs/<component>` folder, and `tcw validate` falls back to `docs/work`
   when the work store cannot be found (`tcw/validate.py`). No item yet.
 - TCW-22: the backlog audit should cover every connected work root.
-- TCW-23: `tcw provision` cannot be scoped, and a configuration three hops
+- TCW-23: `tcw project provision` cannot be scoped, and a configuration three hops
   away can name a checkout directory.
 
 ### UC-5 One Jira project shared by several TCW projects
@@ -347,7 +347,7 @@ TCW project it belongs to, and `TCW Item` holds its slug
 
 A connection can name a `repository` to fetch the project from
 (`projects.<relation>.<id>.repository`), and a store can name where to fetch
-it (`work.repository`). `tcw provision` fetches what is missing. A project
+it (`work.repository`). `tcw project provision` fetches what is missing. A project
 known only by a `jira` block in this project's entry for it can still receive
 filed work, as a ticket in its Jira inbox.
 
@@ -356,7 +356,7 @@ filed work, as a ticket in its Jira inbox.
 - A missing child or upstream must not break commands that do not need it:
   listing this project's items, moving them, reading its own records. A
   command that does need it says which project is missing and how to get it
-  (`tcw provision`), with a distinct exit code (5 for `tcw work show` of an
+  (`tcw project provision`), with a distinct exit code (5 for `tcw work show` of an
   item in a missing project).
 - Reading another project's records over the network is never implicit.
 - `tcw validate` reports references into a missing project as unresolved, not
@@ -656,7 +656,7 @@ another system.
 
 - TCW reads git (finding a repository's root, checking a store for changes
   not yet committed, recognising a linked worktree). It never commits, pulls
-  or pushes, or changes an existing repository; `tcw provision` makes new
+  or pushes, or changes an existing repository; `tcw project provision` makes new
   clones. Committing, pulling and pushing belong to the project's hooks and
   people.
 - TCW's shipped instructions name no git command and never tell an agent to

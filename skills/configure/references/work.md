@@ -19,7 +19,7 @@ user's permissions. This is not a sandbox.
 After any change here, run `tcw validate`. It reports every key it does not
 know, every value of the wrong shape, and which file each problem came from.
 `tcw work lifecycle` then prints the stages and what is bound to each, and
-`tcw config show --origin` prints the configuration every command actually
+`tcw project config --origin` prints the configuration every command actually
 uses, with the layer each value came from.
 
 ## Where the work store lives
@@ -45,7 +45,7 @@ Shared: personal configuration cannot set it.
 
 Where the work store comes from when it is not on this machine: a repository
 `url`, and optionally `ref`, the `path` of the store inside the repository,
-and a local `checkout` folder. `tcw provision` makes the copy. A store that is
+and a local `checkout` folder. `tcw project provision` makes the copy. A store that is
 already here always wins. The block is the same for all three stores and is
 described in `stores.md`.
 
@@ -189,7 +189,7 @@ A `skill` is refused in a `pre` list: TCW cannot run a skill, so a check that
 is only reported would always pass. A `skill:` value is checked for its shape
 (no spaces or path separators), never for whether the skill is installed.
 
-TCW's own text is written by TCW itself, and `tcw config show` displays it as
+TCW's own text is written by TCW itself, and `tcw project config` displays it as
 a built-in entry. A file never writes that entry; it writes `inherit: true`.
 
 ### Conditions: `when:`

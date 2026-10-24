@@ -477,7 +477,7 @@ class TestWorktreeNode:
         from tcw.cli import main
         _, server = two_node_graph(tmp_path)          # no _git_init anywhere
         monkeypatch.chdir(server)
-        for argv in (["work", "list"], ["validate"], ["projects", "list"]):
+        for argv in (["work", "list"], ["validate"], ["project", "list"]):
             assert main(argv) == 0, argv
 
 
@@ -536,7 +536,7 @@ class TestCLISmoke:
         from tcw.cli import main
         root, child_a, _ = nested_monorepo(tmp_path)
         monkeypatch.chdir(root)
-        assert main(["projects", "list"]) == 0
+        assert main(["project", "list"]) == 0
         out = capsys.readouterr().out.split()
         assert "child-a" in out and "child-b" in out
 
@@ -544,7 +544,7 @@ class TestCLISmoke:
         from tcw.cli import main
         root = lone_project(tmp_path)
         monkeypatch.chdir(root)
-        assert main(["projects", "list"]) == 0
+        assert main(["project", "list"]) == 0
         assert len(capsys.readouterr().out.split()) == 1
 
     def test_nested_cli_delegate_subfolder_unsupported_sp2_boundary(self, tmp_path, monkeypatch, capsys):
@@ -682,7 +682,7 @@ def test_init_refuses_a_malformed_config_and_leaves_it_alone(
     before = hashlib.sha256(config.read_bytes()).hexdigest()
     monkeypatch.chdir(root)
 
-    assert main(["init", "--id", "demo"]) == 1
+    assert main(["project", "new", "--id", "demo"]) == 1
     assert hashlib.sha256(config.read_bytes()).hexdigest() == before
     err = capsys.readouterr().err
     assert "tcw-config.yaml" in err, err

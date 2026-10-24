@@ -22,7 +22,7 @@ higher layer wins.
 4. **`tcw-config.local.yaml`**, beside `tcw-config.yaml`, which applies to
    this project only.
 
-`tcw-config.local.yaml` is kept out of version control: `tcw init` adds a
+`tcw-config.local.yaml` is kept out of version control: `tcw project new` adds a
 `/tcw-config.local.yaml` line to the project's `.gitignore`, and
 `tcw validate` warns when the file is tracked. For the same reason, a linked
 git worktree of the project (a second working folder of the same repository)
@@ -59,7 +59,7 @@ then not read either.
   remove it.
 - The Jira credential names (`work.jira.credentials.*`) are used only in a
   project whose backend is Jira; in any other project a personal value is set
-  aside, and `tcw config show --origin` lists it.
+  aside, and `tcw project config --origin` lists it.
 
 ```yaml
 # tcw-config.local.yaml
@@ -99,7 +99,7 @@ no identity is configured: set `user.name` in ~/.config/tcw/config.yaml or in tc
 
 ## Seeing the result
 
-`tcw config show` prints the configuration commands actually use, every layer
+`tcw project config` prints the configuration commands actually use, every layer
 merged, as YAML. With `--origin`, a comment after each value names the layer
 it came from, and a block at the end lists what a personal file set that was
 not used, and why. This excerpt is from a project whose team file adds a

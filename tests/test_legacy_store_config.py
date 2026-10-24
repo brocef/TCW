@@ -335,7 +335,7 @@ def test_a_moved_store_that_cannot_open_is_reported_once_instead(
     assert _leftover_lines(problems) == [], problems
 
     # A taxonomy command refuses too, says nothing about the leftover, and
-    # names the removed key rather than sending the user to `tcw init`.
+    # names the removed key rather than sending the user to `tcw project new`.
     monkeypatch.chdir(consumer)
     assert main(["taxonomy", "list"]) == 1
     err = capsys.readouterr().err

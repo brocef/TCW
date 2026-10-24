@@ -11,9 +11,9 @@ commands do is in the guides for [work](work.md),
 ## How commands are named
 
 A command is written `tcw <noun> [<child noun>] <verb>`: `tcw work new`,
-`tcw work tags add`, `tcw work stage prompt`, `tcw config show`. Four
-commands act on the whole project and are verbs on their own: `tcw init`,
-`tcw provision`, `tcw validate` and `tcw serve`.
+`tcw work tags add`, `tcw work stage prompt`, `tcw project config`. Four
+commands act on the whole project and are verbs on their own: `tcw project new`,
+`tcw project provision`, `tcw validate` and `tcw serve`.
 
 `--help` works at every level. On a group, such as `tcw work --help`, it lists
 the commands inside it. On a single command it says what the command is for,
@@ -54,12 +54,12 @@ through `--json`, on the commands that offer it.
 | `tcw taxonomy path`, `tcw capabilities path`                     | the store's folder                                                                    |
 | `tcw capabilities drift`                                         | one finding per line, `<kind>: <path>: <message>`; nothing when there is none         |
 | `tcw validate`                                                   | one finding per line, `<severity>: <where>: <message>`; nothing when there is none    |
-| `tcw projects list`                                              | one project ID per line, this project first                                           |
-| `tcw config show`                                                | the configuration in effect, as YAML                                                  |
+| `tcw project list`                                              | one project ID per line, this project first                                           |
+| `tcw project config`                                                | the configuration in effect, as YAML                                                  |
 | `tcw serve`                                                      | the address the web viewer is served at                                               |
 
 Every other command, such as `tcw work edit`, `tcw work comment`,
-`tcw init` and `tcw provision`, prints nothing on stdout.
+`tcw project new` and `tcw project provision`, prints nothing on stdout.
 
 Two of these deserve a note. `tcw work tickets list` prints only keys; each
 ticket's key, summary, status, creation time, reporter, web address and

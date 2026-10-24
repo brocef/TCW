@@ -15,7 +15,7 @@ Every key named here is described once, with its exact rules, in the
 
 ## A project's ID is its identity
 
-Each project has an **ID**, written once by `tcw init --id <id>`: lower-case
+Each project has an **ID**, written once by `tcw project new --id <id>`: lower-case
 letters and digits joined by `-`, such as `planning` or `app`. Everything that
 refers to a project uses its ID: a work item's slug (`app/2026-10-15-refund`),
 a `tcw://` link, the list of projects a ledger inherits from. A **path** only
@@ -63,7 +63,7 @@ and a command that needs the connected projects refuses until both sides
 agree. The projects one command can see this way, the one it runs in and every
 project connected to it, are its **family**.
 
-`tcw projects list` prints the project's ID and every connected project's ID,
+`tcw project list` prints the project's ID and every connected project's ID,
 one per line, this project first; `--json` adds each one's relation, whether
 it is on this machine, and its path.
 
@@ -120,7 +120,7 @@ alone.
 
 A connected project may be declared and simply not be here: a fresh clone, or
 a machine that has only some of the repositories. A command that has to read
-it stops with exit code 5, says so, and names `tcw provision`, which obtains
+it stops with exit code 5, says so, and names `tcw project provision`, which obtains
 it. A project that nothing here declares is a different case: reading it is
 exit code 4, since there is nothing to obtain.
 
@@ -219,9 +219,9 @@ work:
 each store is. A store that is already where `path` says always wins; the
 `repository` block is used only when it is not.
 
-### `tcw provision`
+### `tcw project provision`
 
-`tcw provision` obtains what this project declares but does not have here:
+`tcw project provision` obtains what this project declares but does not have here:
 each store with a `repository`, and each connected project with one, following
 the projects it obtains to what they declare in turn. It is the one command
 that contacts a repository address written in a file, so it prints every

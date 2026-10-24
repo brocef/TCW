@@ -1,4 +1,4 @@
-"""`tcw validate` and `tcw init` with personal files (TCW-72 AC 8's validate
+"""`tcw validate` and `tcw project new` with personal files (TCW-72 AC 8's validate
 line, AC 9's, 16 and 17)."""
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ WARNING = ("warning: .tcw/tcw-config.local.yaml: tracked; personal configuration
 NOTICE = ("note: not inside a repository, so no ignore rule was written; keep "
           ".tcw/tcw-config.local.yaml and .tcw/tcw-manifest.local.yaml out of version "
           "control yourself")
-#: What `tcw init` writes in `.tcw/.gitignore`: both personal files (TCW-107
+#: What `tcw project new` writes in `.tcw/.gitignore`: both personal files (TCW-107
 #: Design 1.9).
 RULES = "/tcw-config.local.yaml\n/tcw-manifest.local.yaml\n"
 
@@ -100,12 +100,12 @@ def test_tags_add_leaves_the_personal_files_alone(personal):
 
 def test_init_adds_the_ignore_rule_once(tmp_path):
     root = repository(tmp_path / "p")
-    first = tcw(root, "init", "--id", "p")
+    first = tcw(root, "project", "new", "--id", "p")
     assert first.code == 0, first
     assert "wrote .tcw/.gitignore" in first.err.splitlines()
     assert (root / ".tcw/.gitignore").read_text() == RULES
     assert not (root / ".gitignore").exists(), "no root .gitignore (TCW-106 AC 2)"
-    again = tcw(root, "init")
+    again = tcw(root, "project", "new")
     assert again.code == 0, again
     assert (root / ".tcw/.gitignore").read_text() == RULES
     assert ".gitignore" not in again.err
@@ -118,7 +118,7 @@ def test_init_accepts_the_rule_written_without_a_slash(tmp_path):
     root = repository(tmp_path / "p")
     (root / ".tcw").mkdir()
     (root / ".tcw/.gitignore").write_text("node_modules\ntcw-config.local.yaml\n")
-    assert tcw(root, "init", "--id", "p").code == 0
+    assert tcw(root, "project", "new", "--id", "p").code == 0
     assert (root / ".tcw/.gitignore").read_text() == \
         "node_modules\ntcw-config.local.yaml\n/tcw-manifest.local.yaml\n"
 
@@ -127,7 +127,7 @@ def test_init_adds_a_line_end_before_its_rule(tmp_path):
     root = repository(tmp_path / "p")
     (root / ".tcw").mkdir()
     (root / ".tcw/.gitignore").write_text("node_modules")
-    assert tcw(root, "init", "--id", "p").code == 0
+    assert tcw(root, "project", "new", "--id", "p").code == 0
     assert (root / ".tcw/.gitignore").read_text() == \
         "node_modules\n" + RULES
 
@@ -135,7 +135,7 @@ def test_init_adds_a_line_end_before_its_rule(tmp_path):
 def test_init_outside_a_repository_prints_the_notice(tmp_path):
     root = tmp_path / "p"
     root.mkdir()
-    result = tcw(root, "init", "--id", "p")
+    result = tcw(root, "project", "new", "--id", "p")
     assert result.code == 0, result
     assert not (root / ".gitignore").exists()
     assert not (root / ".tcw/.gitignore").exists()
@@ -149,7 +149,7 @@ def _validated(root: Path):
 def test_validate_warns_when_the_local_file_is_tracked(tmp_path, monkeypatch):
     monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
     root = repository(tmp_path / "p")
-    assert tcw(root, "init", "--id", "p").code == 0
+    assert tcw(root, "project", "new", "--id", "p").code == 0
     write_local_config(root, "user:\n  name: Brian\n")
     assert WARNING not in _validated(root).out           # untracked and ignored
     (root / ".tcw/.gitignore").write_text("")
@@ -165,7 +165,7 @@ def test_validate_ignores_the_setting_that_hides_untracked_files(tmp_path, monke
     monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
     root = repository(tmp_path / "p")
     git(root, "config", "status.showUntrackedFiles", "no")
-    assert tcw(root, "init", "--id", "p").code == 0
+    assert tcw(root, "project", "new", "--id", "p").code == 0
     write_local_config(root, "user:\n  name: Brian\n")
     assert WARNING not in _validated(root).out           # untracked and ignored
     (root / ".tcw/.gitignore").write_text("")
@@ -179,7 +179,7 @@ def test_validate_outside_a_repository_does_not_warn(tmp_path, monkeypatch):
     monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
     root = tmp_path / "p"
     root.mkdir()
-    assert tcw(root, "init", "--id", "p").code == 0
+    assert tcw(root, "project", "new", "--id", "p").code == 0
     write_local_config(root, "user:\n  name: Brian\n")
     result = _validated(root)
     assert (result.code, result.out) == (0, ""), result

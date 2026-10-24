@@ -26,7 +26,7 @@ def packaged_lines(name: str) -> list[str]:
     ["work", "stage", "prompt", "spec"],
     ["taxonomy", "list"],
     ["capabilities", "list"],
-    ["projects", "list"],
+    ["project", "list"],
     ["work", "lifecycle"],
 ])
 def test_a_shared_key_in_the_local_file_stops_every_command(personal, argv):
@@ -109,7 +109,7 @@ def test_graph_readers_tolerate_what_the_loader_refuses(family, monkeypatch):
     write_config_file(path, yaml.safe_dump(document))
     write_local_config(parent, "work: [unclosed\n")
     monkeypatch.setenv("TCW_NO_PERSONAL_CONFIG", "1")
-    listed = tcw(parent, "projects", "list")
+    listed = tcw(parent, "project", "list")
     assert listed.code == 0, listed
     assert "child" in listed.out.split()
 

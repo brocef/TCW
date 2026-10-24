@@ -5,7 +5,7 @@ over an earlier one and each project's own order is kept. When no order can
 keep every project's own order, TCW uses the depth-first order instead and
 warns, naming the project where the orders disagree; the warning is a
 `tcw validate` warning at `.tcw/tcw-config.yaml` and the `load-order-warning`
-of `tcw projects list --json`, and no other command prints it. A loop of
+of `tcw project list --json`, and no other command prints it. A loop of
 parents is an error that stops every command.
 
 An ancestor that is not on this machine, or whose parents cannot be read,

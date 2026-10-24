@@ -381,7 +381,7 @@ there ([the Jira guide](jira.md#checking-the-workflow) lists what plain
   whether it is right.
 
 A command that has to read a project that is declared but is not on this
-machine stops with exit code 5 and says that `tcw provision` obtains it. The
+machine stops with exit code 5 and says that `tcw project provision` obtains it. The
 exit codes are listed in [the command-line guide](cli.md#exit-codes).
 
 ## Stage instructions and procedures
@@ -406,13 +406,13 @@ its own:
 TCW writes an item's files and leaves recording them to you: it never stages,
 commits, pulls, pushes, or switches a branch. It does **read** git where it
 needs to: to find the repository a project or a work store sits in (which
-`tcw init` also does, to decide whether to add an ignore rule for your personal
+`tcw project new` also does, to decide whether to add an ignore rule for your personal
 configuration file), to check that a work store has no uncommitted changes
 before creating an item in another project, to check whether git tracks
 `tcw-config.local.yaml` (`tcw validate` warns when it does), to notice that it
-is running in a linked git worktree, and, in `tcw provision`, to check that a
+is running in a linked git worktree, and, in `tcw project provision`, to check that a
 folder already there is a clone of the declared repository. And
-`tcw provision` clones a store or project that is declared and missing, because
+`tcw project provision` clones a store or project that is declared and missing, because
 you asked it to. A project that wants each move committed adds it itself; the
 [configuration guide's example](configuration.md#example-keeping-git-in-step-with-each-stage-change-something-your-project-adds)
 shows one way, with a prompt and a `post` hook.

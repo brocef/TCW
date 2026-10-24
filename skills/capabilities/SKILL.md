@@ -19,10 +19,10 @@ viewers; it is not an editable capability field.
 
 **The ledger is not necessarily `docs/capabilities/`.** `capabilities.path` can
 put it elsewhere and a `capabilities.repository` block can put it in another
-repository, fetched here by `tcw provision` — so never compose a store path from
+repository, fetched here by `tcw project provision` — so never compose a store path from
 the project root; ask `tcw capabilities path`. A command needing a declared but
 missing ledger fails, names where it lives, and tells you to run
-`tcw provision`; running `tcw init` instead would create a second, empty ledger
+`tcw project provision`; running `tcw project new` instead would create a second, empty ledger
 beside the real one. Inheritance is unaffected: it comes from your project's
 parent links, not from wherever the tree sits.
 

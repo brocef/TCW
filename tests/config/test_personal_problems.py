@@ -104,10 +104,10 @@ def test_config_show_origin_names_a_file_that_is_not_utf8(personal):
     (personal.root / "docs" / "work").mkdir(parents=True)
     personal.user_file.parent.mkdir(parents=True)
     write_config_file(personal.user_file, b"\xff\xfe")
-    result = tcw(personal.root, "config", "show", "--origin")
+    result = tcw(personal.root, "project", "config", "--origin")
     assert result.code == 1, result
     assert "builtin: true" in result.out
-    assert result.err == f"tcw config show: {personal.user_file}: is not valid UTF-8 " \
+    assert result.err == f"tcw project config: {personal.user_file}: is not valid UTF-8 " \
                          f"text (byte 0xff at position 0)\n"
 
 

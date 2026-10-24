@@ -111,13 +111,13 @@ def assert_refused_as_legacy(ran: Ran, folder: Path) -> None:
     assert NO_PROJECT not in ran.err, ran
 
 
-# -- AC 1, 2: tcw init -------------------------------------------------------------
+# -- AC 1, 2: tcw project new -------------------------------------------------------------
 
 
 def test_ac1_init_writes_the_versioned_configuration_in_the_tcw_folder(tmp_path):
     root = tmp_path / "p"
     root.mkdir()
-    ran = tcw(root, "init", "--id", "demo")
+    ran = tcw(root, "project", "new", "--id", "demo")
     assert ran.code == 0, ran
     version = tcw(root, "--version").out.split()[-1]
     assert version == __version__
@@ -129,20 +129,20 @@ def test_ac1_init_writes_the_versioned_configuration_in_the_tcw_folder(tmp_path)
 
 def test_ac2_init_writes_the_ignore_rule_in_the_tcw_folder_once(tmp_path):
     root = repository(tmp_path / "p")
-    assert tcw(root, "init", "--id", "demo").code == 0
+    assert tcw(root, "project", "new", "--id", "demo").code == 0
     ignore = root / ".tcw" / ".gitignore"
     # Both personal files, since TCW-107 Design 1.9.
     rules = ["/tcw-config.local.yaml", "/tcw-manifest.local.yaml"]
     assert ignore.read_text().splitlines() == rules
     assert not (root / ".gitignore").exists(), "no root .gitignore"
-    assert tcw(root, "init").code == 0
+    assert tcw(root, "project", "new").code == 0
     assert ignore.read_text().splitlines() == rules
 
 
 def test_ac2_outside_a_repository_the_note_names_the_new_place(tmp_path):
     root = tmp_path / "p"
     root.mkdir()
-    ran = tcw(root, "init", "--id", "demo")
+    ran = tcw(root, "project", "new", "--id", "demo")
     assert ran.code == 0, ran
     assert ("keep .tcw/tcw-config.local.yaml and .tcw/tcw-manifest.local.yaml out of "
             "version control yourself" in ran.err), ran
@@ -192,8 +192,8 @@ def test_ac14a_inside_the_tcw_folder_acts_on_the_project(tmp_path):
 # -- AC 5, 6, 14, 14c: refusing a 3.x project ----------------------------------------
 
 
-@pytest.mark.parametrize("argv", [("work", "list"), ("validate",), ("init", "--id", "x"),
-                                  ("config", "show")])
+@pytest.mark.parametrize("argv", [("work", "list"), ("validate",), ("project", "new", "--id", "x"),
+                                  ("project", "config")])
 def test_ac5_every_command_refuses_a_3x_project_and_writes_nothing(tmp_path, argv):
     old = legacy_project(repository(tmp_path / "old"))
     before = snapshot(old)
@@ -331,7 +331,7 @@ def test_ac8_config_show_hides_the_version_and_the_allowlist_ignores_it(tmp_path
     write_local_config(root, "user:\n  name: Someone\n")
     assert "tcw-version" in local_config_file(root).read_text()
     env = personal_env(tmp_path)
-    shown = tcw(root, "config", "show", env=env)
+    shown = tcw(root, "project", "config", env=env)
     assert shown.code == 0, shown
     assert "tcw-version" not in shown.out + shown.err, shown
     assert "Someone" in shown.out, "the personal file was read"
@@ -343,14 +343,14 @@ def test_ac9_init_gives_an_id_below_the_version_line(tmp_path):
     root = tmp_path / "p"
     write_config(root, "")
     assert config_file(root).read_text() == f"tcw-version: {__version__}\n"
-    assert tcw(root, "init", "--id", "demo").code == 0
+    assert tcw(root, "project", "new", "--id", "demo").code == 0
     lines = config_file(root).read_text().splitlines()
     assert lines[:2] == [f"tcw-version: {__version__}", "id: demo"]
 
 
 def test_ac9_an_edit_leaves_the_version_line_alone(tmp_path):
     root = repository(tmp_path / "p")
-    assert tcw(root, "init", "--id", "demo").code == 0
+    assert tcw(root, "project", "new", "--id", "demo").code == 0
     before = config_file(root).read_text().splitlines()[0]
     assert tcw(root, "work", "tags", "add", "bug").code == 0
     text = config_file(root).read_text()
@@ -574,7 +574,7 @@ def test_ac13_a_3x_connection_is_reported_and_not_read(tmp_path):
     manifest = write_manifest(ws, {"old": "../old"})
     # TCW-107 Design 2.6: the problem is the entry's, naming its file.
     entry = f"entry for 'old' in {manifest.resolve()} places it at {old.resolve()}, which {LEGACY}"
-    for argv in (("projects", "list"), ("validate",)):
+    for argv in (("project", "list"), ("validate",)):
         ran = tcw(ws, *argv)
         assert ran.code == 1, ran
         assert entry in ran.out + ran.err, ran
@@ -619,7 +619,7 @@ def _folders(ran: Ran) -> dict[str, str]:
 
 def test_ac13a_connected_projects_are_listed_by_their_roots(tmp_path):
     ws, app = _pair(tmp_path)
-    folders = _folders(tcw(ws, "projects", "list", "--json"))
+    folders = _folders(tcw(ws, "project", "list", "--json"))
     assert Path(folders["ws"]).resolve() == ws.resolve()
     assert Path(folders["app"]).resolve() == app.resolve()
     assert not any(Path(f).name == ".tcw" for f in folders.values())
@@ -630,7 +630,7 @@ def test_ac13a_a_project_found_through_its_variable_is_listed_by_its_root(tmp_pa
     moved = tmp_path / "elsewhere" / "app"
     moved.parent.mkdir()
     app.rename(moved)
-    folders = _folders(tcw(ws, "projects", "list", "--json",
+    folders = _folders(tcw(ws, "project", "list", "--json",
                            env={"TCW_PROJECT_APP": str(moved)}))
     assert Path(folders["app"]).resolve() == moved.resolve()
 
@@ -653,7 +653,7 @@ def test_ac13a_init_writes_nothing_over_a_file_from_a_newer_tcw(tmp_path):
     root = tmp_path / "p"
     write_config(root, "tcw-version: 99.0.0\n# no id yet\n")
     before = snapshot(root)
-    ran = tcw(root, "init", "--id", "demo")
+    ran = tcw(root, "project", "new", "--id", "demo")
     assert ran.code == 1, ran
     assert "newer than this TCW" in ran.err and "upgrade TCW" in ran.err, ran
     assert snapshot(root) == before
@@ -664,7 +664,7 @@ def test_ac13a_init_writes_nothing_over_a_file_from_a_newer_tcw(tmp_path):
 
 def test_ac14b_validate_warns_when_the_personal_file_is_tracked(tmp_path):
     root = repository(tmp_path / "p")
-    assert tcw(root, "init", "--id", "p").code == 0
+    assert tcw(root, "project", "new", "--id", "p").code == 0
     write_local_config(root, "user:\n  name: Someone\n")
     env = personal_env(tmp_path)
     warning = ("warning: .tcw/tcw-config.local.yaml: tracked; personal configuration "

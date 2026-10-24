@@ -229,7 +229,7 @@ fi
 ```
 
 **If your work store lives in another repository**, the container holds only the
-repository it cloned, so its work items are declared but absent. Run `tcw provision`
+repository it cloned, so its work items are declared but absent. Run `tcw project provision`
 after the install — it obtains what the checkout does not have, and does nothing
 on a machine that already holds it. See
 [Working across repositories](docs/guide/multi-repo.md).
@@ -259,11 +259,11 @@ the same folder from the first stage to the last. Each item is addressed by its
 
 | Command                   | What it does                                                                  |
 | ------------------------- | ----------------------------------------------------------------------------- |
-| `tcw init`                | marks a folder as a TCW project and creates the folders for each axis         |
-| `tcw provision`           | obtains the stores and projects this project declares but this machine lacks |
+| `tcw project new`                | marks a folder as a TCW project and creates the folders for each axis         |
+| `tcw project provision`           | obtains the stores and projects this project declares but this machine lacks |
 | `tcw validate [--remote]` | checks every file, reference and link in the project; in a Jira-mode project the item references, stages and declared record changes are checked only with `--remote`, which also checks the Jira workflow |
-| `tcw projects list`       | lists this project and every project connected to it                          |
-| `tcw config show`         | prints the configuration commands run with; `--origin` says where each value came from |
+| `tcw project list`       | lists this project and every project connected to it                          |
+| `tcw project config`         | prints the configuration commands run with; `--origin` says where each value came from |
 | `tcw serve`               | starts a local web app for reading and editing all three axes                 |
 | `tcw taxonomy`            | the vocabulary and features                                                   |
 | `tcw capabilities`        | what a user can do                                                            |
@@ -272,8 +272,8 @@ the same folder from the first stage to the last. Each item is addressed by its
 A repository adopts TCW with one command:
 
 ```sh
-tcw init --id my-project                # all three axes
-tcw init --id my-project taxonomy work  # …or only some of them
+tcw project new --id my-project                # all three axes
+tcw project new --id my-project taxonomy work  # …or only some of them
 ```
 
 That writes a `tcw-config.yaml` holding the project's ID and creates the folders
@@ -296,7 +296,7 @@ It can inherit their taxonomy and capabilities, and address their work items as
 `upstream` connection is declared only by the reader and is read-only from its
 side, so a private project can read a public one that never names it. A
 checkout holding only some of the connected repositories still works: a command
-that needs an absent project says so and names `tcw provision`. See
+that needs an absent project says so and names `tcw project provision`. See
 [Working across repositories](docs/guide/multi-repo.md).
 
 ## Why taxonomy and capabilities live in the repository
@@ -360,7 +360,7 @@ described in [Skills and Agents](#skills-and-agents).
 | `tcw taxonomy rm`          | removes a local entry nothing is nested under or refers to, an override included |
 | `tcw taxonomy search`      | searches entry names and descriptions                                 |
 
-Creating the taxonomy's folder is `tcw init taxonomy`, and checking it is
+Creating the taxonomy's folder is `tcw project new taxonomy`, and checking it is
 `tcw validate`. Which projects a taxonomy is inherited from is set by the
 project's parent links (`parents:` in `.tcw/tcw-config.yaml`), not by a
 taxonomy command.
@@ -422,7 +422,7 @@ registered in the taxonomy before a capability names it.
 | `tcw capabilities search`      | searches names and descriptions                                                  |
 | `tcw capabilities drift`       | reports inherited capabilities nobody here has ruled on, and changes finished work declared that today's records do not show |
 
-Creating the ledger's folder is `tcw init capabilities`, and checking it is
+Creating the ledger's folder is `tcw project new capabilities`, and checking it is
 `tcw validate`. Which projects capabilities are inherited from is set by the
 project's parent links (`parents:` in `.tcw/tcw-config.yaml`).
 

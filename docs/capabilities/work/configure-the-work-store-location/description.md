@@ -43,7 +43,7 @@ The declaration is a fallback and never an override: a store already present at
 that has the folder and a fresh checkout that does not.
 
 I can scaffold this layout at a relative path with
-`tcw init --work-path <path> work`. `tcw init` refuses a `tcw://` address there;
+`tcw project new --work-path <path> work`. `tcw project new` refuses a `tcw://` address there;
 I write one into `.tcw/tcw-config.yaml` by hand once the project exists. TCW
 refuses a broken, invalid or non-Git location, and never moves a store that
 holds a work item: that move is mine to make. Those refusals leave nothing

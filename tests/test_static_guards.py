@@ -33,7 +33,7 @@ GIT_WORDS = re.compile(r"\b(git|commit(?:s|ted|ting)?|push(?:es|ed|ing)?|"
 EXEMPT = {
     ("store/fs.py", "git_root"),                      # finding the repository root
     ("store/fs.py", "personal_file_tracked"),         # TCW-72's read-only status check
-    ("store/fs.py", "FsStoreProvisioner"),            # `tcw provision` clones
+    ("store/fs.py", "FsStoreProvisioner"),            # `tcw project provision` clones
     ("cli.py", "run_provision"),
     ("store/project.py", "FsProjectRegistry._other_branch_warning"),
     # TCW-107: an entry folder holding only `.git` is named as such, because

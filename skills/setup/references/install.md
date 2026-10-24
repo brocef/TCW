@@ -56,7 +56,7 @@ which is why it sometimes does nothing and prints nothing.
 **A `tcw` that runs is not an install problem.** In particular, a `tcw work`
 command reporting that the store is _declared but not provisioned here_ is a
 working install telling you the truth: the project keeps its store in another
-repository and this machine has not obtained it. Run `tcw provision`. That is
+repository and this machine has not obtained it. Run `tcw project provision`. That is
 `project.md`'s concern, not this document's.
 
 **Installing into a cloud environment** — a session that is thrown away, so

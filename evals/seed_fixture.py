@@ -14,7 +14,7 @@ Three variants, one seeder, so they cannot drift apart:
   `work.stages.<stage>.prompt` lists carrying nonce-bearing bindings, a qa
   binding saying a person decides the verdict, and a silenced postmortem.
 * **bare** (`--bare`) — the same code files committed to a repository that
-  does not use TCW yet: no `tcw init`, no items, no nonces.
+  does not use TCW yet: no `tcw project new`, no items, no nonces.
 
 Items are created with `tcw work new` and moved with `tcw work advance`, and
 every document is written to the path `tcw work path` prints, so the fixture
@@ -758,7 +758,7 @@ def seed(dest: Path, variant: str = "control") -> dict:
                               "items": {}, "stage_items": {}, "nonces": {}})
 
     # 2. Make it a TCW project.
-    _run(dest, "init", "--id", PROJECT_ID, "taxonomy", "capabilities", "work")
+    _run(dest, "project", "new", "--id", PROJECT_ID, "taxonomy", "capabilities", "work")
 
     # 3. Taxonomy — two nouns and one feature over one of them.
     _run(dest, "taxonomy", "add", "Invoice",

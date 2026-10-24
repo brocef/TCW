@@ -208,14 +208,14 @@ def test_init_rerun_without_a_path_keeps_a_relative_work_path_as_written(tmp_pat
 def test_init_rerun_with_a_tilde_location_is_refused_and_writes_nothing(
         tmp_path, monkeypatch, capsys):
     """TCW-110 Design 7.1: a `~` location in the shared file names a folder
-    on one machine; every command refuses it, `tcw init` included."""
+    on one machine; every command refuses it, `tcw project new` included."""
     home = repository(tmp_path / "home")
     monkeypatch.setenv("HOME", str(home))
     root = repository(tmp_path / "node")
     before = b"id: node\nwork:\n    path: ~/store\n"
     write_config(root, before)
     commit_all(root)
-    code = run(root, monkeypatch, "init", "work")
+    code = run(root, monkeypatch, "project", "new", "work")
     err = capsys.readouterr().err
     assert code == 1, err
     assert "work.path must be a path relative to the project" in err
@@ -235,8 +235,8 @@ def test_init_reports_a_work_path_naming_no_user(tmp_path, monkeypatch, capsys):
     root = repository(tmp_path / "node")
     before = b"id: node\nwork:\n    path: ~no-such-user-tcw/store\n"
     write_config(root, before)
-    assert run(root, monkeypatch, "init", "work") == 1
-    assert "tcw init:" in capsys.readouterr().err
+    assert run(root, monkeypatch, "project", "new", "work") == 1
+    assert "tcw project new:" in capsys.readouterr().err
     assert config(root) == before
 
 
@@ -247,7 +247,7 @@ def test_a_refused_init_leaves_config_index_and_folders_alone(tmp_path, monkeypa
     write_config(root, before)
     commit_all(root)
     status = git(root, "status", "--porcelain").stdout
-    code = run(root, monkeypatch, "init", "work", "--id", "node", "--work-path",
+    code = run(root, monkeypatch, "project", "new", "work", "--id", "node", "--work-path",
                "planning/work")
     err = assert_refused_leaving_everything(root, before, code, capsys, "inside the braces")
     assert git(root, "status", "--porcelain").stdout == status   # .gitignore too
@@ -262,7 +262,7 @@ def test_a_fresh_init_writes_the_whole_file(tmp_path, monkeypatch, existing):
     root = repository(tmp_path / "node")
     if existing is not None:
         write_config(root, existing)
-    assert run(root, monkeypatch, "init", "work", "--id", "fresh") == 0
+    assert run(root, monkeypatch, "project", "new", "work", "--id", "fresh") == 0
     assert yaml.safe_load(config(root))["id"] == "fresh"
 
 
@@ -296,7 +296,7 @@ def test_init_with_a_scalar_work_section_is_refused(tmp_path, monkeypatch, capsy
     before = b"id: node\nwork: docs/work\n"
     write_config(root, before)
     commit_all(root)
-    code = run(root, monkeypatch, "init", "work", "--work-path", "w")
+    code = run(root, monkeypatch, "project", "new", "work", "--work-path", "w")
     err = capsys.readouterr().err
     assert code != 0
     assert config(root) == before

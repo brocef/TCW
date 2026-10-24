@@ -583,7 +583,7 @@ def test_provision_reports_a_registry_resolved_store_as_available(
     monkeypatch.chdir(code)
     calls = _count_git(monkeypatch)
 
-    assert main(["provision"]) == 0
+    assert main(["project", "provision"]) == 0
 
     assert "already available" in capsys.readouterr().err
     assert not any("clone" in argv or "fetch" in argv for argv in calls), calls
@@ -606,7 +606,7 @@ def test_provision_reports_a_local_store_without_contacting_the_remote(
     monkeypatch.chdir(code)
 
     calls = _count_git(monkeypatch)
-    assert main(["provision"]) == 0
+    assert main(["project", "provision"]) == 0
 
     assert "already available" in capsys.readouterr().err
     assert not any("clone" in argv or "fetch" in argv for argv in calls), calls
@@ -657,8 +657,8 @@ def _declared_but_malformed(tmp_path: Path) -> Path:
 def test_a_malformed_declaration_never_misdirects_to_tcw_init(tmp_path, monkeypatch,
                                                               capsys, argv):
     """Stated as the property, not an enumeration: a node that declares a home
-    repository must never be answered with "run `tcw init`", however broken the
-    declaration is. `tcw init` there would scaffold a second, empty store beside
+    repository must never be answered with "run `tcw project new`", however broken the
+    declaration is. `tcw project new` there would scaffold a second, empty store beside
     the real one — the worst advice available, and the reason this feature exists.
 
     `tcw validate` already reported the bad line; every work command flattened it
@@ -683,7 +683,7 @@ def test_a_misconfigured_sibling_node_does_not_break_a_topology_listing(tmp_path
 
 def test_the_board_no_longer_misdirects_to_tcw_init(tmp_path, monkeypatch, capsys):
     """The reported symptom. `tcw work list` used to answer a declared-but-absent
-    store with "run `tcw init`" — advice that would scaffold a second, empty
+    store with "run `tcw project new`" — advice that would scaffold a second, empty
     store beside the real one."""
     monkeypatch.chdir(_declared_but_absent(tmp_path))
 
@@ -712,7 +712,7 @@ def test_every_work_command_says_the_same_actionable_thing(tmp_path, monkeypatch
 
 def test_an_absent_node_still_gets_the_tcw_init_advice(tmp_path, monkeypatch, capsys):
     """The other answer must not be lost: somewhere that is not a node at all is
-    exactly what `tcw init` fixes."""
+    exactly what `tcw project new` fixes."""
     plain = tmp_path / "not-a-node"
     plain.mkdir()
     monkeypatch.chdir(plain)
@@ -751,19 +751,19 @@ def test_a_parent_still_lists_its_topology_when_a_child_is_unprovisioned(tmp_pat
         write_manifest(root, {other: f"../{other.split('-')[0]}"})
 
     monkeypatch.chdir(parent)
-    assert main(["projects", "list"]) == 0
+    assert main(["project", "list"]) == 0
 
     # A registered child is listed even when its store is not usable here:
     # omitting it made a project with children read as having none.
     assert capsys.readouterr().out.split() == ["parent-project", "child-project"]
 
 
-# ── the `tcw provision` verb ─────────────────────────────────────────────────
+# ── the `tcw project provision` verb ─────────────────────────────────────────────────
 
 def test_provision_refresh_is_a_usage_error(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit) as stop:
-        main(["provision", "--refresh"])
+        main(["project", "provision", "--refresh"])
     assert stop.value.code == 2
 
 
@@ -789,7 +789,7 @@ def test_provision_then_the_board_works(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(_declared_against(tmp_path, remote))
 
     assert main(["work", "list"]) == 1                      # before
-    assert main(["provision"]) == 0
+    assert main(["project", "provision"]) == 0
     capsys.readouterr()
     assert main(["work", "list"]) == 0                      # after
 
@@ -802,7 +802,7 @@ def test_provision_names_the_remote_before_contacting_it(tmp_path, monkeypatch, 
     remote = _remote_with_store(tmp_path)
     monkeypatch.chdir(_declared_against(tmp_path, remote))
 
-    assert main(["provision"]) == 0
+    assert main(["project", "provision"]) == 0
 
     out = capsys.readouterr().err
     assert str(remote) in out
@@ -812,11 +812,11 @@ def test_provision_names_the_remote_before_contacting_it(tmp_path, monkeypatch, 
 def test_a_second_provision_reports_available_and_contacts_nothing(tmp_path,
                                                                    monkeypatch, capsys):
     monkeypatch.chdir(_declared_against(tmp_path, _remote_with_store(tmp_path)))
-    assert main(["provision"]) == 0
+    assert main(["project", "provision"]) == 0
     capsys.readouterr()
 
     calls = _count_git(monkeypatch)
-    assert main(["provision"]) == 0
+    assert main(["project", "provision"]) == 0
 
     assert "already available" in capsys.readouterr().err
     assert calls == []
@@ -827,7 +827,7 @@ def test_a_dry_run_from_the_cli_contacts_nothing(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(code)
 
     calls = _count_git(monkeypatch)
-    assert main(["provision", "--dry-run"]) == 0
+    assert main(["project", "provision", "--dry-run"]) == 0
 
     assert "would obtain" in capsys.readouterr().err
     assert calls == []
@@ -839,7 +839,7 @@ def test_a_node_declaring_nothing_says_so_and_succeeds(tmp_path, monkeypatch, ca
     init(["work"], code, "corelib")
     monkeypatch.chdir(code)
 
-    assert main(["provision"]) == 0
+    assert main(["project", "provision"]) == 0
     assert "Nothing to provision" in capsys.readouterr().err
 
 
@@ -852,7 +852,7 @@ def test_a_malformed_declaration_refuses_rather_than_doing_nothing(tmp_path,
     _write_config(code, repository={"path": "docs/work/corelib"})     # no url
     monkeypatch.chdir(code)
 
-    assert main(["provision"]) == 1
+    assert main(["project", "provision"]) == 1
     assert "work.repository.url" in capsys.readouterr().err
 
 
@@ -870,15 +870,15 @@ def test_a_config_that_cannot_be_parsed_is_an_error_not_nothing(tmp_path, monkey
     write_config(code, broken)
     monkeypatch.chdir(code)
 
-    assert main(["provision"]) == 1
+    assert main(["project", "provision"]) == 1
     err = capsys.readouterr().err
-    assert err.startswith("tcw provision: malformed "), err
+    assert err.startswith("tcw project provision: malformed "), err
     assert f"{code.name}/.tcw/tcw-config.yaml: " in err, err
     assert words in err and "Traceback" not in err, err
     assert "Nothing to provision" not in err, err
 
 
-@pytest.mark.parametrize("command", [["provision"], ["init"]])
+@pytest.mark.parametrize("command", [["project", "provision"], ["project", "new"]])
 def test_a_config_that_is_not_utf_8_is_named(tmp_path, monkeypatch, capsys, command):
     """Pre-freeze clean-up, final fixes: the codec's own words named no
     file. The shared reader names it, and the file is left as it was."""
@@ -890,7 +890,7 @@ def test_a_config_that_is_not_utf_8_is_named(tmp_path, monkeypatch, capsys, comm
 
     assert main(command) == 1
     err = capsys.readouterr().err
-    assert err == (f"tcw {command[0]}: {code / '.tcw/tcw-config.yaml'}: is not valid "
+    assert err == (f"tcw {' '.join(command)}: {code / '.tcw/tcw-config.yaml'}: is not valid "
                    f"UTF-8 text (byte 0xe9 at position 17)\n"), err
     assert (code / ".tcw/tcw-config.yaml").read_bytes() == broken
 
@@ -898,7 +898,7 @@ def test_a_config_that_is_not_utf_8_is_named(tmp_path, monkeypatch, capsys, comm
 def test_a_failure_exits_non_zero_and_names_the_cause(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(_declared_against(tmp_path, tmp_path / "no-such-repository"))
 
-    assert main(["provision"]) == 1
+    assert main(["project", "provision"]) == 1
     assert "git clone failed" in capsys.readouterr().err
 
 
@@ -907,8 +907,8 @@ def test_provision_outside_a_project_says_so(tmp_path, monkeypatch, capsys):
     plain.mkdir()
     monkeypatch.chdir(plain)
 
-    assert main(["provision"]) == 1
-    assert "tcw provision: no TCW project here" in capsys.readouterr().err
+    assert main(["project", "provision"]) == 1
+    assert "tcw project provision: no TCW project here" in capsys.readouterr().err
 
 
 def test_limiting_to_undeclared_work_is_a_no_op(tmp_path, monkeypatch, capsys):
@@ -916,7 +916,7 @@ def test_limiting_to_undeclared_work_is_a_no_op(tmp_path, monkeypatch, capsys):
     init(["work"], code, "corelib")
     monkeypatch.chdir(code)
 
-    assert main(["provision", "--component", "work"]) == 0
+    assert main(["project", "provision", "--component", "work"]) == 0
     assert "Nothing to provision" in capsys.readouterr().err
 
 
@@ -924,7 +924,7 @@ def test_limiting_to_undeclared_work_is_a_no_op(tmp_path, monkeypatch, capsys):
 
 @pytest.mark.parametrize("argv", [
     ["work", "list"], ["work", "show", "an-item"], ["work", "path"],
-    ["projects", "list"], ["work", "docs"], ["validate"],
+    ["project", "list"], ["work", "docs"], ["validate"],
 ])
 def test_no_read_command_provisions_implicitly(tmp_path, monkeypatch, capsys, argv):
     """A repository's config can name a URL. Nothing but the provisioning verb
@@ -939,7 +939,7 @@ def test_no_read_command_provisions_implicitly(tmp_path, monkeypatch, capsys, ar
     subprocess.run(["git", "-C", str(remote), "commit", "-qm", "item"], check=True)
     code = _declared_against(tmp_path, remote)
     monkeypatch.chdir(code)
-    assert main(["provision"]) == 0
+    assert main(["project", "provision"]) == 0
     capsys.readouterr()
 
     def explode(self, *args, **kwargs):
@@ -1043,7 +1043,7 @@ def test_every_component_is_exposed_now_that_its_adapter_exists(
     write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
-    assert main(["provision", "--component", "taxonomy"]) == 0
+    assert main(["project", "provision", "--component", "taxonomy"]) == 0
 
     assert (tmp_path / "co" / "trees" / "taxonomy").is_dir()
     assert "taxonomy: obtained" in capsys.readouterr().err
@@ -1056,7 +1056,7 @@ def test_an_unknown_component_is_still_refused(tmp_path, monkeypatch):
     """Widening the tuple is not opening it."""
     monkeypatch.chdir(_repo(tmp_path / "code"))
     with pytest.raises(SystemExit):
-        main(["provision", "--component", "nonsense"])
+        main(["project", "provision", "--component", "nonsense"])
 
 
 def test_validate_reports_a_malformed_declaration_when_the_store_is_absent(tmp_path):
@@ -1240,7 +1240,7 @@ def test_a_malformed_tree_declaration_names_the_line(tmp_path):
 # Criteria 1 and 9 are properties over a command surface, so they are asserted
 # across that surface rather than at one call site. Child A shipped criterion 1
 # holding for `tcw work list` while a malformed declaration still sent every
-# work command to `tcw init`; the parametrization is what makes that shape of
+# work command to `tcw project new`; the parametrization is what makes that shape of
 # defect impossible to repeat here.
 
 TREE_COMMANDS = [
@@ -1259,7 +1259,7 @@ def _tree_component(argv) -> str:
 def test_a_declared_tree_store_is_never_reported_as_an_absent_component(
         tmp_path, monkeypatch, capsys, argv):
     """Criterion 1. The node is right in front of the command and says where its
-    store comes from; answering "no tcw <component> node here — run `tcw init`"
+    store comes from; answering "no tcw <component> node here — run `tcw project new`"
     would point the user at the one action that makes things worse."""
     component = _tree_component(argv)
     code = _tree_node(tmp_path, component,
@@ -1371,7 +1371,7 @@ def test_provision_obtains_a_declared_tree_store(tmp_path, monkeypatch, capsys,
                                   "checkout": str(checkout)})
     monkeypatch.chdir(code)
 
-    assert main(["provision", "--component", component]) == 0
+    assert main(["project", "provision", "--component", component]) == 0
 
     assert (checkout / "trees" / component).is_dir()
     assert main([component, "path"]) == 0
@@ -1403,7 +1403,7 @@ def test_a_local_store_wins_at_the_command_for_every_component(
     monkeypatch.setattr(fs.FsStoreProvisioner, "_run",
                         lambda self, argv, **kw: calls.append(list(argv)))
 
-    assert main(["provision", "--component", component]) == 0
+    assert main(["project", "provision", "--component", component]) == 0
 
     assert calls == [], calls
     assert "already available" in capsys.readouterr().err
@@ -1428,7 +1428,7 @@ def test_each_declared_component_is_provisioned_independently(tmp_path, monkeypa
     write_config_file(path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
-    assert main(["provision"]) == 1
+    assert main(["project", "provision"]) == 1
 
     captured = capsys.readouterr()
     assert (tmp_path / "co-good" / "trees" / "taxonomy").is_dir()
@@ -1446,7 +1446,7 @@ def test_init_scaffolds_a_tree_store_at_a_configured_location(tmp_path, monkeypa
     monkeypatch.chdir(code)
     elsewhere = tmp_path / "trees" / component
 
-    assert main(["init", "--id", "corelib", f"--{component}-path",
+    assert main(["project", "new", "--id", "corelib", f"--{component}-path",
                  f"../trees/{component}", component]) == 0
 
     assert elsewhere.is_dir()
@@ -1462,7 +1462,7 @@ def test_a_malformed_tree_declaration_is_named_with_or_without_a_configured_path
     """Criterion 9, finally tested as the property it was written as.
 
     The earlier cases all set `<component>.path`, and passed. Without one the
-    same config answered "no tcw taxonomy node here — run `tcw init`": a
+    same config answered "no tcw taxonomy node here — run `tcw project new`": a
     malformed declaration parses to `(None, problems)`, so the ladder saw no
     declaration, took rule 4, and a tree store's rule 4 validates nothing and
     cannot fail — so the problems were dropped on a path that never raised.
@@ -1511,7 +1511,7 @@ def test_a_usable_local_tree_still_masks_an_unused_malformed_declaration(
 
 def test_a_federation_error_is_not_reported_as_unprovisioned(tmp_path):
     """Rules 1 and 2 swallowed every `ValueError`, so a store that was present
-    and failed to open was answered with `tcw provision` — which then succeeded
+    and failed to open was answered with `tcw project provision` — which then succeeded
     and left the store exactly as unopenable."""
     node = _repo(tmp_path / "node")
     init(["capabilities"], node, "node-project")
@@ -1710,7 +1710,7 @@ def test_the_current_repositorys_ssh_command_does_not_turn_batch_mode_off(monkey
 
 
 REPO = Path(__file__).resolve().parents[1]
-#: Every document that says `tcw provision` does not ask (B2).
+#: Every document that says `tcw project provision` does not ask (B2).
 NOT_ASKING = [
     "docs/guide/multi-repo.md", "skills/setup/references/project.md",
     "docs/capabilities/cli/provision-declared-stores/description.md",

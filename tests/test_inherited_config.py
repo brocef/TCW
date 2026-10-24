@@ -624,7 +624,7 @@ def test_ac13_a_missing_parent_in_filesystem_mode(tmp_path):
     assert new.code == 0, new
     item = new.out.strip()
     for argv in (("work", "list"), ("work", "show", item),
-                 ("work", "advance", item, "--dry-run"), ("projects", "list"),
+                 ("work", "advance", item, "--dry-run"), ("project", "list"),
                  ("taxonomy", "list")):
         ran = tcw(app, *argv)
         assert ran.code == 0, (argv, ran)
@@ -830,18 +830,18 @@ def test_ac29_two_repositories(tmp_path):
     assert "'ws'" in finding and SUFFIX in finding, finding
 
 
-# -- `tcw config show` (Step 9, Design 7.1, AC 17) ---------------------------------------
+# -- `tcw project config` (Step 9, Design 7.1, AC 17) ---------------------------------------
 
 
 def test_ac17_config_show_prints_what_is_inherited(tmp_path):
     core = made(tmp_path, "core", work=jira_mode(jira=CORE_JIRA, tags=["a", "b"]))
     app = made(tmp_path, "app", parents=["core"], work=jira_mode())
-    shown = tcw(app, "config", "show")
+    shown = tcw(app, "project", "config")
     assert shown.code == 0, shown
     values = yaml.safe_load(shown.out)
     assert values["work"]["tags"] == ["a", "b"]
     assert values["work"]["jira"]["site"] == "https://core.example.net"
-    origin = tcw(app, "config", "show", "--origin")
+    origin = tcw(app, "project", "config", "--origin")
     [site] = [line for line in origin.out.splitlines() if line.strip().startswith("site:")]
     assert str(core / ".tcw" / "tcw-config.yaml") in site, site
 
@@ -850,9 +850,9 @@ def test_ac17_a_variable_is_labelled_with_its_name(tmp_path):
     app = made(tmp_path, "app")
     env = {"TCW_NO_PERSONAL_CONFIG": None, "TCW_USER_NAME__APP": "Robin",
            "HOME": str(tmp_path)}
-    shown = tcw(app, "config", "show", env=env)
+    shown = tcw(app, "project", "config", env=env)
     assert yaml.safe_load(shown.out)["user"]["name"] == "Robin"
-    origin = tcw(app, "config", "show", "--origin", env=env)
+    origin = tcw(app, "project", "config", "--origin", env=env)
     [name] = [line for line in origin.out.splitlines() if "Robin" in line]
     assert name.endswith("# environment: TCW_USER_NAME__APP"), name
 
@@ -860,17 +860,17 @@ def test_ac17_a_variable_is_labelled_with_its_name(tmp_path):
 @pytest.mark.parametrize("flags", [(), ("--origin",)])
 def test_ac17_config_show_stops_on_an_undecided_key(tmp_path, flags):
     app = made(tmp_path, "app", parents=["core"])
-    shown = tcw(app, "config", "show", *flags)
+    shown = tcw(app, "project", "config", *flags)
     assert shown.code == 7 and shown.out == "" and "(work.tags)" in shown.err, shown
     set_work(app, jira_mode(jira={"project": "APP"}))
-    shown = tcw(app, "config", "show", *flags)
+    shown = tcw(app, "project", "config", *flags)
     assert shown.code == 7 and shown.out == "" and "(work.tags)" in shown.err, shown
 
 
 def test_ac17_config_show_stops_on_a_broken_key(tmp_path):
     made(tmp_path, "core", work={"tags": "notalist"})
     app = made(tmp_path, "app", parents=["core"])
-    shown = tcw(app, "config", "show")
+    shown = tcw(app, "project", "config")
     assert shown.code == 1 and shown.out == "", shown
 
 
@@ -879,7 +879,7 @@ def test_ac12_the_user_wide_files_shared_key_is_set_aside_once(tmp_path):
     write_config_file(tmp_path / "xdg" / "tcw" / "config.yaml", "work:\n  tags: [u]\n")
     made(tmp_path, "core", work={"tags": ["a"]})
     app = made(tmp_path, "app", parents=["core"])
-    shown = tcw(app, "config", "show", "--origin", env=env)
+    shown = tcw(app, "project", "config", "--origin", env=env)
     assert sum(line.startswith("# refused: work.tags") for line in
                shown.out.splitlines()) == 1, shown.out
 

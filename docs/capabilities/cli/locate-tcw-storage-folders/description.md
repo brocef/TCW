@@ -10,8 +10,8 @@ prints that item's folder or one of its stage files — see
 
 Where a store is declared in another repository but has not been obtained here,
 there is no folder to print, so the command says so on standard error, prints
-nothing on standard output, and names `tcw provision` rather than printing a
+nothing on standard output, and names `tcw project provision` rather than printing a
 path that does not exist. Once provisioned, it prints the provisioned location.
 If the declaration itself is malformed, it names the configuration line to fix —
-never "no TCW project here", which would send me to `tcw init` and scaffold a
+never "no TCW project here", which would send me to `tcw project new` and scaffold a
 second, empty store beside the real one.

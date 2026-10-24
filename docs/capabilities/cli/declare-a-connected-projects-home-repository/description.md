@@ -14,7 +14,7 @@ repository, and the command that fetches it (a `project provision` command,
 which TCW-115 adds),
 rather than reporting that the project was never declared.
 
-`tcw provision` does not fetch connected projects; it fetches the component
+`tcw project provision` does not fetch connected projects; it fetches the component
 stores a project declares (see [Provision declared
 stores](tcw://C/cli/provision-declared-stores)). A store whose repository is a
 project already here is still read inside that project's folder, matched

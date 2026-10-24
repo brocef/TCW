@@ -110,7 +110,7 @@ def test_a_closed_stdout_exits_quietly(run, fx, monkeypatch):
     assert code == 1 and err == ""
 
 
-@pytest.mark.parametrize("argv", [["projects", "list"],
+@pytest.mark.parametrize("argv", [["project", "list"],
                                   ["work", "procedure", "audit-backlog"]])
 def test_a_reader_gone_before_short_output_exits_quietly(fx, argv):
     """Review fix C1: output shorter than the pipe buffer is only written when
@@ -141,7 +141,7 @@ def test_a_reader_gone_before_a_failure_names_what_it_made(fx):
         "def fail(*a, **k):\n"
         "    raise BackendError('stopped after creating it', name='TCW-9')\n"
         "cli.refuse_retired_config = fail\n"
-        "sys.exit(cli.main(['projects', 'list']))\n")
+        "sys.exit(cli.main(['project', 'list']))\n")
     read_end, write_end = os.pipe()
     os.close(read_end)
     try:

@@ -86,7 +86,7 @@ def test_ac24_init_refuses_an_absolute_or_home_location_and_writes_nothing(
     root.mkdir()
     git(root, "init", "-q")
     component = key.split(".")[0]
-    found = tcw(["init", "--id", "fresh", flag, value, component], root)
+    found = tcw(["project", "new", "--id", "fresh", flag, value, component], root)
     assert found.code == 2
     assert f"{key} {RELATIVE}" in found.err, found.err
     assert "tcw://" not in found.err and ".tcw/tcw-manifest.local.yaml" in found.err
@@ -188,7 +188,7 @@ def test_ac17_with_a_repository_declared_the_declaration_answers(tcw, tmp_path,
     write_config_file(path, yaml.safe_dump(document, sort_keys=False))
     before = tcw(["work", "list"], app)
     assert before.code == 1 and "tcw provision" in before.err, before
-    assert tcw(["provision"], app).code == 0
+    assert tcw(["project", "provision"], app).code == 0
     after = tcw(["work", "list"], app)
     assert after.code == 0, after.err
 
@@ -251,11 +251,11 @@ def test_validate_reports_an_unusable_location_as_an_error_at_its_key(
 
 
 def test_init_builds_a_store_at_its_folder_address(tcw, tmp_path):
-    """Design 7.5: `tcw init` finds the folder as the readers do."""
+    """Design 7.5: `tcw project new` finds the folder as the readers do."""
     workspace = _project(tmp_path, "workspace")
     app = _project(tmp_path, "app")
     set_location(app, "taxonomy", "tcw://workspace.path/trees/app")
-    made = tcw(["init", "taxonomy"], app)
+    made = tcw(["project", "new", "taxonomy"], app)
     assert made.code == 0, made.err
     assert (workspace / "trees" / "app").is_dir()
     assert not (app / "docs" / "taxonomy").exists()

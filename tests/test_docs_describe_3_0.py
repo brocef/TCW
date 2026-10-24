@@ -122,7 +122,7 @@ def test_a_new_document_exists(rel):
 
 def vocabulary_problems(rel: str, text: str) -> list[str]:
     """Every match of criterion 2's table, one line each. The table alone:
-    `builtin: true` is not in it, since `tcw config show` prints it."""
+    `builtin: true` is not in it, since `tcw project config` prints it."""
     lines = text.splitlines()
     return [f"{rel}:{h.line}: {h.text!r} ({h.reason}): {lines[h.line - 1].strip()}"
             for h in scan(text, PATTERNS)]

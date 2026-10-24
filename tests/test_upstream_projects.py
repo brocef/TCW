@@ -394,7 +394,7 @@ def test_delegate_into_an_upstream_is_refused(tmp_path, where):
 
 def _listed(where):
     import json
-    out = _tcw(where, "projects", "list", "--json")
+    out = _tcw(where, "project", "list", "--json")
     assert out.returncode == 0, out.stderr
     return {p["id"]: p for p in json.loads(out.stdout)["projects"]}
 

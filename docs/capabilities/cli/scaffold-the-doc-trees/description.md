@@ -1,12 +1,12 @@
-As a user, I run `tcw init --id <project-id> [taxonomy|capabilities|work]` to
+As a user, I run `tcw project new --id <project-id> [taxonomy|capabilities|work]` to
 make the current folder a TCW project: it creates `.tcw/tcw-config.yaml`, whose
 first line records the version of the TCW that wrote it (`tcw-version: 4.0.0`),
 with a canonical project ID, and scaffolds the stores I name, or all three when
 I name none. Nothing is written at the project's root. It works whether or not the folder is in a git repository. There are no
-per-axis `init` commands; `tcw init work` scaffolds the work store alone. On an
+per-axis `init` commands; `tcw project new work` scaffolds the work store alone. On an
 already configured project I may omit `--id` or repeat the same value; a
 conflicting value is rejected. I can backfill a marker that has no ID with
-`tcw init --id <project-id>` without losing tags or other configuration; the ID goes below the version
+`tcw project new --id <project-id>` without losing tags or other configuration; the ID goes below the version
 line, which no edit changes.
 
 `init` prints nothing on standard output. Every file it writes and every folder
@@ -28,7 +28,7 @@ Each store's location is mine to choose: `--work-path`, `--taxonomy-path`, and
 find it without being told again. A new work location replaces a default
 `docs/work/` only when it holds no work item; moving existing work is mine to do.
 A store whose home repository is declared is not scaffolded: `init` tells me to
-run `tcw provision` instead, so an empty local store never hides the real one.
+run `tcw project provision` instead, so an empty local store never hides the real one.
 
 Every refusal `init` makes happens before it writes anything at all — no marker,
 no config entry, no folders. It turns down a folder it would make that is really

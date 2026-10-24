@@ -81,7 +81,7 @@ def _git_identity(monkeypatch):
     """Every `git commit` the suite provokes has a committer.
 
     Most fixtures `git config` an identity into the repositories they build
-    themselves, but that cannot cover the ones TCW *clones* — `tcw provision`
+    themselves, but that cannot cover the ones TCW *clones* — `tcw project provision`
     checks a store out, and a clone inherits no local config from its source.
     Those commits fell back to the developer's global identity, which a bare CI
     runner does not have: `fatal: empty ident name (for <runner@...>) not
@@ -99,7 +99,7 @@ def _git_identity(monkeypatch):
 # Git's own background maintenance, switched off for the whole suite. Supplied
 # through `GIT_CONFIG_*` rather than `git config --global`: the suite runs `git`
 # both directly and through TCW, in repositories it creates *and* in ones
-# `tcw provision` clones, and only the environment reaches all of them without a
+# `tcw project provision` clones, and only the environment reaches all of them without a
 # fixture having to remember.
 _GIT_NO_MAINTENANCE = {
     "GIT_CONFIG_COUNT": "2",
@@ -128,7 +128,7 @@ def _no_git_background_maintenance(monkeypatch):
     Nothing about that error involves the test that carries it — it is whichever
     one happened to be holding the temp directory when the race landed, which is
     why it moves around and why it appears on one Python version and not
-    another. The suite only began fetching when `tcw provision` gained a store
+    another. The suite only began fetching when `tcw project provision` gained a store
     to clone, which is why this had never fired before.
 
     `maintenance.auto` is the key that matters; `gc.auto` covers the other

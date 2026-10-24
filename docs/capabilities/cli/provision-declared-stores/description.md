@@ -1,5 +1,5 @@
 As a developer arriving in a fresh checkout, I can run one explicit command,
-`tcw provision`, to obtain the component stores this project declares but does
+`tcw project provision`, to obtain the component stores this project declares but does
 not have here. It reports on standard error what it is about to contact before
 contacting it, fetches into the location the declaration names or a
 per-machine cache, and says where each store landed. It prints nothing on
