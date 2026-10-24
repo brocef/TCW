@@ -572,3 +572,42 @@ test("the tickets view reads no list of every item, and an adopt's failed hook i
     // offers items, so the full list is never read.
     expect(allPaths(fetch)).toHaveLength(0)
 })
+
+describe("tags a parent that is not here may set", () => {
+    const why =
+        "'p' inherits its configuration (work.tags) from project 'core', which is not on this machine"
+    const withheld = { tags: { unavailable: why } }
+
+    test("the Tags filter says the tags could not be read, and why", async () => {
+        serve(withheld)
+        renderApp()
+        await screen.findByText("Alpha")
+        fireEvent.click(screen.getByRole("button", { name: /^Tags/ }))
+        expect(
+            await screen.findByText(`could not be read: ${why}`)
+        ).toBeInTheDocument()
+        expect(screen.queryByText("none available")).toBeNull()
+    })
+
+    test("+ New item and Edit open their forms, with the reason for the tags", async () => {
+        serve(withheld, [
+            ["/api/work/2026-10-01-a$", 200, workDetail("2026-10-01-a")],
+        ])
+        renderApp("/work/2026-10-01-a")
+        fireEvent.click(await screen.findByRole("button", { name: "Edit" }))
+        expect(
+            await screen.findByRole("heading", { name: /^Edit / })
+        ).toBeInTheDocument()
+        expect(
+            screen.getByText((text) => text.endsWith(`read: ${why}`))
+        ).toBeInTheDocument()
+        fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+        fireEvent.click(screen.getByRole("button", { name: "+ New item" }))
+        expect(
+            await screen.findByRole("textbox", { name: "Title" })
+        ).toBeInTheDocument()
+        expect(
+            screen.getByText((text) => text.endsWith(`read: ${why}`))
+        ).toBeInTheDocument()
+    })
+})

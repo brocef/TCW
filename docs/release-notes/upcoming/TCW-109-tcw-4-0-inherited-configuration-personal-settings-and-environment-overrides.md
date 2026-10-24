@@ -36,6 +36,12 @@ project could not be checked, and still checks the Jira settings the child, or
 a parent after the missing one, sets itself. `tcw config show` prints nothing and exits 7
 rather than show settings that are not the ones commands run with.
 
+The web app (`tcw serve`) still opens on such a project, and items can still
+be created and edited there. Where the tags would be offered, the forms say
+why they could not be read and no tag can be chosen, as `--tag` stops on the
+command line; an item's existing tags are kept as they are. The board's Tags
+filter says the same.
+
 A mistake in a parent's shared settings stops only the commands that read
 that setting, naming the parent's file; `tcw validate` in the child warns
 about it, and fails only in the parent.

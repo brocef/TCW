@@ -281,15 +281,9 @@ export function PropertiesForm({
                         options={["", ...project.scales.size]}
                         onChange={(value) => set("complexity", value)}
                     />
-                    <ReferenceInput
-                        label="Tags"
-                        multiple
-                        mode="refuse"
+                    <TagsInput
+                        project={project}
                         value={draft.tags}
-                        options={project.tags.map((tag) => ({
-                            identifier: tag,
-                            displayName: tag,
-                        }))}
                         onChange={(value) => set("tags", value)}
                     />
                     <ReferenceInput
@@ -477,6 +471,44 @@ export function CommentBox({
                 </Button>
             </Flex>
         </Flex>
+    )
+}
+
+/** The tags field: the project's registered tags to choose from or, when
+ * they cannot be read (a parent that is not on this machine may set them),
+ * the reason in their place and no tag to choose, as `--tag` stops on the
+ * command line. An item's tags are then shown and kept as they are. */
+function TagsInput({
+    project,
+    value,
+    onChange,
+}: {
+    project: TProject
+    value: string[]
+    onChange: (value: string[]) => void
+}) {
+    if (isUnavailable(project.tags)) {
+        return (
+            <Text as="p" color="gray" size="2">
+                {value.length > 0 &&
+                    `Tags ${value.join(", ")} are kept as they are. `}
+                No tag can be chosen, because the project's tags could not be
+                read: {project.tags.unavailable}
+            </Text>
+        )
+    }
+    return (
+        <ReferenceInput
+            label="Tags"
+            multiple
+            mode="refuse"
+            value={value}
+            options={project.tags.map((tag) => ({
+                identifier: tag,
+                displayName: tag,
+            }))}
+            onChange={(chosen) => onChange(chosen as string[])}
+        />
     )
 }
 
@@ -673,15 +705,9 @@ export function NewItemForm({
                                     offered: {project.createFields.unavailable}
                                 </Text>
                             )}
-                            <ReferenceInput
-                                label="Tags"
-                                multiple
-                                mode="refuse"
+                            <TagsInput
+                                project={project}
                                 value={(props.tags as string[]) ?? []}
-                                options={project.tags.map((tag) => ({
-                                    identifier: tag,
-                                    displayName: tag,
-                                }))}
                                 onChange={(value) => set("tags", value)}
                             />
                             <ReferenceInput

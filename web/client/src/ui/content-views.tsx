@@ -105,9 +105,12 @@ export function FacetPopover({
     value,
     onChange,
     display = (option: string) => option,
+    unavailable,
 }: {
     label: string
     options: readonly string[]
+    /** Why the options could not be read, shown in their place. */
+    unavailable?: string
     value: string[]
     onChange: (value: string[]) => void
     /** How an option reads: a stage as written, a person by name. */
@@ -127,7 +130,11 @@ export function FacetPopover({
                 width="180px"
             >
                 <Flex direction="column" gap="2">
-                    {options.length ? (
+                    {unavailable !== undefined ? (
+                        <Text className="facet-empty" color="gray" size="1">
+                            could not be read: {unavailable}
+                        </Text>
+                    ) : options.length ? (
                         options.map((option) => (
                             <Text
                                 as="label"

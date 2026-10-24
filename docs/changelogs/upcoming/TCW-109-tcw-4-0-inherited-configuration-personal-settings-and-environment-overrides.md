@@ -89,11 +89,18 @@
   A descendant's stays a graph problem. (TCW-109)
 - `GET /api/project` gives `tags` as `{"unavailable": …}` when they are not
   known. (TCW-109)
+- The web client's `TProject.tags` is `string[] | TUnavailable`. When the
+  tags are unavailable, the new item and properties forms show the reason in
+  place of the Tags field, offer no tag and send none (an item's own tags are
+  kept), and the board's Tags filter says the tags could not be read and why
+  (`FacetPopover` takes `unavailable`). (TCW-109)
 - `work_store_problems` skips the unregistered-tag check when the tags are
   withheld. (TCW-109)
 
 ## Internal
 
 - The test suite removes every override variable before each test. (TCW-109)
+- `web/e2e/missing-parent.spec.ts`: the web app served in a project whose
+  parent is not on this machine. (TCW-109)
 - `tests/test_inherited_config.py`, `tests/test_config_environment.py`,
   `tests/test_config_keys.py` and `tests/test_config_overrides.py`. (TCW-109)

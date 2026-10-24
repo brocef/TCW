@@ -1008,7 +1008,16 @@ export function App() {
                                 />
                                 <FacetPopover
                                     label="Tags"
-                                    options={project.tags}
+                                    options={
+                                        isUnavailable(project.tags)
+                                            ? []
+                                            : project.tags
+                                    }
+                                    unavailable={
+                                        isUnavailable(project.tags)
+                                            ? project.tags.unavailable
+                                            : undefined
+                                    }
                                     value={tagFilter}
                                     onChange={setTagFilter}
                                 />

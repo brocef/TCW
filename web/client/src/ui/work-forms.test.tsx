@@ -747,3 +747,69 @@ test("the new item form sends single values trimmed", async () => {
         properties: { assignee: "bob" },
     })
 })
+
+describe("tags a parent that is not here may set", () => {
+    const why =
+        "'p' inherits its configuration (work.tags) from project 'core', which is not on this machine"
+    const withheld = project({ tags: { unavailable: why } })
+
+    test("the new item form shows the reason, offers no tag, and creates without one", async () => {
+        const fetch = fakeFetch([
+            [/^POST /, 201, { "full-id": "p.work/2026-10-15-new" }],
+        ])
+        globalThis.fetch = fetch as unknown as typeof globalThis.fetch
+        const onCreated = vi.fn()
+        wrap(
+            <NewItemForm
+                project={withheld}
+                references={references}
+                onCreated={onCreated}
+                onCancel={() => undefined}
+                onDirty={() => undefined}
+            />
+        )
+        expect(
+            screen.getByText(
+                `No tag can be chosen, because the project's tags could not be read: ${why}`
+            )
+        ).toBeInTheDocument()
+        expect(screen.queryByRole("combobox", { name: "Tags" })).toBeNull()
+        fireEvent.change(screen.getByRole("textbox", { name: "Title" }), {
+            target: { value: "New" },
+        })
+        fireEvent.click(screen.getByRole("button", { name: "Save" }))
+        await waitFor(() => expect(onCreated).toHaveBeenCalled())
+        expect(fetch.calls[0].body).toEqual({ title: "New", properties: {} })
+    })
+
+    test("the properties form keeps the item's tags and saves other changes without them", async () => {
+        const fetch = fakeFetch([[/^PATCH /, 200, { item: {} }]])
+        globalThis.fetch = fetch as unknown as typeof globalThis.fetch
+        const onSaved = vi.fn()
+        wrap(
+            <PropertiesForm
+                project={withheld}
+                item={workItem("x", { priority: "medium", tags: ["ui"] })}
+                folder="x"
+                references={references}
+                onSaved={onSaved}
+                onCancel={() => undefined}
+                onDirty={() => undefined}
+                onReload={() => undefined}
+            />
+        )
+        expect(
+            screen.getByText(
+                `Tags ui are kept as they are. No tag can be chosen, because the project's tags could not be read: ${why}`
+            )
+        ).toBeInTheDocument()
+        expect(screen.queryByRole("combobox", { name: "Tags" })).toBeNull()
+        await choose("Priority", "high")
+        fireEvent.click(screen.getByRole("button", { name: "Save" }))
+        await waitFor(() => expect(onSaved).toHaveBeenCalled())
+        expect(fetch.calls[0].body).toEqual({
+            changes: { priority: "high" },
+            expected: { priority: "medium" },
+        })
+    })
+})

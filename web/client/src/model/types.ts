@@ -41,7 +41,9 @@ export interface TProject {
     inboxStage: string
     startStage: string
     inboxItems: boolean
-    tags: string[]
+    /** The registered tags, or why they cannot be read: a parent that is not
+     * on this machine, or one that passes them with a problem (TCW-109). */
+    tags: string[] | TUnavailable
     scales: { priority: string[]; size: string[] }
     capabilityScales: {
         status: string[]
