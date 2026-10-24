@@ -17,13 +17,15 @@ from pathlib import Path
 from tcw import exit as codes
 from tcw.errors import (NO_PROJECT, BackendError, ConfigError, NotFound, Refused,
                         UsageError)
+from tcw.ids import sort_input
 from tcw.output import print_json, wrote
+from tcw.ownership import check_owned
 from tcw.store.base import normalize_tag
 from tcw.store.fs import FsProjectRegistry, find_project_root
 from tcw.stdin import read_piped_stdin
 from tcw.work.advance import advance as advance_item, discard as discard_item
 from tcw.work.backend import Query, WorkBackend, folder_disagreement
-from tcw.work.jira.backend import JiraBackend
+from tcw.work.jira.backend import KEY, JiraBackend
 from tcw.work.jira.tickets import adopt, inbox, user_name
 from tcw.work.gates import project_reader
 from tcw.work.model import (
@@ -48,14 +50,26 @@ def project_root(here: Path | None = None) -> Path:
     return root
 
 
-def resolve_item(arg: str, here: Path | None = None
+def resolve_item(arg: str, here: Path | None = None, *, writing: bool = False
                  ) -> tuple[Slug, WorkBackend, Path]:
     """The item `arg` names, the backend that holds it, and this project's
     root: a full identifier or its address, a folder name, or a tracker key,
     alone or in a full identifier (TCW-110 Design 3.1). Another project's
-    item opens that project for reading."""
+    item opens that project for reading.
+
+    `writing` is for a command that changes the item: the ownership check
+    (TCW-114 Design 1.1) is made on the project the text names before
+    anything of that project is opened, so a write naming another project's
+    item exits 3 whether or not that project can be read; text naming no
+    project is looked up here, and what it names is checked too."""
     root = project_root(here)
+    if writing:
+        found = sort_input(arg, "work", KEY)
+        if found.form in ("a", "c"):
+            check_owned(found.full_id, root)
     slug, backend = resolve_work_input(arg, lambda: open_backend(root), root)
+    if writing:
+        check_owned(slug, root)
     return slug, backend, root
 
 
@@ -77,14 +91,6 @@ def _references(changes: Changes, backend: WorkBackend, root: Path) -> Changes:
     return replace(changes, parent=parent,
                    add_blocked_by=tuple(named(t) for t in changes.add_blocked_by),
                    remove_blocked_by=tuple(sorted_(t) for t in changes.remove_blocked_by))
-
-
-def _own(slug: Slug, backend: WorkBackend, root: Path) -> WorkBackend:
-    """Refuse a write to another project's item."""
-    if slug.project != project_facts(root).project:
-        raise Refused(f"{slug} belongs to project '{slug.project}'; run the "
-                      f"command in that project")
-    return backend
 
 
 def _me(backend: WorkBackend) -> str:
@@ -349,7 +355,7 @@ def _path(args) -> int:
 def _edit(args) -> int:
     if args.assign_me:
         _alone(args, "--assign-me")
-    slug, backend, root = resolve_item(args.slug)
+    slug, backend, root = resolve_item(args.slug, writing=True)
     changes = Changes(
         title=_optional(args.title), priority=_optional(args.priority),
         effort=_optional(args.effort), complexity=_optional(args.complexity),
@@ -359,7 +365,7 @@ def _edit(args) -> int:
         remove_blocked_by=tuple(args.unblocked_by or ()))
     if changes == Changes() and not args.blocks and not args.assign_me:
         raise UsageError("nothing to change; give at least one property flag")
-    own = _own(slug, backend, root)
+    own = backend
     own.read(slug.folder)
     changes = _references(changes, own, root)
     # A full identifier is taken as written: `blocks_target` opens its owner
@@ -367,9 +373,9 @@ def _edit(args) -> int:
     # reaches rather than looking it up here.
     targets = [name_item(t, lambda: own, root) for t in args.blocks or ()]
     if args.assign_me:
-        # Asked of this project's own backend, after `_own` has refused
-        # another project's item and the read has found it, and before
-        # anything is written.
+        # Asked of this project's own backend, after the ownership check
+        # has refused another project's item and the read has found it, and
+        # before anything is written.
         changes = replace(changes, assignee=_me(own))
     # Every target is opened and read before anything is written, so a
     # refused or missing one (exit 3 or 4) leaves every item as it was.
@@ -389,8 +395,7 @@ def _edit(args) -> int:
 
 
 def _move(args, *, to=None, force=False, reason=None, dry_run=False) -> int:
-    slug, backend, root = resolve_item(args.slug)
-    _own(slug, backend, root)
+    slug, backend, root = resolve_item(args.slug, writing=True)
     reader = project_reader(root, FsProjectRegistry.open(root))
     outcome = advance_item(backend, backend.config, _layout(backend), reader, root,
                            slug, to=to, force=force, reason=reason,
@@ -414,25 +419,24 @@ def _advance(args) -> int:
 
 
 def _discard(args) -> int:
-    slug, backend, root = resolve_item(args.slug)
-    _own(slug, backend, root)
+    slug, backend, root = resolve_item(args.slug, writing=True)
     reader = project_reader(root, FsProjectRegistry.open(root))
     return _report(discard_item(backend, backend.config, _layout(backend), reader,
                                 root, slug, args.reason))
 
 
 def _comment(args) -> int:
-    slug, backend, root = resolve_item(args.slug)
+    slug, backend, root = resolve_item(args.slug, writing=True)
     text = read_piped_stdin()
     if not text.strip():
         raise UsageError("pipe the comment text on stdin")
-    _own(slug, backend, root).comment(slug.folder, text)
+    backend.comment(slug.folder, text)
     return codes.OK
 
 
 def _rename(args) -> int:
-    slug, backend, root = resolve_item(args.slug)
-    item = _own(slug, backend, root).rename(slug.folder, args.new_name)
+    slug, backend, root = resolve_item(args.slug, writing=True)
+    item = backend.rename(slug.folder, args.new_name)
     print(item.slug)
     return codes.OK
 

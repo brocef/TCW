@@ -1935,10 +1935,12 @@ class FsTreeStore:
         id-path this project has no object at when the view cannot be built
         is not found, since `rm` only removes this project's own objects
         (Design 4.4)."""
+        from tcw.ownership import check_owned
         full_id, id_path = self._target_parts(target)
-        if full_id is not None and full_id.project != self.project_id:
-            raise Refused(f"cannot remove {full_id}: it belongs to project "
-                          f"'{full_id.project}'; change it in '{full_id.project}'")
+        if full_id is not None:
+            # Another project's object is refused before anything is read,
+            # by the one ownership check (TCW-114 Design 1.1, 1.3).
+            check_owned(full_id, self._active_root)
         if self.has_own(id_path):
             return FullId(self.project_id, self.COMPONENT, id_path)
         if full_id is not None:
@@ -1949,8 +1951,10 @@ class FsTreeStore:
             hit = None
         if hit is None:
             raise NotFound(self._no_such(target))
-        raise Refused(f"cannot remove {hit.full_id}: it belongs to project "
-                      f"'{hit.owner}'; change it in '{hit.owner}'")
+        # The view shows another project's object here: refused, since this
+        # project has none of its own at the path to remove.
+        check_owned(hit.full_id, self._active_root)
+        raise NotFound(self._no_such(target))
 
     def _chain_texts(self, store: "FsTreeStore", id_path: str) -> list[str]:
         """Every chain member's state file and description at `id_path`, as
@@ -2085,11 +2089,14 @@ _OVERRIDES_REMOVED = ("'overrides' was removed in TCW 4.0: an override is an obj
                       "this project, or move this folder to that path and delete the key")
 
 
-def _not_inherited(full_id: FullId, project_id: str) -> str:
-    """Design 4.2's refusal of another project's object outside the chain."""
-    return (f"{full_id} belongs to project '{full_id.project}', and '{project_id}' does "
-            f"not inherit it, so it cannot be overridden here; change it in "
-            f"'{full_id.project}'")
+def _not_inherited(full_id: FullId, project_id: str, active_root: Path) -> None:
+    """Design 4.2's refusal of another project's object outside the chain,
+    by the one ownership check, with Design 4.2's reason (TCW-114 Design
+    1.3)."""
+    from tcw.ownership import check_owned
+    check_owned(full_id, active_root, reason=f", and '{project_id}' does not "
+                                             f"inherit it, so it cannot be "
+                                             f"overridden here")
 
 
 def _incomplete(full_id: FullId, declaration: Declaration, axis: str) -> str | None:
@@ -2859,13 +2866,13 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             raise NotFound(self._no_such(target))
         if full_id is not None:
             if full_id.project not in self._source_ids():
-                raise Refused(_not_inherited(full_id, self.project_id))
+                _not_inherited(full_id, self.project_id, self._active_root)
         elif self.has_own(path):
             return own
         chain = self.chain(path)
         if full_id is not None:
             if full_id not in chain:
-                raise Refused(_not_inherited(full_id, self.project_id))
+                _not_inherited(full_id, self.project_id, self._active_root)
             return own
         if not chain:
             raise NotFound(self._no_such(target))

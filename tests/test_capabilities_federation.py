@@ -155,7 +155,7 @@ def test_override_null_clears_field(tmp_path):
 def test_remove_inherited_raises(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"Status": "Supported"}})
-    with pytest.raises(TcwError, match="it belongs to project 'base'"):
+    with pytest.raises(TcwError, match="belongs to project 'base'; run the command there"):
         store(child).remove("auth/login")
 
 
@@ -352,7 +352,8 @@ def test_set_of_the_parent_the_view_does_not_show_is_refused(tmp_path):
     other_id = other.split(".")[0]
     assert str(refused.value) == (
         f"{other} belongs to project '{other_id}', and 'child' does not inherit it, so "
-        f"it cannot be overridden here; change it in '{other_id}'")
+        f"it cannot be overridden here; run the command there: tcw -C "
+        f"{(child.parent / other_id).resolve()} …")
     assert refused.value.code == 3
     assert ov_meta(child, "a/thing") == {"Status": "Missing"}
 
@@ -392,7 +393,7 @@ def test_remove_of_the_inherited_full_identifier_still_refuses_after_override(tm
     base, child = child_of(tmp_path, {
         "auth/login": {"Status": "Supported"}})
     store(child).set("auth/login", {"Status": "Missing"})
-    with pytest.raises(TcwError, match="it belongs to project 'base'"):
+    with pytest.raises(TcwError, match="belongs to project 'base'; run the command there"):
         store(child).remove("base.capabilities/auth/login")
     assert ov_meta(child, "auth/login") == {"Status": "Missing"}
 

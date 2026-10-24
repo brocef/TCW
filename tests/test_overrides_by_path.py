@@ -1025,7 +1025,9 @@ def test_choice9_set_of_a_project_that_is_not_a_source_is_refused(tcw, tmp_path)
                "Supported"], app)
     assert ran.code == 3, ran.err
     assert ("zz.capabilities/cli/x belongs to project 'zz', and 'app' does not "
-            "inherit it, so it cannot be overridden here; change it in 'zz'") in ran.err
+            "inherit it, so it cannot be overridden here; run the command there: "
+            f"tcw -C {zz.resolve()} …") in ran.err
+    assert "change it in" not in ran.err
     assert snapshot(app) == before_app
     assert snapshot(zz) == before_zz
 

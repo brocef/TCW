@@ -153,8 +153,8 @@ def test_remove_path_escaping_store_changes_nothing(tmp_path):
 def test_remove_inherited_refuses_bare_and_qualified(tmp_path, ref):
     base, child = federated(tmp_path)
     before_base, before_child = tree_hash(base), tree_hash(child)
-    with pytest.raises(TcwError, match="cannot remove base.capabilities/auth/login: "
-                                       "it belongs to project 'base'; change it in 'base'"):
+    with pytest.raises(TcwError, match="^base.capabilities/auth/login belongs to "
+                                       "project 'base'; run the command there: tcw -C "):
         store(child).remove(ref)
     _assert_nothing_removed(base, before_base)
     _assert_nothing_removed(child, before_child)
@@ -189,8 +189,8 @@ def test_remove_of_a_path_two_parents_declare_names_the_one_the_view_shows(tmp_p
     before = tree_hash(child)
     with pytest.raises(TcwError) as caught:
         store(child).remove("auth/login")
-    assert str(caught.value) == (f"cannot remove {shown.full_id}: it belongs to project "
-                                 f"'{shown.owner}'; change it in '{shown.owner}'")
+    assert str(caught.value) == (f"{shown.full_id} belongs to project '{shown.owner}'; "
+                                 f"run the command there: tcw -C {base_b.resolve()} …")
     _assert_nothing_removed(child, before)
 
 

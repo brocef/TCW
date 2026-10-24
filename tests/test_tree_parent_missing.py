@@ -293,12 +293,14 @@ def app_of_ac5(tmp_path) -> Path:
 def test_choice9_rm_of_another_projects_object_is_refused_before_reading(
         app_of_ac5, tcw, argv, full_id):
     """Plan choice 9 (Design 4.4): `rm` of `core`'s full identifier in `app`,
-    `core` not on this machine, exits 3 with `cannot remove <fid>: it belongs
-    to project 'core'`, not 7."""
+    `core` not on this machine, exits 3 with `<fid> belongs to project
+    'core'` (TCW-114 Design 1.3's one shape), not 7."""
     before = tree_hash(app_of_ac5)
     ran = tcw(app_of_ac5, *argv)
     assert ran.code == 3, ran
-    assert f"cannot remove {full_id}: it belongs to project 'core'" in ran.err, ran
+    assert f"{full_id} belongs to project 'core'; project 'core' is not on this " \
+           f"machine" in ran.err, ran
+    assert "cannot remove" not in ran.err
     assert tree_hash(app_of_ac5) == before
 
 
