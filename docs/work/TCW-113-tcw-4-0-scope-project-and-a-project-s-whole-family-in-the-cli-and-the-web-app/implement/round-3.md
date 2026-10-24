@@ -12,7 +12,7 @@ run `tcw` in the test's own scratch family (`tests/families.py`).
 1. **A work detail route showed a full identifier of another project than
    `project`.** `GET /api/work/desktop.work%2F<item>?scope=down&project=server`
    answered 200 with `desktop`'s item, where `tcw work show desktop.work/<item>
-   --scope down --project server` exits 2 naming both (Design 2.3).
+--scope down --project server` exits 2 naming both (Design 2.3).
 
     Done: `detail()` (`tcw/serve/work.py`) reads its key through a new
     `_shown_key`, which reads it as `show --project` reads its input. A full
@@ -97,13 +97,13 @@ routes were found to be correct already.
 
 Each change was reverted alone, the tests run, and the change put back.
 
-| Change reverted                                           | Result                                                     |
-| --------------------------------------------------------- | ---------------------------------------------------------- |
-| server: the conflict check in `_shown_key`                | the work refusal test red (200)                            |
-| server: a plain key given `project`'s project             | the folder-name test red                                   |
-| `show_row`: its conflict check                            | the capabilities refusal test and the term test red        |
-| client: `detailScope` returning the page's choice         | the unit test and the two conflicting-link tests red       |
-| client: the work fetch passed `scopeChoice` unchanged     | the two conflicting-link tests red                         |
+| Change reverted                                       | Result                                               |
+| ----------------------------------------------------- | ---------------------------------------------------- |
+| server: the conflict check in `_shown_key`            | the work refusal test red (200)                      |
+| server: a plain key given `project`'s project         | the folder-name test red                             |
+| `show_row`: its conflict check                        | the capabilities refusal test and the term test red  |
+| client: `detailScope` returning the page's choice     | the unit test and the two conflicting-link tests red |
+| client: the work fetch passed `scopeChoice` unchanged | the two conflicting-link tests red                   |
 
 ## Checks run
 
