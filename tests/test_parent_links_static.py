@@ -37,6 +37,11 @@ REFUSAL_TESTS = {
      "test_a_broken_graph_beyond_an_upstream_does_not_block_the_reader"),
 }
 
+#: The folders of tests whose subject is converting TCW 3.x files (TCW-116
+#: Decided 24), by path parts below `tests/`: they write `projects:` as the
+#: input the migration reads.
+MIGRATION_TESTS = (("migrate",),)
+
 _BLOCK_KEY = re.compile(r"(?m)^projects:")
 _ID_KEY = re.compile(r"(?m)^id:")
 
@@ -117,7 +122,18 @@ def _enclosing_tests(tree: ast.AST) -> dict[int, str]:
 
 
 def _allowed(file: str, test: str | None) -> bool:
+    parts = Path(file).parts
+    if any(parts[:len(folder)] == folder and len(parts) > len(folder)
+           for folder in MIGRATION_TESTS):
+        return True
     return (file, test) in REFUSAL_TESTS or (file, None) in REFUSAL_TESTS
+
+
+def test_the_migration_exemption_reaches_only_its_own_folder():
+    assert _allowed("migrate/test_migrate_editors.py", "test_x")
+    assert not _allowed("migrate_like.py", "test_x")
+    assert not _allowed("work/migrate/test_x.py", "test_x")
+    assert not _allowed("test_migrate.py", None)
 
 
 def test_ac8_no_fixture_writes_projects_except_to_check_its_refusal():

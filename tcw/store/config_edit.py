@@ -34,6 +34,7 @@ from its documentation, and each pinned by a test in `tests/test_config_edit.py`
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 from dataclasses import dataclass
@@ -88,7 +89,35 @@ class SetId:
     value: str
 
 
-Edit = SetList | SetScalar | Remove | SetId
+@dataclass(frozen=True)
+class RenameKey:
+    """Rename the key at `path` to `new`, keeping its value and its place
+    (TCW-116 Design 2.8). `path` runs from the top of the file: a string
+    for a mapping key, a number for a list entry. A key an alias reaches
+    from two paths is the same key, renamed once."""
+    path: tuple[str | int, ...]
+    new: str
+
+
+@dataclass(frozen=True)
+class RemoveTop:
+    """Remove the top-level `key` and the whole block under it. The comments
+    on the block's own lines go with it; `edit_text` lists them in its
+    `dropped` argument, for the caller to report."""
+    key: str
+
+
+@dataclass(frozen=True)
+class SetTop:
+    """Set the top-level `key` to `value`, which may be a list or mapping of
+    any depth. A new key goes after the top-level key `after` when the file
+    has it, else at the end of the file."""
+    key: str
+    value: object
+    after: str | None = None
+
+
+Edit = SetList | SetScalar | Remove | SetId | RenameKey | RemoveTop | SetTop
 
 
 @dataclass(frozen=True)
@@ -113,12 +142,48 @@ def read_text(path: Path) -> str | None:
         return handle.read()
 
 
+def _walk(data, path):
+    """The value at `path` in parsed data, or None when it is not there."""
+    for part in path:
+        if isinstance(part, int):
+            if not isinstance(data, list) or not -len(data) <= part < len(data):
+                return None
+            data = data[part]
+        else:
+            if not isinstance(data, dict) or part not in data:
+                return None
+            data = data[part]
+    return data
+
+
+def _renamed(mapping, edit: RenameKey) -> None:
+    """Rename in place, so that every alias of the mapping sees it."""
+    parent = _walk(mapping, edit.path[:-1])
+    old = edit.path[-1]
+    if not isinstance(parent, dict) or old not in parent or edit.new in parent:
+        return
+    items = [(edit.new if k == old else k, v) for k, v in parent.items()]
+    parent.clear()
+    for key, value in items:
+        parent[key] = value
+
+
 def intended(mapping: dict, edits: list[Edit]) -> dict:
     """`mapping` with `edits` applied — what the file must parse to afterwards."""
-    out = dict(mapping)
+    out = copy.deepcopy(mapping) if any(isinstance(e, RenameKey) for e in edits) \
+        else dict(mapping)
     for edit in edits:
         if isinstance(edit, SetId):
             out["id"] = edit.value
+            continue
+        if isinstance(edit, RenameKey):
+            _renamed(out, edit)
+            continue
+        if isinstance(edit, RemoveTop):
+            out.pop(edit.key, None)
+            continue
+        if isinstance(edit, SetTop):
+            out[edit.key] = copy.deepcopy(edit.value)
             continue
         section = out.get(edit.section)
         section = dict(section) if isinstance(section, dict) else {}
@@ -136,15 +201,24 @@ def intended(mapping: dict, edits: list[Edit]) -> dict:
     return out
 
 
-def edit_text(path: Path, text: str | None, edits: list[Edit]) -> str | None:
+def _dotted(path) -> str:
+    return "".join(f"[{p}]" if isinstance(p, int) else (f".{p}" if i else str(p))
+                   for i, p in enumerate(path))
+
+
+def edit_text(path: Path, text: str | None, edits: list[Edit], *,
+              versioned: bool = False, dropped: list[str] | None = None) -> str | None:
     """The new file text, or None when the edits change nothing.
 
     `path` only names the file in a refusal. `text` is what `read_text` returned.
+    With `versioned`, a file without a top-level `tcw-version` gets
+    `version_line()` as its first line (TCW-116 Design 2.8). The comments a
+    `RemoveTop` takes with its block are appended to `dropped`.
     """
     if text is None or not text.lstrip("\ufeff").strip():
         target = intended({}, edits)
         if not target:
-            return None
+            return version_line() if versioned else None
         # A file TCW creates records the version that wrote it, first
         # (TCW-106 Design 3.1).
         return version_line() + yaml.safe_dump(target, sort_keys=False,
@@ -152,12 +226,28 @@ def edit_text(path: Path, text: str | None, edits: list[Edit]) -> str | None:
     mapping = _load(text, path)
     if not isinstance(mapping, dict):
         mapping = {}
+    for edit in edits:
+        if isinstance(edit, RenameKey):
+            parent = _walk(mapping, edit.path[:-1])
+            has_old = isinstance(parent, dict) and edit.path[-1] in parent
+            has_new = isinstance(parent, dict) and edit.new in parent
+            if has_old == has_new:
+                why = (f"both `{_dotted(edit.path)}` and `{edit.new}` are written"
+                       if has_old else f"`{_dotted(edit.path)}` is not written in the file")
+                raise ConfigEditRefused(f"{path}: cannot rename {_dotted(edit.path)} "
+                                        f"({why}); {_instruction(edit, None, mapping)}")
     target = intended(mapping, edits)
+    version = None
+    if versioned and VERSION_KEY not in mapping:
+        version = version_line()
+        target = {**yaml.safe_load(version), **target}
     if target == mapping:
         return None
     doc = _Document(text)
     replacements: list[_Replacement] = []
     allowed: set[int] = set()
+    if version is not None:
+        replacements.append(_Replacement(doc.bom, doc.bom, version.replace("\n", doc.nl)))
     root = doc.root
     if root is not None and doc.is_null(root) and root.start_mark.index != root.end_mark.index:
         # A document that is only `~` or `null`: that token goes, the keys follow.
@@ -169,7 +259,7 @@ def edit_text(path: Path, text: str | None, edits: list[Edit]) -> str | None:
             made, ok = doc.plan(edit, mapping)
         except _Refuse as why:
             raise ConfigEditRefused(_message(path, edit, doc, mapping, str(why))) from None
-        replacements += made
+        replacements += [r for r in made if r not in replacements]   # an alias's twin
         allowed |= ok
     replacements.sort(key=lambda r: (r.start, r.end))
     for before, after in zip(replacements, replacements[1:]):
@@ -178,8 +268,14 @@ def edit_text(path: Path, text: str | None, edits: list[Edit]) -> str | None:
                                              "two changes overlap"))
     new = _assemble(text, replacements)
     _verify(path, text, new, replacements, allowed, target,
-            instruction="; and ".join(_instruction(e, doc, mapping) for e in edits),
-            headline="cannot " + ", ".join(_what(e, mapping) for e in edits))
+            instruction="; and ".join(_instruction(e, doc, mapping) for e in edits)
+            or "edit it by hand",
+            headline="cannot " + (", ".join(_what(e, mapping) for e in edits)
+                                  or "add tcw-version"))
+    if dropped is not None:
+        for r in replacements:
+            dropped += [doc.text[c:doc.line_end(c)] for c in doc.comments_in(r.start, r.end)
+                        if c in allowed]
     return new
 
 
@@ -211,6 +307,10 @@ class _Document:
         tokens = list(yaml.scan(text))
         self.anchors = [t.start_mark.index for t in tokens
                         if isinstance(t, yaml.AnchorToken)]
+        self.anchor_names = {t.start_mark.index: t.value for t in tokens
+                             if isinstance(t, yaml.AnchorToken)}
+        self.aliases = [(t.start_mark.index, t.value) for t in tokens
+                        if isinstance(t, yaml.AliasToken)]
         scalars = [(t.start_mark.index, t.end_mark.index) for t in tokens
                    if isinstance(t, yaml.ScalarToken)]
         self.comments = [m.start() for m in re.finditer("#", text)
@@ -341,6 +441,12 @@ class _Document:
         pairs = self.pairs()
         if isinstance(edit, SetId):
             return self.plan_id(edit, pairs), set()
+        if isinstance(edit, RenameKey):
+            return self.plan_rename(edit), set()
+        if isinstance(edit, RemoveTop):
+            return self.plan_remove_top(edit, pairs)
+        if isinstance(edit, SetTop):
+            return self.plan_set_top(edit, pairs), set()
         found = self.find(pairs, edit.section)
         if found is None:
             if isinstance(edit, Remove):
@@ -449,6 +555,84 @@ class _Document:
             return [_Replacement(at, at, line + self.nl)]
         at, lead = self.document_end()
         return [_Replacement(at, at, lead + line + self.nl)]
+
+    def plan_rename(self, edit: RenameKey) -> list[_Replacement]:
+        """The key's own characters, its quoting kept."""
+        held = self.root
+        for part in edit.path[:-1]:
+            if isinstance(part, int):
+                if not isinstance(held, yaml.SequenceNode) or \
+                        not -len(held.value) <= part < len(held.value):
+                    raise _Refuse(f"`{_dotted(edit.path)}` is not written in the file")
+                held = held.value[part]
+            else:
+                if not isinstance(held, yaml.MappingNode):
+                    raise _Refuse(f"`{_dotted(edit.path)}` is not written in the file")
+                found = self.find(held.value, part)
+                if found is None:
+                    raise _Refuse(f"`{_dotted(edit.path)}` is not written in the file")
+                held = found[1]
+        if not isinstance(held, yaml.MappingNode):
+            raise _Refuse(f"`{_dotted(edit.path[:-1])}` is not a mapping")
+        found = self.find(held.value, edit.path[-1])
+        if found is None:
+            raise _Refuse(f"`{_dotted(edit.path)}` is not written in the file")
+        key = found[0]
+        if key.style == "'":
+            new = "'" + edit.new.replace("'", "''") + "'"
+        elif key.style == '"':
+            new = json.dumps(edit.new, ensure_ascii=False)
+        else:
+            new = self.scalar(edit.new)
+        return [_Replacement(key.start_mark.index, key.end_mark.index, new)]
+
+    def block_span(self, k, v) -> tuple[int, int]:
+        """From the start of key `k`'s line to the end of its value's last line."""
+        return (self.line_start(k.start_mark.index),
+                self.next_line(max(self.end_of(v), k.end_mark.index) - 1))
+
+    def plan_remove_top(self, edit: RemoveTop, pairs) -> tuple[list[_Replacement], set[int]]:
+        """The key's whole block. Its comments may go; an anchor it defines
+        may go only when nothing outside the block refers to it."""
+        found = self.find(pairs, edit.key)
+        if found is None:
+            raise _Refuse(f"`{edit.key}` is not written in the file")
+        k, v = found
+        if self.is_alias(k, v):
+            raise _Refuse(f"`{edit.key}` is an alias")
+        start, end = self.block_span(k, v)
+        defined = {at: name for at, name in self.anchor_names.items() if start <= at < end}
+        for at, name in self.aliases:
+            if name in defined.values() and not start <= at < end:
+                raise _Refuse(f"`{edit.key}` defines the anchor `&{name}`, which a key "
+                              f"outside it refers to")
+        return [_Replacement(start, end, "")], set(self.comments_in(start, end)) | set(defined)
+
+    def render_top(self, key: str, value) -> str:
+        """`key: value` in TCW's usual block style, in the file's line breaks."""
+        text = yaml.safe_dump({key: value}, sort_keys=False, allow_unicode=True,
+                              default_flow_style=False, width=float("inf"))
+        return text.replace("\n", self.nl)
+
+    def plan_set_top(self, edit: SetTop, pairs) -> list[_Replacement]:
+        block = self.render_top(edit.key, edit.value)
+        found = self.find(pairs, edit.key)
+        if found is not None:
+            k, v = found
+            start, end = self.block_span(k, v)
+            if self.is_alias(k, v) or self.comments_in(start, end):
+                raise _Refuse(f"`{edit.key}` is already written, with comments or an alias")
+            if end == len(self.text) and not self.text.endswith("\n"):
+                block = block[:-len(self.nl)]
+            return [_Replacement(start, end, block)]
+        anchor = self.find(pairs, edit.after) if edit.after else None
+        if anchor is None:
+            at, lead = self.document_end()
+            return [_Replacement(at, at, lead + block)]
+        at = self.block_span(*anchor)[1]
+        if at == len(self.text) and not self.text.endswith("\n"):
+            return [_Replacement(at, at, self.nl + block)]
+        return [_Replacement(at, at, block)]
 
     def plan_remove(self, sk, sv, k, v) -> tuple[list[_Replacement], set[int]]:
         """Delete the key's lines, and the section's line when it is left empty.
@@ -607,7 +791,7 @@ def _verify(path: Path, original: str, new: str, replacements: list[_Replacement
         refuse("text outside the change would differ")
     doc = _Document(original)
     for r in replacements:
-        if any(r.start <= a < r.end for a in doc.anchors):
+        if any(r.start <= a < r.end and a not in allowed for a in doc.anchors):
             # Setting the value by hand would break the aliases the same way.
             refuse("the change would edit an anchor that other keys may refer to",
                    "first change the aliases (`*name`) that refer to it into plain "
@@ -626,6 +810,8 @@ def _verify(path: Path, original: str, new: str, replacements: list[_Replacement
 # ── messages ────────────────────────────────────────────────────────────────
 
 def _flow(edit) -> str:
+    if isinstance(edit, SetTop):
+        return json.dumps(edit.value, ensure_ascii=False)
     if isinstance(edit, SetList):
         return _Document.flow_list(edit.entries)
     return _Document.scalar(edit.value, flow=True)
@@ -645,7 +831,14 @@ def _section_shape(doc: _Document, section: str) -> str:
     return "block" if doc.is_null(value) else "other"
 
 
-def _instruction(edit: Edit, doc: _Document, mapping: dict) -> str:
+def _instruction(edit: Edit, doc: _Document | None, mapping: dict) -> str:
+    if isinstance(edit, RenameKey):
+        return (f"edit it by hand: rename the key `{_dotted(edit.path)}` to "
+                f"`{edit.new}`, keeping its value")
+    if isinstance(edit, RemoveTop):
+        return f"edit it by hand: delete the top-level `{edit.key}` key and everything under it"
+    if isinstance(edit, SetTop):
+        return f"edit it by hand: set the top-level key `{edit.key}` to `{_flow(edit)}`"
     if isinstance(edit, SetId):
         return f"edit it by hand so it has the top-level key `id: {_Document.scalar(edit.value)}`"
     shape = _section_shape(doc, edit.section)
@@ -678,6 +871,12 @@ def _what(edit: Edit, mapping: dict) -> str:
     """'add taxonomy.extends', 'remove work.tags', 'set id' — for a headline."""
     if isinstance(edit, SetId):
         return "set id"
+    if isinstance(edit, RenameKey):
+        return f"rename {_dotted(edit.path)}"
+    if isinstance(edit, RemoveTop):
+        return f"remove {edit.key}"
+    if isinstance(edit, SetTop):
+        return f"{'change' if edit.key in mapping else 'add'} {edit.key}"
     section = mapping.get(edit.section)
     present = isinstance(section, dict) and edit.key in section
     verb = "remove" if isinstance(edit, Remove) else ("change" if present else "add")

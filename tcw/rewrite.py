@@ -25,7 +25,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Iterator, Mapping
+from typing import Callable, Iterable, Iterator, Mapping
 
 import yaml
 
@@ -35,6 +35,10 @@ from tcw.reference_fields import Field, fields_of
 
 #: `(old, new)` pairs of full identifiers a move changes.
 Changes = Iterable[tuple[FullId, FullId]]
+
+#: Given a field's row and a reference's text (a `!` taken off), the text
+#: that replaces it, or None to leave it (TCW-116 Decided 9).
+Replace = Callable[[Field, str], "str | None"]
 
 #: The record each store's state files are, in the table.
 _RECORDS = {"taxonomy": "term", "capabilities": "capability"}
@@ -206,15 +210,37 @@ def _scalar_text(value: str, style: str | None) -> str:
     return value if same else "'" + value.replace("'", "''") + "'"
 
 
-def rewrite_yaml(text: str, fields: Iterable[Field], changes: Changes
+def _asked(replace: Replace) -> Callable[[str, Field], tuple[str, str | None]]:
+    """A `_swap` that asks `replace`; it never finds one already done."""
+    def swap(token: str, row: Field) -> tuple[str, str | None]:
+        negated = row.negatable and token.startswith("!")
+        body = token[1:] if negated else token
+        new = replace(row, body) if body else None
+        if new is None or new == body:
+            return "other", None
+        return "changed", ("!" if negated else "") + new
+    return swap
+
+
+def rewrite_yaml(text: str, fields: Iterable[Field], changes: Changes | Replace
                  ) -> tuple[str, list[str], list[str]]:
     """`text` with every reference at a field `fields` names that equals an
     old identifier replaced by the new one, each value's quoting kept and
     every other byte unchanged; and the references changed and those found
     already naming a new identifier. A value at any other key is never
-    changed. Raises `yaml.YAMLError` for text that is not YAML."""
-    changes = dict(changes)
-    news = set(changes.values())
+    changed. Raises `yaml.YAMLError` for text that is not YAML.
+
+    `changes` may instead be a function, asked for every reference at a field
+    `fields` names, which returns what replaces it (`tcw migrate`'s
+    conversions, TCW-116 Decided 9)."""
+    if callable(changes):
+        swap = _asked(changes)
+    else:
+        pairs = dict(changes)
+        news = set(pairs.values())
+
+        def swap(token: str, row: Field) -> tuple[str, str | None]:
+            return _swap(token, row, pairs, news)
     paths = _key_paths(fields)
     edits: list[tuple[int, int, str]] = []
     changed: list[str] = []
@@ -229,7 +255,7 @@ def rewrite_yaml(text: str, fields: Iterable[Field], changes: Changes
         touched = False
         for piece in pieces:
             token = piece.strip()
-            kind, new = _swap(token, row, changes, news)
+            kind, new = swap(token, row)
             if kind == "changed":
                 lead = piece[:len(piece) - len(piece.lstrip())]
                 trail = piece[len(piece.rstrip()):]
