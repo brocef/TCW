@@ -195,3 +195,24 @@ def test_a_broken_link_in_resources_is_still_an_error(tcw, demo):
     assert code == 1
     assert any(f.startswith("error: docs/taxonomy/invoice/resources/design.md")
                for f in found), found
+
+
+# -- a disk that ignores letter case (macOS's default) ----------------------------
+
+def test_a_resources_folder_spelled_differently_is_reserved_not_resources(tcw, demo,
+                                                                            tmp_path):
+    """`Resources/` is not `resources/`: the walk compares exact spellings, so
+    on a disk that would open either, its file is no attachment and the
+    folder is reported as reserved (row c)."""
+    from tests.test_project_graph_paths import case_insensitive
+    if not case_insensitive(tmp_path):
+        pytest.skip("the disk tells letter case apart")
+    term = store(demo, "taxonomy") / "invoice"
+    (term / "Resources").mkdir()
+    (term / "Resources" / "x.png").write_bytes(b"\x89PNG")
+    shown = json.loads(tcw(["taxonomy", "show", "invoice", "--json"], demo).out)
+    assert shown["term"]["attachments"] == []
+    code, found, _ = validate(tcw, demo)
+    assert code == 1
+    assert "error: docs/taxonomy/invoice/Resources: 'Resources' is reserved in the " \
+           "taxonomy store" in found, found
