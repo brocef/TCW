@@ -230,9 +230,10 @@ says the same of a covered project it does not keep, which it reads only for
 those counts.
 
 The project the command runs in is different. When something it inherits
-cannot be read, such as a parent's capabilities, a listing shows only its own
-declarations with a warning (and marks them `partial`, below), and a command
-that needs an inherited setting stops with exit code 7.
+cannot be read, such as a parent's capabilities, a listing under the default
+`--scope own` shows only its own declarations with a warning (and marks them
+`partial`, below); under `--scope up` it stops with exit code 7, as does a
+command that needs an inherited setting.
 
 ## Output records: `--json`
 

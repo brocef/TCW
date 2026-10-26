@@ -26,7 +26,7 @@ higher layer wins.
    in: `$XDG_CONFIG_HOME/tcw/config.yaml` when the environment variable
    `XDG_CONFIG_HOME` holds an absolute path, and otherwise
    `~/.config/tcw/config.yaml`. It must not hold a `tcw-version` line: one
-   there stops every command, in every project, with exit 1 and
+   there stops every command run in a project with exit 1 and
    `<file>: tcw-version: a shared key; a personal file cannot set it`.
 4. **`.tcw/tcw-config.local.yaml`**, beside the team's file, which applies to
    this project only. Like every `tcw-*.yaml` file, it starts with

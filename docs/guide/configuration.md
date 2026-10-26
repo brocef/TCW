@@ -80,8 +80,9 @@ by a newer TCW:
 Converting a file to a newer format is called **migration**; `tcw migrate`
 migrates a whole project, its files and its Jira tickets. Only the major and
 minor numbers of `tcw-version` matter: a patch release never changes a
-format. Your user-wide file (below) is not a `tcw-*.yaml` file and needs no
-`tcw-version`.
+format. Your user-wide file (below) is not a `tcw-*.yaml` file and must not
+hold a `tcw-version` line: one there stops every command run in a project
+with exit 1.
 
 Every key follows one naming rule: lowercase letters and digits joined by
 single hyphens, and a key that breaks it is refused, naming the file and the

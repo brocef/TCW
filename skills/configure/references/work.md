@@ -40,7 +40,7 @@ It is not a setting. A configuration file without it stops every command:
 The guide [Configuration](../../../docs/guide/configuration.md) in the TCW
 repository says how the line is read. The user-wide file is not a
 `tcw-*.yaml` file and must not hold the line: one there stops every command
-with exit 1, `<file>: tcw-version: a shared key; a personal file cannot set it`.
+run in a project with exit 1, `<file>: tcw-version: a shared key; a personal file cannot set it`.
 
 Every key follows one naming rule: lower-case letters and digits joined by
 single hyphens. A key that breaks it is an error naming the file and the key,
