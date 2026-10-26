@@ -85,6 +85,17 @@
   `--no-jira` or with Jira failing; the taxonomy and capabilities guide says a
   move changes no `parent` and how to set it; the validation guide's
   folder-and-parent warning gives its `not set` form. (TCW-118)
+- `tcw validate` reports an unfinished `tcw migrate` (its progress record still in `.tcw/`) as an error naming `tcw migrate` to finish it, instead of passing with advice to delete the 3.x root `tcw-config.yaml`. (TCW-118)
+- A state file (`tcw-taxonomy.yaml`, `tcw-capability.yaml`, `tcw-work-item.yaml`) with no `tcw-version` is told only to add the line, no longer to run `tcw migrate`, which converts nothing in it. (TCW-118)
+- `tcw work move <item> --into <KEY>` (or `<project>.work/<KEY>`) moves the item into the folder of
+  the item carrying that key, instead of making a new folder named after the key; a key no item
+  carries stops the move (exit 4). (TCW-118)
+- `tcw work|taxonomy|capabilities move --into` takes a `tcw://` object address, as every other
+  option naming an object does. (TCW-118)
+- A `tcw://` address written with an upper-case scheme (`TCW://…`) as an object argument is refused
+  as an address, not as a folder to rename by hand. (TCW-118)
+- `tcw capabilities set <path> --parent <path>` on an inherited capability is refused as naming the
+  capability itself, instead of writing the capability it overrides as its parent. (TCW-118)
 
 ## Removed
 
