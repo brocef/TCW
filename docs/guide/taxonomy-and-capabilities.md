@@ -161,9 +161,13 @@ tcw capabilities move billing/invoices --into payments
 
 Each prints one `<old full id> -> <new full id>` line per identifier it
 changed. References in other projects are not rewritten; `tcw validate` in
-those projects reports them, so pass the printed identifiers on. An override
-(see below) is never renamed or moved, since its path is the inherited
-object's: `rename` and `move` refuse it with exit code 3.
+those projects reports them, so pass the printed identifiers on. A move
+changes no `parent`: an object moved into another's folder without that parent
+gets a warning, from the move and from `tcw validate`, saying `parent: decides`.
+Set the parent with `tcw capabilities set <path> --parent <parent>`, or, for a
+term, by writing `parent: <full identifier>` in its `tcw-taxonomy.yaml`. An
+override (see below) is never renamed or moved, since its path is the
+inherited object's: `rename` and `move` refuse it with exit code 3.
 
 ## Inheriting and overriding
 
