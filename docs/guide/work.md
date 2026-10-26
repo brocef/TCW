@@ -233,14 +233,15 @@ the ticket's comments.
 
 An item that changes the product says so in `capabilities.yaml` at the root of
 its folder, naming the capabilities and taxonomy terms it adds, changes or
-removes:
+removes, each by its full identifier (the name that says which project owns
+it, described in [the linking guide](linking-and-validation.md)):
 
 ```yaml
-new: [billing/refund-a-payment]
-changed: [billing/view-a-payment]
+new: [app.capabilities/billing/refund-a-payment]
+changed: [app.capabilities/billing/view-a-payment]
 removed: []
 taxonomy:
-    new: [refund]
+    new: [app.taxonomy/refund]
 ```
 
 The records themselves are changed during `implement`, in the same change as

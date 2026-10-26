@@ -200,13 +200,26 @@ For example, `tcw work list --project core`, run in `app`, whose parent is
 `--project core: 'core' is not covered by --scope own in 'app', which covers app; --scope up covers it`.
 
 A covered project that cannot be read, because it is not on this machine or
-its files cannot be read, does not stop the command. It is left out, one
-warning line on stderr says what that leaves out and why, and the command
-exits 0 (the reason is shortened here):
+its files cannot be read, has one of two outcomes, depending on whether the
+command needs that project's content.
 
-```text
-warning: 'core' is unavailable, so its work items are not listed: project 'core' is not on this machine: …
-```
+- **When it does not, the project is left out.** One warning line on stderr
+  says what that leaves out and why, and the command exits 0. A work listing
+  is one such command, whichever scope covers the missing project, and so is
+  any `--scope down` view whose missing project is a child (the reason is
+  shortened here):
+
+    ```text
+    warning: 'core' is unavailable, so its work items are not listed: project 'core' is not on this machine: …
+    ```
+
+- **When the active project's own entries need it, the command stops with
+  exit 7** and prints nothing on stdout. A project's own entries, under
+  `--scope up`, include what it inherits, so `tcw taxonomy list`,
+  `tcw taxonomy show`, `tcw capabilities list` and `tcw capabilities show`,
+  each with `--scope up`, exit 7 when a parent that passes down that axis is
+  missing, with a line naming the parent, such as
+  `tcw capabilities list: 'app' inherits its capabilities from project 'core', which is not on this machine: …`.
 
 The words after "so" say what was left out. A listing or search says "its
 taxonomy entries are not listed" or "its capabilities are not listed";
@@ -444,7 +457,7 @@ Every command exits with one of these codes. The numbers live in
 | 0    | Success.                                                                     | The command did what it was asked; `tcw validate` found no errors (it may still have printed warnings); a covered project that could not be read was left out with a warning.                                                                                                                                                                          |
 | 1    | An error: the backend or TCW itself failed.                                  | `.tcw/tcw-config.yaml` has a problem every command refuses on; the folder holds a 3.x project, which every command refuses and asks to be moved over with `tcw migrate`; a full identifier names a project ID nothing here knows; a file could not be written; `tcw validate` found an error; no identity is configured for `--mine` or `--assign-me`. |
 | 2    | A usage error: the command was asked for something that cannot be asked.     | An unknown command, stage or option; `--force` without `--reason`; a malformed name; a `--project` the scope does not cover; a `-C` folder that does not exist. Nothing was read or changed.                                                                                                                                                           |
-| 3    | Refused: a legal request that a rule or a gate turned down. Nothing changed. | A failing `pre` hook or built-in gate; a move that skips a stage without `--force`; a name already taken; removing a record another one depends on; changing an object that belongs to another project, whether or not that project is on this machine.                                                                                                |
+| 3    | Refused: a legal request that a rule or a check turned down. Nothing changed. | A failing `pre` hook (a command a stage runs before an item moves into it) or a failing built-in check of a move (a gate, in [the work guide](work.md#built-in-gates)); a move that skips a stage without `--force`; a name already taken; removing a record another one depends on; changing an object that belongs to another project, whether or not that project is on this machine.                                                                                                |
 | 4    | Not found.                                                                   | No such item, taxonomy entry, capability, tag or ticket; a tracker key no item carries.                                                                                                                                                                                                                                                                |
 | 5    | Unreachable.                                                                 | Jira could not be reached; a command had to read a project that is not on this machine, named by a full identifier or a `tcw -C` address (the message says where TCW looked, and how to fetch it when a manifest entry gives its repository).                                                                                                          |
 | 6    | The item moved, but something after the move failed.                         | A `post` hook failed; the trace comment that records why the item moved could not be written. The move stands.                                                                                                                                                                                                                                         |

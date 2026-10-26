@@ -229,11 +229,34 @@ the local changes it would have made, the Jira error, and
 nothing was written; 'tcw migrate --no-jira' converts the files without Jira
 ```
 
-**The way back.** Restoring the commit or backup of step 2 of
-[Before you start](#before-you-start) brings the files back at any time. It
-does not bring the tickets back: once a run has converted them, no command
-puts a ticket's 3.x `TCW Item` back. So a project whose work is kept in Jira
-migrates in this order:
+**The way back.** The commit or copy of step 2 of
+[Before you start](#before-you-start) brings the files back at any time, but
+restoring it is not enough on its own: a run also adds files that the commit
+does not know about, and they must be removed as well. The run adds the
+`.tcw/` folder, holding `.tcw/tcw-config.yaml`, `.tcw/.gitignore`,
+`.tcw/tcw-migration.yaml` and whatever else the run wrote there, and a state
+file in the folder of each taxonomy entry, capability and work item
+(`tcw-taxonomy.yaml`, `tcw-capability.yaml`, `tcw-work-item.yaml`). It also moves the personal file
+`tcw-config.local.yaml` into `.tcw/` and adds a `tcw-version` line to it;
+that file is never committed, so no commit brings it back. In git, from the
+project's folder, with nothing uncommitted before the run:
+
+```sh
+mv .tcw/tcw-config.local.yaml tcw-config.local.yaml   # only if you have a personal file
+rm -rf .tcw
+git restore --staged --worktree -- .
+git clean -fd
+```
+
+Then delete the `tcw-version` line from `tcw-config.local.yaml`, which 3.x
+refuses in a personal file. `git clean -fd` deletes every file git does not
+track, including any you made yourself since the commit, so run
+`git clean -nd` first to see the list. For a folder you copied instead,
+delete the folder and put the copy in its place; copying the copy over it
+leaves the added files. Either way, 3.x `tcw validate` then reads the project
+as before. None of this brings the tickets back: once a run has converted
+them, no command puts a ticket's 3.x `TCW Item` back. So a project whose work
+is kept in Jira migrates in this order:
 
 1. `tcw migrate --no-jira`;
 2. `tcw validate`, and read the changes;
@@ -452,9 +475,17 @@ grammar.
   of an inherited capability needs `--scope up` too.
 - **A plain listing carries no override mark and no status summary.** Both are
   in `--json` and in `show`.
-- **A related project that is not on this machine gives exit 7.** A command
-  that needs a related project that is not here, or a setting only that
-  project could give, exits 7 and says how to fetch it, where 3.x gave 5 or 1.
+- **A related project that is not on this machine gives exit 5 or exit 7,
+  depending on what the command needed from it.** A command that names that
+  project, or reaches its objects or its folder, exits 5: reading one of its
+  objects by full identifier (`tcw work show core.work/<item>`), running a
+  command with `tcw -C tcw://core.path/`, `tcw project path core`, and
+  `tcw project provision core` when no manifest entry gives the repository to
+  fetch it from. A command that needs something the active project inherits
+  from a parent that is not here exits 7: a taxonomy or capabilities `list` or
+  `show` with `--scope up`, `tcw project config`, and the commands that read
+  or register tags. Either message says where TCW looked, and how to fetch the
+  project when a manifest entry gives its repository.
 - **Only the project that owns an object changes it.** A change to another
   project's item, term or capability is refused with exit 3, naming the
   folder to run it in; run it there with `tcw -C <folder>`. A blocker in
@@ -581,7 +612,13 @@ states the rules in full; in short:
 2. **A script that reads `--json` output** reads `"schema": 2` and full
    identifiers (`full-id`, `owner`). One that reads `tcw project config --origin`
    comments reads their new shape.
-3. **A script that checks exit 5 for a missing related project** checks 7.
+3. **A script that checks the exit code for a related project that is not on
+   this machine** checks both 5 and 7: 5 when the command named or reached
+   that project's own object or folder, 7 when the command needed something
+   the active project inherits from it (both are described under
+   [What reads differently with no name change](#what-reads-differently-with-no-name-change)).
+   A full identifier or address naming a project ID that nothing here knows
+   exits 1, with a message ending `check the spelling`.
 4. **A 3.x command typed into 4.0 is refused** with exit 2 and a line naming
    its replacement, printed after the usual usage error. Each line, split at
    the command, is in the table after this list. Typing the first word alone,

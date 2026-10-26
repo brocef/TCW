@@ -253,8 +253,8 @@ it changes. None of them copies another's content.
 
 Taxonomy and capabilities are plain files in the repository, so a code change
 and the description of what it changed travel in the same commit and the same
-pull request. A work item is a **folder that never moves**: its stage is a
-property recorded about it (a value, not a location), and its documents stay in
+pull request. A work item is a **folder that does not move when its stage
+changes**: its stage is a property recorded about it (a value, not a location), and its documents stay in
 the same folder from the first stage to the last, beside its **state file**,
 `tcw-work-item.yaml`, which in a filesystem-mode project holds its properties;
 any other file of its own goes in its `resources/` folder ([The Work component](docs/guide/work.md)).
@@ -274,7 +274,7 @@ to another is written `tcw://` followed by the full identifier, and
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tcw project new`         | marks a folder as a TCW project and creates the folders for each axis                                                                                                                                      |
 | `tcw project provision`   | clones the related projects and stores this project's manifests name but this machine lacks                                                                                                                |
-| `tcw project info`        | shows how the project is assembled: its parents, children, load order, settings, stores and overrides                                                                                                      |
+| `tcw project info`        | shows how the project is assembled: its parents, children, load order (the order its ancestors are read in, a later one's value winning), settings, stores and overrides                                                                                                      |
 | `tcw project path`        | prints a related project's folder on this machine                                                                                                                                                          |
 | `tcw migrate`             | converts a TCW 3.x project to 4.0 ([the migration guide](docs/migration-guide-3.X-to-4.0.0.md))                                                                                                            |
 | `tcw validate [--remote]` | checks every file, reference and link in the project; in a Jira-mode project the item references, stages and declared record changes are checked only with `--remote`, which also checks the Jira workflow |
@@ -467,8 +467,10 @@ More in [Taxonomy and Capabilities](docs/guide/taxonomy-and-capabilities.md).
 The work axis tracks every change being made to the project: new product
 behavior, changes to its internals, or changes to how the project itself runs.
 
-- **A work item is a folder that never moves.** It is created in the work store
-  (`docs/work/` unless the project says otherwise) and stays there. Inside it is
+- **A work item is a folder that does not move when its stage changes.** It is
+  created in the work store (`docs/work/` unless the project says otherwise)
+  and stays there unless it is moved or renamed (`tcw work move`,
+  `tcw work rename`). Inside it is
   one folder for each stage that produces something: `spec/spec.md`,
   `implement/round-1.md`, and so on.
 - **Every item has the same properties**: title, stage, priority, effort,

@@ -310,10 +310,12 @@ needs:
 
     The first is from `tcw capabilities show`, the second from
     `tcw work show`, the third from `tcw taxonomy show`. The listings say
-    `so its work items are not listed` and `so its capabilities are not listed`.
+    `so its work items are not listed`, `so its capabilities are not listed`
+    and `so its taxonomy entries are not listed`.
 
-Each message says where TCW looked. When the deciding manifest entry gives a
-`repository`, the message ends by naming the `tcw project provision` command
+Each message says where TCW looked. When the manifest entry that decides where
+the project is (step 2 of [How TCW looks for a project](#how-tcw-looks-for-a-project))
+gives a `repository`, the message ends by naming the `tcw project provision` command
 that fetches the project.
 
 ## Views of the whole family: `--scope`
@@ -450,8 +452,8 @@ commits an item's folder in whichever repository holds it.
 
 `tcw project provision` fetches what the active project needs and does not
 have here: each store with a `repository` block, and each project of its
-family that is not on this machine and whose deciding manifest entry gives a
-`repository`. It works in rounds: after each round it reads the family again,
+family that is not on this machine and whose manifest entry, the one that
+decides where it is, gives a `repository`. It works in rounds: after each round it reads the family again,
 so a project a fetched project names is fetched in the next round. A project
 no manifest gives a repository for is reported and skipped; once a fetch
 brings the manifest that places it, running the command again fetches it.

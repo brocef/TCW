@@ -241,8 +241,9 @@ stops after the configuration findings and that problem.
   identifier, an entry naming a project TCW cannot locate, and an entry that
   could not be checked because its project is not on this machine, which here
   is an error rather than unresolved. A change not
-  made yet is not reported; the records gate checks those when the item moves
-  into the stage after `implement`.
+  made yet is not reported; the records gate, the check TCW itself runs before
+  an item moves into the stage after `implement`
+  ([the work guide](work.md#built-in-gates)), checks those then.
 
 ### The findings of a TCW 4 project
 
