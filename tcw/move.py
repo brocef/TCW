@@ -225,8 +225,11 @@ def _check_free(target: Target, new_path: str) -> None:
         raise Refused(f"{target.full_id} already has that name")
     under, _, last = new_path.rpartition("/")
     folder = target.store_root / under if under else target.store_root
-    if exact_child(folder, last) is not False:
-        raise Refused(f"{shown(folder / last)} already exists")
+    found = exact_child(folder, last)
+    if found is not False:
+        # The entry as it is spelled on disk, which differs from `last` when
+        # only the letter case does.
+        raise Refused(f"{shown(folder / (last if found is True else found))} already exists")
 
 
 def _check_lengths(pairs) -> None:

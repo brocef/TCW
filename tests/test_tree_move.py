@@ -91,6 +91,16 @@ def test_ac15_a_taxonomy_rename_rewrites_every_reference(tcw, taxonomy):
     assert checked.code == 0, checked.out
 
 
+def test_a_rename_onto_a_case_variant_names_the_folder_as_spelled(tcw, taxonomy):
+    """`pay` is there: renaming to `PAY` is refused naming `pay`, the folder
+    that is in the way, not the spelling typed."""
+    before = snapshot(taxonomy)
+    result = tcw(["taxonomy", "rename", "invoice", "PAY"], taxonomy)
+    assert result.code == 3, result.err
+    assert "docs/taxonomy/pay already exists" in result.err
+    assert snapshot(taxonomy) == before
+
+
 def test_ac15_the_renamed_terms_own_id_follows(tcw, taxonomy):
     path = taxonomy / "docs/taxonomy/invoice" / TAXONOMY_STATE
     path.write_text(path.read_text() + "id: invoice\n")
