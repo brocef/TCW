@@ -352,3 +352,26 @@ def test_ac13_jira_moves_set_the_tcw_item(tcw, jira_project):
     assert result.code == 0, result.err
     assert (jira_project.work / "2026/q4" / b / ITEM_STATE).is_file()
     assert jira_project.fake.tickets[b_key].custom[ITEM] == wid(f"2026/q4/{b}")
+
+
+@pytest.mark.parametrize("form", ["{key}", "tcw.work/{key}"])
+def test_into_a_key_is_the_folder_of_the_item_carrying_it(tcw, jira_project, form):
+    """TCW-110 Design 3.1: `--into TCW-1` names the item carrying the key,
+    as the item argument does, never a new folder named `TCW-1`."""
+    epic_key, epic = jira_project.item("Epic", "e")
+    a_key, a = jira_project.item("A", "a")
+    into = form.format(key=epic_key, folder=epic)
+    result = tcw(["move", a_key, "--into", into], jira_project.root)
+    assert result.code == 0, result.err
+    assert not (jira_project.work / epic_key).exists()
+    assert (jira_project.work / epic / a / ITEM_STATE).is_file()
+    assert jira_project.fake.tickets[a_key].custom[ITEM] == wid(f"{epic}/{a}")
+
+
+def test_into_a_key_no_item_carries_is_not_found(tcw, jira_project):
+    a_key, a = jira_project.item("A", "a")
+    result = tcw(["move", a_key, "--into", "TCW-99"], jira_project.root)
+    assert result.code == 4, result.err
+    assert "carries the key TCW-99" in result.err
+    assert not (jira_project.work / "TCW-99").exists()
+    assert (jira_project.work / a / ITEM_STATE).is_file()

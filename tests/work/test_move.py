@@ -342,6 +342,19 @@ def test_ac13_destinations_refused_as_usage_errors(tcw, board, argv):
     assert snapshot(board) == before
 
 
+def test_into_a_key_in_a_files_project_is_not_found_as_the_item_argument_is(tcw, board):
+    """TCW-110 Design 3.1 and 3.2: key-shaped text is never a folder name, so
+    `--into TCW-1` makes no folder `TCW-1/`; a files project has no keys,
+    and the move stops as `tcw work show TCW-1` does (exit 4)."""
+    before = snapshot(board)
+    for into in ("TCW-1", "demo.work/TCW-1"):
+        result = tcw(["work", "move", B, "--into", into], board)
+        assert result.code == 4, (into, result.err)
+        assert "no work item in project 'demo' carries the key TCW-1" in result.err
+        assert snapshot(board) == before
+        assert not (board / "docs/work/TCW-1").exists()
+
+
 def test_ac13_a_folder_named_alike_in_the_destination_is_refused(tcw, board):
     (board / "docs/work" / E / B.upper()).mkdir()
     result = tcw(["work", "move", B, "--into", E], board)

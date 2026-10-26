@@ -188,7 +188,7 @@ def resolve_work_input(text, active: Callable[[], WorkBackend], root: Path
     found = sort_input(str(text) if isinstance(text, FullId) else text, "work", KEY)
     if found.form == "b":
         backend = active()
-        return _by_key(backend, found.key), backend
+        return by_key(backend, found.key), backend
     if found.form == "d":
         backend = active()
         if "/" in found.id_path and not backend.is_item_folder(found.id_path):
@@ -206,7 +206,7 @@ def resolve_work_input(text, active: Callable[[], WorkBackend], root: Path
     backend = active() if project == _active_id(root, active) \
         else open_project(project, root)
     if found.form == "c":
-        return _by_key(backend, found.key), backend
+        return by_key(backend, found.key), backend
     return Slug.of(found.full_id), backend
 
 
@@ -219,7 +219,7 @@ def _active_id(root: Path, active: Callable[[], WorkBackend]) -> str:
         return active().project
 
 
-def _by_key(backend: WorkBackend, key: str) -> Slug:
+def by_key(backend: WorkBackend, key: str) -> Slug:
     folder = backend.lookup(key)
     if folder is None:
         raise NotFound(f"no work item in project '{backend.project}' carries "

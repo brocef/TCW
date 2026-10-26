@@ -168,6 +168,13 @@ def _moved_to(target: Target, namespace: str, into: str | None, top: bool) -> st
         if named.namespace != namespace:
             raise UsageError(f"{into} is not in the {namespace} store")
         destination = named.id_path
+    if namespace == "work" and isinstance(destination, str):
+        from tcw.work.jira.backend import KEY
+        from tcw.work.open import by_key
+        if KEY.fullmatch(destination):
+            # TCW-110 Design 3.1 and 3.2: key-shaped text names the item
+            # carrying the key, as the item argument does, never a folder.
+            destination = by_key(target.reporter, destination).folder
     parts = destination.strip("/").split("/") if isinstance(destination, str) else []
     if not parts or any(not p for p in parts):
         raise UsageError(f"{into!r} is not an id-path")
