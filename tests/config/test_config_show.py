@@ -97,6 +97,18 @@ def test_credential_names_outside_jira_mode_are_listed_as_skipped(personal):
     assert "MY_EMAIL" not in skipped[0] and "(value not shown)" in skipped[0]
 
 
+def test_credential_names_from_a_variable_name_the_variable(personal, monkeypatch):
+    """A variable has no file, so the `# skipped:` line names the variable, in
+    the form the values' own comments use."""
+    root = project(personal)
+    name = "TCW_WORK_JIRA_CREDENTIALS_EMAIL_ENV__P"
+    monkeypatch.setenv(name, "MY_EMAIL")
+    result = tcw(root, "project", "config", "--origin")
+    assert result.code == 0, result
+    [skipped] = [l for l in result.out.splitlines() if l.startswith("# skipped:")]
+    assert skipped.endswith(f"Jira-mode project, environment {name})"), skipped
+    assert "MY_EMAIL" not in skipped
+
 def test_an_unreadable_personal_file_contributes_nothing(personal):
     root = project(personal)
     personal.local("work: [unclosed\n")

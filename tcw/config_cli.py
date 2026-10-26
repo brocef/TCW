@@ -239,7 +239,14 @@ def _set_aside(config) -> list[str]:
         for s in settings:
             hidden = s.key_path and str(s.key_path[-1]).endswith("-env")
             value = HIDDEN if hidden else _flow(_masked(s.value))
-            where = shown_in(s.file, config.root) if s.file is not None else ""
+            if s.file is not None:
+                where = shown_in(s.file, config.root)
+            elif s.variable is not None:
+                # A value from an override variable has no file: name the
+                # variable, as the values' own comments do.
+                where = f"environment {s.variable}"
+            else:
+                where = ""
             lines.append(f"# {kind}: {dotted(s.key_path)}: {value} "
                          f"({s.reason}, {where})")
     return lines
