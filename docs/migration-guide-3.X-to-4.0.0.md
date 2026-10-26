@@ -137,8 +137,38 @@ In a dry run each line starts with `would `. Then come up to three lists:
       B8 docs/capabilities/Pay an invoice: the id-part 'Pay an invoice' breaks the rule: letters, digits, '-' and '_', starting with a letter or digit, at most 128 characters; rename the folder by hand, then run 'tcw migrate' again
     ```
 
-Last comes a count of the changes, and, when the run is in a family, the
-related projects still in 3.x form.
+When the run is in a family, each related project still in 3.x form is an
+A8 line under `needs attention:`, parents first, with the command that
+migrates it.
+
+Then comes the count of the changes (`would change: …` in a dry run,
+`changed: …` after a real one), and after it a few lines with no code, in
+this order, each only when it applies:
+
+- `a comment is dropped from <file>: <comment>`, for a comment in the 3.x
+  configuration on a part the conversion removes;
+- `<axis>.extends: '<id>' is already inherited through parents`, for an
+  `extends` naming a project the parent links already pass that axis down
+  from (see item 6 of
+  [Migrating related projects](#migrating-related-projects));
+- `left in another repository: <folder>`, then each file the run changes
+  there (item 4 of
+  [Migrating related projects](#migrating-related-projects));
+- with `--no-jira` in a project whose work is kept in Jira,
+  `tickets not converted (--no-jira): …`;
+- last, the lines about the check after the run. A dry run, which makes no
+  check, ends with the first line below; a real run ends with the second
+  when a related project is still in 3.x form, then the third when
+  `--no-jira` left the work store out:
+
+    ```text
+    tcw validate's findings on the converted project are known only after a real run
+    check after the run stopped: a related project is still TCW 3.x; run 'tcw validate' once it is migrated
+    work store not checked after the run (--no-jira): run 'tcw validate' to check it
+    ```
+
+  The findings of the check itself are A12 lines, under `needs attention:`
+  above the count.
 
 Some of the reports need a word more:
 
