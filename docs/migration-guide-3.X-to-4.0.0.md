@@ -99,6 +99,13 @@ would change: 6 files written, 0 moved, 4 deleted; 0 tickets edited
 tcw validate's findings on the converted project are known only after a real run
 ```
 
+In a project whose work is kept in Jira, the dry run also reads Jira, to list
+the tickets it would edit, so it needs the Jira credentials. Without them it
+still lists the file changes, then prints the error and
+`the tickets to edit could not be listed`, and exits 1.
+`tcw migrate --dry-run --no-jira` shows the file changes alone and needs no
+credentials.
+
 ### 2. Read what it prints
 
 **The change lines** come first, one per change, each naming the file and the
