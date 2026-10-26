@@ -34,6 +34,7 @@ from typing import Any, Iterator
 
 import yaml
 
+from tcw.ids import has_scheme
 from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
 
 from tcw.project_files import (LOCAL_CONFIG_NAME, LOCAL_SENTINEL as LOCAL_FILE, SENTINEL,
@@ -495,7 +496,7 @@ def store_location_problem(key: str | None, value: Any, address: bool = True) ->
     machine in a file every machine reads. `key` starts the message; None
     leaves it out, for a problem whose line already names the key. `address`
     False leaves out the tcw:// form, for `tcw project new`, which refuses it."""
-    if not isinstance(value, str) or value.startswith("tcw://"):
+    if not isinstance(value, str) or has_scheme(value):
         return None
     if value.startswith("~") or Path(value).is_absolute():
         offer = (", or a tcw:// .path address such as tcw://<project>.path/<folder>"

@@ -68,6 +68,13 @@ def test_a_missing_folder_is_a_usage_error_before_anything_is_read(tcw, tmp_path
     assert "cannot run in missing: no such folder" in result.err
 
 
+def test_an_uppercase_scheme_is_a_refused_address_not_a_folder(tcw, demo):
+    result = tcw(["-C", "TCW://demo.path/", "work", "list"], demo)
+    assert result.code == 2
+    assert "is not a tcw:// address" in result.err
+    assert "no such folder" not in result.err
+
+
 @pytest.mark.parametrize("argv,code", [
     (["work", "list"], 0),
     (["work", "show", "2026-10-01-zz"], 4),

@@ -242,6 +242,14 @@ def parse_full_id(text: Any, namespace: str | None = None) -> FullId:
     return FullId(project, found, id_path)
 
 
+def has_scheme(text: str) -> bool:
+    """Whether `text` starts with the tcw:// scheme in any case: what tells a
+    store location or a `tcw -C` target that is an address from a folder.
+    `TCW://` is then refused by `parse_address`, which reads only the
+    lowercase scheme, rather than looked for as a folder named `TCW:`."""
+    return text[:len(SCHEME)].casefold() == SCHEME
+
+
 def is_3x_address(text: Any) -> bool:
     """Design 2.4: `tcw://[<project>/]<axis>/<ref>`, with no `.` before the
     first `/` after the scheme, an axis of T, C or W and a non-empty ref."""

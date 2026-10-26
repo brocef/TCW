@@ -285,6 +285,7 @@ def _location_findings(project_root: Path) -> dict[str, "Finding | None"]:
     as it does for any unusable location; an unknown project, a graph problem,
     a malformed address and a loop are errors."""
     from tcw.config import STORE_COMPONENTS, store_location_problem
+    from tcw.ids import has_scheme
     from tcw.store.base import StoreDeclarationError
     from tcw.store.fs import LocationProjectAbsent, store_location
     try:
@@ -298,7 +299,7 @@ def _location_findings(project_root: Path) -> dict[str, "Finding | None"]:
         value = section.get("path") if isinstance(section, dict) else None
         if store_location_problem(None, value) is not None:
             found[comp] = None
-        if not isinstance(value, str) or not value.startswith("tcw://"):
+        if not isinstance(value, str) or not has_scheme(value):
             continue
         try:
             store_location(project_root, comp, value)
@@ -898,7 +899,7 @@ def _store_overlaps(locator) -> list[Finding]:
     counts like any other, and reading its configuration asks Jira nothing.
     Every lookup goes through `locator`, the command's one `Locator`."""
     from tcw.config import STORE_COMPONENTS
-    from tcw.ids import FolderAddress, IdError, parse_address
+    from tcw.ids import FolderAddress, IdError, has_scheme, parse_address
     from tcw.store.fs import SENTINEL, _in_folder, load_config, store_location
 
     registry = locator.registry
@@ -927,7 +928,7 @@ def _store_overlaps(locator) -> list[Finding]:
         for comp in STORE_COMPONENTS:
             section = config.get(comp) if isinstance(config, dict) else None
             value = section.get("path") if isinstance(section, dict) else None
-            if isinstance(value, str) and value.startswith("tcw://"):
+            if isinstance(value, str) and has_scheme(value):
                 try:
                     address = parse_address(value)
                 except IdError:

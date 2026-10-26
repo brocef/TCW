@@ -536,8 +536,8 @@ def _enter(target: str, args: argparse.Namespace) -> None:
     project active there must be the one the address names. Reads only
     folders on this machine."""
     from tcw.errors import UsageError
-    from tcw.ids import SCHEME, FolderAddress, parse_address
-    if not target.startswith(SCHEME):
+    from tcw.ids import FolderAddress, has_scheme, parse_address
+    if not has_scheme(target):
         folder = Path(target)
     else:
         found = parse_address(target)
@@ -555,7 +555,7 @@ def _enter(target: str, args: argparse.Namespace) -> None:
     if not folder.is_dir():
         raise UsageError(f"cannot run in {target}: no such folder")
     os.chdir(folder)
-    if target.startswith(SCHEME):
+    if has_scheme(target):
         _runs_as(found, target, folder)
 
 

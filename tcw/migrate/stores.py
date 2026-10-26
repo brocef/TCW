@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tcw import __version__
-from tcw.ids import FullId, id_part_problem, length_problem
+from tcw.ids import FullId, has_scheme, id_part_problem, length_problem
 from tcw.migrate.config import first_difference
 from tcw.migrate.editors import convert_text
 from tcw.migrate.legacy import STATE_3X, objects_3x, parse_mapping_3x, store_folder_3x
@@ -192,7 +192,7 @@ def related_stores(member) -> list[tuple[str, Path]]:
     for namespace in NAMESPACES:
         section = member.raw.get(namespace)
         configured = section.get("path") if isinstance(section, dict) else None
-        if isinstance(configured, str) and configured.startswith("tcw://"):
+        if isinstance(configured, str) and has_scheme(configured):
             continue
         folder = Path(configured).expanduser() if isinstance(configured, str) \
             else Path("docs") / namespace

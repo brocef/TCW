@@ -33,8 +33,8 @@ from tcw.errors import (BackendError, InheritedUnavailable, NotFound, Refused,
                         StateFileProblem, TcwError,
                         Unreachable, UsageError)
 from tcw.findings import Finding
-from tcw.ids import (SCHEME, FolderAddress, FullId, IdError, MalformedId, id_path_problem,
-                     length_problem, parse_address, parse_stored, sort_input)
+from tcw.ids import (FolderAddress, FullId, IdError, MalformedId, has_scheme,
+                     id_path_problem, length_problem, parse_address, parse_stored, sort_input)
 from tcw.reference_fields import field as ref_field, fields_of as ref_rows, names as ref_names
 from tcw.object_folders import (EXTRA, LEGACY, MISPLACED, RESERVED, RESOURCES, STATE_FILES,
                                 Walk, disagreement, exact_child, exact_path, folder_parent,
@@ -3678,7 +3678,7 @@ def store_location(project_root: Path, component: str, configured: str | None, *
     does."""
     if configured is None:
         return project_root / "docs" / component
-    if not configured.startswith(SCHEME):
+    if not has_scheme(configured):
         value = Path(configured).expanduser()
         if value.is_absolute():            # names a place, not an offset
             return value
@@ -3757,7 +3757,7 @@ def resolve_store(store_cls, project_root: Path, active_root: Path | None = None
     declaration, declaration_problems = parse_repository_declaration(
         section.get("repository"), f"{component}.repository")
     locator = None
-    if isinstance(configured, str) and configured.startswith(SCHEME):
+    if isinstance(configured, str) and has_scheme(configured):
         # The command's one `Locator` (TCW-110 Design 6.1): the active
         # project's, for a store opened on its behalf.
         from tcw.locate import Locator

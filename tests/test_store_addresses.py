@@ -353,3 +353,19 @@ def test_a_worktree_of_this_project_is_not_compared_with_itself(tcw, tmp_path):
     checked = tcw(["validate"], tmp_path / "app-wt")
     assert checked.code == 0, checked.out + checked.err
     assert _overlap(checked.out) == []
+
+
+@pytest.mark.parametrize("component", ["work", "taxonomy", "capabilities"])
+def test_a_location_with_an_uppercase_scheme_is_a_refused_address_not_a_folder(
+        tcw, tmp_path, component):
+    """The scheme is told apart from a folder in any case, so `TCW://` gets
+    the address refusal rather than being looked for as a folder `TCW:`."""
+    app = _project(tmp_path, "app")
+    init(["taxonomy", "capabilities"], app)
+    set_location(app, component, "TCW://app.path/other")
+    checked = tcw(["validate"], app)
+    assert checked.code == 1
+    assert "not a directory" not in checked.out + checked.err
+    [line] = [line for line in checked.out.splitlines() if f"{component}.path" in line]
+    assert line.startswith("error: .tcw/tcw-config.yaml: ")
+    assert "is not a tcw:// address" in line
