@@ -90,11 +90,11 @@ def _work_target(source: str) -> Target:
 
 def _tree_target(namespace: str, source: str) -> Target:
     from tcw.locate import find_tree_writable
-    from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, find_component_project
+    from tcw.store.fs import (FsCapabilitiesStore, FsTaxonomyStore, find_component_project,
+                              no_store_here)
     root = find_component_project(namespace)
     if root is None:
-        raise BackendError(f"no {namespace} store here — run `tcw project new {namespace} "
-                           f"--id <id>` in the project folder")
+        raise no_store_here(namespace)
     cls = FsTaxonomyStore if namespace == "taxonomy" else FsCapabilitiesStore
     store = cls.open(root)
     try:

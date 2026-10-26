@@ -605,6 +605,35 @@ def test_cli_path_outside_taxonomy_node_prints_no_path(tmp_path, monkeypatch, ca
     assert "no taxonomy store here" in output.err
 
 
+@pytest.mark.parametrize("argv, axis", [
+    (["taxonomy", "path"], "taxonomy"),
+    (["taxonomy", "move", "x", "--top"], "taxonomy"),
+    (["taxonomy", "list"], "taxonomy"),
+    (["capabilities", "list"], "capabilities"),
+])
+def test_cli_a_missing_store_in_a_project_with_an_id_names_no_id(
+        tmp_path, monkeypatch, capsys, argv, axis):
+    """`tcw project new <axis>` reads the ID from the project's own file, so
+    the advice names `--id <id>` only where no project with an ID is found."""
+    from tcw.cli import main
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    monkeypatch.chdir(tmp_path)
+    assert main(["project", "new", "work", "--id", "demo"]) == 0
+    capsys.readouterr()
+    assert main(argv) == 1
+    err = capsys.readouterr().err
+    assert f"no {axis} store here — run `tcw project new {axis}` in the project " \
+           f"folder" in err, err
+    assert "--id" not in err
+
+
+def test_cli_a_missing_store_outside_any_project_still_names_id(tmp_path, monkeypatch,
+                                                                capsys):
+    from tcw.cli import main
+    monkeypatch.chdir(tmp_path)
+    assert main(["taxonomy", "move", "x", "--top"]) == 1
+    assert "`tcw project new taxonomy --id <id>`" in capsys.readouterr().err
+
 def test_cli_add_feature_lists_and_shows_kind(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path, "repo")

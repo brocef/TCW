@@ -362,6 +362,22 @@ def refuse_retired_config(start: Path | None = None) -> None:
         raise BackendError(f"{os.path.relpath(root / SENTINEL)}: {retired}")
 
 
+def no_store_here(component: str, start: Path | None = None) -> BackendError:
+    """The refusal of a command that needs `component`'s store where none is
+    found from `start`. `tcw project new <axis>` reads the ID from the
+    project's own file, so `--id <id>` is named only where no project with
+    an ID is found."""
+    root = find_project_root(start)
+    try:
+        configured = load_config(root / SENTINEL) if root is not None else {}
+    except ValueError:
+        configured = {}
+    has_id = isinstance(configured, dict) and bool(configured.get("id"))
+    command = f"tcw project new {component}" + ("" if has_id else " --id <id>")
+    return BackendError(f"no {component} store here — run `{command}` in the project "
+                        f"folder")
+
+
 def find_component_project(component: str, start: Path | None = None,
                            opener=None) -> Path | None:
     """The project owning `component`'s store, or None. A project is the nearest

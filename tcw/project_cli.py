@@ -169,15 +169,13 @@ def _inherit_text(axes: list) -> str:
 def store_folder(axis: str, root: Path) -> Path:
     """The folder `tcw <axis> path` prints for the project at `root`, raising
     what that command would raise (plan choice 17)."""
-    from tcw.errors import BackendError
-    from tcw.store.fs import STORE_CLASSES, find_component_project
+    from tcw.store.fs import STORE_CLASSES, find_component_project, no_store_here
     if axis == "work":
         from tcw.work.open import project_facts
         return project_facts(root).path
     project = find_component_project(axis, root)
     if project is None:
-        raise BackendError(f"no {axis} store here — run `tcw project new {axis} --id <id>` "
-                           f"in the project folder")
+        raise no_store_here(axis, root)
     return STORE_CLASSES[axis].open(project).root
 
 

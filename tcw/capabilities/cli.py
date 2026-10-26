@@ -22,14 +22,13 @@ from tcw.tree_scope import (LEFT_OUT, active_store, capability_detail, covered_f
                             print_rows, refuse_local, scope_keys, show_lines, show_row)
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import CAP_STATUSES, Capability
-from tcw.store.fs import FsCapabilitiesStore, find_component_project
+from tcw.store.fs import FsCapabilitiesStore, find_component_project, no_store_here
 
 NAME = "capabilities"
 
 
 def _missing() -> BackendError:
-    return BackendError("no capabilities store here — run `tcw project new capabilities "
-                        "--id <id>` in the project folder")
+    return no_store_here(NAME)
 
 
 def _project():

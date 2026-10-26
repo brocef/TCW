@@ -21,14 +21,13 @@ from tcw.tree_scope import (LEFT_OUT, active_store, covered_for, print_rows, ref
                             scope_keys, show_lines, show_row, term_detail)
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import NotASlug
-from tcw.store.fs import FsTaxonomyStore, find_component_project
+from tcw.store.fs import FsTaxonomyStore, find_component_project, no_store_here
 
 NAME = "taxonomy"
 
 
 def _missing() -> BackendError:
-    return BackendError("no taxonomy store here — run `tcw project new taxonomy --id <id>` "
-                        "in the project folder")
+    return no_store_here(NAME)
 
 
 def _store() -> FsTaxonomyStore:
