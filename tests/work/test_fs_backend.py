@@ -438,8 +438,10 @@ def test_work_store_problems(work):
     assert "'verify'" in found[("error", "2026-10-01-lost")]
     # Since TCW-111 the store's shape is Design 2.6's: a stage name is
     # reserved in the work store (row c), and a file in its root is part of
-    # no object (row d).
-    assert found[("error", "inbox")] == "'inbox' is reserved in the work store"
+    # no object (row d). The reserved name points a 2.x store to its guide.
+    assert found[("error", "inbox")] == ("'inbox' is reserved in the work store; see "
+                                         "docs/migration-guide-2.8-to-3.0.0.md for the "
+                                         "work store layout")
     assert found[("warning", "dod.yaml")] == "is not part of any object"
     assert "gone" in found[("warning", "2026-10-01-tagged")]
 

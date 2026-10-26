@@ -90,7 +90,8 @@ def test_a_misplaced_folder_hides_nothing(tcw, demo):
     assert (checked.code, findings(checked)) == (1, [
         f"error: docs/work/{EPIC}/drafts: is not a child object of demo.work/{EPIC}: "
         f"it has no tcw-work-item.yaml; give it one, or move it into resources/",
-        "error: docs/work/review: 'review' is reserved in the work store",
+        "error: docs/work/review: 'review' is reserved in the work store; see "
+        "docs/migration-guide-2.8-to-3.0.0.md for the work store layout",
     ])
 
 

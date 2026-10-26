@@ -373,8 +373,13 @@ def shape_problems(found: Walk, root: Path, namespace: str, project: str, *,
                                     f"no {state}; give it one, or move it into "
                                     f"{RESOURCES}/"))
         elif kind == RESERVED:
-            problems.append(Finding("error", where(at),
-                                    f"'{name}' is reserved in the {namespace} store"))
+            message = f"'{name}' is reserved in the {namespace} store"
+            if namespace == "work":
+                # A 2.x work store is the one layout that holds stage folders,
+                # and `tcw migrate` does not convert 2.x: point to its guide.
+                from tcw.store.base import MIGRATION_GUIDE
+                message += f"; see {MIGRATION_GUIDE} for the work store layout"
+            problems.append(Finding("error", where(at), message))
         elif kind == ORGANISING:
             prefix = path + "/"
             if not any(p.startswith(prefix) for p in below):

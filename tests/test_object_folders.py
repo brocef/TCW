@@ -213,7 +213,8 @@ def test_shape_problems_rows_a_to_h(tmp_path):
         Finding("error", "2026-10-01-epic/drafts",
                 "is not a child object of demo.work/2026-10-01-epic: it has no "
                 "tcw-work-item.yaml; give it one, or move it into resources/"),
-        Finding("error", "review", "'review' is reserved in the work store"),
+        Finding("error", "review", "'review' is reserved in the work store; see "
+                "docs/migration-guide-2.8-to-3.0.0.md for the work store layout"),
         Finding("warning", "empty", "holds no TCW object"),
         Finding("error", "old", "holds a TCW 3.x item.yaml; run 'tcw migrate' in this "
                                 "project"),

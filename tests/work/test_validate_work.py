@@ -81,14 +81,26 @@ def test_a_reference_found_in_another_project_is_fine(tmp_path):
     assert findings(p) == ([], None)
 
 
+GUIDE = "see docs/migration-guide-2.8-to-3.0.0.md for the work store layout"
+
+
 def test_an_inbox_folder_is_a_reserved_name(tmp_path):
     """Since TCW-111 a stage name is reserved in the work store (Design 2.4,
-    row c), which replaces the 2.8-to-3.0 guide's pointer."""
+    row c). A 2.x store is the one that fills the work store with stage
+    folders, so the finding still points to the 2.8-to-3.0 guide."""
     p = make_project(tmp_path, "p")
     (p / "docs" / "work" / "inbox").mkdir()
     [error] = by_severity(findings(p)[0], "error")
     assert error.where.endswith("inbox")
-    assert error.message == "'inbox' is reserved in the work store"
+    assert error.message == f"'inbox' is reserved in the work store; {GUIDE}"
+
+
+def test_a_2x_item_under_a_stage_folder_names_the_guide(tmp_path, capsys, monkeypatch):
+    p = make_project(tmp_path, "p")
+    (p / "docs" / "work" / "inbox" / "x").mkdir(parents=True)
+    code, text = run_validate(capsys, monkeypatch, p)
+    assert code == 1
+    assert "docs/migration-guide-2.8-to-3.0.0.md" in text, text
 
 
 def test_a_bad_capabilities_file_on_an_unfinished_item_fails(tmp_path):
