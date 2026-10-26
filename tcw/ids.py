@@ -376,14 +376,17 @@ def sort_input(text: Any, namespace: str, key_pattern: re.Pattern | None = None)
         raise MalformedId(f"{text!r} names no {noun}")
     # No full identifier is longer than `ID_LIMIT`, so no id-path is either
     # (TCW-111 Design 4.2); an address is checked as the full identifier in it.
-    if not text.startswith(SCHEME) and len(text) > ID_LIMIT:
+    if not has_scheme(text) and len(text) > ID_LIMIT:
         raise MalformedId(f"{text[:40]}... is {len(text)} characters; a full "
                           f"identifier is at most {ID_LIMIT}")
-    if text.startswith(SCHEME):
+    if has_scheme(text):
+        # `TCW://` in any other case is refused by `parse_address` as an
+        # address, as `tcw -C` refuses it, never read as an id-path.
         try:
             found = parse_address(text)
         except MalformedId as error:
-            raise MalformedId(f"{error}{_address_rename(text)}") from None
+            rename = _address_rename(text) if text.startswith(SCHEME) else ""
+            raise MalformedId(f"{error}{rename}") from None
         if isinstance(found, FolderAddress):
             raise MalformedId(
                 f"{text} names a folder, not a {noun}; write "

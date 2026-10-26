@@ -225,6 +225,18 @@ def test_a_typing_slip_is_not_called_a_folder_to_rename(text):
     assert "rename" not in str(caught.value)
 
 
+@pytest.mark.parametrize("text", ["TCW://demo.work/x", "Tcw://demo.work/x",
+                                  "TCW://demo.path/"])
+def test_an_upper_case_scheme_is_refused_as_an_address_not_a_folder(text):
+    """`TCW://` is refused as `tcw -C` and a store location refuse it, as an
+    address, never read as an id-path whose first part `TCW:` is a folder
+    to rename."""
+    with pytest.raises(MalformedId) as caught:
+        sort_input(text, "work", KEY)
+    message = str(caught.value)
+    assert message == f"{text!r} is not a tcw:// address", message
+
+
 @pytest.mark.parametrize("namespace, noun", [
     ("taxonomy", "term"), ("capabilities", "capability"), ("work", "work item")])
 def test_messages_call_an_object_by_its_namespaces_noun(namespace, noun):
