@@ -65,7 +65,7 @@ def run_init(components: list[str], project_id: str | None = None,
     for c, text in given.items():
         if text.casefold().startswith("tcw:"):
             raise UsageError(
-                f"--{c}-path {text!r}: init takes a path relative to the "
+                f"--{c}-path {text!r}: `tcw project new` takes a path relative to the "
                 f"project; a store location given as a tcw:// address is written "
                 f"into {SENTINEL} by hand once the project exists")
     sentinel = root / SENTINEL

@@ -93,6 +93,17 @@ def test_ac24_init_refuses_an_absolute_or_home_location_and_writes_nothing(
     assert sorted(p.name for p in root.iterdir()) == [".git"]
 
 
+def test_project_new_refuses_an_address_naming_itself_not_init(tcw, tmp_path):
+    """4.0 has no `init` command: the refusal names the command that was run."""
+    root = tmp_path / "fresh"
+    root.mkdir()
+    git(root, "init", "-q")
+    found = tcw(["project", "new", "work", "--work-path", "tcw://x.path/board"], root)
+    assert found.code == 2
+    assert "`tcw project new` takes a path relative to the project" in found.err, found.err
+    assert "init" not in found.err
+
+
 # -- folder addresses as store locations (Design 7.2, 7.3; AC 14, 15, 17) --------------
 
 
