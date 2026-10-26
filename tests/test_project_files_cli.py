@@ -564,6 +564,25 @@ def test_a_file_with_no_version_gets_only_the_version_problem(tmp_path, local):
     assert errors[0].startswith(f"error: {shown}: has no tcw-version"), ran
 
 
+def test_a_state_file_with_no_version_is_not_sent_to_tcw_migrate(tmp_path):
+    """A file with a 4.0 state-file name was never written by 3.x (which
+    wrote meta.yaml and item.yaml), so the advice is only the line to add:
+    `tcw migrate` would convert nothing and repeat the same message."""
+    root = project(tmp_path / "p", "p")
+    item = next((root / "docs" / "work").rglob("tcw-work-item.yaml"))
+    item.write_text("".join(item.read_text().splitlines(True)[1:]))
+    term = root / "docs" / "taxonomy" / "nover" / "tcw-taxonomy.yaml"
+    term.parent.mkdir(parents=True)
+    term.write_text("kind: vocabulary\nname: nover\n")
+    ran = tcw(root, "validate")
+    assert ran.code == 1, ran
+    add = f"has no tcw-version: add 'tcw-version: {__version__}' as its first line"
+    errors = [l for l in ran.out.splitlines() if l.startswith("error:")]
+    for name in ("tcw-work-item.yaml: ", "tcw-taxonomy.yaml: "):
+        assert any(name in l and l.endswith(add) for l in errors), ran
+    assert "tcw migrate" not in ran.out + ran.err, ran
+
+
 def test_ac12_a_key_yaml_reads_as_a_boolean_must_be_text(tmp_path):
     root = tmp_path / "p"
     (root / "docs" / "work").mkdir(parents=True)

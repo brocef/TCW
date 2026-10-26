@@ -129,7 +129,7 @@ def _load(folder: Path, project: str,
         raise Unreadable(path, None, "must be a mapping of the item's properties")
     # The version first: a file this TCW cannot read is never interpreted, so
     # a newer one's keys are not reported as unknown (Design 1.5).
-    problem = version_problem(raw)
+    problem = version_problem(raw, state=True)
     if problem is not None:
         raise Unreadable(path, VERSION_KEY, problem)
     for key in raw:

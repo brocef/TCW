@@ -207,7 +207,7 @@ def _item_file_problems(path: Path, key: str, site: str) -> list[Finding]:
         return [Finding("error", where, "is missing; it holds the ticket's link")]
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as error:
         return [Finding("error", where, f"cannot be read: {error}")]
-    if isinstance(data, dict) and (problem := version_problem(data)) is not None:
+    if isinstance(data, dict) and (problem := version_problem(data, state=True)) is not None:
         return [Finding("error", where, problem)]
     if not isinstance(data, dict) or not STATE_KEYS <= set(data) \
             or set(data) - STATE_KEYS - OPTIONAL_STATE_KEYS:

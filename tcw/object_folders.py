@@ -442,7 +442,7 @@ def parse_state_text(text: str, file: Path) -> tuple[dict | None, str | None]:
 
 
 def _versioned(data) -> tuple[dict | None, str | None]:
-    problem = version_problem(data)
+    problem = version_problem(data, state=True)
     if problem is not None:
         return None, problem
     return without_version(data), None

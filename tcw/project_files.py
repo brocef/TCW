@@ -139,15 +139,19 @@ def _pair(version: str) -> tuple[int, int]:
     return int(major), int(minor)
 
 
-def version_problem(mapping: Any) -> str | None:
+def version_problem(mapping: Any, *, state: bool = False) -> str | None:
     """What is wrong with the `tcw-version` of a file read as `mapping`, or
     None when this TCW reads its format. The first that applies of: missing
     (read as a 3.x file), not a version written as text, older than 4, and
     newer than this TCW (major and minor compared as a pair; the patch number
-    never changes a format)."""
+    never changes a format). `state` is for an object's state file, whose
+    4.0 name 3.x never wrote (it wrote `meta.yaml` and `item.yaml`): a missing
+    version there is only the line to add, since `tcw migrate` converts
+    nothing in it."""
     if not isinstance(mapping, dict) or VERSION_KEY not in mapping:
-        return (f"has no {VERSION_KEY}: add '{version_line().strip()}' as its first "
-                f"line, or, for a TCW 3.x file, run 'tcw migrate' in this project")
+        add = f"has no {VERSION_KEY}: add '{version_line().strip()}' as its first line"
+        return add if state else (f"{add}, or, for a TCW 3.x file, run 'tcw migrate' "
+                                  f"in this project")
     value = mapping[VERSION_KEY]
     if not isinstance(value, str) or not _VERSION.fullmatch(value):
         return f"{VERSION_KEY} must be a TCW version written as text, such as '{__version__}'"
