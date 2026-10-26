@@ -2060,6 +2060,7 @@ git push origin "$M0:refs/heads/3.x"
 git push origin main
 git fetch origin
 git merge-base --is-ancestor "$T" origin/main || stop "T is not on GitHub's main"
+git cat-file -e origin/main:docs/migration-guide-3.X-to-4.0.0.md || stop "the skill's link does not resolve"
 test "$(git ls-remote origin refs/heads/3.x | cut -f1)" = "$M0" || stop "GitHub's 3.x is not M0"
 test -z "$(git ls-remote origin refs/heads/release-4.0.0)" || stop "release-4.0.0 reached GitHub"
 ```
