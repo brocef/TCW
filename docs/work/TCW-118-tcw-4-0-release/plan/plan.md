@@ -2527,3 +2527,19 @@ file's own text; no Jira, no `tcw`): 17 passed, 0 failed.
   inside the `try` again, Step 21's old `^left out:` check, the runs sorted
   by spelling, and `next_run` comparing numbers as text; each broke the
   test it should and no other.
+
+## Plan review
+
+Reviewed adversarially in three rounds by separate read-only agents
+(2026-10-24 to 2026-10-26). Round 1 rejected the plan (values between steps
+held only in shell variables, comment-only guards, the ticket way back's
+order, re-runs without a limit, three incomplete fixes); round 2 rejected
+Revision 1 (the way back's `--read` read as a file pattern, live writes
+without a gate check); round 3 rejected Revision 3 on two findings, one a
+hole in Revision 3's own fix (a client failure read as "Jira left a ticket
+out", and Step 24 overwriting an earlier run's record). The user chose to
+have both fixed without a fourth review round, checked by the dispatching
+session: Revision 4's stub tests (`tp118c/run.sh` in the session's
+scratchpad, cut from this plan's own text) give `17 passed, 0 failed` under
+`/bin/bash` 3.2, and the dispatching session read both fixes in the plan.
+Accepted by the dispatching session on that basis, 2026-10-26.
