@@ -41,7 +41,8 @@ stdout carries only what a command produces; everything said to a person
 
 exit codes:
   0  OK
-  1  error: the backend or TCW itself failed
+  1  error: TCW, the backend, or something it was told to read failed, such
+     as a configuration problem or an unknown project ID
   2  usage: a malformed command or value
   3  refused: a gate, a name collision or a record that depends on this one
   4  not found: no such item, term, capability, tag or ticket
