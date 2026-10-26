@@ -338,10 +338,11 @@ def _same_file(a: str, b: str, root: Path) -> bool:
 def check_after(root: Path, predicts: list[tuple[str, str]], *, work: bool
                 ) -> tuple[list[Report], bool]:
     """4.0's offline `tcw validate` of the project as now written, each
-    finding no report predicts listed as A12 in 4.0's words, and whether the
-    check stopped at the project graph (a related project still TCW 3.x,
-    which A8 predicts), so that this project's own findings were never
-    reached. A finding is predicted by a report naming its file and its
+    finding no report predicts listed as A12 in 4.0's words (one 3.x gave,
+    or one from a check 4.0 makes and 3.x did not, such as an override's
+    combined fields), and whether the check stopped at the project graph (a
+    related project still TCW 3.x, which A8 predicts), so that this project's
+    own findings were never reached. A finding is predicted by a report naming its file and its
     kind; one in the same file but of another kind is not. `work=False`
     leaves out the work-store checks, which would open the Jira backend
     (Design 1.1). The configuration read so far is dropped first, since the

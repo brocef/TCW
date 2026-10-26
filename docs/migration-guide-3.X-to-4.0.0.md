@@ -150,9 +150,13 @@ Some of the reports need a word more:
   to `not-tags` once no TCW 3.x is used on that machine; until then
   `tcw validate` reports it as an error in every project.
 - **A12**, after a real run, lists the findings `tcw validate` gives on the
-  converted project that the project already had in 3.x, such as a capability
-  with no `Status`. They are not caused by the migration. A dry run cannot list
-  them.
+  converted project that no other report of the run explains, such as a
+  capability with no `Status`. They are not caused by a conversion, but not
+  all of them are findings 3.x gave: some come from a check 4.0 makes and 3.x
+  did not. For example, 3.x checked only an override's references, while 4.0
+  checks the override combined with what it overrides, so an override 3.x
+  accepted can be listed here as `Partial requires Gaps`. A dry run cannot
+  list them.
 - **A14** names an absolute or `~` path that your 3.x shared
   `tcw-config.yaml` held for everyone. TCW 4.0 allows such a path only in the
   personal file, so `tcw migrate` moves it to your
