@@ -100,9 +100,11 @@ def test_show_of_nothing_is_not_found(project, run):
 
 
 def test_rm_names_each_file_it_removed(thing, run):
+    """And the organising folder `ns/`, which the removal left empty."""
     code, out, err = run(thing, "capabilities", "rm", "ns/do-a-thing")
     assert (code, out) == (0, "")
     assert sorted(err.splitlines()) == [
+        "removed docs/capabilities/ns",
         "removed docs/capabilities/ns/do-a-thing/description.md",
         "removed docs/capabilities/ns/do-a-thing/tcw-capability.yaml"]
 

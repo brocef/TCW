@@ -128,10 +128,11 @@ nested capability is made at its nested path and given `--parent` as well. One
 made inside another capability's folder without `--parent` is created with a
 warning that `parent:` is not set.
 
-`rm` deletes one local capability and nothing else. It refuses, deleting
-nothing, an inherited capability (it names the project the capability belongs
-to), one with capabilities nested under it (so `rm billing/invoices` is
-refused while `billing/invoices/bulk` exists), and one another capability
+`rm` deletes one local capability, and each folder above it that the removal
+leaves empty, and nothing else. It refuses, deleting nothing, an inherited
+capability (it names the project the capability belongs to), one with
+capabilities nested under it (so `rm billing/invoices` is refused while
+`billing/invoices/bulk` exists), and one another capability
 still points at through `Superseded by`, `Blocked by`, `Roles`, `When` or
 `parent`.
 

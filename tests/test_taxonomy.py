@@ -407,6 +407,18 @@ def test_rm_refuses_nested_terms(tmp_path, monkeypatch, capsys):
     assert st.get_view("admin") is not None and st.get_view("admin/permission") is not None
 
 
+def test_rm_removes_the_organising_folder_it_empties(tmp_path):
+    """The only term under `billing/` removed: `billing/` goes too, and the
+    store records it as removed."""
+    root = node(tmp_path, "repo")
+    write_term(root, "billing/invoice", name="Invoice")
+    st = FsTaxonomyStore.open(root)
+    st.remove("billing/invoice")
+    assert not (root / "docs" / "taxonomy" / "billing").exists()
+    assert ("removed", root / "docs" / "taxonomy" / "billing") in st.changed
+    assert st.check() == []
+
+
 def test_rm_refuses_a_relatesto_referrer(tmp_path):
     root = node(tmp_path, "repo")
     write_term(root, "invoice", name="Invoice")

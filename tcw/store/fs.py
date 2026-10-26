@@ -40,7 +40,8 @@ from tcw.object_folders import (EXTRA, LEGACY, MISPLACED, RESERVED, RESOURCES, S
                                 Walk, disagreement, exact_child, exact_path, folder_parent,
                                 id_path_refused, id_problem, is_object, is_reserved,
                                 length_problems,
-                                object_paths, read_state, removal_blockers, shape_problems,
+                                object_paths, read_state, removal_blockers, remove_emptied,
+                                shape_problems,
                                 state_text, walk)
 from tcw.output import shown as _shown
 from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
@@ -1534,6 +1535,16 @@ class FsTreeStore:
                                f"({reason})") from None
         self.changed += [("removed", f) for f in files]
 
+    def _rm_object(self, folder: Path, id_path: str) -> None:
+        """`_rm` an object's folder, then each organising folder above it
+        that the removal left empty, as `move` does, recording a `removed`
+        line for each. One that cannot be removed stays, and validate
+        reports it."""
+        self._rm(folder)
+        with suppress(OSError):
+            for rel in remove_emptied(self.root, id_path):
+                self.changed.append(("removed", self.root / rel))
+
 
     # -- shared folder-entry anatomy (state file + description.md + attachments) --
     #
@@ -2425,7 +2436,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         if referrers:
             raise Refused(f"cannot remove '{slug}': still referenced by "
                              f"{', '.join(referrers)} (repoint or clear those first)")
-        self._rm(d)
+        self._rm_object(d, slug)
 
     def _capability_referrers(self, target: Path, slug: str) -> list[str]:
         """`capability <full id> (Subject|Feature)` for every capability of this
@@ -2987,7 +2998,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         if referrers:
             raise Refused(f"cannot remove '{target.id_path}': still referenced by "
                              f"{', '.join(referrers)} (repoint or clear those fields first)")
-        self._rm(d)
+        self._rm_object(d, target.id_path)
 
     def _nested_entries(self, d: Path) -> list[str]:
         """Every folder below `d` holding a state file of any store or a 3.x
@@ -3089,7 +3100,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         if naming:
             raise Refused(f"cannot reset '{identifier}': {target} is still named by "
                           f"{', '.join(naming)}; repoint each at {inherited} first")
-        self._rm(d)
+        self._rm_object(d, path)
 
     def _validate_fields(self, fields: dict) -> dict:
         out = {}

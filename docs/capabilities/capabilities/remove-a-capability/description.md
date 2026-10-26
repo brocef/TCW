@@ -1,8 +1,9 @@
 As a user, I run `tcw capabilities rm <path>` to delete one of my project's own
 capabilities, an override included, that I no longer describe — for example, one whose behavior has been folded into another
 capability, where marking it `Omitted` would wrongly say we deliberately do not
-have it. It deletes the capability's files and nothing else: each file removed
-is named on standard error, and nothing is staged or committed.
+have it. It deletes the capability's files, and each folder above it that the
+removal leaves empty, and nothing else: each file and folder removed is named on
+standard error, and nothing is staged or committed.
 
 It deletes exactly one capability, so it refuses, and deletes nothing, when:
 

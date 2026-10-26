@@ -394,6 +394,21 @@ def test_cli_rm_removes_and_reports(tmp_path, monkeypatch, capsys):
     assert main(["capabilities", "show", "x"]) == 4
 
 
+def test_cli_rm_removes_the_organising_folder_it_empties(tmp_path, monkeypatch, capsys):
+    """Removing the only capability under `billing/` removes `billing/` too,
+    names it, and leaves validate nothing to warn about (as `move` does)."""
+    from tcw.cli import main
+    root = repo(tmp_path, "solo")
+    write_cap(root, "billing/refund", Status="Supported")
+    monkeypatch.chdir(root)
+    assert main(["capabilities", "rm", "billing/refund"]) == 0
+    assert "removed docs/capabilities/billing" in capsys.readouterr().err.splitlines()
+    assert not (root / "docs" / "capabilities" / "billing").exists()
+    assert (root / "docs" / "capabilities").is_dir()
+    main(["validate"])
+    assert "holds no TCW object" not in "".join(capsys.readouterr())
+
+
 def test_cli_rm_unknown_path(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = repo(tmp_path, "solo")

@@ -51,6 +51,20 @@ def federated(tmp_path):
     return base, child
 
 
+def test_cli_reset_removes_the_organising_folder_it_empties(tmp_path, monkeypatch, capsys):
+    """Resetting the only override under `auth/` removes `auth/` too, names
+    it, and leaves validate nothing to warn about."""
+    from tcw.cli import main
+    base, child = federated(tmp_path)
+    write_cap(child, "auth/login", complete=False, Status="Missing")
+    monkeypatch.chdir(child)
+    assert main(["capabilities", "reset", "auth/login"]) == 0
+    assert "removed docs/capabilities/auth" in capsys.readouterr().err.splitlines()
+    assert not (child / "docs" / "capabilities" / "auth").exists()
+    main(["validate"])
+    assert "holds no TCW object" not in "".join(capsys.readouterr())
+
+
 def connect(anchor, *sources):
     """`anchor` names each source as a parent passing its capabilities, found
     through `anchor`'s manifest; the sources name nothing."""
