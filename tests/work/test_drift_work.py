@@ -88,9 +88,8 @@ def test_an_inherited_capability_never_ruled_on(tmp_path, monkeypatch, capsys):
     connect(child, base, "parent", inherit=["capabilities"])
     code, out, _ = drift(child, monkeypatch, capsys)
     assert code == 1
-    assert out == [line for line in out
-                   if line.startswith("unreviewed: base.capabilities/auth/login: ")]
-    assert len(out) == 1
+    assert out == ["unreviewed: base.capabilities/auth/login: inherited, and its status "
+                   "is still the one it inherits; never ruled on here"]
 
 
 def test_without_a_work_component_only_unreviewed_and_a_note(tmp_path, monkeypatch, capsys):

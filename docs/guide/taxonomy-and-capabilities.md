@@ -412,7 +412,7 @@ found anything, so a continuous-integration job can run it. The kinds are:
 
 - **`unreviewed`**: an inherited capability this project has never overridden,
   so its status is still the one it inherits, such as
-  `unreviewed: shared.capabilities/payments/invoices: inherited, and its status is still the upstream default; never ruled on here`;
+  `unreviewed: shared.capabilities/payments/invoices: inherited, and its status is still the one it inherits; never ruled on here`;
 - **`drift`**: a completed item declared a change that today's records do not
   show. For each capability or term, the **newest declaration wins**, by the
   item's creation date, so a later item that declares it differently

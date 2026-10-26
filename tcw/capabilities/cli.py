@@ -196,7 +196,7 @@ def _drift(args: argparse.Namespace) -> int:
     # unreachable Jira (exit 5) still leaves these on stdout.
     for c in st.unreviewed_inherited():
         print(f"unreviewed: {c.full_id}: inherited, and its status is still the "
-              f"upstream default; never ruled on here")
+              f"one it inherits; never ruled on here")
         found += 1
     sys.stdout.flush()
     for problem in _completed_work_drift(project):
