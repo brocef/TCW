@@ -129,7 +129,7 @@ def run_provision(components: list[str], *, dry_run: bool = False,
         raise BackendError(NO_PROJECT)
 
     # The readers below treat a config too broken to read as declaring
-    # nothing, which would end in "Nothing to provision" and success.
+    # nothing, which would end in "no store to fetch" and success.
     try:
         load_config(project_root / SENTINEL)
     except ValueError as error:
@@ -188,8 +188,8 @@ def run_provision(components: list[str], *, dry_run: bool = False,
         return 1
 
     if not declared:
-        print(f"Nothing to provision: no component declares a home repository in "
-              f"{SENTINEL}.", file=sys.stderr)
+        print(f"no store to fetch: no store declares a repository in {SENTINEL}",
+              file=sys.stderr)
 
     # A store that fails does not stop the run: the projects pass follows,
     # and the last line counts both (TCW-115 Design 7.2, 7.13).

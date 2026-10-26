@@ -840,7 +840,7 @@ def test_a_node_declaring_nothing_says_so_and_succeeds(tmp_path, monkeypatch, ca
     monkeypatch.chdir(code)
 
     assert main(["project", "provision"]) == 0
-    assert "Nothing to provision" in capsys.readouterr().err
+    assert "no store to fetch" in capsys.readouterr().err
 
 
 def test_a_malformed_declaration_refuses_rather_than_doing_nothing(tmp_path,
@@ -875,7 +875,7 @@ def test_a_config_that_cannot_be_parsed_is_an_error_not_nothing(tmp_path, monkey
     assert err.startswith("tcw project provision: malformed "), err
     assert f"{code.name}/.tcw/tcw-config.yaml: " in err, err
     assert words in err and "Traceback" not in err, err
-    assert "Nothing to provision" not in err, err
+    assert "no store to fetch" not in err, err
 
 
 @pytest.mark.parametrize("command", [["project", "provision"], ["project", "new"]])
@@ -917,7 +917,7 @@ def test_limiting_to_undeclared_work_is_a_no_op(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(code)
 
     assert main(["project", "provision", "--component", "work"]) == 0
-    assert "Nothing to provision" in capsys.readouterr().err
+    assert "no store to fetch" in capsys.readouterr().err
 
 
 # ── nothing else reaches the network ─────────────────────────────────────────

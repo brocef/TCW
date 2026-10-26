@@ -798,8 +798,7 @@ def test_ac34_a_project_alone(tmp_path, stand_in_git):
     done = provision(app)
     assert done.code == 0, done
     assert done.err.splitlines() == [
-        "Nothing to provision: no component declares a home repository in "
-        ".tcw/tcw-config.yaml.",
+        "no store to fetch: no store declares a repository in .tcw/tcw-config.yaml",
         "nothing to fetch: every project it names is on this machine"], done.err
     assert stand_in_git.calls("clone") == []
 

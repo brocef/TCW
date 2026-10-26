@@ -564,8 +564,8 @@ def test_ac22_a_dry_run_plans_the_project_and_contacts_nothing(tmp_path):
     env = {"PATH": f"{tools}{os.pathsep}{os.environ['PATH']}"}
     ran = tcw(app, "project", "provision", "--dry-run", env=env)
     assert ran.code == 0, ran
-    assert ran.err.startswith("Nothing to provision: no component declares a home "
-                              "repository in .tcw/tcw-config.yaml.\n"), ran
+    assert ran.err.startswith("no store to fetch: no store declares a repository in "
+                              ".tcw/tcw-config.yaml\n"), ran
     assert f"lib: would fetch into {(tmp_path / 'lib').resolve()}" in ran.err, ran
     ran_git = calls.read_text() if calls.exists() else ""
     assert "example.invalid" not in ran_git and "clone" not in ran_git, ran_git
