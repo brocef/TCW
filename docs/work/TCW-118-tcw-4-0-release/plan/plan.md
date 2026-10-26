@@ -321,6 +321,15 @@ dispatch_ci() {   # id=$(dispatch_ci <commit>): start test.yml on v4, print its 
 retryable() {   # retryable <saved output>: the run stopped because Jira was unreachable or rate limiting
   grep -Eq 'could not reach the tracker|did not respond within|the connection to the tracker .* was lost|the tracker returned 5[0-9][0-9]|the tracker is rate limiting requests' "$1"
 }
+next_run() {   # f=$(next_run <folder> <name>): a file no earlier run wrote, numbered after the highest saved
+  local n=0 f m
+  if [ -e "$1/$2.txt" ]; then n=1; fi
+  for f in "$1/$2"-*.txt; do
+    m=${f#"$1/$2-"}; m=${m%.txt}
+    if [[ "$m" =~ ^[1-9][0-9]*$ ]] && [ "$m" -gt "$n" ]; then n=$m; fi
+  done
+  if [ "$n" -eq 0 ]; then printf '%s' "$1/$2.txt"; else printf '%s' "$1/$2-$((n + 1)).txt"; fi
+}
 for name in "$@"; do
   [[ "$name" =~ ^[A-Z][A-Z0-9]*$ ]] || stop "load.sh: bad value name '$name'"
   printf -v "$name" '%s' "$(value_of "$name")"
@@ -329,7 +338,12 @@ done
 ```
 
 `printf -v`, `[[ =~ ]]` and `${!name}` all work in the macOS system bash
-(3.2). Inside `$( )` a `stop` ends only the substitution, which is why the
+(3.2). `next_run` names the saved output of a run that a later step reads
+(Steps 21, 24 and 25): `<name>.txt` when none is saved, otherwise
+`<name>-<n>.txt` with `<n>` one more than the highest number saved (the bare
+`<name>.txt` counting as 1), so running a block again never overwrites an
+earlier run's record; the numbers carry no leading zero, so `$((n + 1))`
+cannot read one as octal (a number in base 8). Inside `$( )` a `stop` ends only the substitution, which is why the
 loop checks each value again after setting it.
 
 **`gates.md`**: the master copy of every answer at every gate, written as it
@@ -420,8 +434,12 @@ Step 27 comment, with Decided 2). `--runs` is the file pattern of the saved
 runs inside the folder, `tcw116-step6*.txt` when left out; `--read` says a
 person has read every key found in only one of the runs and the dry run.
 Options may come before or after the three names. It exits 0 when every
-edited ticket was put back, 1 when Jira left one out, 3 when it stops before
-editing anything, and 2 on a bad argument:
+edited ticket was put back, 1 when Jira left one out (and then prints
+`left out: [` and the keys), 3 when it stops before editing anything
+(including when the project's Jira settings cannot be read or the client
+cannot be built), and 2 on a bad argument. It reads the runs in the order
+they were made (`<name>.txt`, then `-2`, `-3`, … `-10` by number, not by
+spelling, under which `-10` would come before `-2` and the bare name last):
 
 ```python
 """Put back the 3.x TCW Item of every ticket a `tcw migrate` run edited.
@@ -430,6 +448,7 @@ Run with the 4.0 `tcw`'s Python (the merge clone's .venv/bin/python), before
 ticket was put back, 1 when Jira left one out, 3 when it stops before
 editing anything, 2 on a bad argument (argparse's own exit)."""
 import argparse
+import re
 import sys
 from pathlib import Path
 from tcw.errors import TcwError
@@ -442,6 +461,11 @@ def stop(message):
     sys.exit(3)
 
 
+def run_order(path):   # <name>.txt is run 1, <name>-<n>.txt run n
+    m = re.fullmatch(r"(.*?)(?:-([0-9]+))?\.txt", path.name)
+    return (m[1], int(m[2] or 1)) if m else (path.name, 0)
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("root", type=Path)
 parser.add_argument("project_id")
@@ -450,7 +474,7 @@ parser.add_argument("--runs", default="tcw116-step6*.txt")
 parser.add_argument("--read", action="store_true")
 args = parser.parse_args()
 
-runs = sorted(args.saved.glob(args.runs))
+runs = sorted(args.saved.glob(args.runs), key=run_order)
 dry_files = sorted(args.saved.glob("*dry-run*.txt"))
 if not runs:
     stop(f"no saved run matches {args.runs!r} in {args.saved}")
@@ -469,9 +493,12 @@ only_one = sorted({k for k, _, _ in done} ^ dry)
 print("in only one of the two:", only_one)
 if only_one and not args.read:
     stop("a person reads these keys first, then runs this again with --read")
+try:   # outside the try below, so a settings or credential failure is not read as "left out"
+    client = JiraClient(settings(args.root))
+except Exception as error:   # nothing has been edited yet, whatever the failure
+    stop(f"the Jira client could not be built, so nothing is put back: {error}")
 try:
-    print("put back:", restore_tickets(done, JiraClient(settings(args.root)), args.root,
-                                       args.project_id))
+    print("put back:", restore_tickets(done, client, args.root, args.project_id))
 except TcwError as error:
     print("put back:", getattr(error, "restored", None))
     print("left out:", getattr(error, "pending", None), error)
@@ -1473,11 +1500,20 @@ gate_go 2 "$A"
 cd "$REL/rehearsal/proj"
 set +eu; source ~/.bashrc; set -eu
 T4=$C/.venv/bin/tcw; R=$REL/rehearsal
-capture "$R/rehearsal-dry-run.txt" "$T4" migrate --dry-run || stop "the rehearsal's dry run failed"
-capture "$R/rehearsal-step6.txt" "$T4" migrate || stop "the rehearsal's conversion failed"
-capture "$R/rehearsal-lag-0.txt" "$T4" migrate --dry-run || true      # index lag, at once
-sleep 60; capture "$R/rehearsal-lag-60.txt" "$T4" migrate --dry-run || true
+if [ ! -e "$R/rehearsal-dry-run.txt" ]; then         # the dry run before any edit, kept on a re-run
+  capture "$R/rehearsal-dry-run.txt" "$T4" migrate --dry-run || stop "the rehearsal's dry run failed"
+fi
+f=$(next_run "$R" rehearsal-step6)
+capture "$f" "$T4" migrate || stop "the rehearsal's conversion failed: see $f"
+capture "$(next_run "$R" rehearsal-lag-0)" "$T4" migrate --dry-run || true      # index lag, at once
+sleep 60; capture "$(next_run "$R" rehearsal-lag-60)" "$T4" migrate --dry-run || true
 ```
+
+Each run's output goes to a file of its own (`next_run`, Tools), so if the
+block is run again its first run's record survives and the way back reads
+both; the dry run is made only once, before any ticket is edited, since a
+dry run made after the conversion would list nothing and make every key
+look as if it were in only one file.
 
 Then ticket three's `TCW Item` is edited by hand in Jira to another value
 (the check that the way back refuses it), and the way back runs:
@@ -1491,12 +1527,18 @@ rc=0
 "$C/.venv/bin/python" "$REL/way-back.py" . tcw-rehearsal "$REL/rehearsal" --runs 'rehearsal-step6*.txt' \
   > "$REL/rehearsal/rehearsal-way-back.txt" 2>&1 || rc=$?
 test "$rc" -eq 1 || stop "the rehearsal's way back exited $rc, not 1 (ticket three should be left out)"
-grep -q '^left out:' "$REL/rehearsal/rehearsal-way-back.txt" || stop "the way back names nothing left out"
+grep -q "^left out: \['" "$REL/rehearsal/rehearsal-way-back.txt" ||
+  stop "the way back names no ticket left out (see rehearsal-way-back.txt)"
 ```
 
 The rehearsal's dry run and its run name the same three tickets, so no key
 is in only one and `--read` is not needed; an exit of 3 (a stop before any
-edit) fails the block's check like any exit but 1.
+edit, including settings or credentials that could not be read) fails the
+block's check like any exit but 1. The check reads `left out: ['`, a list
+of keys, and not just `left out:`: an error raised before any ticket was
+looked at carries no `pending` list and prints `left out: None`, which is
+not Jira leaving ticket three out. An unexpected Python error also exits 1,
+but prints a traceback and no `left out:` line, so it fails the check too.
 
 It must put back tickets one and two and leave out three, naming it under
 "left out" and exiting 1; a person reads the file to confirm the two keys
@@ -1563,14 +1605,14 @@ gate_go 2 "$A"
 cd "$PRIMARY"
 tcw --version | grep -q '^tcw 4\.0\.0$' || stop "the shared tcw is not 4.0.0 (Step 23)"
 set +eu; source ~/.bashrc; set -eu
-n=1; f=$REL/tcw116-step6.txt
+n=1; f=$(next_run "$REL" tcw116-step6)          # n counts this run of the block only
 until capture "$f" tcw migrate; do
   retryable "$f" && [ "$n" -le 3 ] ||
     stop "run $n stopped for another reason, or a fourth run stopped: bring $f to the user"
   wait=$(sed -n 's/.*Retry after \([0-9]*\)s.*/\1/p' "$f" | tail -n 1)
   [ "${wait:-0}" -gt 300 ] || wait=300
   sleep "$wait"
-  n=$((n + 1)); f=$REL/tcw116-step6-$n.txt
+  n=$((n + 1)); f=$(next_run "$REL" tcw116-step6)
 done
 ```
 
@@ -1582,7 +1624,14 @@ returned 5…`, `the tracker is rate limiting requests`;
 `tcw/work/jira/client.py:225-240`, `:558-568`). It is run again at most
 three times after the first run (four runs in all, saved as
 `tcw116-step6.txt` and `tcw116-step6-2.txt` to `-4.txt`), waiting five
-minutes before each, or longer when the output says `Retry after <n>s`. A
+minutes before each, or longer when the output says `Retry after <n>s`.
+**When the block is run again** (after a stop, and a new go once a
+`stop` was recorded), its runs are numbered after the last file saved
+(`next_run`, Tools): a second run of the block writes `tcw116-step6-5.txt`
+onwards, so no earlier run's record is overwritten. That matters because a
+later run skips every ticket an earlier one converted, so the way back
+learns of those tickets only from the earlier run's file. The limit of
+three re-runs counts this run of the block only. A
 run never repeats an edit, since a converted ticket is skipped. **Any other
 stop, or a fourth run that stops, ends the re-runs:** the block stops, and
 the dispatching session brings every saved output to the user, with the way
@@ -1590,7 +1639,12 @@ back below offered. Running the way back writes to the live board, so the
 user decides whether it is run, under gate 2; nothing is run until they
 answer, and their answer is added to both copies of `gates.md`, as an entry
 whose first line is `gate 2: way-back <A>` (run it) or `gate 2: stop <A>`
-(do not), and committed. The block runs in the background, since the waits
+(do not), and committed on `~/tcw-4.0-merge`'s `main`, as Step 19's and
+Step 22's answers are. It is not committed on the primary checkout: its
+`main` is at the commit Step 23 pulled, and the way back's `git reset --keep
+"$M0"` would discard a commit made there, taking the answer's record with
+it (the copy in the release folder stays, and `gate_go` passes on the
+clone's commit). The block runs in the background, since the waits
 can take twenty minutes.
 
 Then the `C17` keys of all the runs are compared with the dry run's:
@@ -1602,7 +1656,8 @@ import sys
 from pathlib import Path
 from tcw.migrate.jira import edited_tickets
 d = Path(sys.argv[1])
-done = {k for k, _, _ in edited_tickets("\n".join(p.read_text() for p in sorted(d.glob("tcw116-step6*.txt"))))}
+# every run, from every run of the blocks; the order does not change a set
+done = {k for k, _, _ in edited_tickets("\n".join(p.read_text() for p in d.glob("tcw116-step6*.txt")))}
 dry = {k for k, _, _ in edited_tickets((d / "tcw116-dry-run.txt").read_text().replace("would edit ", "edit "))}
 print("only in step 6:", sorted(done - dry)); print("only in the dry run:", sorted(dry - done))
 PY
@@ -1644,8 +1699,9 @@ dry run as the one `*dry-run*.txt` file in the release folder
 search does not enter). It keeps its `getattr` reads of `restored` and
 `pending` (Decided 2). Any exit but 0 stops the block before the files are
 touched: 3 when no run is found, when the runs name no edited ticket though
-the dry run lists some, or when a key is in only one of the two files and
-`--read` was not given; 1 when Jira left a ticket out. Why this order: it is the order the rehearsal
+the dry run lists some, when a key is in only one of the two files and
+`--read` was not given, or when the Jira settings or the client cannot be
+built; 1 when Jira left a ticket out. Why this order: it is the order the rehearsal
 proves; the script must run with the 4.0 code (its own docstring); and a
 stop partway leaves the primary checkout exactly as it was before the way
 back began, so the way back can be run again from the same state once the
@@ -1656,6 +1712,37 @@ work as well, since `settings(root)` reads the root `tcw-config.yaml` of a
 `tcw/migrate/legacy.py:355-370`), but that order is never rehearsed. The
 spec's row lists the files before the tickets (Spec issues, 5).
 
+**When no ticket was edited.** If Step 24 stopped before it edited any
+ticket (its block stopped before the first run, or every run stopped before
+an edit line), `way-back.sh` stops with exit 3 at its first step, with
+`stop: no saved run matches …` or `stop: the runs name no edited ticket …`
+in `way-back.txt`, and never resets the files. The board then needs no way
+back, but the primary checkout still holds the 4.0 files and this
+machine's shared `tcw` is still 4.0, so the spec's row "5.5" applies: reset
+to M0 and reinstall 3.0.2. A person first reads every saved run and
+confirms that it names no edited ticket, since a stop with exit 3 for any
+other reason (a key in only one file, or Jira settings that could not be
+read) means tickets may be edited and the tickets' way back is still owed.
+This block writes nothing to Jira; it changes only the primary checkout and
+this machine's install. It needs no new gate answer beyond the `gate 2:
+way-back <A>` already given, which it checks, but because it changes the
+`tcw` every project on this machine uses, the dispatching session tells the
+user what it will do and runs it only on their word. It is saved as
+`~/.tcw-4.0-release/files-back.sh` and run as `bash
+~/.tcw-4.0-release/files-back.sh`:
+
+```sh
+. ~/.tcw-4.0-release/load.sh M0 A
+gate_go 2 "$A" way-back
+grep -Eq '^stop: (no saved run matches|the runs name no edited ticket)' "$REL/way-back.txt" ||
+  stop "way-back.txt does not say that no ticket was edited; this block is not for that case"
+cd "$PRIMARY"
+git reset --keep "$M0"
+py=$(head -1 "$(pyenv which tcw)" | sed 's/^#!//')
+"$py" -m pip install -q -e '.[dev]'
+tcw --version | grep -q '^tcw 3\.0\.2$' || stop "the shared tcw is not 3.0.2 again"
+```
+
 ### Step 25 — step 7: nothing left to migrate (5.7)
 
 **Who:** the dispatching session.
@@ -1665,13 +1752,21 @@ spec's row lists the files before the tickets (Spec issues, 5).
 gate_go 2 "$A"                              # a real tcw migrate, which would edit any ticket left
 cd "$PRIMARY"
 set +eu; source ~/.bashrc; set -eu
-capture "$REL/step7-migrate.txt" tcw migrate || stop "tcw migrate failed"
-grep -q 'nothing to migrate' "$REL/step7-migrate.txt" || stop "something is still to migrate"
-capture "$REL/step7-validate.txt" tcw validate --remote || stop "validate --remote failed"
-capture "$REL/step7-list.txt" tcw work list || stop "work list failed"
+f=$(next_run "$REL" tcw116-step6)            # a real run: the way back must see any edit it makes
+capture "$f" tcw migrate || stop "tcw migrate failed: see $f"
+grep -q 'nothing to migrate' "$f" || stop "something is still to migrate: see $f"
+capture "$(next_run "$REL" step7-validate)" tcw validate --remote || stop "validate --remote failed"
+f=$(next_run "$REL" step7-list)
+capture "$f" tcw work list || stop "work list failed: see $f"
 ```
 
-**Proves it:** criterion 22: the checks, and `step7-list.txt` read for any
+The `tcw migrate` here is a real run, and would edit any ticket Step 24 left
+behind, so its output is saved as the next `tcw116-step6-<n>.txt`, where the
+way back reads it with Step 24's; a run that finds nothing names no edited
+ticket and changes nothing the way back does. Every file is numbered by
+`next_run`, so running the step again overwrites none.
+
+**Proves it:** criterion 22: the checks, and the latest `step7-list*.txt` read for any
 warning about tickets not converted (whose words the plan cannot know in
 advance, so a person reads it).
 
@@ -2362,3 +2457,73 @@ paths pointed at scratch folders; no Jira, no `tcw`):
 - The way back's block under `/bin/bash` 3.2: after `. load.sh M0 A`, the
   block still sees its own `--read` (`[--read]`) or nothing (`[]`), and
   refuses `--force`.
+
+## Revision 4
+
+The third plan review's findings, each checked against the plan by the
+dispatching session and accepted (decided by the dispatching session). The
+user chose to have both fixed and checked with stub tests, with no fourth
+review round; the dispatching session checks the tests itself.
+
+1. **A settings or credential failure in `way-back.py` read as "Jira left a
+   ticket out".** `settings(args.root)` and `JiraClient(...)` were inside
+   the `try` that catches `TcwError`, and `settings` raises `BackendError`, a
+   `TcwError` (`tcw/migrate/jira.py:59-73`). So a project whose Jira
+   settings could not be read printed `put back: None` and `left out: None
+   <message>` and exited 1, and Step 21's checks (exit 1 and a line starting
+   `left out:`) accepted that as ticket three refused. Changed: the client
+   is built before that `try`, and any failure there stops with exit 3,
+   naming the reason, before anything is edited. Step 21's check now
+   requires `left out: ['`, a list of keys. The other caller,
+   `way-back.sh` (the way back from Step 24), already stops on every exit
+   but 0 and then requires `put back: [`, so its reading of the exits is
+   unchanged; its description now names this exit 3 too.
+2. **Running Step 24 again overwrote the first run's record.** The loop
+   always started at `tcw116-step6.txt` and `capture` writes with `>`, so
+   after "go, stop, go" the second run of the block overwrote the first
+   run's file, and since a later run skips every ticket an earlier one
+   converted, the way back would have missed those tickets. Changed: a new
+   helper in `load.sh`, `next_run <folder> <name>`, returns `<name>.txt`
+   when none is saved and otherwise `<name>-<n>.txt` with `<n>` one past
+   the highest saved, so no run's file is overwritten; the re-run limit
+   counts the current run of the block only. `way-back.py` now reads the
+   runs in the order they were made, by number (`.txt`, `-2`, … `-10`),
+   not by spelling. Also numbered: Step 21's conversion and lag runs (and
+   its dry run is made only once, before any edit, since a dry run made
+   after the conversion lists nothing and would make every key look as if
+   it were in only one file), and Step 25's files. Choice (author): Step
+   25's `tcw migrate` is a real run that would edit any ticket left, so its
+   output is saved as the next `tcw116-step6-<n>.txt`, where the way back
+   reads it; before, its edits would have been missed by the way back.
+3. **Notes.** (a) When Step 24 stopped before editing any ticket,
+   `way-back.sh` exits 3 and never resets the files; the plan now says
+   that the spec's row "5.5" then applies, with its block
+   (`files-back.sh`), which checks the `way-back` answer and that
+   `way-back.txt` says no ticket was edited, writes nothing to Jira, and is
+   run only on the user's word because it changes this machine's shared
+   `tcw`. (b) The answer to Step 24's offer of the way back is committed on
+   `~/tcw-4.0-merge`'s `main`, not on the primary checkout, whose `main` the
+   way back resets to M0.
+
+**Tests run** (2026-10-26, `/bin/bash` 3.2.57, `python3 -S` with stub
+modules; `run.sh` in the scratch folder
+`/private/tmp/claude-501/-Users-brian-Projects-TCW/abc313a2-da1e-4eb6-ac45-d50b6c6dd99c/scratchpad/tp118c/`
+cuts `way-back.py`, `load.sh`, Step 24's loop and Step 21's check out of this
+file's own text; no Jira, no `tcw`): 17 passed, 0 failed.
+
+- `way-back.py`: `settings` raising: exit 3, nothing put back. The client's
+  constructor raising: exit 3, nothing put back. A normal run: exit 0. Jira
+  leaving one out: exit 1, `left out: ['TCW-2']`.
+- Step 21's check against each of those outputs, and against the old shape
+  (`left out: None`, exit 1): passes only on the real left-out.
+- Step 24's loop: no file saved writes `tcw116-step6.txt`; with
+  `step6.txt`, writes `-2`; with `step6.txt` and `-2`, writes `-3`; with
+  `-10`, writes `-11`; with a gap (`step6.txt`, `-3`), writes `-4`; earlier
+  files keep their text. Run again after four runs: three re-runs allowed
+  in that run (`-5` to `-8`), and a fourth stopping run stops after `-8`.
+- `way-back.py` reads `step6.txt`, `-2`, `-3`, `-10` in that order and puts
+  back all four tickets.
+- Each test was checked against a broken copy of the plan: the client built
+  inside the `try` again, Step 21's old `^left out:` check, the runs sorted
+  by spelling, and `next_run` comparing numbers as text; each broke the
+  test it should and no other.
