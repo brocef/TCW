@@ -970,7 +970,7 @@ def plan_links(root: Path, project_id: str, mapping: dict, family) -> Links:
                      for axis in EXTENDED_AXES}
     out.below = _below(project_id, family, converter, relations.children)
     # After `_below`, which has placed every project the 3.x walk reaches.
-    relations.reports += still_3x_reports(family, order.ids)
+    relations.reports += still_3x_reports(family, order.ids, _predicting(converter))
     out.extends_edits = [Remove(axis, "extends") for axis in EXTENDED_AXES
                          if isinstance(mapping.get(axis), dict)
                          and "extends" in mapping[axis]]
@@ -1047,12 +1047,26 @@ def _at(mapping: Any, path: tuple) -> Any:
     return mapping
 
 
-def still_3x_reports(family, order: tuple[str, ...] = ()) -> list[Report]:
+def _predicting(converter):
+    """`converter.links_of` for ordering A8's lines alone: a related project
+    that a prediction finds missing is not a blocker of this run, so the
+    family's blockers are kept as they were."""
+    def links_of(project_id: str) -> list:
+        kept = list(converter.family.blockers)
+        try:
+            return converter.links_of(project_id)
+        finally:
+            converter.family.blockers[:] = kept
+    return links_of
+
+
+def still_3x_reports(family, order: tuple[str, ...] = (), links_of=None) -> list[Report]:
     """A8 (Design 2.10, 6.2): each related project found on this machine that
     is still in 3.x form, with the command that migrates it, parents first:
     the active project's ancestors in load order, then the rest in the order
-    they were found. Each predicts 4.0's finding that the folder is a 3.x
-    project."""
+    they were found, except that each comes after any of them that is its
+    parent by the links `links_of` predicts for it. Each predicts 4.0's
+    finding that the folder is a 3.x project."""
     from tcw.migrate.legacy import ROOT_CONFIG as THREE_X
     seen: dict[str, Path] = {}
     for pid in (*order, *family.placed, *family.read):
@@ -1064,10 +1078,26 @@ def still_3x_reports(family, order: tuple[str, ...] = ()) -> list[Report]:
             placed.folder if placed is not None and placed.here else None)
         if folder is not None and (Path(folder) / THREE_X).is_file():
             seen[pid] = Path(folder)
-    return [Report("A8", str(folder), f"'{pid}' is still a TCW 3.x project; migrate it "
-                                      f"with 'tcw -C {folder} migrate'",
-                   predicts=(str(folder), "legacy"))
-            for pid, folder in seen.items()]
+    ancestors = [pid for pid in seen if pid in order]
+    return [Report("A8", str(seen[pid]), f"'{pid}' is still a TCW 3.x project; migrate "
+                                         f"it with 'tcw -C {seen[pid]} migrate'",
+                   predicts=(str(seen[pid]), "legacy"))
+            for pid in [*ancestors, *_parents_first([pid for pid in seen
+                                                     if pid not in order], links_of)]]
+
+
+def _parents_first(ids: list[str], links_of) -> list[str]:
+    """`ids` in their order, each moved after any of them that is one of its
+    parents by `links_of`; a loop keeps the order given."""
+    if links_of is None:
+        return ids
+    parents = {pid: {link.id for link in links_of(pid)} - {pid} for pid in ids}
+    left, out = list(ids), []
+    while left:
+        ready = next((pid for pid in left if not parents[pid] & set(left)), left[0])
+        left.remove(ready)
+        out.append(ready)
+    return out
 
 
 # ---------------------------------------------------------------------------

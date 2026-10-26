@@ -169,6 +169,19 @@ def test_a_related_project_migrated_or_not_gives_the_same_files(tcw, tmp_path):
     assert "  A8 " not in two.err and "  A12 " not in one.err
 
 
+def test_a8_in_a_workspace_lists_a_parent_before_its_child(tcw, tmp_path):
+    """The workspace names `deep` before `sub`, `deep`'s parent; A8 lists
+    `sub` first, parents first (TCW-116 Design 2.10, 6.2; TCW-118 fix 19)."""
+    ws = project(tmp_path / "ws", "id: ws\nprojects:\n  children:\n"
+                                  "    deep: sub/deep\n    sub: sub\n", git=True)
+    project(tmp_path / "ws/sub", "id: sub\nprojects:\n  parent:\n    ws: ..\n"
+                                 "  children:\n    deep: deep\n")
+    project(tmp_path / "ws/sub/deep", "id: deep\nprojects:\n  parent:\n    sub: ..\n")
+    done = migrate(tcw, ws)
+    assert [l.split(":", 1)[0] for l in done.err.splitlines() if l.startswith("  A8 ")] \
+        == [f"  A8 {tmp_path / 'ws/sub'}", f"  A8 {tmp_path / 'ws/sub/deep'}"]
+
+
 # ── E5 and loops: B4 ────────────────────────────────────────────────────────
 
 def test_two_projects_extending_each_other_is_b4(tcw, tmp_path):
