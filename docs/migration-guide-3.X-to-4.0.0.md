@@ -434,8 +434,9 @@ explains them.
    related project its manifests name (see
    [Where provisioning may place a clone](#where-provisioning-may-place-a-clone)).
 
-6. **What 3.x inheritance becomes.** Each converted link is printed for review
-   under `reads differently in TCW 4:`:
+6. **What 3.x inheritance becomes.** The links are converted as below. A
+   conversion is printed under `reads differently in TCW 4:` where the
+   converted project reads differently from the 3.x one:
 
     - a 3.x parent becomes a parent link that passes everything down, and D1
       lists what the child now inherits that 3.x did not pass it;
@@ -446,6 +447,17 @@ explains them.
       dropped;
     - an upstream project becomes a parent link inheriting the axes an
       `extends` named, or nothing.
+
+    One case is never under that heading. An `extends` naming a project the
+    child already inherits that axis from through its parent links, such as
+    a child whose `projects.parent` is `plat` with `taxonomy.extends: [plat]`,
+    the usual 3.x family, adds nothing: the parent link already passes that
+    axis down, so the `extends` is dropped, and the only line about it comes
+    after the count, with no code:
+
+    ```text
+    taxonomy.extends: 'plat' is already inherited through parents
+    ```
 
 ## What each 3.x name becomes
 
