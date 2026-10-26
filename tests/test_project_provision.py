@@ -730,6 +730,33 @@ def test_ac32_the_refusal_names_the_project_with_the_problem(tmp_path, stand_in_
     assert f"remove {other}" not in done.err, done.err
 
 
+def test_ac32_the_refusal_names_each_project_with_a_problem(tmp_path, stand_in_git):
+    """Two parents fetched in one round, each with a problem in its own
+    manifest: the refusal names both, and each one's folder and entry."""
+    from tests.provision_support import manifest_text
+    base = make_remote(tmp_path, "base", project_files("base"))
+    remotes = {}
+    for name in ("aa", "bb"):
+        files = project_files(name, parents=["base"])
+        files[".tcw/tcw-manifest.yaml"] = manifest_text(
+            {"base": {"path": "../base", "repository": str(base), "ref": "x"}})
+        remotes[name] = make_remote(tmp_path, name, files)
+    app = app_project(tmp_path, parents=["aa", "bb"], manifest={
+        name: {"path": f"../{name}", "repository": str(remote)}
+        for name, remote in remotes.items()})
+    stand_in_git.allow_clone()
+    done = provision(app)
+    assert done.code == 1, done
+    assert sorted(_cloned(stand_in_git)) == ["aa", "bb"]
+    refusal = next(line for line in done.err.splitlines()
+                   if line.startswith("tcw project provision: "))
+    for name in ("aa", "bb"):
+        folder = (tmp_path / name).resolve()
+        assert f"{name}: fetched into {folder}" in refusal, refusal
+        assert f"remove {folder}" in refusal, refusal
+        assert f"'{name}'" in refusal and ".tcw/tcw-manifest.local.yaml" in refusal, refusal
+
+
 def test_ac32_the_refusal_names_the_deeper_of_two_holders(tmp_path, stand_in_git):
     """`server` is in the clone made for `top`: a problem in `server`'s own
     manifest is `server`'s, though `top`'s folder holds it too. The clone is
@@ -1113,12 +1140,12 @@ def test_ac38_another_projects_store(tmp_path):
 
 def test_ac32_no_fetched_project_holds_the_file(tmp_path):
     """Design 7.11's general text when the problem is in no fetched project's
-    folder: `_holding` names none."""
+    folder: `_holders` names none."""
     from types import SimpleNamespace
 
-    from tcw.provision import Planned, _holding
+    from tcw.provision import Planned, _holders
     (tmp_path / "core").mkdir()
     core = Planned("core", SimpleNamespace(entry_folder=tmp_path / "core"),
                    tmp_path / "core", True)
-    assert _holding([core], [tmp_path / "app/.tcw/tcw-manifest.yaml"]) is None
-    assert _holding([core], [tmp_path / "core/.tcw/tcw-manifest.yaml"]) is core
+    assert _holders([core], [tmp_path / "app/.tcw/tcw-manifest.yaml"]) == []
+    assert _holders([core], [tmp_path / "core/.tcw/tcw-manifest.yaml"]) == [core]

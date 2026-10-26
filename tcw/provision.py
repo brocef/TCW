@@ -198,18 +198,21 @@ def _bound_of(owner: Path, active_root: Path, cloned: dict, owner_id_hint=None
     return Path(os.path.realpath(repository)).parent, None
 
 
-def _holding(fetched: list[Planned], files: list[Path]) -> Planned | None:
-    """The project fetched this round whose own folder holds the first of
-    `files` that any of them holds: the one whose files have the problem
-    (Design 7.11). When one is in another's folder, as a project in the
-    clone made for the one at its top is, the deeper one."""
+def _holders(fetched: list[Planned], files: list[Path]) -> list[Planned]:
+    """Each project fetched this round whose own folder holds one of
+    `files`, once, in the order of the files: the ones whose files have the
+    problem (Design 7.11). When one is in another's folder, as a project in
+    the clone made for the one at its top is, the deeper one holds it."""
     def folder(p: Planned) -> Path:
         return Path(os.path.realpath(p.placement.entry_folder or p.target))
+    found: list[Planned] = []
     for file in files:
         holders = [p for p in fetched if _below_folder(file, folder(p)) is not None]
         if holders:
-            return max(holders, key=lambda p: len(folder(p).parts))
-    return None
+            deepest = max(holders, key=lambda p: len(folder(p).parts))
+            if deepest not in found:
+                found.append(deepest)
+    return found
 
 
 def _folder_state(folder: Path) -> str:
@@ -553,13 +556,14 @@ def provision_projects(root: Path, project_id: str | None = None, *, dry_run: bo
         try:
             registry.require_valid(fetching=True)
         except ValueError as error:
-            holder = _holding(fetched_here, getattr(error, "files", []))
-            where = f"{holder.id}: fetched into {holder.target}, but " if holder else ""
-            run.refuse(f"{where}{error}. Until it is corrected, commands in "
-                       f"'{active}' that read the project graph refuse; "
-                       + (f"remove {holder.target} to undo the fetch, or add an entry for "
-                          f"'{holder.id}' to .tcw/tcw-manifest.local.yaml pointing elsewhere"
-                          if holder else "correct it"))
+            holders = _holders(fetched_here, getattr(error, "files", []))
+            where = "".join(f"{h.id}: fetched into {h.target}, " for h in holders)
+            run.refuse(f"{where}{'but ' if holders else ''}{error}. Until it is corrected, "
+                       f"commands in '{active}' that read the project graph refuse; "
+                       + ("; ".join(f"remove {h.target} to undo the fetch, or add an entry "
+                                    f"for '{h.id}' to .tcw/tcw-manifest.local.yaml pointing "
+                                    f"elsewhere" for h in holders)
+                          if holders else "correct it"))
             break
         _keep(registry, run)
     if run.failed:
