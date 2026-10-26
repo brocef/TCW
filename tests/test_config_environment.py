@@ -148,6 +148,22 @@ def test_ac23_the_more_specific_variable_wins(app, on, first):
     assert code == 0 and "one-marker" in out and "whole-marker" not in out
 
 
+@pytest.mark.parametrize("first", ["whole", "one"])
+def test_ac23_only_the_variable_whose_prompt_is_used_is_named(app, on, monkeypatch,
+                                                               first):
+    """The more specific variable's list replaces the whole one's, so the
+    note that names the variables a prompt came from names it alone."""
+    variables = {"TCW_WORK_STAGES_SPEC__APP": "{prompt: [{blob: whole-marker}]}",
+                 "TCW_WORK_STAGES_SPEC_PROMPT__APP": "[{blob: one-marker}]"}
+    if first == "one":
+        variables = dict(reversed(list(variables.items())))
+    for name, value in variables.items():
+        monkeypatch.setenv(name, value)
+    config = load_config(app)
+    assert config.personal_variables(("work", "stages", "spec", "prompt")) == [
+        "TCW_WORK_STAGES_SPEC_PROMPT__APP"]
+
+
 def test_ac23_a_mapping_merges(tmp_path, on):
     from tests.test_inherited_config import jira_mode
     # The spec writes the `pre` binding as `blob: gate`, but a `pre` list

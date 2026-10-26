@@ -767,7 +767,13 @@ def _merge(values: dict, origins: dict, written: dict, layer: dict,
                 origins[(*here, i)] = entry_origin
                 places[(*here, i)] = entry_places[i]
             if _is_chain(here):
-                written.setdefault(here, []).append(origin)
+                # A list with no `inherit: true` entry replaces the one below,
+                # so the layers that wrote that one no longer set it.
+                if any(isinstance(entry, dict) and entry.get("inherit") is True
+                       for entry in value):
+                    written.setdefault(here, []).append(origin)
+                else:
+                    written[here] = [origin]
         elif value is None and origin.layer == "project" and _inherited_key(here):
             # `null` removes an inherited value: the key has none from any
             # project before this one, nor a built-in one (TCW-109 Design 2.5).
@@ -800,7 +806,7 @@ def _merge(values: dict, origins: dict, written: dict, layer: dict,
             values[key] = copy.deepcopy(value)
             _stamp(origins, here, value, origin)
             if _is_chain(here):
-                written.setdefault(here, []).append(origin)
+                written[here] = [origin]
 
 
 # ---------------------------------------------------------------------------
