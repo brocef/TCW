@@ -380,3 +380,11 @@ tests (`test_docs_describe_4_0.py`, `test_migration_guide_4_0.py`,
 `test_doc_vocabulary.py`, `test_documented_cli_surface.py`,
 `test_cli_guide.py`) give `915 passed`. The full suite on the rebased branch
 is recorded below once it has run.
+
+The full suite as CI runs it, run by the dispatching session on the rebased
+branch at `28e5f555` (2026-10-26) in two halves by folder, every `TCW_*`
+variable unset: `2246 passed, 2 skipped` and `5839 passed, 111 skipped,
+1 failed`; the failure is the worktree's `node_modules` link
+(`test_the_wheel_carries_exactly_the_prompts_and_procedures`), which passes in
+`v4`. `pnpm test` `247 passed`; `tsc --noEmit`, `pnpm lint`, `pnpm
+check:build` clean.
