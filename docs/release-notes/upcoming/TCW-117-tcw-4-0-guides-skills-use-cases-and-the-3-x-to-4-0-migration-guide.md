@@ -3,9 +3,10 @@
 The 3.x to 4.0 migration guide, `docs/migration-guide-3.X-to-4.0.0.md`, says,
 step by step, what to do before running `tcw migrate`, how to run it and read
 what it prints, the order to migrate related projects in, and what replaces
-every 3.x command, flag, setting, file and name. It also gives the epic-parts
-flow of 3.0.1 and 3.0.2 in its 4.0 form, one step at a time, for an agent that
-was taught the 3.x flow.
+every 3.x command, flag, setting, file and name. It also shows, one step at
+a time, how a large item split into parts (an epic) gets a part in another
+project in 4.0, for an agent taught the 3.x way, where the part was filed into
+the other project's inbox from the epic's own project.
 
 ## The documentation and the skills describe TCW 4.0
 
