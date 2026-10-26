@@ -173,7 +173,13 @@ It prints the same lines without `would `, and ends with
 `changed: <n> files written, <n> moved, <n> deleted; <n> tickets edited`
 (`file` and `ticket` when the count is 1).
 Running it again on a finished project prints `nothing to migrate`, changes
-nothing and exits 0.
+nothing and exits 0. In a project whose work is kept in Jira, a run that finds
+nothing left in the files ends otherwise when it does not check the tickets:
+with `--no-jira` it prints
+`nothing to migrate in the files; tickets not checked (--no-jira)` and exits 0;
+when Jira fails, it prints the error and
+`nothing to migrate in the files; the tickets could not be checked`, and exits
+with Jira's code ([Exit codes](#exit-codes)).
 
 Then run `tcw validate`. It should end `0 errors, 0 warnings, 0 unresolved`;
 each finding it gives says what to fix. Read every changed file
