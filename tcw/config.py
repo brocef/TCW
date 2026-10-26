@@ -796,6 +796,7 @@ def _merge(values: dict, origins: dict, written: dict, layer: dict,
                 origins[here] = origin
         else:
             _clear(origins, here)
+            _clear(places, here)
             values[key] = copy.deepcopy(value)
             _stamp(origins, here, value, origin)
             if _is_chain(here):

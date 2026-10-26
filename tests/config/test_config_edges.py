@@ -64,3 +64,21 @@ def test_config_show_writes_an_unknown_keys_binary_and_set_on_one_line(personal)
     assert len(lines) == 2, result.out
     assert yaml.safe_load(result.out)["extra"] == {"blob": b"\x00binary\xff",
                                                    "members": {1, "a"}}
+
+
+# -- A later layer replacing a list that takes `inherit` with a scalar ---------------------
+
+
+def test_a_scalar_over_an_inherit_list_leaves_no_places_behind():
+    """`places` records where each entry of a `work.tags` list came from; a
+    later layer writing a non-list there replaces the list, so none of its
+    entries may keep a place."""
+    from tcw.config import Origin, _merge
+    values, origins, written, places = {}, {}, {}, {}
+    _merge(values, origins, written, {"work": {"tags": ["a", "b"]}}, Origin("project"),
+           places=places)
+    assert [k for k in places if k[:2] == ("work", "tags")]
+    _merge(values, origins, written, {"work": {"tags": "x"}}, Origin("local"),
+           places=places)
+    assert values["work"]["tags"] == "x"
+    assert [k for k in places if k[:2] == ("work", "tags")] == []
