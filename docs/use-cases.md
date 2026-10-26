@@ -696,6 +696,12 @@ plugin updated while the CLI on the PATH stayed old.
   Code the version check at session start reports a mismatch; Codex and Pi
   have no session-start hook, and rely on the skills telling them to run the
   check.
+- The plugin installs the CLI of its own version: under Claude Code the
+  session-start install asks for `tcw-cli==<the plugin's version>` and
+  installs again when a plugin update changes that version
+  (`scripts/session_bootstrap.sh`), so keeping the plugin at a version keeps
+  the CLI there too. Codex and Pi run the same script by hand, as the `setup`
+  skill says.
 
 **Known gaps**
 

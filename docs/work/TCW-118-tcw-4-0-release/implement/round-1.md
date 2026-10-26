@@ -160,3 +160,41 @@ folder, not the repository. Read against Design 6.2 (e), one line each:
 
 Every statement is now in the preview; criterion 29 checks them again on the
 shipped files.
+
+## Step 9 — the user-wide personal file (Design 3.7), and the documentation entries
+
+**The personal file (criterion 11).** `XDG_CONFIG_HOME` is not set, so both
+paths are the same file:
+
+```
+$ ls "${XDG_CONFIG_HOME:-$HOME/.config}/tcw/config.yaml" ~/.config/tcw/config.yaml
+ls: ~/.config/tcw/config.yaml: No such file or directory
+ls: ~/.config/tcw/config.yaml: No such file or directory
+$ ls -d ~/.config/tcw
+ls: ~/.config/tcw: No such file or directory
+```
+
+Neither exists, so no file holds `not_tags` and nothing is changed. This is
+a check on 2026-10-26; criterion 11 asks it again before Step 23.
+
+**The documentation entries** (`work.documentation` in
+`.tcw/tcw-config.yaml`, the same eight entries as the root file), each
+against Phase A's changes:
+
+| Entry | Fires? | How it is answered |
+| --- | --- | --- |
+| `README.md` [Public-API] | yes | Step 4 (`d4dab8a3`): `:78-80` say the session-start install takes the `tcw-cli` release of the plugin's own version. No change here. |
+| `docs/guide/jira.md` [Jira-Change] | no | No command's effect on a ticket changed in Phase A. |
+| `docs/guide/<topic>.md` [Guide-Topic-Change] | yes | Step 2's two guide changes are in place: `docs/guide/taxonomy-and-capabilities.md:417-419` gives the `unreviewed` line as "its status is still the one it inherits", and `docs/migration-guide-3.X-to-4.0.0.md:173-174` says `file` and `ticket` for a count of 1. `grep -rn 'pipx\|tcw-cli' docs/guide/` finds nothing, so no guide says the install floats. No change here. |
+| `docs/release-notes/upcoming/<folder>.md` [Public-API] | yes | TCW-118's entry: Step 2, Step 5 (`073703dc`) and Step 8 (`07f0e7fb`). |
+| `docs/changelogs/upcoming/<folder>.md` [Any-Code-Change] | yes | TCW-118's entry: Step 2 and Step 5 (`073703dc`). |
+| `skills/<component>/SKILL.md` [Skill-Driven-Component] | checked, no | No component's CLI changed. `grep -n -i 'newest\|pipx upgrade' skills/setup/SKILL.md` finds nothing, nor does `pipx upgrade` anywhere under `skills/`; `skills/setup/references/install.md:7` and `:40` give the pinned command (Step 4). |
+| `skills/configure/references/<document>.md` [Configuration-Key-Change] | no | No configuration key added, removed or changed in meaning. |
+| `docs/use-cases.md` [Project-Setup-Change] | yes | S-9 had no requirement that the plugin installs the CLI of its own version (TCW-117 had not written it), so this step adds it, citing `scripts/session_bootstrap.sh`. The Known gaps were confirmed at Step 7; the new line changes no heading, so Step 7's counts stand. |
+
+One observation for the dispatching session, not changed here: `README.md:84`
+and `skills/setup/references/install.md:31` still give `pipx install tcw-cli`,
+unpinned, as the fix when `tcw` is missing. It gives the newest release, which
+is the plugin's own for a user who follows `main`, and the version check
+reports any difference at the next session start, but it is the one unpinned
+install command left beside the pinned ones.
