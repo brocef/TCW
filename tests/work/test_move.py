@@ -347,12 +347,30 @@ def test_into_a_key_in_a_files_project_is_not_found_as_the_item_argument_is(tcw,
     `--into TCW-1` makes no folder `TCW-1/`; a files project has no keys,
     and the move stops as `tcw work show TCW-1` does (exit 4)."""
     before = snapshot(board)
-    for into in ("TCW-1", "demo.work/TCW-1"):
+    for into in ("TCW-1", "demo.work/TCW-1", "tcw://demo.work/TCW-1"):
         result = tcw(["work", "move", B, "--into", into], board)
         assert result.code == 4, (into, result.err)
         assert "no work item in project 'demo' carries the key TCW-1" in result.err
         assert snapshot(board) == before
         assert not (board / "docs/work/TCW-1").exists()
+
+
+def test_into_takes_an_object_address(tcw, board):
+    """TCW-110 Design 2.6 and 3.1: every option naming an object takes the
+    address as well as the full identifier."""
+    result = tcw(["work", "move", B, "--into", f"tcw://{wid(E)}"], board)
+    assert result.code == 0, result.err
+    assert (board / "docs/work" / E / B / ITEM_STATE).is_file()
+
+
+@pytest.mark.parametrize("into", ["other.work/x", "tcw://other.work/x"])
+def test_into_another_projects_object_is_refused_as_other_options_refuse_it(
+        tcw, board, into):
+    before = snapshot(board)
+    result = tcw(["work", "move", B, "--into", into], board)
+    assert result.code == 3, result.err
+    assert "other.work/x belongs to project 'other'" in result.err
+    assert snapshot(board) == before
 
 
 def test_ac13_a_folder_named_alike_in_the_destination_is_refused(tcw, board):

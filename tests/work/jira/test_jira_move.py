@@ -354,7 +354,8 @@ def test_ac13_jira_moves_set_the_tcw_item(tcw, jira_project):
     assert jira_project.fake.tickets[b_key].custom[ITEM] == wid(f"2026/q4/{b}")
 
 
-@pytest.mark.parametrize("form", ["{key}", "tcw.work/{key}"])
+@pytest.mark.parametrize("form", ["{key}", "tcw.work/{key}", "tcw://tcw.work/{key}",
+                                  "tcw://tcw.work/{folder}"])
 def test_into_a_key_is_the_folder_of_the_item_carrying_it(tcw, jira_project, form):
     """TCW-110 Design 3.1: `--into TCW-1` names the item carrying the key,
     as the item argument does, never a new folder named `TCW-1`."""

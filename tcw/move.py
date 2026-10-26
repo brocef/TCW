@@ -26,7 +26,8 @@ from typing import Callable, Iterator
 
 from tcw import exit as codes
 from tcw.errors import BackendError, NotFound, Refused, TcwError, UsageError
-from tcw.ids import ID_PART, FullId, IdError, length_problem
+from tcw.ids import (ID_PART, FolderAddress, FullId, IdError, has_scheme, length_problem,
+                     looks_full, parse_address)
 from tcw.object_folders import (exact_child, fixed_folders, is_object, is_reserved,
                                 objects_below, remove_emptied, walk, RESOURCES)
 from tcw.output import print_json, shown
@@ -159,11 +160,19 @@ def _moved_to(target: Target, namespace: str, into: str | None, top: bool) -> st
     if top:
         return last
     destination = into
-    if isinstance(into, str) and "." in into.partition("/")[0]:
-        try:
-            named = FullId(*_split_full(into))
-        except ValueError:
-            raise UsageError(f"{into!r} is not an id-path or a full identifier") from None
+    if isinstance(into, str) and (has_scheme(into) or looks_full(into)):
+        # An object address or a full identifier (TCW-110 Design 2.6, 3.1).
+        if has_scheme(into):
+            named = parse_address(into)
+            if isinstance(named, FolderAddress):
+                raise UsageError(f"{into} names a folder; write "
+                                 f"tcw://<project>.{namespace}/<id-path>")
+        else:
+            try:
+                named = FullId(*_split_full(into))
+            except ValueError:
+                raise UsageError(f"{into!r} is not an id-path or a full "
+                                 f"identifier") from None
         check_owned(named, target.root)
         if named.namespace != namespace:
             raise UsageError(f"{into} is not in the {namespace} store")

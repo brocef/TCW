@@ -417,3 +417,20 @@ def test_ac26_an_added_row_is_rewritten(tcw, tmp_path, monkeypatch):
                  **{"Reviewed by": "demo.capabilities/a"})
     assert tcw(["capabilities", "rename", "a", "b"], root).code == 0
     assert "Reviewed by: demo.capabilities/b" in (holder / CAPABILITY_STATE).read_text()
+
+
+def test_into_takes_an_object_address_and_refuses_any_other(tcw, inherited):
+    """TCW-110 Design 2.6 and 3.1: `--into` takes an object address as every
+    option naming an object does; a folder address, or the scheme in upper
+    case, is refused as an address (exit 2)."""
+    app, _ = inherited
+    before = snapshot(app)
+    for into in ("tcw://app.path/work", "TCW://app.capabilities/work"):
+        result = tcw(["capabilities", "move", "cli/y", "--into", into], app)
+        assert result.code == 2, (into, result.err)
+        assert "not an id-path" not in result.err, result.err
+        assert snapshot(app) == before
+    result = tcw(["capabilities", "move", "cli/y", "--into",
+                  "tcw://app.capabilities/work"], app)
+    assert result.code == 0, result.err
+    assert result.out.splitlines() == ["app.capabilities/cli/y -> app.capabilities/work/y"]
