@@ -3,11 +3,12 @@
 The plugin ships the skills; `tcw` is a Python package that has to be installed.
 **Under Claude it installs itself:** a `SessionStart` hook runs
 `scripts/session_bootstrap.sh`, which installs the published `tcw-cli`
-distribution from PyPI with `pipx` and reinstalls it when a plugin update changes
-the plugin's version. The first install needs network — there is no offline
-fallback — and the script is silent on success and on every deliberate skip, so
-it says nothing most sessions. Codex and Pi do not run this hook, so once the check
-below finds no `tcw`, run it yourself:
+distribution from PyPI with `pipx`, at the plugin's own version
+(`pipx install --force tcw-cli==<the plugin's version>`), and reinstalls it when
+a plugin update changes the plugin's version. The first install needs network —
+there is no offline fallback — and the script is silent on success and on every
+deliberate skip, so it says nothing most sessions. Codex and Pi do not run this
+hook, so once the check below finds no `tcw`, run it yourself:
 
 ```sh
 bash "<plugin>/scripts/session_bootstrap.sh" "<plugin>"
@@ -36,12 +37,13 @@ If it does not:
    into a managed base interpreter. The bootstrap script stops rather than
    choosing here, on purpose: picking someone's Python environment is a judgment
    call that must not happen silently at session start.
-3. **Behind the latest release?** `pipx upgrade tcw-cli`. Report it, don't treat
-   it as breakage: the installed CLI floats, and it is not required to equal the
-   plugin's version. When the two differ, the plugin's version check
-   (`scripts/check_versions.sh`, run at session start under Claude and asked for
-   by every skill elsewhere) prints both versions and the command that lines
-   them up; follow that.
+3. **Behind the plugin?** `pipx install --force tcw-cli==<the plugin's version>`.
+   Report it, don't treat it as breakage: the automatic install asks for the
+   plugin's own version, but a `tcw` it did not install, or a release not on PyPI
+   yet, can still leave the two apart. When they differ, the plugin's version
+   check (`scripts/check_versions.sh`, run at session start under Claude and
+   asked for by every skill elsewhere) prints both versions and the command that
+   lines them up; follow that.
 
 **Check who owns a `tcw` that is already on PATH before replacing it.** Read its
 shebang for the interpreter that owns the install — never the `python3` on PATH,

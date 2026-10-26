@@ -93,7 +93,7 @@ if [ "$newer" = 1 ]; then
     echo "  Codex: codex plugin marketplace upgrade tcw, then codex plugin add tcw@tcw"
     echo "Or, if you installed the CLI with pipx, match it to the skills instead: pipx install --force tcw-cli==$skills"
 else
-    echo "To bring them into line, upgrade the CLI: pipx upgrade tcw-cli (for a development checkout, update the checkout instead)."
+    echo "To bring them into line, match the CLI to the skills: pipx install --force tcw-cli==$skills (for a development checkout, update the checkout instead)."
     echo "If that does not reach $skills, that release is not on PyPI yet; the warning will clear once it is."
 fi
 exit 0

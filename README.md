@@ -76,9 +76,10 @@ Or, in the Claude **web app** or **desktop app**, open the plugin directory, add
 `brocef/TCW` as a marketplace, and install `tcw` from it — no terminal needed.
 
 **Then start a new session.** The plugin installs the `tcw` CLI at session start
-by installing `tcw-cli` from PyPI with `pipx`, so one installed mid-session
-cannot run until the next one begins. That first session needs network access. It
-installs over an existing `pipx install tcw-cli` rather than beside it, and
+by installing, from PyPI with `pipx`, the `tcw-cli` release whose version is the
+plugin's own, so a plugin update brings the matching CLI. A plugin installed
+mid-session cannot run its CLI until the next session begins. That first session
+needs network access. It installs over an existing `pipx install tcw-cli` rather than beside it, and
 leaves a development checkout (`pip install -e .`) alone. If `tcw` goes missing
 anyway, `pipx install tcw-cli` is the whole fix — the **`setup`** skill
 carries the cases where it is not. When the `tcw` CLI and the plugin's skills
