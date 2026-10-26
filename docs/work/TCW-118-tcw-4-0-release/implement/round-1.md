@@ -122,3 +122,41 @@ The Known gaps, one line per row of TCW-117 Design 6.4's table
   `tcw validate` "reports each folder as an error", which stays true.
 
 No row goes back to TCW-117's area.
+
+## Step 8 — the combined release notes, previewed (Design 3.6)
+
+`combine` from `scripts/cut_version.py` run on both `upcoming/` folders by
+the plan's block, with nothing cut, written, deleted or tagged; the preview
+(1,642 lines before this step's addition) is kept in the session's scratch
+folder, not the repository. Read against Design 6.2 (e), one line each:
+
+- `## Upgrading` is the release notes' first `##` section, after the
+  introduction: found.
+- The migration guide is linked (`../migration-guide-3.X-to-4.0.0.md`, in the
+  introduction and the first point) and the file exists under `docs/`: found.
+- Automation that installs `tcw-cli` kept below 4 until migrated: found.
+- The `tcw project` group and the four 3.x commands, each with its
+  replacement (`tcw init` → `tcw project new`, `tcw projects list` →
+  `tcw project list`, `tcw config show` → `tcw project config`,
+  `tcw provision` → `tcw project provision`): found (TCW-115's table).
+- A clone placed by a manifest other than the project's own goes only
+  directly beside that project, never at or above the home folder, never in a
+  hidden folder below it: found (TCW-115).
+- A folder holding only `.git` is refused: found (TCW-115).
+- A project already on the machine is never fetched again, and a manifest
+  fetched during the run that would place it elsewhere stops the run:
+  **missing**; the nearest was TCW-115's "It never overwrites anything", as
+  Design 3.6 expected. Added to TCW-118's entry under TCW-115's own heading,
+  `` ## `tcw project provision` fetches connected projects ``, so the cut
+  merges it into that section; the code it describes is `_changed_answer`
+  (`tcw/provision.py:408-430`, called at `:549-553`), which refuses with
+  `<id>: was at <folder> when this run started, but …` and exits 1
+  (`test_ac35_a_kept_answer_that_changes_stops_the_run` asserts code 1). The
+  preview made again shows it at its line 1543, inside that section.
+- A store whose `ref` names no branch, tag or commit now fails: found
+  (TCW-115).
+- The pinned install, for each harness: found (TCW-118, Step 5).
+- The `3.x` branch: found (TCW-118, Step 5).
+
+Every statement is now in the preview; criterion 29 checks them again on the
+shipped files.

@@ -35,6 +35,13 @@ says how.
   patch is ever needed, it is cut on that branch and published by pushing its
   tag.
 
+## `tcw project provision` fetches connected projects
+
+A project already on this machine is never fetched again. If a manifest
+fetched during the run would place such a project somewhere else, the run
+stops with exit code 1, names the manifest, and says how to keep the project
+where it is.
+
 ## Fixes
 
 - When TCW refuses a `tcw://` address, the error now quotes the address you
