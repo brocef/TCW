@@ -64,3 +64,9 @@
 - (TCW-117 configure skill) when an override variable sets a Jira credential name in a project that does not use Jira, `tcw project config --origin`'s `# skipped:` line ends with an empty file name.
 - (TCW-117 setup skill) `tcw validate` in a parent does not report a child project's broken entry; the old skill said validate checks every project below it.
 - (TCW-117 setup skill) the hint `run tcw project new <axis> --id <id>` names an `--id` that adding a store to an existing project does not need.
+- (TCW-117 qa) the migration guide's section 1 shows only `--dry-run`, which exits 1 without Jira credentials; it could tell such readers to add `--no-jira`.
+- (TCW-117 qa) the migration guide's "prints `nothing to migrate`" leaves out the exit-1 case after a `--no-jira` run.
+- (TCW-117 qa) docs/guide/taxonomy-and-capabilities.md does not mention the `parent: decides` warning after `move --into`.
+- (TCW-117 qa) docs/guide/linking-and-validation.md:274 gives the message as "its parent is <full identifier>"; with no parent set the command prints "is not set".
+- (TCW-117 qa) provisioning prints "home repository", a phrase no guide uses.
+- (TCW-117 qa) skills/work's GitHub link to the migration guide resolves only after the merge to main (check at Step 39).
