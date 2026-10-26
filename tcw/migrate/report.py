@@ -106,9 +106,12 @@ def stopped(reason: str, not_done: list[Step]) -> None:
 
 def counts(steps: list[Step], tickets: int, *, dry: bool) -> str:
     """The summary's count of the changes (Design 2.10): files written (each
-    once), moves, deletions and tickets edited."""
+    once), moves, deletions and tickets edited, `file` and `ticket` singular
+    for a count of 1."""
     written = len({s.path for s in steps if isinstance(s, Write)})
     moved = sum(isinstance(s, Move) for s in steps)
     deleted = sum(isinstance(s, Delete) for s in steps)
-    return (f"{'would change' if dry else 'changed'}: {written} files written, "
-            f"{moved} moved, {deleted} deleted; {tickets} tickets edited")
+    files = "file" if written == 1 else "files"
+    edits = "ticket" if tickets == 1 else "tickets"
+    return (f"{'would change' if dry else 'changed'}: {written} {files} written, "
+            f"{moved} moved, {deleted} deleted; {tickets} {edits} edited")

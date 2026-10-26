@@ -167,6 +167,19 @@ def test_the_summary_counts_the_changes(tcw, tmp_path):
             f"0 tickets edited") in done.err.splitlines()
 
 
+def test_a_count_of_one_is_singular():
+    """TCW-118 fix 20: `1 file written`, `1 ticket edited`."""
+    from tcw.migrate.model import ABSENT, Write
+    from tcw.migrate.report import counts
+    one = [Write(".tcw/tcw-config.yaml", "A", ABSENT, "id: app\n", ("C1",))]
+    assert counts(one, 1, dry=False) == \
+        "changed: 1 file written, 0 moved, 0 deleted; 1 ticket edited"
+    assert counts(one * 2, 0, dry=True) == \
+        "would change: 1 file written, 0 moved, 0 deleted; 0 tickets edited"
+    assert counts([], 2, dry=True) == \
+        "would change: 0 files written, 0 moved, 0 deleted; 2 tickets edited"
+
+
 def test_no_jira_leaves_the_work_store_out_of_the_check_after(tcw, tmp_path, monkeypatch):
     import tcw.validate as checks
     real = checks.validate

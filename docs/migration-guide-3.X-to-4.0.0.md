@@ -163,7 +163,8 @@ tcw migrate
 ```
 
 It prints the same lines without `would `, and ends with
-`changed: <n> files written, <n> moved, <n> deleted; <n> tickets edited`.
+`changed: <n> files written, <n> moved, <n> deleted; <n> tickets edited`
+(`file` and `ticket` when the count is 1).
 Running it again on a finished project prints `nothing to migrate`, changes
 nothing and exits 0.
 
