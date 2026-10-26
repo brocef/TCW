@@ -106,5 +106,6 @@ def test_the_store_records_what_it_changed(repository):
     store.changed.clear()
     store.remove("billing/refund")
     assert sorted(store.changed) == [
+        ("removed", root / "billing"),
         ("removed", root / "billing" / "refund" / "description.md"),
         ("removed", root / "billing" / "refund" / CAPABILITY_STATE)]

@@ -158,7 +158,7 @@ def test_the_store_refuses_for_any_caller(tmp_path):
     root = node(tmp_path)
     term(root, "zed")
     cap(root, "login", Subject=[fid("node", "taxonomy", "zed")])
-    with pytest.raises(TcwError, match="capability login"):
+    with pytest.raises(TcwError, match=r"capability node\.capabilities/login \(Subject\)"):
         FsTaxonomyStore.open(root).remove("zed")
     assert lists(root, "zed")
 

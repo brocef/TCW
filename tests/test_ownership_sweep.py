@@ -107,6 +107,8 @@ WRITER_CALLERS = {
                                                             "planned"),
     "migrate/config.py:_Converter.links_of": (NOT_A_STORE, "`absent` and `busy` are the "
                                                            "converter's sets of IDs"),
+    "migrate/config.py:_parents_first": (NOT_A_STORE, "`left` is a list made in the "
+                                                      "function"),
     **{f"work/config.py:{name}": (NOT_A_STORE, _PROBLEMS) for name in (
         "_parse_when", "_parse_binding", "parse_bindings", "_parse_hooks", "_parse_stage",
         "_parse_stages", "_parse_procedures", "_parse_tags", "parse_work_config")},
