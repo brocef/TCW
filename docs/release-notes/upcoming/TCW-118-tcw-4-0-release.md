@@ -27,10 +27,21 @@ says how.
   `codex plugin add tcw@tcw`; Codex refreshes its marketplaces every time it
   starts, so without the pin it moves to 4.0 on its own. Pi:
   `pi remove git:github.com/brocef/TCW`, then
-  `pi install git:github.com/brocef/TCW@v3.0.2`. One case needs a step of its
-  own: a 3.x plugin installing on a machine for the first time still takes
-  the newest CLI, so on such a machine run `pipx install --force 'tcw-cli<4'`
-  once; after that the 3.x plugin leaves the CLI alone.
+  `pi install git:github.com/brocef/TCW@v3.0.2`. Every move back to 3.0.2
+  then needs one step of its own, because the 3.0.2 plugin installs the
+  newest CLI, with no version limit, which is now 4.0. In Claude Code it does
+  so at the start of a session whenever its record of the last install,
+  which holds the plugin version it installed for, is missing or names a
+  different version, or `tcw` is not on PATH. A plugin that had already
+  moved to 4.0 left a record naming 4.0, so the first session after the
+  move back installs the 4.0 CLI. In Codex and Pi, the setup skill runs the
+  same install when `tcw` is missing. It leaves alone a `tcw` that is not a
+  plain installed copy, such as one installed from a source folder for
+  development, and does nothing when `pipx` is not installed. So after the first session on the 3.0.2 plugin, or after the
+  setup skill installs `tcw`, run `pipx install --force 'tcw-cli<4'` once.
+  Running it before that first session does not last, since that session
+  installs the newest CLI again. After it, the record matches the plugin,
+  and the 3.0.2 plugin leaves the CLI alone.
 - TCW 3.x keeps a home: the branch `3.x` holds the last 3.x code. If a 3.x
   patch is ever needed, it is cut on that branch and published by pushing its
   tag.
