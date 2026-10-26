@@ -313,7 +313,7 @@ A rejection's reason is the comment the implementation reads next.
 - **`tcw work comment <item>`** posts a comment.
 - **`tcw work tickets adopt <KEY>`** fills in `TCW Project` and `TCW Item` and
   moves the ticket to the request status.
-- **`tcw work move <item>`** and **`tcw work rename <item> <words>`** edit the
+- **`tcw work move <item>`** and **`tcw work rename <item> <new-name>`** edit the
   `TCW Item` of the item's ticket and of the ticket of every item nested in
   it, then move or rename the folder. They change no other field.
 

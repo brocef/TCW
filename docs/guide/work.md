@@ -410,9 +410,11 @@ tcw work edit demo.work/2026-10-15-refund-a-payment --assignee sam --effort medi
   items nested in it move with it. A move changes no `parent`: an item moved
   into another's folder without that parent gets a warning, from the move and
   from `tcw validate`, saying `parent: decides`.
-- **`tcw work rename <item> <words>`** renames the item's folder, keeping its
-  date (filesystem) or its ticket key (Jira); the items nested in it are
-  renamed with it, since their id-paths start with its folder's name.
+- **`tcw work rename <item> <new-name>`** renames the item's folder, keeping
+  its date (filesystem) or its ticket key (Jira): `<new-name>` is the words
+  that follow it, in lower case and joined by hyphens
+  (`tcw work rename 2026-10-01-payments card-payments`). The items nested in
+  it are renamed with it, since their id-paths start with its folder's name.
 
 `tcw work move` and `tcw work rename` change the full identifier of the item
 and of every item nested in it, so both rewrite every reference to those
@@ -554,7 +556,7 @@ shows one way, with a prompt and a `post` hook.
 | `tcw work comment <item>`                  | add a comment from standard input               |
 | `tcw work move <item> --into <id-path>`    | move the item's folder into another folder      |
 | `tcw work move <item> --top`               | move the item's folder to the top of the store  |
-| `tcw work rename <item> <words>`           | rename the item's folder and those nested in it |
+| `tcw work rename <item> <new-name>`        | rename the item's folder and those nested in it |
 | `tcw work stage prompt <stage> [<item>]`   | a stage's instructions                          |
 | `tcw work procedure <id> [<item>]`         | a procedure's instructions                      |
 | `tcw work lifecycle`                       | the stage table and its bindings                |
