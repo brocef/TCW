@@ -3234,14 +3234,37 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         if parent is not None:
             # A parent is a field like any other (TCW-112 Design 2.2), so an
             # override may set it; `''` clears it, as a cleared field does.
-            norm["parent"] = str(self.find_parent(parent).full_id) \
-                if parent.strip() else None
+            found = self.find_parent(parent).full_id if parent.strip() else None
+            if found is not None:
+                self._refuse_parent_loop(target, found)
+            norm["parent"] = None if found is None else str(found)
         d, meta = self._write_target(target)
         # `_write_meta` owns the mkdir and the rollback: a fresh override's
         # folder is made here, and a refused write must not leave an empty
         # one behind.
         self._write_meta(d, self._merge_meta(meta, norm))
         return self._reread(target.id_path)
+
+    def _refuse_parent_loop(self, target: FullId, parent: FullId) -> None:
+        """Refuse a parent that is `target` itself, or whose chain of parents
+        among this project's own capabilities comes back to it: the two
+        errors validate reports (`_parent_findings`), caught before the
+        write instead of after it."""
+        if parent.project == self.project_id and parent.id_path == target.id_path:
+            raise UsageError("parent names the capability itself")
+        chain, at = [target.id_path], parent
+        while isinstance(at, FullId) and at.project == self.project_id \
+                and at.id_path not in chain:
+            chain.append(at.id_path)
+            try:
+                at = getattr(self.declaration(at.id_path), "parent", None)
+            except (TcwError, OSError, ValueError, yaml.YAMLError):
+                return                    # an unreadable link is validate's to report
+        if isinstance(at, FullId) and at.project == self.project_id \
+                and at.id_path == target.id_path:
+            loop = " -> ".join(str(FullId(self.project_id, self.COMPONENT, p))
+                               for p in [*chain, target.id_path])
+            raise UsageError(f"parent would form a loop: {loop}")
 
     # -- validation --
 

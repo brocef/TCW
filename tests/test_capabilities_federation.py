@@ -290,6 +290,33 @@ def test_set_local_unchanged_by_override_machinery(tmp_path):
     assert "overrides" not in ov_meta(root, "x")
 
 
+def test_set_refuses_a_parent_that_is_the_capability_itself(tmp_path):
+    """`set --parent` naming the object itself is refused before anything is
+    written, not left for validate to find."""
+    root = repo(tmp_path, "solo")
+    write_cap(root, "cli/a")
+    before = (root / "docs" / "capabilities" / "cli" / "a" / CAPABILITY_STATE).read_bytes()
+    with pytest.raises(TcwError, match="parent names the capability itself"):
+        store(root).set("cli/a", {}, parent="cli/a")
+    assert (root / "docs" / "capabilities" / "cli" / "a" / CAPABILITY_STATE).read_bytes() \
+        == before
+
+
+def test_set_refuses_a_parent_whose_chain_returns_to_the_capability(tmp_path):
+    """`b` names `a` as its parent: setting `a`'s parent to `b` would make a
+    loop, so it is refused and `a`'s state file is unchanged."""
+    root = repo(tmp_path, "solo")
+    write_cap(root, "a")
+    write_cap(root, "b")
+    store(root).set("b", {}, parent="a")
+    before = (root / "docs" / "capabilities" / "a" / CAPABILITY_STATE).read_bytes()
+    with pytest.raises(TcwError, match=r"parent would form a loop: "
+                                       r"solo\.capabilities/a -> solo\.capabilities/b -> "
+                                       r"solo\.capabilities/a"):
+        store(root).set("a", {}, parent="b")
+    assert (root / "docs" / "capabilities" / "a" / CAPABILITY_STATE).read_bytes() == before
+
+
 def test_set_inherited_validates_status(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"Status": "Supported"}})
