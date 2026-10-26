@@ -413,7 +413,7 @@ def test_rm_refuses_a_relatesto_referrer(tmp_path):
     write_term(root, "payment", name="Payment", relates_to=[R("invoice")])
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     st = FsTaxonomyStore.open(root)
-    with pytest.raises(TcwError, match=r"still referenced by payment \(relatesTo\)"):
+    with pytest.raises(TcwError, match=r"still referenced by repo\.taxonomy/payment \(relatesTo\)"):
         st.remove("invoice")
     assert st.get_view("invoice") is not None and st.check() == []
 
@@ -423,7 +423,7 @@ def test_rm_refuses_a_vocabulary_referrer(tmp_path):
     st = FsTaxonomyStore.open(root)
     st.add("Invoice")
     st.add("PDF Export", kind="feature", vocabulary=["invoice"])
-    with pytest.raises(TcwError, match=r"still referenced by pdf-export \(vocabulary\)"):
+    with pytest.raises(TcwError, match=r"still referenced by repo\.taxonomy/pdf-export \(vocabulary\)"):
         st.remove("invoice")
     assert st.get_view("invoice") is not None
 
@@ -486,7 +486,7 @@ def test_referrers_treats_a_vanished_folder_as_no_match(tmp_path, monkeypatch):
             raise FileNotFoundError(self)
         return real(self, other)
     monkeypatch.setattr(Path, "samefile", vanished)
-    assert st._referrers(root / "docs/taxonomy/invoice") == ["payment (relatesTo)"]
+    assert st._referrers(root / "docs/taxonomy/invoice") == ["repo.taxonomy/payment (relatesTo)"]
 
 
 def test_rm_refuses_a_case_variant_spelling(tmp_path):

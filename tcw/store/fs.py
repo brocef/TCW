@@ -2428,7 +2428,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         self._rm(d)
 
     def _capability_referrers(self, target: Path, slug: str) -> list[str]:
-        """`capability <path> (Subject|Feature)` for every capability of this
+        """`capability <full id> (Subject|Feature)` for every capability of this
         project whose own declaration names the term folder `target` or a
         folder inside it — what `tcw validate` would report dangling once it
         is gone (TCW-112 Design 7.3). An override is one of the project's own
@@ -2455,13 +2455,13 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
                 hit = self._local_ref(ref)
                 if hit is not None and _in_folder(self.root / hit, target, self.root):
                     named.add(field)
-            out += [f"capability {path} ({field})"
+            out += [f"capability {FullId(caps.project_id, caps.COMPONENT, path)} ({field})"
                     for field in ref_names("capability", namespace="taxonomy")
                     if field in named]
         return out
 
     def _referrers(self, target: Path) -> list[str]:
-        """`<term> (<field>)` for every other term of this project whose own
+        """`<full id> (<field>)` for every other term of this project whose own
         declaration's `relatesTo` or `vocabulary` names the term folder
         `target` or a folder inside it — exactly the refs `check` would report
         dangling once it is gone. Compared by folder identity, not spelling,
@@ -2483,7 +2483,8 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
                 for ref in refs:
                     hit = self._local_ref(ref)
                     if hit is not None and _in_folder(self.root / hit, target, self.root):
-                        out.append(f"{slug} ({field})")
+                        out.append(f"{FullId(self.project_id, self.COMPONENT, slug)} "
+                                   f"({field})")
                         break
         return out
 
@@ -2997,7 +2998,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         return [where for where, _ in removal_blockers(d, self.root)]
 
     def _referrers(self, target: Path) -> list[str]:
-        """`<folder> (<field>)` for every other capability of this project
+        """`<full id> (<field>)` for every other capability of this project
         whose own reference fields name the capability folder `target`.
 
         Each field is read as `check` reads it (`_ref_problems`,
@@ -3031,7 +3032,8 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                 for ref in tokens(field, meta[field]):
                     hit = self._local_ref(ref)
                     if hit is not None and same(self.root / hit):
-                        out.append(f"{p} ({field})")
+                        out.append(f"{FullId(self.project_id, self.COMPONENT, p)} "
+                                   f"({field})")
                         break
         return out
 

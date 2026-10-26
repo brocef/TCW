@@ -96,12 +96,12 @@ def test_rm_refuses_a_term_an_override_names(tmp_path, monkeypatch, capsys,
     term(root, "zed", kind)
     override(root, **{field: value})
     # An override is one of the project's own capabilities (TCW-112 Design 7.3).
-    with pytest.raises(TcwError, match=rf"capability auth/login \({field}\)"):
+    with pytest.raises(TcwError, match=rf"capability child\.capabilities/auth/login \({field}\)"):
         FsTaxonomyStore.open(root).remove("zed")
     monkeypatch.chdir(root)
     capsys.readouterr()
     assert main(["taxonomy", "rm", "zed"]) == 3
-    assert f"capability auth/login ({field})" in capsys.readouterr().err
+    assert f"capability child.capabilities/auth/login ({field})" in capsys.readouterr().err
     assert FsTaxonomyStore.open(root).get_view("zed") is not None
 
 

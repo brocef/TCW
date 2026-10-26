@@ -317,7 +317,7 @@ def test_remove_refuses_referenced_target(tmp_path, field, target, value):
     before = tree_hash(root)
     with pytest.raises(TcwError) as e:
         store(root).remove(target)
-    assert f"billing/refund ({field})" in str(e.value)
+    assert f"solo.capabilities/billing/refund ({field})" in str(e.value)
     _assert_nothing_removed(root, before)
     assert store(root).get_view(target) is not None
 
