@@ -25,7 +25,9 @@ higher layer wins.
 3. **The user-wide file**, which applies to every project this person works
    in: `$XDG_CONFIG_HOME/tcw/config.yaml` when the environment variable
    `XDG_CONFIG_HOME` holds an absolute path, and otherwise
-   `~/.config/tcw/config.yaml`. It needs no `tcw-version` line.
+   `~/.config/tcw/config.yaml`. It must not hold a `tcw-version` line: one
+   there stops every command, in every project, with exit 1 and
+   `<file>: tcw-version: a shared key; a personal file cannot set it`.
 4. **`.tcw/tcw-config.local.yaml`**, beside the team's file, which applies to
    this project only. Like every `tcw-*.yaml` file, it starts with
    `tcw-version: 4.0.0`.

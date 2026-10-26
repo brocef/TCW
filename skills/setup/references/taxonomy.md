@@ -55,9 +55,12 @@ writes nothing.
   description on stdin).
 - Features: `tcw taxonomy add "<Name>" --kind feature --vocab <ref> [--vocab <ref>...]`
   (pipe the description on stdin). A `<ref>` is the term's full identifier
-  (`<project>.taxonomy/<path>`, the name every store keeps for it), its path in
-  this project, or a leaf slug (the last part of its path) unique among the
-  terms this project can see, its parents' included; whichever is given, the
-  full identifier is what is stored.
+  (`<project>.taxonomy/<path>`, the name every store keeps for it), its whole
+  path, which may be a path this project inherits from a parent, or a leaf
+  slug (the last part of its path) unique among this project's own terms. A
+  leaf slug of a term a parent declares does not resolve: `add` exits 2 with
+  `vocabulary ref '<slug>' does not resolve`, so name a parent's term by its
+  path or its full identifier. Whichever is given, the full identifier is what
+  is stored.
 
 Finish with `tcw validate` and show the resulting `tcw taxonomy list`.

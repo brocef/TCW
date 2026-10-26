@@ -65,9 +65,9 @@ files, in version control or otherwise, is the project's own choice.
 
 ## A 3.x project
 
-TCW 4.0 reads only 4.0 projects. In a 3.x project, every command but
-`tcw migrate`, `tcw validate` and `tcw project new` included, exits 1 and
-changes nothing, with a line ending
+TCW 4.0 reads only 4.0 projects. In a 3.x project, every command except
+`tcw migrate` exits 1 and changes nothing, `tcw validate` and
+`tcw project new` among them, with a line ending
 `run 'tcw migrate' in it to move it to TCW 4`. A 4.0 project whose parent is
 still a 3.x project gets the same line, naming the parent's folder.
 `tcw migrate` moves the project over:

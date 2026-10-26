@@ -14,11 +14,13 @@ sees every item. Do not speculate about them.
 
 ## What you are given
 
-A work item, named by its full identifier (`<project>.work/<folder>`), which
-may belong to this project or to one below it. Everything else you find
-yourself, through the CLI and the code: `tcw work show <full-id>` prints the
-item, its request and its comments, read from its own project, and
-`tcw work path <full-id> <stage>` names each of its documents.
+A work item, named by its full identifier (`<project>.work/<id-path>`, where
+`<id-path>` is the item's folder path in its project's work store) or by its
+tracker key (such as `APP-12`). It may belong to this project or to one below
+it. Everything else you find yourself, through the CLI and the code:
+`tcw work show <full-id>` prints the item, its request and its comments,
+read from its own project, and `tcw work path <full-id> <stage>` names each of
+its documents.
 
 ## What to check, and how to report it
 

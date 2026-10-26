@@ -201,7 +201,10 @@ owns the wording. When that project is on this machine, file it there:
 `tcw -C tcw://<id>.path/ work new "capability wording: <name>"`, where `<id>`
 is that project's ID, or `tcw -C <folder> work new "capability wording: <name>"`
 with the folder `tcw project path <id>` prints. When it is not on this machine,
-those commands exit 5; ask through that project's own issue tracker instead.
+those commands exit 5 if a manifest here places it (the message says where TCW
+looked), and exit 1, with a message ending `check the spelling`, if nothing
+here knows its ID; either way, ask through that project's own issue tracker
+instead.
 That project answers through its own work.
 
 Never wait on the answer. If canonical wording is not available when needed,

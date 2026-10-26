@@ -139,24 +139,31 @@ every arrival it names.
   project ID that nothing here knows. Check the ID against `tcw project list`.
 - **Exit 3, `belongs to project`:** a command that changes an item, a
   taxonomy entry or a capability runs only in the project that owns it. The
-  message names the command to run there, starting `tcw -C <folder>`; run it
-  there when the user's request covers that project. When the message says
+  message ends `run the command there:` followed by `tcw -C <folder>`, with
+  the owning project's folder, and an ellipsis (`…`) that stands for the
+  command just refused. When the
+  user's request covers that project, run the same command again with
+  `tcw -C <folder>` written before it. When the message says
   instead that the project is not on this machine, report it.
 - **Exit 5, `is not on this machine`:** the command had to read a related
   project that is not here. The message says where TCW looked and which
   manifest entry to add (a manifest is the file in `.tcw/` that says where
   each related project's folder is); report which project the command needs
   and pass that on. `tcw project provision <id>` fetches it when a manifest
-  entry gives its repository. A manifest other than this project's own two
-  (`.tcw/tcw-manifest.yaml` and `.tcw/tcw-manifest.local.yaml`) may place a
-  fetched copy only in a folder directly inside the folder that holds its
-  owner's repository, not one whose name starts with `.`, and never when that
-  folder is the home folder, above it, or inside a hidden folder below it;
-  the way past a refusal is `tcw -C <folder> project provision <id>`, run as
-  the manifest's owner, or an entry in that owner's
+  entry gives its repository. Where the fetched copy may go is limited.
+  This project's own two manifests (`.tcw/tcw-manifest.yaml` and
+  `.tcw/tcw-manifest.local.yaml`) may place it anywhere. Any other manifest
+  may place it only in a folder directly inside the folder that holds the
+  repository of that manifest's owner (the project whose `.tcw/` holds the
+  manifest), and not in a folder whose name starts with `.`. Even that is
+  refused when the folder holding the owner's repository is the home folder,
+  a folder above it, or a hidden folder below it. There are two ways past a
+  refusal: run `tcw -C <folder> project provision <id>`, where `<folder>` is
+  the owner's folder; or add an entry for the project, with a `repository`
+  as well as a `path`, to this project's own manifests or to the owner's
   `.tcw/tcw-manifest.local.yaml`. The guide on related projects,
   `docs/guide/multi-repo.md` in the TCW repository, gives the cases this
-  sentence leaves out.
+  leaves out.
 - **Exit 7, `inherits its`:** something this project inherits through a
   parent link is not available here, because that parent is not on this
   machine or its own parent links cannot be read. Report which project the
