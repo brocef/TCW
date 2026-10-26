@@ -370,18 +370,22 @@ def _run_check(project_root: Path, comp: str, identifier: str | None = None,
                 problems.append(Finding("unresolved", _config_file(project_root),
                                         f"{comp}: {missed}"))
     except ValueError as e:
-        return [Finding("error", _config_file(project_root), f"{comp}: {e}")]
+        return [Finding("error", _config_file(project_root),
+                        f"{comp}: {_config_message(e, project_root)}")]
     except InheritedUnavailable as e:
         if unavailable is not None:
             unavailable.append(e)
             return []
-        return [Finding("unresolved", _config_file(project_root), f"{comp}: {e}")]
+        return [Finding("unresolved", _config_file(project_root),
+                        f"{comp}: {_config_message(e, project_root)}")]
     except Unreachable as e:
         # Another store this check opens is not on this machine (TCW-110
         # Design 7.2): it could not be checked, and the run goes on.
-        return [Finding("unresolved", _config_file(project_root), f"{comp}: {e}")]
+        return [Finding("unresolved", _config_file(project_root),
+                        f"{comp}: {_config_message(e, project_root)}")]
     except ProjectGraphError as e:
-        return [Finding("error", _config_file(project_root), f"{comp}: {e}")]
+        return [Finding("error", _config_file(project_root),
+                        f"{comp}: {_config_message(e, project_root)}")]
     return problems
 
 

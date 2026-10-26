@@ -332,6 +332,9 @@ def test_a_moved_store_that_cannot_open_is_reported_once_instead(
     failures = [str(p) for p in problems if removed in str(p)]
     assert len(failures) == 1, problems
     assert failures[0].startswith("error: .tcw/tcw-config.yaml: "), failures
+    # The finding names the config file once, as its place, not again with
+    # its absolute path inside the message.
+    assert str(consumer) not in failures[0], failures
     assert _leftover_lines(problems) == [], problems
 
     # A taxonomy command refuses too, says nothing about the leftover, and
