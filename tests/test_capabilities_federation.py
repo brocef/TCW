@@ -302,6 +302,29 @@ def test_set_refuses_a_parent_that_is_the_capability_itself(tmp_path):
         == before
 
 
+@pytest.mark.parametrize("parent, existing", [
+    ("auth/login", False), ("base.capabilities/auth/login", False),
+    ("auth/login", True), ("base.capabilities/auth/login", True),
+    ("child.capabilities/auth/login", True)])
+def test_set_refuses_an_override_naming_itself_or_its_original_as_parent(
+        tmp_path, parent, existing):
+    """An override's `parent` naming the same path, which resolves to the
+    capability it overrides, names the capability itself: refused, with
+    nothing written, whether or not the override exists yet."""
+    base, child = child_of(tmp_path, {"auth/login": {"Status": "Supported"}})
+    if existing:
+        write_cap(child, "auth/login", complete=False, Status="Missing")
+    folder = child / "docs" / "capabilities"
+    before = sorted(str(p) for p in folder.rglob("*")) if folder.exists() else []
+    state = folder / "auth" / "login" / CAPABILITY_STATE
+    old = state.read_bytes() if existing else None
+    with pytest.raises(TcwError, match="parent names the capability itself"):
+        store(child).set("auth/login", {}, parent=parent)
+    assert (sorted(str(p) for p in folder.rglob("*")) if folder.exists() else []) == before
+    if existing:
+        assert state.read_bytes() == old
+
+
 def test_set_refuses_a_parent_whose_chain_returns_to_the_capability(tmp_path):
     """`b` names `a` as its parent: setting `a`'s parent to `b` would make a
     loop, so it is refused and `a`'s state file is unchanged."""

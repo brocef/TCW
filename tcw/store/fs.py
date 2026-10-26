@@ -3269,8 +3269,10 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         """Refuse a parent that is `target` itself, or whose chain of parents
         among this project's own capabilities comes back to it: the two
         errors validate reports (`_parent_findings`), caught before the
-        write instead of after it."""
-        if parent.project == self.project_id and parent.id_path == target.id_path:
+        write instead of after it. For an override, the capability it
+        overrides, or any member of its path's chain, is `target` itself."""
+        if parent.id_path == target.id_path and (
+                parent.project == self.project_id or parent in self.chain(target.id_path)):
             raise UsageError("parent names the capability itself")
         chain, at = [target.id_path], parent
         while isinstance(at, FullId) and at.project == self.project_id \
