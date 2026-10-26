@@ -329,3 +329,8 @@ search for bare `capabilities.yaml` entries (finding 3) and the ledger scan
 ## The suite
 
 Not run here. The dispatching session runs the full suite as CI runs it.
+
+The full suite as CI runs it, run by the dispatching session at `5e5a7643`
+(2026-10-26) in two halves by folder, every `TCW_*` variable unset: `2246 passed, 2 skipped`
+and `5840 passed, 111 skipped`. `pnpm test` `247 passed`; `tsc --noEmit`,
+`pnpm lint` and `pnpm check:build` clean.
