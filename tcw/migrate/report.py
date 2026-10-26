@@ -31,6 +31,8 @@ NOT_CHECKED_WORK = ("work store not checked after the run (--no-jira): run 'tcw 
                     "to check it")
 KNOWN_AFTER = ("tcw validate's findings on the converted project are known only after "
                "a real run")
+CHECK_STOPPED = ("check after the run stopped: a related project is still TCW 3.x; run "
+                 "'tcw validate' once it is migrated")
 
 
 def say(line: str = "") -> None:

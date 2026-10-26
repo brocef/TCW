@@ -44,9 +44,16 @@ def still_3x(done) -> list[str]:
             for line in done.err.splitlines() if line.startswith("  A8 ")]
 
 
+STOPPED = ("check after the run stopped: a related project is still TCW 3.x; run "
+           "'tcw validate' once it is migrated")
+
+
 def test_a_package_migrated_before_its_root(tcw, mono):
     done = migrate(tcw, mono["api"])
     assert still_3x(done) == [str(mono["mono"]), str(mono["web"]), str(mono["jobs"])]
+    # The check after the run stops at the 3.x root, before any of the
+    # package's own findings, and the summary says so (TCW-118 fix 18).
+    assert done.err.splitlines()[-1] == STOPPED
     assert f"migrate it with 'tcw -C {mono['mono']} migrate'" in done.err
     # TCW 4 refuses a related project still in 3.x form before it reads
     # anything it would inherit (TCW-106 Design 4.2), so the stop is exit 1
@@ -66,6 +73,7 @@ def test_a_package_migrated_before_its_root(tcw, mono):
 
 def test_after_all_four_tcw_4_reads_each_and_lists_what_3_x_listed(tcw, mono):
     said = {pid: migrate(tcw, mono[pid]) for pid in ("api", "mono", "web", "jobs")}
+    assert STOPPED not in said["jobs"].err.splitlines()      # the last: nothing is 3.x
     golden = json.loads(GOLDEN.read_text())["projects"]
     for pid, root in mono.items():
         found = tcw(["validate"], root)

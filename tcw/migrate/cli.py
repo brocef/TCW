@@ -102,11 +102,14 @@ def run(root: Path, *, dry_run: bool, no_jira: bool) -> int:
 def _check_after(root: Path, predicts, work_backend: str, no_jira: bool,
                  reports: list) -> list[str]:
     """The check after the local phases, its A12 reports added to `reports`;
-    the summary's line when the work store was left out."""
+    the summary's lines when the check stopped at a related 3.x project and
+    when the work store was left out."""
     from tcw.migrate import execute, report
     work = not (no_jira and work_backend == "jira")
-    reports += execute.check_after(root, predicts, work=work)
-    return [] if work else [report.NOT_CHECKED_WORK]
+    found, stopped = execute.check_after(root, predicts, work=work)
+    reports += found
+    return [*([report.CHECK_STOPPED] if stopped else []),
+            *([] if work else [report.NOT_CHECKED_WORK])]
 
 
 def _would(steps, tickets) -> None:

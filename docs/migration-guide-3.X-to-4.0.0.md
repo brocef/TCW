@@ -345,8 +345,16 @@ explains them.
     ```
 
     Migrating a child first is allowed and gives the same files, but its
-    commands stop until its parent is migrated. Migrating each parent first
-    leaves no 4.0 project below a 3.x one at any moment.
+    commands stop until its parent is migrated. The check `tcw migrate` makes
+    after a real run stops there too, so the run lists none of the child's
+    own A12 findings, and its summary ends:
+
+    ```text
+    check after the run stopped: a related project is still TCW 3.x; run 'tcw validate' once it is migrated
+    ```
+
+    Migrating each parent first leaves no 4.0 project below a 3.x one at any
+    moment.
 
 3. **Each run's summary lists the family's projects still in 3.x form**, the
    parents first, each with the command that migrates it:
