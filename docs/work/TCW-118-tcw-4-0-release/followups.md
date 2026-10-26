@@ -70,3 +70,9 @@
 - (TCW-117 qa) docs/guide/linking-and-validation.md:274 gives the message as "its parent is <full identifier>"; with no parent set the command prints "is not set".
 - (TCW-117 qa) provisioning prints "home repository", a phrase no guide uses.
 - (TCW-117 qa) skills/work's GitHub link to the migration guide resolves only after the merge to main (check at Step 39).
+- (TCW-117 review, guides) an unknown project id exits 1 in a full identifier and in `-C tcw://nosuch.path/`, but 2 under `--project`; cli.md's exit-1 meaning column contradicts its own example.
+- (TCW-117 review, guides) a capabilities.yaml entry for a project not on this machine is an error while the same item's parent link is unresolved, so validate fails on any machine (CI included) lacking a sibling — likely a defect.
+- (TCW-117 review, guides) `project provision` prints "Nothing to provision: no component declares…" and then provisions.
+- (TCW-117 review, guides) the Jira credentials error names `.tcw/tcw-config.yaml` in a project still in 3.x form.
+- (TCW-117 review, guides) migrate summary "1 files written" (plural; see also "1 tickets").
+- (TCW-117 review, skills) the user-wide file refuses a `tcw-version` line (exit 1) though TCW-109 spec:805 calls it information about a file; decide whether to accept it.
