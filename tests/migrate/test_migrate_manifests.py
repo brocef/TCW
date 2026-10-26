@@ -101,6 +101,18 @@ def test_m1_the_dry_run_reports_it_too(tcw, tmp_path, far):
     assert tree(app) == before
 
 
+def test_a14_names_the_ancestor_s_file_an_entry_came_from(tcw, tmp_path, far):
+    """A14's other source name (`tcw/migrate/config.py:666-667`): the
+    absolute locator is in the parent's file, which 3.x's walk reached
+    across this project's `parent` entry, so A14 names that file by its
+    path from here."""
+    project(tmp_path / "w", "ws", f"projects:\n  upstream:\n    core: {far}\n")
+    app = app_with(tmp_path, "  parent:\n    ws: ..\ntaxonomy:\n  extends: [core]\n")
+    done = migrate(tcw, app)
+    assert manifests(app)[1] == {"core": {"path": str(far)}}
+    assert done.err.splitlines().count(only_here(far, source="../tcw-config.yaml")) == 1
+
+
 def test_a_relative_locator_is_not_a14(tcw, tmp_path, far):
     app = app_with(tmp_path, "  upstream:\n    core: ../../far/core\n")
     assert "  A14 " not in migrate(tcw, app).err
