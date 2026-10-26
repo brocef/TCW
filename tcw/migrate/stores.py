@@ -318,7 +318,9 @@ def _plan_object(store: Store, id_path: str, kept: set[str], project: str,
         if above and above in kept and "parent" not in data:
             edits.append(SetTop("parent", str(FullId(project, ns, above)), after="name"))
             conversions.append("C11")
-        if not data.get("name") and override is None:
+        # An override B9 refused is not in `resolved`, so `override` is None
+        # for it; it is still an override, which TCW 4 gives no name of its own.
+        if not data.get("name") and override is None and not data.get("overrides"):
             edits.append(SetTop("name", fallback_name(id_path)))
             conversions.append("C12")
             out.reports.append(Report("D7", new_rel, f"name: {fallback_name(id_path)} "
@@ -342,7 +344,8 @@ def _plan_object(store: Store, id_path: str, kept: set[str], project: str,
                                reads))
         if text is not None:
             out.steps.append(Delete(old_rel, "C", digest(text), new_rel, digest(new), ("C9",)))
-    if ns != "work" and not (folder / DESCRIPTION).exists() and override is None:
+    if ns != "work" and not (folder / DESCRIPTION).exists() and override is None \
+            and not data.get("overrides"):
         rel = f"{store.rel}/{id_path}/{DESCRIPTION}"
         out.steps.append(Write(rel, "C", ABSENT, "", ("C12",)))
         out.reports.append(Report("D7", rel, "written empty, where TCW 3 had none"))

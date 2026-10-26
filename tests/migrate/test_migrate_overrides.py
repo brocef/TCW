@@ -216,6 +216,12 @@ def test_each_b9(tcw, tmp_path, case):
     done = migrate(tcw, root, 3)
     assert any(line.startswith("  B9 ") and why in line for line in said(done)), done.err
     assert tree(root) == before
+    # The refused override is planned as an override still, so no name or
+    # description is planned for it (TCW-118 fix 21).
+    planned = [line for line in said(done) if f"{C}/ov/" in line.split(":", 1)[0]]
+    assert planned, done.err
+    assert not [line for line in planned if "C12" in line or line.startswith("  D7 ")], \
+        done.err
 
 
 def test_a_source_not_on_this_machine_is_b5(tcw, tmp_path):
