@@ -20,7 +20,7 @@ cv = _load()
 README = "# Upcoming entries\n\nDrafting guidance for whoever writes an entry.\n"
 
 
-def make_repo(tmp_path: Path, version: str = "0.2.2") -> Path:
+def make_repo(tmp_path: Path, version: str = "0.2.2", tagged: bool = True) -> Path:
     root = tmp_path / "repo"
     (root / ".claude-plugin").mkdir(parents=True)
     (root / ".codex-plugin").mkdir(parents=True)
@@ -42,6 +42,8 @@ def make_repo(tmp_path: Path, version: str = "0.2.2") -> Path:
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(root), "commit", "-qm", "init"], check=True)
+    if tagged:   # the current version was released, as on every branch but a new major's
+        subprocess.run(["git", "-C", str(root), "tag", f"v{version}"], check=True)
     return root
 
 
@@ -245,3 +247,43 @@ def test_files_the_cut_does_not_combine_are_named(tmp_path, capsys):
     assert "docs/changelogs/upcoming/sub" in err
     assert "- nested" not in (root / "docs/changelogs/v0.2.3.md").read_text()
     assert (folder / "note.txt").exists() and (folder / "sub" / "x.md").exists()
+
+
+VERSION_FILE_NAMES = ("pyproject.toml", "tcw/__init__.py", ".claude-plugin/plugin.json",
+                      ".claude-plugin/marketplace.json", ".codex-plugin/plugin.json")
+
+
+def _state(root: Path) -> tuple[str, str, str]:
+    return (_git_out(root, "rev-parse", "HEAD"), _git_out(root, "tag"),
+            _git_out(root, "status", "--porcelain"))
+
+
+def test_an_untagged_current_version_is_cut_by_name(tmp_path):
+    """A major branch's files already record the version they write (4.0.0);
+    naming that version cuts it without bumping anything."""
+    root = make_repo(tmp_path, "4.0.0", tagged=False)
+    before = {rel: (root / rel).read_bytes() for rel in VERSION_FILE_NAMES}
+    assert cv.main(["4.0.0"], root=root) == 0
+    assert cv.current_version(root) == "4.0.0"
+    assert {rel: (root / rel).read_bytes() for rel in VERSION_FILE_NAMES} == before
+    assert (root / "docs/changelogs/v4.0.0.md").exists()
+    assert (root / "docs/release-notes/v4.0.0.md").exists()
+    _assert_cut_is_clean(root, "4.0.0")
+
+
+def test_a_tagged_current_version_is_refused(tmp_path):
+    root = make_repo(tmp_path, "4.0.0")
+    before = _state(root)
+    with pytest.raises(SystemExit, match="v4.0.0 is already tagged"):
+        cv.main(["4.0.0"], root=root)
+    assert _state(root) == before
+
+
+@pytest.mark.parametrize("bump", ["patch", "minor", "major"])
+def test_a_relative_bump_is_refused_while_the_current_version_has_no_tag(tmp_path, bump):
+    """A bump from an untagged version would skip that version altogether."""
+    root = make_repo(tmp_path, "4.0.0", tagged=False)
+    before = _state(root)
+    with pytest.raises(SystemExit, match=r"cut_version\.py 4\.0\.0"):
+        cv.main([bump], root=root)
+    assert _state(root) == before
