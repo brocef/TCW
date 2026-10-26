@@ -13,7 +13,7 @@ inherited capabilities before printing anything, so when they cannot be read it
 stops with exit 7 and prints nothing on standard output.
 
 The work items are read from the project's configured work store, wherever
-`work.path` puts it, and a completed item's folder never moves, so the answer is
+`work.path` puts it, and a completed item's folder does not move when its stage changes, so the answer is
 the same in every checkout. Only the `completed` stage counts: a discarded item
 shipped nothing, and an unfinished one has not shipped yet. An item whose
 `tcw-work-item.yaml` cannot be read is reported, since its declarations went unchecked.
