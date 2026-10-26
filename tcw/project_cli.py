@@ -94,8 +94,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p_config.add_argument("--origin", action="store_true",
                           help="name the project, the layer and the file or variable "
                                "of every value, and list what your personal files "
-                               "set that was not used; prints even when something "
-                               "is wrong")
+                               "set that was not used; prints even when one of the "
+                               "project's own files has a problem, but an inherited "
+                               "setting a parent cannot give, because it is missing "
+                               "or broken, stops it")
     p_config.set_defaults(own_config=True, func=config_cli._show)
 
     p_provision = command(
