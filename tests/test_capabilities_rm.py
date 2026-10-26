@@ -322,6 +322,20 @@ def test_remove_refuses_referenced_target(tmp_path, field, target, value):
     assert store(root).get_view(target) is not None
 
 
+def test_remove_refuses_a_target_another_capability_names_as_its_parent(tmp_path):
+    """`parent` is a reference like the others: removing the capability a
+    sibling names as its parent would leave that `parent` dangling."""
+    root = repo(tmp_path, "solo")
+    store(root).add("billing/a")
+    store(root).add("billing/b", parent="billing/a")
+    before = tree_hash(root)
+    with pytest.raises(TcwError) as e:
+        store(root).remove("billing/a")
+    assert "solo.capabilities/billing/b (parent)" in str(e.value)
+    _assert_nothing_removed(root, before)
+    assert (root / "docs" / "capabilities" / "billing" / "a" / CAPABILITY_STATE).is_file()
+
+
 @pytest.mark.parametrize("field, value", [
     ("Superseded by", f" {S('roles/admin')} "),  # check reads the value as written
     ("Blocked by", f"!{S('roles/admin')}"),     # `!` negates only in Roles/When

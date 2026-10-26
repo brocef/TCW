@@ -2999,7 +2999,8 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
 
     def _referrers(self, target: Path) -> list[str]:
         """`<full id> (<field>)` for every other capability of this project
-        whose own reference fields name the capability folder `target`.
+        whose own reference fields or `parent` name the capability folder
+        `target`.
 
         Each field is read as `check` reads it (`_ref_problems`,
         `_check_globals`): a full identifier of this project's own capability
@@ -3035,6 +3036,12 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                         out.append(f"{FullId(self.project_id, self.COMPONENT, p)} "
                                    f"({field})")
                         break
+            # `parent` is not among the reference fields (`_cap_ref_rows`),
+            # but removing what it names leaves it dangling just the same.
+            parent = meta.get("parent")
+            hit = self._local_ref(str(parent)) if parent is not None else None
+            if hit is not None and same(self.root / hit):
+                out.append(f"{FullId(self.project_id, self.COMPONENT, p)} (parent)")
         return out
 
     def _naming(self, full_id: FullId) -> list[str]:

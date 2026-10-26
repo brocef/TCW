@@ -14,8 +14,8 @@ It deletes exactly one capability, so it refuses, and deletes nothing, when:
 - another capability or override is nested under its path. The message names
   them, and I remove those first;
 - another capability still points at it through `Superseded by`, `Blocked by`,
-  `Roles` or `When`. The message names each one and the field, and I repoint
-  those fields first.
+  `Roles`, `When` or `parent`. The message names each one by its full
+  identifier, with the field, and I repoint those fields first.
 
 The other refusals exit 3.
 

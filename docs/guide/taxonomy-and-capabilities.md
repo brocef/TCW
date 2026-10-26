@@ -132,7 +132,8 @@ warning that `parent:` is not set.
 nothing, an inherited capability (it names the project the capability belongs
 to), one with capabilities nested under it (so `rm billing/invoices` is
 refused while `billing/invoices/bulk` exists), and one another capability
-still points at through `Superseded by`, `Blocked by`, `Roles` or `When`.
+still points at through `Superseded by`, `Blocked by`, `Roles`, `When` or
+`parent`.
 
 `tcw validate` checks the metadata, resolves each `Subject` pointer against the
 taxonomy, and checks that each `Feature` pointer names a taxonomy feature. The
