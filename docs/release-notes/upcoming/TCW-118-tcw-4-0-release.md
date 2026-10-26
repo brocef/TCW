@@ -1,7 +1,39 @@
+TCW 4.0 is a major release. It changes where a project keeps its files, which
+now sit together in a `.tcw/` folder, and how projects relate to each other:
+a project names its parents, in place of the 3.x `projects:` list and
+`extends`. A TCW 3.x project must be migrated with `tcw migrate` before 4.0
+will work in it; [the migration guide](../migration-guide-3.X-to-4.0.0.md)
+says how.
+
 ## Upgrading
 
-- Holding the plugin at an older version now holds the CLI it installs at
-  that version too.
+- To move a project across, follow
+  [the migration guide](../migration-guide-3.X-to-4.0.0.md).
+- Keep any CI job or other automation that installs `tcw-cli` at
+  `tcw-cli<4` until the project it works on is migrated.
+- Everyone working on a project upgrades together: TCW 4.0 refuses a 3.x
+  project's files except to migrate them.
+- Commit your work, or back it up, before running `tcw migrate` for real,
+  that is without `--dry-run`.
+- From 4.0, the plugin installs the CLI of its own version
+  (`tcw-cli==<the plugin's version>`), so a plugin update brings the matching
+  CLI, and holding the plugin at an older version holds the CLI it installs
+  at that version too. To stay on 3.x, keep the plugin at 3.0.2 by pinning it
+  to the tag `v3.0.2`. Claude Code: `claude plugin marketplace remove tcw`,
+  then `claude plugin marketplace add brocef/TCW#v3.0.2` and
+  `claude plugin install tcw@tcw`. Codex:
+  `codex plugin marketplace remove tcw`, then
+  `codex plugin marketplace add brocef/TCW --ref v3.0.2` and
+  `codex plugin add tcw@tcw`; Codex refreshes its marketplaces every time it
+  starts, so without the pin it moves to 4.0 on its own. Pi:
+  `pi remove git:github.com/brocef/TCW`, then
+  `pi install git:github.com/brocef/TCW@v3.0.2`. One case needs a step of its
+  own: a 3.x plugin installing on a machine for the first time still takes
+  the newest CLI, so on such a machine run `pipx install --force 'tcw-cli<4'`
+  once; after that the 3.x plugin leaves the CLI alone.
+- TCW 3.x keeps a home: the branch `3.x` holds the last 3.x code. If a 3.x
+  patch is ever needed, it is cut on that branch and published by pushing its
+  tag.
 
 ## Fixes
 

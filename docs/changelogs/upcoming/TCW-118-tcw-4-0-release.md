@@ -86,8 +86,20 @@
   move changes no `parent` and how to set it; the validation guide's
   folder-and-parent warning gives its `not set` form. (TCW-118)
 
+## Removed
+
+- `tests/test_repo_config_pair.py`, which kept this repository's 3.x root
+  `tcw-config.yaml` and its 4.0 `.tcw/tcw-config.yaml` in step until the
+  repository was migrated, and the root `.gitignore` line
+  `/tcw-config.local.yaml`, the 3.x place of the personal configuration file.
+  (TCW-118)
+
 ## Internal
 
+- This repository is migrated to TCW 4.0. (TCW-118)
+- This repository's own taxonomy and capability records are now read by the
+  documentation scan for 3.x forms; `UNMIGRATED_RECORDS`, which left them out
+  until the migration, is deleted. (TCW-118)
 - `scripts/cut_version.py X.Y.Z` cuts an untagged current version without
   bumping; it refuses an already tagged one, and refuses `patch`, `minor` and
   `major` while the current version has no tag. (TCW-118)
