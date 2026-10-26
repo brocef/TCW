@@ -92,6 +92,7 @@ def test_ac2_refused_addresses(address):
     ("tcw://p1:80.work/x", "':' is not allowed"),
     ("tcw://u@p1.work/x", "'@' is not allowed"),
     ("tcw://P1.work/x", "lowercase"),
+    ("tcw://p1.foo/x", "tcw://p1.foo/x is not"),
 ])
 def test_ac2_each_refusal_names_its_rule(address, rule):
     with pytest.raises(MalformedId) as caught:

@@ -296,7 +296,17 @@ def parse_address(text: Any) -> FullId | FolderAddress:
         raise MalformedId(
             f"{text} is not a tcw:// address: an object address does not end "
             f"in '/'")
-    return parse_full_id(rest)
+    try:
+        return parse_full_id(rest)
+    except MalformedId as error:
+        # The refusal quotes what the user wrote, scheme and all, not the
+        # identifier left once the scheme is taken off.
+        message = str(error)
+        for quoted in (repr(rest), rest):
+            if message.startswith(quoted):
+                message = text + message[len(quoted):]
+                break
+        raise MalformedId(message) from None
 
 
 def _check_folder_path(path: str, text: str) -> None:
