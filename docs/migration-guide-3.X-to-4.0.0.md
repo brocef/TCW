@@ -306,7 +306,10 @@ While a run is unfinished, the project holds a **progress record**,
 next run finishes the plan instead of working it out again from half-converted
 files. It holds personal values, so it is never committed; inside git,
 `.tcw/.gitignore` ignores it. The run that finishes deletes it. Do not commit
-the project while it is there.
+the project while it is there. While it is there, `tcw validate` reports it as
+an error, `an unfinished 'tcw migrate': run 'tcw migrate' again in this project
+to finish it`, and leaves out its warning about the 3.x `tcw-config.yaml` still
+at the root, which the run that finishes deletes.
 
 - **Do not delete the progress record** while a run is unfinished. If it is
   deleted, restore the project from the commit or backup of step 2 of

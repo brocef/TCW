@@ -237,6 +237,22 @@ def test_ac14_a_leftover_root_file_is_not_read_and_validate_warns(tmp_path):
             in ran.out.splitlines()), ran
 
 
+def test_ac14_an_unfinished_migration_is_an_error_not_a_leftover_file(tmp_path):
+    """A `tcw migrate` that stopped leaves its progress record, the root
+    file and the root personal file behind: validate says to finish the
+    migration, and never to delete the root file by hand."""
+    root = project(tmp_path / "p", "new")
+    (root / "tcw-config.yaml").write_text("id: old\n")
+    (root / ".tcw" / "tcw-migration-progress.yaml").write_text(
+        f"tcw-version: {__version__}\nsteps: []\n")
+    ran = tcw(root, "validate")
+    assert ran.code == 1, ran
+    assert ("error: .tcw/tcw-migration-progress.yaml: an unfinished 'tcw migrate': "
+            "run 'tcw migrate' again in this project to finish it"
+            in ran.out.splitlines()), ran
+    assert "delete this one" not in ran.out + ran.err, ran
+
+
 # -- AC 7: the version each file records ---------------------------------------------
 
 ROWS = {

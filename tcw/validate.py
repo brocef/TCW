@@ -512,6 +512,9 @@ TRACKED_PERSONAL_FILE = ("tracked; personal configuration should stay out of "
 LEFTOVER_LEGACY_FILE = ("a TCW 3.x configuration file at the root of a TCW 4 "
                         "project; TCW 4 reads .tcw/tcw-config.yaml only, so delete "
                         "this one")
+#: TCW-116 Design 2.7: a `tcw migrate` that stopped, its progress record kept.
+UNFINISHED_MIGRATION = ("an unfinished 'tcw migrate': run 'tcw migrate' again in "
+                        "this project to finish it")
 
 
 def config_findings(project_root: Path) -> list[Finding]:
@@ -540,7 +543,13 @@ def config_findings(project_root: Path) -> list[Finding]:
         findings.append(Finding("warning", LOCAL_FILE, TRACKED_PERSONAL_FILE))
     if personal_file_tracked(project_root, LOCAL_MANIFEST):         # TCW-107 1.9
         findings.append(Finding("warning", LOCAL_MANIFEST, TRACKED_PERSONAL_FILE))
-    if (project_root / LEGACY_SENTINEL).is_file():
+    from tcw.migrate.progress import PROGRESS
+    if (project_root / PROGRESS).is_file():
+        # Every command reads the half-migrated tree as finished, so this is
+        # an error; the root files it left are the run's to delete, not the
+        # person's.
+        findings.append(Finding("error", PROGRESS, UNFINISHED_MIGRATION))
+    elif (project_root / LEGACY_SENTINEL).is_file():
         findings.append(Finding("warning", LEGACY_SENTINEL, LEFTOVER_LEGACY_FILE))
     return findings
 
