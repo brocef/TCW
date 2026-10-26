@@ -1,3 +1,6 @@
 changed:
     - plugin/bootstrap-the-cli
     - cli/install-from-pypi
+    - capabilities/remove-a-capability
+    - capabilities/reset-an-override
+    - taxonomy/remove-a-local-term
