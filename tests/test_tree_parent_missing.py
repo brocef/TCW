@@ -1,5 +1,5 @@
 """When inherited content cannot be read (TCW-112 Design 1.3, 1.4, 3.1, 3.4,
-3.5, 4.4, 6.5 and 7.2; AC 16, 18's `--local`, 26's last three sentences, 35
+3.5, 4.4, 6.5 and 7.2; AC 16, 18's own-scope list, 26's last three sentences, 35
 and 39), and the order in which a write is refused when it cannot be
 (the plan's choice 9).
 
@@ -55,8 +55,8 @@ def app(tmp_path) -> Path:
 
 
 def test_ac16_list_local_prints_the_projects_own_objects(app, tcw):
-    """AC 16, first bullet, which named the `--local` option TCW-113 removed:
-    a plain `tcw taxonomy list`, whose scope is the project's own, prints
+    """AC 16, first bullet, for a list of the project's own objects, which
+    is `--scope own`, the default: a plain `tcw taxonomy list` prints
     `app.taxonomy/money`, and `tcw capabilities list` prints
     `app.capabilities/cli/x` and `app.capabilities/cli/y`."""
     assert listed(tcw(app, "taxonomy", "list")) == ["app.taxonomy/money"]
@@ -96,8 +96,9 @@ def test_ac16_text_show_has_a_partial_line_and_no_overrides_line(app, tcw):
 
 
 def test_ac16_every_list_local_json_record_is_partial(app, tcw):
-    """AC 16, second bullet, which named the removed `--local`: each record of
-    a plain `tcw capabilities list --json` has `"partial": true`."""
+    """AC 16, second bullet, for a list of the project's own objects
+    (`--scope own`, the default): each record of a plain
+    `tcw capabilities list --json` has `"partial": true`."""
     ran = tcw(app, "capabilities", "list", "--json")
     assert ran.code == 0, ran
     records = json.loads(ran.out)["capabilities"]
@@ -190,7 +191,8 @@ def test_ac16_validate_still_checks_what_app_declares(app, tcw):
 
 
 def test_ac18_list_local_works_when_a_parents_store_cannot_be_read(tmp_path, tcw):
-    """AC 18, the sentence on the removed `--local`: with opening `core`'s
+    """AC 18, the sentence on a list of the project's own objects
+    (`--scope own`, the default): with opening `core`'s
     taxonomy store raising `StoreNotProvisioned`, a plain `tcw taxonomy list`
     in `app` exits 0 (and prints `app`'s own term)."""
     app = core_with_unprovisioned_taxonomy(tmp_path)

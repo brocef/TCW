@@ -414,8 +414,8 @@ def test_ac26_the_projects_own_identifier_for_a_path_it_only_inherits_exits_4(
 
 
 def test_ac27_list_local_prints_the_override_not_the_original(tcw, tmp_path):
-    """AC 27, which named the `--local` option TCW-113 removed: in AC 5, a
-    plain `tcw capabilities list` in `app` prints
+    """AC 27, for a list of the project's own objects (`--scope own`, the
+    default): in AC 5, a plain `tcw capabilities list` in `app` prints
     `app.capabilities/cli/x` and not `core.capabilities/cli/x`."""
     _, app = ac5_family(tmp_path)
     ran = tcw(["capabilities", "list"], app)
