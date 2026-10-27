@@ -554,7 +554,12 @@ explains them.
    converted project reads differently from the 3.x one:
 
     - a 3.x parent becomes a parent link that passes everything down, and D1
-      lists what the child now inherits that 3.x did not pass it;
+      lists what the child now inherits that 3.x did not pass it. 3.x passed
+      a project the terms of each project its `taxonomy.extends` named, and
+      of each project those extended in turn, but the capabilities only of
+      the projects its own `capabilities.extends` named; D1 counts the same.
+      A project with no terms, or no capabilities, is not named for them,
+      since inheriting nothing changes nothing;
     - an `extends` that named a sibling or another project becomes one more
       parent link, inheriting only the axes the `extends` named;
     - an `extends` that named one of the project's own listed children is

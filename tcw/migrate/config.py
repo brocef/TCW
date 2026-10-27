@@ -1100,13 +1100,16 @@ def _d1(rel: str, project_id: str, mapping: dict, graph: dict, family,
         converter) -> list[Report]:
     """D1: the projects and axes newly inherited, and each key of
     `INHERITED_KEYS` a parent passing configuration sets and this project
-    does not."""
+    does not. A project with no object of an axis to pass is not named for
+    it, since inheriting nothing changes nothing."""
     from tcw.config import INHERITED_KEYS
+    from tcw.migrate.overrides import ancestor_paths
     from tcw.store.base import passing
     out = []
-    extends = extended_by(mapping)
     for axis in EXTENDED_AXES:
-        new = sorted(passing(axis, project_id, graph) - {project_id} - set(extends[axis]))
+        new = sorted(pid for pid in passing(axis, project_id, graph)
+                     - {project_id} - _passed_by_3x(axis, mapping, family)
+                     if ancestor_paths(axis, pid, family))
         if new:
             out.append(Report("D1", rel, f"parents: now inherits {axis} from "
                                          f"{', '.join(repr(n) for n in new)}, which "
@@ -1135,6 +1138,35 @@ def _d1(rel: str, project_id: str, mapping: dict, graph: dict, family,
                 out.append(Report("D1", rel, f"{shown}: set by parent '{pid}' and not "
                                              f"by this project, which now inherits it"))
     return out
+
+
+def _passed_by_3x(axis: str, mapping: dict, family) -> set[str]:
+    """The projects 3.x passed `axis` to the project read as `mapping`
+    (`tcw/store/fs.py` at v3.0.2): for capabilities, the ones its own
+    `extends` names (`list_all`, `:2389-2395`); for taxonomy, those and,
+    in turn, the ones each of them extends (`_inherited_stores`,
+    `:1751-1763`). `projects:` passed neither. An extended project already
+    migrated has its `extends` as parent links naming the axis."""
+    found: set[str] = set()
+    frontier = list(extended_by(mapping)[axis])
+    while frontier:
+        pid = frontier.pop()
+        if pid in found:
+            continue
+        found.add(pid)
+        if axis != "taxonomy":
+            continue
+        member = family.quiet(pid)
+        if member is None:
+            continue
+        if member.three_x:
+            frontier += extended_by(member.raw)[axis]
+        else:
+            from tcw.store.links import parse_parents
+            links = _from_parent_links(parse_parents(member.raw.get("parents"), ".")[0]
+                                       or [])
+            frontier += [l.id for l in links if l.inherit is not None and axis in l.inherit]
+    return found
 
 
 _MISSING = object()

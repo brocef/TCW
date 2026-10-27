@@ -7,6 +7,9 @@
 
 ## Fixed
 
+- `tcw migrate`'s D1 no longer says a project now inherits terms that 3.x
+  already passed it through a chain of `taxonomy.extends`, and no longer
+  names a project with no terms, or no capabilities, to pass. (TCW-118)
 - A refused `tcw://` address is quoted whole in the error, scheme included,
   rather than without its `tcw://`. (TCW-118)
 - A store `path` or `tcw -C` target written with an uppercase scheme, such as

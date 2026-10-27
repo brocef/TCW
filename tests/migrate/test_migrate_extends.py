@@ -397,8 +397,24 @@ def test_the_counterexample_and_the_middle_project_unit():
 
 # ── D1 (criteria 32 and 65) ─────────────────────────────────────────────────
 
+TERM = "name: T\n"
+CAPABILITY = "name: C\n"
+
+
+def stocked(folder: Path, text: str, *, git: bool = False) -> Path:
+    """A 3.x project holding one term and one capability of its own."""
+    return make(folder, {"tcw-config.yaml": text,
+                         "docs/taxonomy/t/meta.yaml": TERM,
+                         "docs/capabilities/c/meta.yaml": CAPABILITY}, git=git)
+
+
+def d1_lines(done, axis: str) -> list[str]:
+    return [line for line in done.err.splitlines()
+            if line.startswith("  D1 ") and f"now inherits {axis} from" in line]
+
+
 def test_d1_names_the_axes_and_keys_a_parent_now_passes(tcw, tmp_path):
-    project(tmp_path / "ws", "id: ws\nprojects:\n  children:\n    app: app\n"
+    stocked(tmp_path / "ws", "id: ws\nprojects:\n  children:\n    app: app\n"
                              "work:\n  tags:\n  - bug\n")
     app = project(tmp_path / "ws/app", "id: app\nprojects:\n  parent:\n    ws: ..\n",
                   git=True)
@@ -424,6 +440,90 @@ def test_d1_names_a_jira_field_a_migrated_parent_sets(tcw, tmp_path):
     assert ("  D1 tcw-config.yaml: work.jira.fields.effort: set by parent 'ws' and not "
             "by this project, which now inherits it") in done.err.splitlines()
     assert "work.jira.fields.item" not in done.err
+
+
+def test_d1_leaves_out_a_parent_with_nothing_of_the_axis_to_pass(tcw, tmp_path):
+    """Inheriting from a project whose store is missing or empty changes
+    nothing, so D1 does not name it; a parent with an object is named."""
+    ws = project(tmp_path / "ws", "id: ws\nprojects:\n  children:\n    app: app\n")
+    (ws / "docs/taxonomy").mkdir(parents=True)
+    make(ws, {"docs/capabilities/c/meta.yaml": CAPABILITY}, git=False)
+    app = project(ws / "app", "id: app\nprojects:\n  parent:\n    ws: ..\n", git=True)
+    done = migrate(tcw, app)
+    assert d1_lines(done, "taxonomy") == []
+    assert d1_lines(done, "capabilities") == [
+        "  D1 tcw-config.yaml: parents: now inherits capabilities from 'ws', which "
+        "TCW 3 did not pass to this project"]
+
+
+def test_d1_counts_one_level_of_extends_as_passed(tcw, tmp_path):
+    stocked(tmp_path / "ws", "id: ws\nprojects:\n  children:\n    app: app\n"
+                             "    sib: sib\n")
+    stocked(tmp_path / "ws/sib", "id: sib\nprojects:\n  parent:\n    ws: ..\n")
+    app = project(tmp_path / "ws/app", "id: app\nprojects:\n  parent:\n    ws: ..\n"
+                                       "taxonomy:\n  extends:\n  - sib\n"
+                                       "capabilities:\n  extends:\n  - sib\n", git=True)
+    done = migrate(tcw, app)
+    for axis in ("taxonomy", "capabilities"):
+        assert d1_lines(done, axis) == [
+            f"  D1 tcw-config.yaml: parents: now inherits {axis} from 'ws', which "
+            f"TCW 3 did not pass to this project"], axis
+
+
+def test_d1_follows_a_chain_of_taxonomy_extends_as_3_x_did(tcw, tmp_path):
+    """3.x's taxonomy `extends` is followed through each extended project's
+    own; capabilities `extends` is one level only."""
+    stocked(tmp_path / "ws", "id: ws\nprojects:\n  children:\n    a: a\n    b: b\n"
+                             "    e: e\n    d: d\n")
+    for pid, nxt in (("b", "e"), ("e", "d"), ("d", None)):
+        text = f"id: {pid}\nprojects:\n  parent:\n    ws: ..\n"
+        if nxt:
+            text += (f"taxonomy:\n  extends:\n  - {nxt}\n"
+                     f"capabilities:\n  extends:\n  - {nxt}\n")
+        stocked(tmp_path / "ws" / pid, text)
+    a = project(tmp_path / "ws/a", "id: a\nprojects:\n  parent:\n    ws: ..\n"
+                                   "taxonomy:\n  extends:\n  - b\n"
+                                   "capabilities:\n  extends:\n  - b\n", git=True)
+    done = migrate(tcw, a)
+    assert d1_lines(done, "taxonomy") == [
+        "  D1 tcw-config.yaml: parents: now inherits taxonomy from 'ws', which TCW 3 "
+        "did not pass to this project"]
+    assert d1_lines(done, "capabilities") == [
+        "  D1 tcw-config.yaml: parents: now inherits capabilities from 'd', 'e', 'ws', "
+        "which TCW 3 did not pass to this project"]
+
+
+def family_rls(base: Path) -> dict[str, Path]:
+    """A root with nothing of its own, a library `l`, and `s`, which
+    extends `l` and is extended by its child `k`."""
+    r = project(base, "id: r\nprojects:\n  children:\n    l: l\n    s: s\n", git=True)
+    l = stocked(base / "l", "id: l\nprojects:\n  parent:\n    r: ..\n", git=True)
+    s = stocked(base / "s", "id: s\nprojects:\n  parent:\n    r: ..\n"
+                            "  children:\n    k: k\n"
+                            "taxonomy:\n  extends:\n  - l\n"
+                            "capabilities:\n  extends:\n  - l\n", git=True)
+    k = stocked(base / "s/k", "id: k\nprojects:\n  parent:\n    s: ..\n"
+                              "taxonomy:\n  extends:\n  - s\n"
+                              "capabilities:\n  extends:\n  - s\n", git=True)
+    return {"r": r, "l": l, "s": s, "k": k}
+
+
+@pytest.mark.parametrize("migrated_first", [False, True])
+def test_d1_through_a_middle_project_names_only_what_3_x_did_not_pass(
+        tcw, tmp_path, migrated_first):
+    """`k` read `l`'s terms in 3.x, through `s`'s taxonomy `extends`, and
+    none of `l`'s capabilities; `r` has neither to pass. The same whether
+    the projects above `k` are still 3.x or already migrated."""
+    fam = family_rls(tmp_path / "r")
+    if migrated_first:
+        for pid in ("r", "l", "s"):
+            migrate(tcw, fam[pid])
+    done = tcw(["migrate", "--dry-run", "--no-jira"], fam["k"])
+    assert done.code == 0, done.err
+    assert d1_lines(done, "taxonomy") == []
+    assert d1_lines(done, "capabilities") == [
+        "  D1 tcw-config.yaml: parents: now inherits capabilities from 'l', which "
+        "TCW 3 did not pass to this project"]
 
 
 # ── A related project this run must read and that is not here (48) ──────────
