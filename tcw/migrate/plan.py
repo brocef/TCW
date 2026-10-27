@@ -117,64 +117,139 @@ def planned_file_blockers(root: Path, steps) -> list[Blocker]:
 _PERSONAL = (LOCAL_SENTINEL, LOCAL_MANIFEST, progress.PROGRESS)
 
 
-def _committed_paths(steps) -> list[str]:
+def _before_moves(rel: str, moves: list[Move]) -> str:
+    """Where the file a later step finds at `rel` is before the moves."""
+    for move in moves:
+        if rel == move.new:
+            return move.old
+        if rel.startswith(move.new + "/"):
+            return move.old + rel[len(move.new):]
+    return rel
+
+
+def _planned_sources(root: Path, steps, config_rel: str) -> dict[str, list[str]]:
     """Each file the steps write or move into that is meant to be committed,
-    as the plan names it."""
-    out: list[str] = []
+    as the plan names it, with the files it comes from: for a move, the file
+    moved; for a write, the files its text was planned from, else the file
+    it replaces, else (a new file) the shared configuration `config_rel`."""
+    from tcw.migrate.model import resolve
+    moves = [step for step in steps if isinstance(step, Move)]
+    out: dict[str, list[str]] = {}
     for step in steps:
         if isinstance(step, Write):
-            found = [step.path]
+            if step.reads:
+                found = [(step.path, rel) for rel, _ in step.reads]
+            else:
+                before = _before_moves(step.path, moves)
+                found = [(step.path, before if resolve(root, before).is_file()
+                          else config_rel)]
         elif isinstance(step, Move):
-            found = [f"{step.new}/{inner}" if inner else step.new
-                     for inner, _ in step.files]
+            found = [(f"{step.new}/{inner}", f"{step.old}/{inner}") if inner
+                     else (step.new, step.old) for inner, _ in step.files]
         else:
             continue
-        out += [path for path in found if path not in _PERSONAL and path not in out]
+        for path, source in found:
+            if path not in _PERSONAL and source not in out.setdefault(path, []):
+                out[path].append(source)
     return out
 
 
-def _git_ignoring(top: Path, paths: list[Path], *, tracked: bool = False
-                  ) -> dict[Path, tuple[str, int, str]]:
-    """The rule git would ignore each of `paths` by, in the git work tree at
-    `top`, as `(source, line, pattern)`; a path no rule ignores is left out,
-    and so is one git tracks unless `tracked`. A path need not exist."""
+class _GitFailed(Exception):
+    """git could not answer about the work tree `top`; its words are `reason`."""
+
+    def __init__(self, top: Path, reason: str):
+        super().__init__(reason)
+        self.top, self.reason = top, reason
+
+
+def _ask_git(top: Path, argv: list[str], listed: str = "", *, ok=(0,)) -> str:
+    """git's output for `argv` in the work tree at `top`, given `listed` on
+    its standard input; git's location variables are never passed on
+    (TCW-115 Design 7.8)."""
     import subprocess
-    if not paths:
-        return {}
-    listed = "".join(f"{path.relative_to(top).as_posix()}\0" for path in paths)
+    from tcw.store.fs import git_environment
     try:
-        done = subprocess.run(["git", "-C", str(top), "check-ignore", "-v", "-z", "--stdin",
-                               *(["--no-index"] if tracked else [])], input=listed, capture_output=True, text=True, check=False)
-    except FileNotFoundError:
+        done = subprocess.run(["git", "-C", str(top), *argv], input=listed,
+                              capture_output=True, text=True, check=False,
+                              env=git_environment(None))
+    except OSError as error:
+        raise _GitFailed(top, str(error)) from None
+    if done.returncode not in ok:
+        raise _GitFailed(top, " ".join(done.stderr.split()) or f"exit {done.returncode}")
+    return done.stdout
+
+
+def _tracked(top: Path, rels: list[str]) -> set[str]:
+    """Those of `rels`, relative to the work tree at `top`, that git tracks."""
+    out: set[str] = set()
+    for at in range(0, len(rels), 500):
+        out |= set(_ask_git(top, ["--literal-pathspecs", "ls-files", "-z", "--",
+                                  *rels[at:at + 500]]).split("\0"))
+    return out & set(rels)
+
+
+def _git_ignoring(top: Path, rels: list[str], *, tracked: bool = False,
+                  settings: tuple[str, ...] = ()) -> dict[str, tuple[str, int, str]]:
+    """The rule git would ignore each of `rels` by, in the git work tree at
+    `top`, as `(source, line, pattern)`; a path no rule ignores is left out,
+    and so is one git tracks unless `tracked`. A path need not exist, but a
+    folder is known to be one only if it does."""
+    if not rels:
         return {}
-    if done.returncode not in (0, 1):
-        return {}
-    fields = done.stdout.split("\0")
+    settings = tuple(arg for setting in settings for arg in ("-c", setting))
+    fields = _ask_git(top, [*settings, "check-ignore", "-v", "-z", "--stdin",
+                            *(["--no-index"] if tracked else [])],
+                      "".join(f"{rel}\0" for rel in rels), ok=(0, 1)).split("\0")
     out = {}
     for at in range(0, len(fields) - 3, 4):
-        source, line, pattern, path = fields[at:at + 4]
+        source, line, pattern, rel = fields[at:at + 4]
         if pattern.startswith("!"):
             continue                         # a rule that re-includes the path
-        out[top / path] = (source, int(line), pattern)
+        out[rel] = (source, int(line), pattern)
     return out
 
 
-def _reinclude(top: Path, path: Path, source: str, line: int, pattern: str) -> str | None:
-    """The line that re-includes `path` after the rule in a `.gitignore`
-    file: `!/<folder>/` for the shortest folder above it the same rule
-    ignores, else `!/<path>`, relative to that file's folder; None for a
-    rule kept anywhere else, such as `.git/info/exclude`."""
+def _reinclude(top: Path, path: Path, source: str, pattern: str) -> list[str] | None:
+    """The lines that re-include `path` after the rule `pattern` of a
+    `.gitignore` file, relative to that file's folder: `!/<folder>/` for the
+    shortest folder above it the rule still ignores, until none is left, then
+    `!/<path>` if the rule still ignores the file itself. Each is found by
+    asking git in an empty repository holding only that rule and the lines
+    so far, whose folders exist there, so a rule only for folders matches
+    one the run has yet to make. None for a rule kept anywhere else, such as
+    `.git/info/exclude`, or when git cannot be asked."""
+    import tempfile
     if Path(source).name != ".gitignore" or Path(source).is_absolute():
         return None
-    base = (top / source).parent
-    inside = path.relative_to(base).parts
-    folders = [base.joinpath(*inside[:n]) for n in range(1, len(inside))]
-    # A folder holding tracked files is matched by the rule all the same.
-    rules = _git_ignoring(top, folders, tracked=True)
-    for folder in folders:
-        if rules.get(folder) == (source, line, pattern):
-            return f"!/{folder.relative_to(base).as_posix()}/"
-    return f"!/{path.relative_to(base).as_posix()}"
+    base = Path(source).parent
+    try:
+        inside = path.relative_to(top / base).parts
+    except ValueError:
+        return None
+    prefix = "" if base == Path(".") else f"{base.as_posix()}/"
+    rel = "/".join(inside)
+    above = ["/".join(inside[:n]) for n in range(1, len(inside))]
+    lines: list[str] = []
+    with tempfile.TemporaryDirectory() as scratch:
+        work = Path(scratch)
+        try:
+            _ask_git(work, ["init", "-q", "--template="])
+            (work / prefix / rel).parent.mkdir(parents=True, exist_ok=True)
+            for _ in range(len(inside)):
+                (work / source).write_text("".join(f"{line}\n" for line in [pattern, *lines]),
+                                           encoding="utf-8")
+                rules = _git_ignoring(work, [prefix + f for f in [*above, rel]], tracked=True,
+                                      settings=(f"core.excludesFile={work / 'none'}",))
+                folder = next((f for f in above if prefix + f in rules), None)
+                if folder is not None:
+                    lines.append(f"!/{folder}/")
+                elif prefix + rel in rules:
+                    lines.append(f"!/{rel}")
+                else:
+                    return lines or None
+        except (_GitFailed, OSError):
+            return None
+    return None
 
 
 def _shown(root: Path, path: Path) -> str:
@@ -184,48 +259,93 @@ def _shown(root: Path, path: Path) -> str:
         return str(path)
 
 
-def ignored_blockers(root: Path, steps) -> list[Blocker]:
+def _quoted(lines: list[str]) -> str:
+    quoted = [f"'{line}'" for line in lines]
+    if len(quoted) == 1:
+        return f"the line {quoted[0]}"
+    return f"the lines {', '.join(quoted[:-1])} and {quoted[-1]}, in that order,"
+
+
+def ignored_blockers(root: Path, steps, config_rel: str = ROOT_CONFIG
+                     ) -> tuple[list[Blocker], list[str]]:
     """B18 for each planned file meant to be committed that git would ignore
-    where it is written, such as the whole of `.tcw/` under a root
-    `.gitignore` that starts with `/*` and re-includes only what is tracked
-    (an allowlist). Committing what git then shows would leave the 4.0 files
-    out while the 3.x ones are deleted. A file outside any git work tree is
-    not checked."""
+    where it is written, when a file it comes from (`_planned_sources`) is
+    one git tracks; such as the whole of `.tcw/` under a root `.gitignore`
+    that starts with `/*` and re-includes only what is tracked (an
+    allowlist), while the tracked `tcw-config.yaml` is deleted. A file that
+    comes only from files git does not track was never committed, so it is
+    not a reason. A file outside any git work tree is not checked. Also the
+    summary's lines for each work tree git could not answer about, where
+    nothing is claimed."""
     from tcw.migrate.model import resolve
     from tcw.store.fs import git_root
     root = Path(root).resolve()
-    by_top: dict[Path, list[tuple[str, Path]]] = {}
-    for rel in _committed_paths(steps):
+    tops: dict[Path, Path | None] = {}
+
+    def located(rel: str) -> tuple[Path, str] | None:
         path = resolve(root, rel)
         path = path if path.is_absolute() else path.resolve()
         here = path.parent
         while not here.exists() and here != here.parent:
             here = here.parent
-        top = git_root(here)
+        if here not in tops:
+            top = git_root(here)
+            tops[here] = top.resolve() if top is not None else None
+        top = tops[here]
         if top is None:
-            continue
-        top = top.resolve()
+            return None
         try:
-            path = top / path.resolve().relative_to(top)
+            return top, path.parent.resolve().relative_to(top).joinpath(path.name).as_posix()
         except ValueError:
-            continue
-        by_top.setdefault(top, []).append((rel, path))
+            return None
+
+    notes: list[str] = []
+    failed: list[Path] = []
+
+    def failure(error: _GitFailed) -> None:
+        if error.top not in failed:
+            failed.append(error.top)
+            notes.append(f"the files written in {error.top} were not checked against "
+                         f"git's ignore rules: {error.reason}")
+
+    planned = _planned_sources(root, steps, config_rel)
+    sources: dict[Path, set[str]] = {}
+    for found in planned.values():
+        for at in filter(None, map(located, found)):
+            sources[at[0]] = sources.get(at[0], set()) | {at[1]}
+    tracked: set[tuple[Path, str]] = set()
+    for top, rels in sources.items():
+        try:
+            tracked |= {(top, rel) for rel in _tracked(top, sorted(rels))}
+        except _GitFailed as error:
+            failure(error)
+    by_top: dict[Path, list[tuple[str, str]]] = {}
+    for rel, found in planned.items():
+        at = located(rel)
+        if at is not None and any(located(source) in tracked for source in found):
+            by_top.setdefault(at[0], []).append((rel, at[1]))
     out = []
     for top, found in by_top.items():
-        rules = _git_ignoring(top, [path for _, path in found])
-        for rel, path in found:
-            if path not in rules:
+        if top in failed:
+            continue
+        try:
+            rules = _git_ignoring(top, [inner for _, inner in found])
+        except _GitFailed as error:
+            failure(error)
+            continue
+        for rel, inner in found:
+            if inner not in rules:
                 continue
-            source, line, pattern = rules[path]
+            source, line, pattern = rules[inner]
             shown = _shown(root, top / source)
-            fix = _reinclude(top, path, source, line, pattern)
-            how = (f"add the line '{fix}' after that line of {shown}" if fix else
+            fix = _reinclude(top, top / inner, source, pattern)
+            how = (f"add {_quoted(fix)} after that line of {shown}" if fix else
                    "change that rule so git does not ignore it")
             out.append(Blocker(
                 "B18", rel, f"git would ignore it, by {shown}:{line}:{pattern}, so "
                             f"committing what git shows would leave it out",
                 f"{how}, then run 'tcw migrate' again"))
-    return out
+    return out, notes
 
 
 # ---------------------------------------------------------------------------
@@ -377,7 +497,9 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
     plan.summary += stores.left_elsewhere(read.root, read.shared[1], plan.steps, read.git)
     plan.blockers += planned_file_blockers(read.root, plan.steps)
     if read.git is not None:
-        plan.blockers += ignored_blockers(read.root, plan.steps)
+        ignored, notes = ignored_blockers(read.root, plan.steps, read.shared[0])
+        plan.blockers += ignored
+        plan.summary += notes
     plan.blockers += other_checkout_blockers(read.root, plan.steps)
     jira_backed = read.work_backend == "jira"
     if not plan.blockers:

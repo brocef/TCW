@@ -10,8 +10,11 @@ which `.tcw/.gitignore` ignores on purpose, are not.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
+
+import pytest
 
 from tests.migrate.fixtures import snapshot
 from tests.migrate.test_migrate_config import make
@@ -105,3 +108,112 @@ def test_a_rule_in_a_nested_gitignore_is_named_with_its_folder(tcw, tmp_path):
                                "ignore it, by docs/.gitignore:1:/taxonomy/*,")
     assert ("add the line '!/taxonomy/invoice/' after that line of docs/.gitignore"
             in found[0])
+
+
+# ── Only a file that comes from one git tracks is checked (evaluation review 1)
+
+def _capability(root: Path, gitignore: str, notes: dict[str, str]) -> dict[str, str]:
+    """A 3.x project whose capability `x` has a loose folder `notes/`, which
+    C13 moves into `resources/` with every file in it."""
+    files = {".gitignore": gitignore, "tcw-config.yaml": CONFIG,
+             "docs/capabilities/x/meta.yaml": "name: X\n"}
+    return files | {f"docs/capabilities/x/notes/{name}": text for name, text in notes.items()}
+
+
+def test_a_moved_file_ignored_by_the_users_own_git_rules_is_not_a_reason(tcw, tmp_path):
+    """`.DS_Store` under a user-wide ignore file (a repository-local
+    `core.excludesFile` here) and a `.log` under the project's `*.log` were
+    never committed; moving them with their folder changes nothing git
+    shows, so the run passes."""
+    app = tmp_path / "app"
+    make(app, {}, git=True)
+    excludes = tmp_path / "excludes"
+    excludes.write_text(".DS_Store\n")
+    _git(app, "config", "core.excludesFile", str(excludes))
+    _committed(app, _capability(app, "*.log\n", {"one.md": "One.\n", ".DS_Store": "x",
+                                                  "run.log": "log\n"}))
+    done = tcw(["migrate", "--no-jira"], app)
+    assert done.code == 0, done.err
+    assert not b18(done.err)
+    moved = app / "docs/capabilities/x/resources/notes"
+    assert (moved / ".DS_Store").read_text() == "x" and (moved / "run.log").is_file()
+
+
+def test_a_project_keeping_its_tcw_files_out_of_git_is_not_refused(tcw, tmp_path):
+    """The 3.x configuration and the stores ignored on purpose: the 4.0
+    files they become would be ignored too, which is what the project
+    already chose."""
+    app = _committed(tmp_path / "app", {".gitignore": "tcw-config.yaml\n/docs/\n",
+                                        "README.md": "App.\n", "tcw-config.yaml": CONFIG,
+                                        "docs/capabilities/x/meta.yaml": "name: X\n"})
+    assert _git(app, "ls-files").split() == [".gitignore", "README.md"]
+    done = tcw(["migrate", "--no-jira"], app)
+    assert done.code == 0, done.err
+    assert not b18(done.err)
+    assert (app / ".tcw/tcw-config.yaml").is_file()
+
+
+def test_a_tracked_file_under_an_ignoring_rule_is_not_refused(tcw, tmp_path):
+    """A file git tracks is shown whatever rule matches it: a 3.x
+    configuration in `.tcw/`, added with `git add -f` under a rule that
+    ignores it, is converted where it is."""
+    app = make(tmp_path / "app", {".gitignore": "/.tcw/tcw-config.yaml\n",
+                                  ".tcw/tcw-config.yaml": CONFIG}, git=True)
+    _git(app, "add", "-f", ".")
+    _git(app, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "3.x")
+    done = tcw(["migrate", "--no-jira"], app)
+    assert done.code == 0, done.err
+    assert not b18(done.err)
+    assert " M .tcw/tcw-config.yaml" in _git(app, "status", "--porcelain").splitlines()
+
+
+# ── git's own environment and its failures (evaluation review 2, 3) ──────────
+
+def test_a_git_location_in_the_environment_is_not_read(tcw, tmp_path, monkeypatch):
+    """Under a git hook, GIT_DIR names the repository the hook runs for; the
+    check still asks the project's own repository."""
+    app = _committed(tmp_path / "app", {".gitignore": ALLOWLIST, "tcw-config.yaml": CONFIG})
+    other = tmp_path / "other.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(other)], check=True)
+    monkeypatch.setenv("GIT_DIR", str(other))
+    done = tcw(["migrate", "--dry-run"], app)
+    assert done.code == 3, done.err
+    assert any(line.startswith("  B18 .tcw/tcw-config.yaml: ") for line in b18(done.err))
+
+
+def test_git_failing_is_said_and_refuses_nothing(tcw, tmp_path):
+    """A repository git cannot read: nothing is claimed about its ignore
+    rules, and the summary says so, with git's own words."""
+    app = _committed(tmp_path / "app", {".gitignore": ALLOWLIST, "tcw-config.yaml": CONFIG})
+    (app / ".git/index").write_bytes(b"garbage")
+    done = tcw(["migrate", "--dry-run"], app)
+    assert done.code == 0, done.err
+    assert not b18(done.err)
+    found = [line for line in done.err.splitlines() if "ignore rules" in line]
+    assert found == [f"the files written in {app.resolve()} were not checked against git's "
+                     f"ignore rules: fatal: .git/index: index file smaller than expected"], \
+        done.err
+
+
+# ── Advice that works (evaluation review 4) ──────────────────────────────────
+
+@pytest.mark.parametrize("rule", ["resources/", "**/resources/**"])
+def test_the_advice_given_lets_git_see_the_files(tcw, tmp_path, rule):
+    """A rule matching a folder the run makes (`resources/`) or only what is
+    inside it: the lines B18 names, added after the rule, are enough for git
+    to show every file the run writes."""
+    app = _committed(tmp_path / "app", _capability(tmp_path / "app", rule + "\n",
+                                                   {"one.md": "One.\n"}))
+    done = tcw(["migrate", "--dry-run"], app)
+    assert done.code == 3, done.err
+    advice: list[str] = []
+    for line in b18(done.err):
+        assert f"by .gitignore:1:{rule}," in line, line
+        advice += [a for a in re.findall(r"'(![^']*)'", line) if a not in advice]
+    assert advice
+    (app / ".gitignore").write_text(rule + "\n" + "".join(a + "\n" for a in advice))
+    done = tcw(["migrate", "--no-jira"], app)
+    assert done.code == 0, done.err
+    assert not b18(done.err)
+    status = _git(app, "status", "--porcelain", "--untracked-files=all").splitlines()
+    assert "?? docs/capabilities/x/resources/notes/one.md" in status, status
