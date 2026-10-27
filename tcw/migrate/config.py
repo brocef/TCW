@@ -875,7 +875,9 @@ class _Converter:
                                f"{' -> '.join(loop)}", "remove one of the extends entries "
                                                        "that make the loop, then run "
                                                        "'tcw migrate' again"))
-        named = {l.id for l in relations.parents} | set(relations.children)
+            else:
+                self._keep_every_order(subject.id, relations)
+        named ={l.id for l in relations.parents} | set(relations.children)
         for entry in relations.entries:
             if entry.id in named and all(l.relation.id != entry.id for l in out.located):
                 out.located.append(Located(entry, subject.folder))
@@ -932,6 +934,31 @@ class _Converter:
             out.located.append(Located(placed.relation, self.family.base_of(placed),
                                        placed.folder if placed.here else None))
 
+    def _keep_every_order(self, project_id: str, relations: Relations) -> None:
+        """When the links as written leave C3 no order (D8), each parent
+        placed before the first parent that inherits it, as `_add` places
+        one: a parent link before an upstream the parent itself names, say.
+        Kept only when C3 then finds an order. Every order that keeps the
+        ancestors' own lists loads such a parent first anyway, so no value
+        changes; any other reordering would change which parent wins, so it
+        is left for the person (D8 names one)."""
+        from tcw.store.base import load_order_of
+        absent = frozenset(self.absent)
+        graph = self.graph(project_id, relations.parents)
+        if load_order_of(project_id, graph, missing=absent).warning is None:
+            return
+        ordered: list[Link] = []
+        for link in relations.parents:
+            at = len(ordered)
+            for index, existing in enumerate(ordered):
+                if link.id in self.ancestors(existing.id):
+                    at = index
+                    break
+            ordered.insert(at, link)
+        graph = self.graph(project_id, ordered)
+        if load_order_of(project_id, graph, missing=frozenset(self.absent)).warning is None:
+            relations.parents[:] = ordered
+
     def _add(self, relations: Relations, link: Link, axis: str) -> None:
         """A new parent appended, or `axis` added to the entry already made
         for it; a new one that is an ancestor of an existing parent goes
@@ -963,7 +990,8 @@ def plan_links(root: Path, project_id: str, mapping: dict, family) -> Links:
     graph = converter.graph(project_id, relations.parents)
     order = load_order_of(project_id, graph, missing=frozenset(converter.absent))
     if order.warning:
-        relations.reports.append(Report("D8", rel, order.warning))
+        relations.reports.append(Report("D8", rel, order.warning,
+                                        predicts=(SENTINEL, "load-order")))
     relations.reports += _d1(rel, project_id, mapping, graph, family, converter)
     out.ancestors = {axis: [pid for pid in order.ids if pid != project_id
                             and pid in passing(axis, project_id, graph)]

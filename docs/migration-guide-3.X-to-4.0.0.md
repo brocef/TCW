@@ -197,6 +197,40 @@ Some of the reports need a word more:
 - **B10** is a reference 3.x gave no single owner, including a
   `capabilities.yaml` entry 3.x could not route: one in a project that keeps no
   capabilities ledger, naming no child project. Fix the entry by hand.
+- **B18** names a file the run would write that git would ignore, and the
+  rule that ignores it, as `<file>:<line>:<pattern>`. It comes from a
+  `.gitignore` that ignores everything and then re-includes, with `!` lines,
+  only what is tracked: under it all of `.tcw/` would be ignored while the
+  tracked `tcw-config.yaml` is deleted, so committing what git shows would
+  remove the project's configuration. Add the line the blocker names after
+  that rule and run again:
+
+    ```text
+    refused:
+      B18 .tcw/tcw-config.yaml: git would ignore it, by .gitignore:1:/*, so committing what git shows would leave it out; add the line '!/.tcw/' after that line of .gitignore, then run 'tcw migrate' again
+    ```
+
+  The personal files `.tcw/.gitignore` ignores on purpose are never named, and
+  a project outside git is not checked.
+- **D8** says that, once converted, no order of the family's projects keeps
+  every project's own order of parents. The **load order** is the order a
+  project's parents are read in, a later one winning over an earlier one (the
+  [Related projects guide](guide/multi-repo.md#the-load-order) explains it);
+  the order of each `parents:` list sets it. TCW 4.0 then uses another order
+  and `tcw validate` warns, in this project and every project below it.
+  `tcw migrate` already lists an upstream before a parent that itself names
+  that upstream, the one case where this is certain to change no value, so
+  D8 is left for parents whose own lists disagree, such as `x` listing `a`
+  before `b` and `y` listing `b` before `a`, both parents of `app`:
+
+    ```text
+    reads differently in TCW 4:
+      D8 tcw-config.yaml: load order: no order keeps every project's own order of parents (at 'app': 'a', 'b' cannot be placed); using depth-first order a, b, x, y, app; the order of each project's parents: list sets the load order, and listing the parents of 'y' as a, b instead gives an order that keeps every other project's own order; to choose a configuration value yourself, set the value in 'app' itself, which loads last and wins
+    ```
+
+  Reorder the `parents:` list it names once that project is migrated, or set
+  the value you want in the project itself; `tcw validate` then gives no
+  load-order warning.
 
 ### 3. Run it: `tcw migrate`
 

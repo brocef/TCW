@@ -156,7 +156,7 @@ each parent in turn as far up as it goes, and warns. `tcw project info` shows
 the warning on a line of its own, and `tcw validate` reports it:
 
 ```text
-warning: .tcw/tcw-config.yaml: load order: no order keeps every project's own order of parents (at 'top': 'x', 'y' cannot be placed); using depth-first order x, y, a, b, top; to choose a value yourself, set it in 'top'
+warning: .tcw/tcw-config.yaml: load order: no order keeps every project's own order of parents (at 'top': 'x', 'y' cannot be placed); using depth-first order x, y, a, b, top; the order of each project's parents: list sets the load order, and listing the parents of 'b' as x, y instead gives an order that keeps every other project's own order; to choose a configuration value yourself, set the value in 'top' itself, which loads last and wins
 ```
 
 A loop in parent links, a project that is its own ancestor, is an error that

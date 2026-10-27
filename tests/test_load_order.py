@@ -63,7 +63,28 @@ def test_ac13_parents_that_disagree():
     assert found.warning == (
         "load order: no order keeps every project's own order of parents (at 'zz': "
         "'aa', 'bb' cannot be placed); using depth-first order aa, bb, xx, yy, zz; "
-        "to choose a value yourself, set it in 'zz'")
+        "the order of each project's parents: list sets the load order, and listing "
+        "the parents of 'yy' as aa, bb instead gives an order that keeps every other "
+        "project's own order; to choose a configuration value yourself, set the value "
+        "in 'zz' itself, which loads last and wins")
+
+
+def test_the_warning_names_the_order_of_the_failing_project_itself():
+    # A parent listed before an upstream that parent itself inherits.
+    links = graph(aa=["core"], bb=["aa", "core"])
+    found = order("bb", links)
+    assert ("the order of each project's parents: list sets the load order, and listing "
+            "the parents of 'bb' as core, aa instead gives an order") in found.warning
+
+
+def test_with_no_one_list_to_reorder_the_warning_says_to_reorder_those_that_disagree():
+    links = graph(xx=["aa", "bb"], yy=["bb", "aa"], uu=["cc", "dd"], vv=["dd", "cc"],
+                  zz=["xx", "yy", "uu", "vv"])
+    found = order("zz", links)
+    assert ("using depth-first order aa, bb, xx, yy, cc, dd, uu, vv, zz; the order of "
+            "each project's parents: list sets the load order: reorder the lists that "
+            "disagree; to choose a configuration value yourself, set the value in 'zz' "
+            "itself, which loads last and wins") in found.warning
 
 
 def test_ac14_a_child_listed_before_its_own_parent():
@@ -245,9 +266,24 @@ def _first_failure(project_id, links):
     return resolve(project_id)
 
 
+def _single_reorders(project_id, links):
+    """Each `(project, its parents in a new order)` that, alone, lets Python
+    make an MRO for `project_id`."""
+    from itertools import permutations
+    found = set()
+    for pid, parents in links.items():
+        for perm in permutations(parents):
+            if list(perm) == list(parents):
+                continue
+            trial = dict(links, **{pid: list(perm)})
+            if _python_c3(project_id, trial) is not None:
+                found.add((pid, tuple(link.id for link in perm)))
+    return found
+
+
 def test_property_against_python_c3_and_the_fallback_rules():
     rng = random.Random(108)
-    fell_back = with_absent = checked = 0
+    fell_back = with_absent = checked = suggested = 0
     for _ in range(GRAPHS):
         names, links, missing, unreadable = _generate(rng)
         effective = _effective(links, missing, unreadable)
@@ -278,11 +314,29 @@ def test_property_against_python_c3_and_the_fallback_rules():
                 assert found.ids == _depth_first(pid, effective)
                 where, heads = _first_failure(pid, effective)
                 named = ", ".join(f"'{h}'" for h in heads)
-                assert found.warning == (
-                    f"load order: no order keeps every project's own order of parents "
-                    f"(at '{where}': {named} cannot be placed); using depth-first order "
-                    f"{', '.join(found.ids)}; to choose a value yourself, set it in "
-                    f"'{pid}'"), (pid, links)
+                head = (f"load order: no order keeps every project's own order of "
+                        f"parents (at '{where}': {named} cannot be placed); using "
+                        f"depth-first order {', '.join(found.ids)}; the order of each "
+                        f"project's parents: list sets the load order")
+                tail = (f"; to choose a configuration value yourself, set the value in "
+                        f"'{pid}' itself, which loads last and wins")
+                assert found.warning.startswith(head) and found.warning.endswith(tail), \
+                    (pid, links)
+                middle = found.warning[len(head):-len(tail)]
+                fixes = _single_reorders(pid, effective)
+                if middle == ": reorder the lists that disagree":
+                    assert not fixes, (pid, links, fixes)
+                else:
+                    assert middle.startswith(", and listing the parents of '"), middle
+                    assert middle.endswith(" instead gives an order that keeps every "
+                                           "other project's own order"), middle
+                    named_pid, listed = middle[len(", and listing the parents of '"):
+                                               ].split(" instead")[0].split("' as ")
+                    assert (named_pid, tuple(listed.split(", "))) in fixes, \
+                        (pid, links, middle)
+                    suggested += 1
+    # The suggestion is checked, so a run that never makes one would pass quietly.
+    assert suggested >= fell_back * 0.10, (suggested, fell_back)
     # A generator that stopped producing hard cases would pass quietly.
     assert fell_back >= checked * 0.10, (fell_back, checked)
     assert with_absent >= GRAPHS * 0.10, with_absent

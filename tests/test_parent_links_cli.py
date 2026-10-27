@@ -662,7 +662,10 @@ def test_ac13_the_fallback_warning_in_validate_and_the_listing(tmp_path):
     proj(tmp_path / "bb", "bb")
     text = ("load order: no order keeps every project's own order of parents (at 'zz': "
             "'aa', 'bb' cannot be placed); using depth-first order aa, bb, xx, yy, zz; "
-            "to choose a value yourself, set it in 'zz'")
+            "the order of each project's parents: list sets the load order, and listing "
+            "the parents of 'yy' as aa, bb instead gives an order that keeps every other "
+            "project's own order; to choose a configuration value yourself, set the value "
+            "in 'zz' itself, which loads last and wins")
     document = listing(zz)
     assert document["load-order"] == ["aa", "bb", "xx", "yy", "zz"]
     assert document["load-order-warning"] == text

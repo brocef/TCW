@@ -328,7 +328,8 @@ def pending(steps: list[Step], root: Path) -> list[Step]:
 #: predicts.
 KINDS = {"not_tags": "'not_tags'", "id": "is not its folder's name",
          "resources": "resources/", "mention": "names ",
-         "legacy": "is a TCW 3.x project"}
+         "legacy": "is a TCW 3.x project",
+         "load-order": "load order: no order keeps every project's own order"}
 
 
 def _same_file(a: str, b: str, root: Path) -> bool:

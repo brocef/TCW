@@ -210,6 +210,33 @@ def test_extending_a_descendant_that_is_not_a_listed_child_is_b4(tcw, tmp_path):
 # ── D8: a load order with no consistent order ───────────────────────────────
 
 def test_a_load_order_that_falls_back_is_d8(tcw, tmp_path):
+    """x and y list a and b in opposite orders, so no order of app's own
+    parents keeps both."""
+    both = "capabilities:\n  extends:\n  - a\n  - b\n"
+    above = [project(tmp_path / "w/a", "id: a\n", git=True),
+             project(tmp_path / "w/b", "id: b\n", git=True),
+             project(tmp_path / "w/x", "id: x\nprojects:\n  upstream:\n    a: ../a\n"
+                                       "    b: ../b\n" + both, git=True),
+             project(tmp_path / "w/y", "id: y\nprojects:\n  upstream:\n    b: ../b\n"
+                                       "    a: ../a\n" + both, git=True)]
+    app = project(tmp_path / "w/app", "id: app\nprojects:\n  upstream:\n    x: ../x\n"
+                                      "    y: ../y\ncapabilities:\n  extends:\n  - x\n"
+                                      "  - y\n", git=True)
+    for root in above:
+        migrate(tcw, root)
+    done = migrate(tcw, app)
+    [d8] = [l for l in done.err.splitlines() if l.startswith("  D8 ")]
+    assert "load order: no order keeps every project's own order of parents" in d8
+    # D8 predicts the check after the run's warning, so it is not an A12 too.
+    assert not [l for l in done.err.splitlines() if l.startswith("  A12 ")], done.err
+    assert shared(app)["parents"] == [{"id": "x", "inherit": ["capabilities"]},
+                                      {"id": "y", "inherit": ["capabilities"]}]
+
+
+def test_an_upstream_listed_after_a_project_that_inherits_it_goes_first(tcw, tmp_path):
+    """3.x listed b before a, but b inherits a, so every order 4.0 could keep
+    loads a first: written a first, the order has no fallback, and no value
+    changes."""
     project(tmp_path / "w/a", "id: a\n")
     project(tmp_path / "w/b", "id: b\nprojects:\n  upstream:\n    a: ../a\n"
                               "capabilities:\n  extends:\n  - a\n")
@@ -217,8 +244,38 @@ def test_a_load_order_that_falls_back_is_d8(tcw, tmp_path):
                                       "    a: ../a\ncapabilities:\n  extends:\n  - b\n"
                                       "  - a\n", git=True)
     done = migrate(tcw, app)
-    [d8] = [l for l in done.err.splitlines() if l.startswith("  D8 ")]
-    assert "load order: no order keeps every project's own order of parents" in d8
+    assert no_d8(done), done.err
+    assert shared(app)["parents"] == [{"id": "a", "inherit": ["capabilities"]},
+                                      {"id": "b", "inherit": ["capabilities"]}]
+
+
+def middle_family(base: Path) -> tuple[Path, Path, Path]:
+    """b's parent is a, and both name core as their upstream: a needs core
+    before it, so b's 3.x order (its parent, then its upstream) cannot be
+    kept."""
+    core = project(base / "far/core", "id: core\n", git=True)
+    a = project(base / "ws", "id: a\nprojects:\n  children:\n    b: b\n"
+                             "  upstream:\n    core: ../far/core\n", git=True)
+    b = project(base / "ws/b", "id: b\nprojects:\n  parent:\n    a: ..\n"
+                               "  upstream:\n    core: ../../far/core\n")
+    return core, a, b
+
+
+@pytest.mark.parametrize("first", ["child", "parents"])
+def test_a_middle_project_s_upstream_goes_before_its_parent(tcw, tmp_path, first):
+    from tcw.store.project import FsProjectRegistry, forget_registries
+    core, a, b = middle_family(tmp_path)
+    order = [b, core, a, b] if first == "child" else [core, a, b]
+    for root in order:
+        done = migrate(tcw, root)
+        assert no_d8(done), done.err
+    assert shared(b)["parents"] == [{"id": "core", "inherit": "none"}, "a"]
+    assert shared(a)["parents"] == [{"id": "core", "inherit": "none"}]
+    forget_registries()
+    found = FsProjectRegistry.open(b).load_order()
+    assert (found.ids, found.warning) == (("core", "a", "b"), None)
+    checked = tcw(["validate"], b)
+    assert "load order" not in checked.out + checked.err, checked.out + checked.err
 
 
 # ── D1 (criteria 32 and 65) ─────────────────────────────────────────────────

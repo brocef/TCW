@@ -249,22 +249,49 @@ def load_order_of(project_id: str, links, *, missing=frozenset(),
     """`project_id`'s load order from its parent links (Design 4): C3 over
     the parent lists reversed, so that the last listed parent wins (4.1);
     when any merge made on the way fails, the depth-first order instead (4.4),
-    with the warning of 4.5 naming the first merge to fail. A project in
-    `missing` or `unreadable` is placed as one with no parents (6.4), and one
-    `links` does not hold has none either.
+    with the warning of 4.5 naming the first merge to fail, and the one
+    project's parents in a new order that would let C3 succeed, when there is
+    one. A project in `missing` or `unreadable` is placed as one with no
+    parents (6.4), and one `links` does not hold has none either.
 
     Store-neutral: given each project's links and which projects are not
     available, any registry can call it. Raises `ValueError` on a loop, which
     the caller reports with `find_loop` (Design 4.7)."""
     absent = set(missing) | set(unreadable)
+    found, failure = _c3(project_id, links, absent)
+    warning = None
+    if found is None:
+        where, heads = failure
+        ids = _depth_first(project_id, links, absent)
+        named = ", ".join(f"'{head}'" for head in heads)
+        fix = _reordered(project_id, links, absent, [where, *reversed(ids)])
+        if fix is None:
+            how = ": reorder the lists that disagree"
+        else:
+            how = (f", and listing the parents of '{fix[0]}' as {', '.join(fix[1])} "
+                   f"instead gives an order that keeps every other project's own order")
+        warning = (f"load order: no order keeps every project's own order of parents "
+                   f"(at '{where}': {named} cannot be placed); using depth-first order "
+                   f"{', '.join(ids)}; the order of each project's parents: list sets "
+                   f"the load order{how}; to choose a configuration value yourself, set "
+                   f"the value in '{project_id}' itself, which loads last and wins")
+    else:
+        ids = tuple(reversed(found))
+    return LoadOrder(ids=ids,
+                     missing=tuple(pid for pid in ids if pid in missing),
+                     unreadable=tuple(pid for pid in ids if pid in unreadable),
+                     warning=warning)
+
+
+def _c3(project_id: str, links, absent: "set[str]"):
+    """`(R(project_id), None)`, the order with the winner first, or `(None,
+    (where, heads))` for the first merge to fail. Each project's merge after
+    all of its parents', the parents taken in listing order (Design 4.5)."""
     resolved: dict[str, list[str]] = {}
     in_progress: set[str] = set()
     failure: list[tuple[str, list[str]]] = []
 
     def resolve(pid: str) -> list[str] | None:
-        """R(pid), the order with the winner first; None once a merge has
-        failed. Each project's merge after all of its parents', the parents
-        taken in listing order (Design 4.5)."""
         if pid in resolved:
             return resolved[pid]
         if pid in in_progress:
@@ -284,21 +311,38 @@ def load_order_of(project_id: str, links, *, missing=frozenset(),
         return resolved[pid]
 
     found = resolve(project_id)
-    warning = None
-    if found is None:
-        where, heads = failure[0]
-        ids = _depth_first(project_id, links, absent)
-        named = ", ".join(f"'{head}'" for head in heads)
-        warning = (f"load order: no order keeps every project's own order of parents "
-                   f"(at '{where}': {named} cannot be placed); using depth-first order "
-                   f"{', '.join(ids)}; to choose a value yourself, set it in "
-                   f"'{project_id}'")
-    else:
-        ids = tuple(reversed(found))
-    return LoadOrder(ids=ids,
-                     missing=tuple(pid for pid in ids if pid in missing),
-                     unreadable=tuple(pid for pid in ids if pid in unreadable),
-                     warning=warning)
+    return found, (failure[0] if found is None else None)
+
+
+#: The most parents one project may have for `_reordered` to try every
+#: order of them (6! = 720 orders).
+_MOST_REORDERED = 6
+
+
+def _reordered(project_id: str, links, absent: "set[str]", candidates: list[str]):
+    """The first project of `candidates` (each tried once) whose parents, in
+    some other order, let C3 order `project_id`, with that order; None when
+    no one project's list can be reordered so."""
+    from itertools import permutations
+    tried: set[str] = set()
+    for pid in candidates:
+        if pid in tried or pid in absent:
+            continue
+        tried.add(pid)
+        own = list(links.get(pid, ()))
+        if not 1 < len(own) <= _MOST_REORDERED:
+            continue
+        for perm in permutations(own):
+            if list(perm) == own:
+                continue
+            trial = dict(links)
+            trial[pid] = list(perm)
+            try:
+                if _c3(project_id, trial, absent)[0] is not None:
+                    return pid, [link.id for link in perm]
+            except ValueError:
+                continue
+    return None
 
 
 def _merge(lists: list[list[str]]):
