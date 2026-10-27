@@ -46,9 +46,9 @@ LEGACY_STATE_FILES = {"taxonomy": "meta.yaml", "capabilities": "meta.yaml",
                       "work": "item.yaml"}
 RESOURCES = "resources"
 DESCRIPTION = "description.md"
-#: The one file an organising folder may hold directly with no finding: the
-#: description of its folder of objects, which 3.x accepted. By this spelling
-#: only, and not in the store root (row d).
+#: The one file the store root or an organising folder may hold directly with
+#: no finding: the description of its folder of objects, which 3.x accepted.
+#: By this spelling only (row d).
 FOLDER_README = "README.md"
 #: A work item's comments folder.
 COMMENTS = "comments"
@@ -357,7 +357,7 @@ def shape_problems(found: Walk, root: Path, namespace: str, project: str, *,
             problems.append(Finding("error", where(at),
                                     "the store's root is not an object; move this "
                                     "file into an object's folder"))
-        elif at not in skipped and not _describes_folder(path):
+        elif at not in skipped and path.rpartition("/")[2] != FOLDER_README:
             problems.append(Finding("warning", where(at), "is not part of any object"))
     below = [*found.objects,
              *(path for path, kind, _ in found.folders if kind in (LEGACY, UNMADE))]
@@ -389,13 +389,6 @@ def shape_problems(found: Walk, root: Path, namespace: str, project: str, *,
             if not any(p.startswith(prefix) for p in below):
                 problems.append(Finding("warning", where(at), "holds no TCW object"))
     return problems
-
-
-def _describes_folder(path: str) -> bool:
-    """Whether a loose file at `path` is an organising folder's README.md: in
-    a folder, not the store root."""
-    folder, _, name = path.rpartition("/")
-    return bool(folder) and name == FOLDER_README
 
 
 def length_problems(id_paths: Iterable[str], root: Path, namespace: str, project: str,

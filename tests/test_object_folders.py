@@ -231,10 +231,13 @@ def test_a_readme_in_an_organising_folder_is_no_finding(tmp_path):
     # Only the name as written: a disk that ignores case holds one of the two.
     obj(tmp_path, "other/b", ITEM)
     (tmp_path / "other" / "readme.md").write_text("x")
+    # The store root's README.md is no finding either (decided in TCW-118's
+    # evaluation, replacing TCW-111 AC 5(d)'s warning for it).
+    (tmp_path / "notes.md").write_text("x")
     problems = shape_problems(walk(tmp_path, "work"), tmp_path, "work", "demo",
                               where=lambda p: p.relative_to(tmp_path).as_posix())
     assert set(problems) == {
-        Finding("warning", "README.md", "is not part of any object"),
+        Finding("warning", "notes.md", "is not part of any object"),
         Finding("warning", "group/notes.md", "is not part of any object"),
         Finding("warning", "other/readme.md", "is not part of any object"),
     }

@@ -315,7 +315,9 @@ when Jira fails, it prints the error and
 with Jira's code ([Exit codes](#exit-codes)).
 
 Then run `tcw validate`. It should end `0 errors, 0 warnings, 0 unresolved`;
-each finding it gives says what to fix. Read every changed file
+each finding it gives says what to fix. A `README.md` directly in a store's
+root or in a folder that only groups objects, as a 3.x ledger may keep, is no
+finding; any other file there is a warning. Read every changed file
 (`git status` and `git diff` inside git), then commit the project, CI's
 version limit raised in the same change (step 6 of
 [Before you start](#before-you-start)).

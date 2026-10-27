@@ -79,19 +79,37 @@ def test_resources_at_any_depth_pass(tcw, demo):
 
 
 def test_a_loose_file_in_the_root_and_an_empty_organising_folder_warn(tcw, demo):
-    (store(demo, "capabilities") / "README.md").write_text("about")
+    # AC 5(d) once expected this warning for a README.md in the root; TCW-118's
+    # evaluation decided a README.md there is no finding, as in an organising
+    # folder, so the loose file here is another name.
+    (store(demo, "capabilities") / "notes.md").write_text("about")
     (store(demo, "taxonomy") / "empty").mkdir()
     code, found, _ = validate(tcw, demo)
     assert (code, sorted(found)) == (0, [
-        "warning: docs/capabilities/README.md: is not part of any object",
+        "warning: docs/capabilities/notes.md: is not part of any object",
         "warning: docs/taxonomy/empty: holds no TCW object",
+    ])
+
+
+@pytest.mark.parametrize("namespace", ["taxonomy", "capabilities", "work"])
+def test_a_readme_in_a_store_root_is_no_finding(tcw, demo, namespace):
+    # Decided in TCW-118's evaluation: a 3.x ledger's store root may hold a
+    # README.md saying the ledger moved, and row d treats the root and an
+    # organising folder alike. Any other loose file in the root still warns.
+    (store(demo, namespace) / "README.md").write_text("about")
+    assert validate(tcw, demo)[:2] == (0, [])
+    (store(demo, namespace) / "notes.md").write_text("about")
+    code, found, _ = validate(tcw, demo)
+    assert (code, sorted(found)) == (0, [
+        f"warning: docs/{namespace}/notes.md: is not part of any object",
     ])
 
 
 def test_a_readme_in_an_organising_folder_is_accepted(tcw, demo):
     # A README.md directly in an organising folder describes the folder of
-    # objects, as 3.x accepted; any other file there, and a README.md in the
-    # store root, still warn, and one in an object's folder is still row a.
+    # objects, as 3.x accepted; any other file there still warns, and one in
+    # an object's folder is still row a. A README.md in the store root is no
+    # finding either (decided in TCW-118's evaluation; AC 5(d) expected one).
     (store(demo, "capabilities") / "cli" / "README.md").write_text("about")
     (store(demo, "taxonomy") / "group").mkdir()
     (store(demo, "taxonomy") / "group" / "README.md").write_text("about")
@@ -104,7 +122,6 @@ def test_a_readme_in_an_organising_folder_is_accepted(tcw, demo):
     assert (code, sorted(found)) == (1, [
         "error: docs/taxonomy/invoice/README.md: is not one of "
         "demo.taxonomy/invoice's files; move it into resources/",
-        "warning: docs/capabilities/README.md: is not part of any object",
         "warning: docs/capabilities/cli/notes.md: is not part of any object",
     ])
 
