@@ -218,20 +218,34 @@ Some of the reports need a word more:
   `capabilities.yaml` entry 3.x could not route: one in a project that keeps no
   capabilities ledger, naming no child project. Fix the entry by hand.
 - **B18** names a file the run would write that git would ignore, and the
-  rule that ignores it, as `<file>:<line>:<pattern>`. It comes from a
+  rule that ignores it, as `<file>:<line>:<pattern>`. It is named only when
+  what the file comes from is tracked by git: for a file moved, the file
+  itself; for a file converted or replaced, the file it is converted from or
+  replaces; for a new file, such as `.tcw/.gitignore`, the project's 3.x
+  configuration file (the root `tcw-config.yaml`, or `.tcw/tcw-config.yaml`
+  where the 3.x text is kept there). It comes from a
   `.gitignore` that ignores everything and then re-includes, with `!` lines,
   only what is tracked: under it all of `.tcw/` would be ignored while the
   tracked `tcw-config.yaml` is deleted, so committing what git shows would
-  remove the project's configuration. Add the line the blocker names after
-  that rule and run again:
+  remove the project's configuration. Add the lines the blocker names after
+  that rule, in the order given, and run again:
 
     ```text
     refused:
       B18 .tcw/tcw-config.yaml: git would ignore it, by .gitignore:1:/*, so committing what git shows would leave it out; add the line '!/.tcw/' after that line of .gitignore, then run 'tcw migrate' again
     ```
 
-  The personal files `.tcw/.gitignore` ignores on purpose are never named, and
-  a project outside git is not checked.
+  A file can be re-included only once every folder above it is, so the lines
+  re-include each folder the rule ignores first, then the file if the rule
+  still ignores it. A rule outside a `.gitignore`, such as one in
+  `.git/info/exclude` or your own user-wide ignore file, is named without a
+  line to add. A file that comes only from files git does not track, such as
+  a `.DS_Store` or a `.log` moved with its folder, was never committed, so it
+  is not named, and neither is anything in a project that keeps its TCW
+  files out of git on purpose. The personal files `.tcw/.gitignore` ignores
+  on purpose are never named, and a project outside git is not checked. When
+  git cannot answer about a repository, the summary names its folder and
+  gives git's message, and nothing in it is named.
 - **B19** names a folder the run would change files in that is another
   checkout of a repository the project sits in, such as the main checkout a
   linked worktree was made from (see step 2 of
