@@ -129,7 +129,7 @@
   a child repository's worktree placed inside its workspace's worktree, read
   each other instead of the folders they were made from; `tcw migrate` reads
   a 3.x store path the same way. (TCW-118)
-- `tcw migrate` refuses, with blocker B18 and nothing written, a run that
+- `tcw migrate` refuses, with blocker B19 and nothing written, a run that
   would change files in another checkout of a repository the project sits
   in, such as a linked worktree's main checkout. (TCW-118)
 - `tcw migrate` names a planned file in no checkout the project sits in, such

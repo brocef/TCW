@@ -229,14 +229,14 @@ def ignored_blockers(root: Path, steps) -> list[Blocker]:
 
 
 # ---------------------------------------------------------------------------
-# Another checkout of a repository the project sits in (B18; Design 6.6)
+# Another checkout of a repository the project sits in (B19; Design 6.6)
 
-B18_FIX = ("run 'tcw migrate' in that folder itself, or make the copy by cloning or by "
+B19_FIX = ("run 'tcw migrate' in that folder itself, or make the copy by cloning or by "
            "copying the folders, where a relative store path is read where it lands")
 
 
 def other_checkout_blockers(root: Path, steps) -> list[Blocker]:
-    """B18, once for each folder the plan would change files in that is a
+    """B19, once for each folder the plan would change files in that is a
     checkout of a repository the project sits in (its own, or one holding
     it) other than the checkout it sits in. A run in a linked checkout
     changes files only there (Design 6.6), but 3.x read a relative store
@@ -267,12 +267,12 @@ def other_checkout_blockers(root: Path, steps) -> list[Blocker]:
                 continue
             if repository(top) in mine:
                 found.setdefault(top, set()).add(rel)
-    return [Blocker("B18", str(top),
+    return [Blocker("B19", str(top),
                     f"the run would change {len(rels)} "
                     f"{'file' if len(rels) == 1 else 'files'} here, in another checkout "
                     f"of the repository checked out at {mine[repository(top)]}: TCW 3 "
                     f"read a relative store path that leaves a linked checkout from "
-                    f"beside its main checkout", B18_FIX)
+                    f"beside its main checkout", B19_FIX)
             for top, rels in found.items()]
 
 

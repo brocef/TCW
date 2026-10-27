@@ -234,7 +234,7 @@ def test_a_copy_of_nested_worktrees_is_migrated_in_the_copy(tcw, tmp_path):
 
 
 def test_nested_worktrees_whose_store_names_another_repository_are_refused(tcw, tmp_path):
-    """B18 stays the safety net: a copy whose checkout is not of the
+    """B19 stays the safety net: a copy whose checkout is not of the
     repository the store declares reads it beside the main checkout, which is
     another checkout of the repository the copy sits in."""
     ws = _workspace_with_a_child_repository(tmp_path / "real",
@@ -245,12 +245,12 @@ def test_nested_worktrees_whose_store_names_another_repository_are_refused(tcw, 
     for folder in (copy / "app/apps/server", copy / "app"):
         dry = tcw(["migrate", "--dry-run", "--no-jira"], folder)
         assert dry.code == 3, dry.err
-        b18 = [line for line in dry.err.splitlines() if line.startswith("  B18 ")]
-        assert len(b18) == 1, dry.err
-        assert b18[0].startswith(f"  B18 {ws.resolve()}: ")
+        b19 = [line for line in dry.err.splitlines() if line.startswith("  B19 ")]
+        assert len(b19) == 1, dry.err
+        assert b19[0].startswith(f"  B19 {ws.resolve()}: ")
         assert not any("../real/" in line for line in dry.err.splitlines()), dry.err
         done = migrate(tcw, folder, 3)
-        assert "  B18 " in done.err
+        assert "  B19 " in done.err
     assert tree(ws) == real
 
 
@@ -261,7 +261,7 @@ def test_a_worktree_beside_the_workspace_still_reaches_its_store(tcw, tmp_path):
     ws = _workspace_with_a_child_repository(tmp_path / "real")
     linked = _worktree(ws / "app", tmp_path / "elsewhere/app")
     done = migrate(tcw, linked)
-    assert "B18" not in done.err
+    assert "B19" not in done.err
     assert (ws / "docs/app/work/a-1/tcw-work-item.yaml").is_file()
     said = done.err.splitlines()
     assert f"left in another repository: {ws.resolve()}" in said

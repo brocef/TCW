@@ -43,7 +43,7 @@ is a 3.x file, and TCW 4.0 reads only 4.0 files.
    files in another checkout of a repository the copy sits in, such as the
    main checkout the copy's worktrees were made from (when the store declares
    a repository the copy's checkout does not have as a remote, say), it
-   refuses with blocker **B18**, naming that folder, and writes nothing. A
+   refuses with blocker **B19**, naming that folder, and writes nothing. A
    single worktree whose stores are all inside it migrates in place.
 3. **Upgrade together with everyone who works on the project.** TCW 4.0 reads
    only 4.0 files and refuses a 3.x project it reaches, and TCW 3.x cannot read
@@ -232,7 +232,7 @@ Some of the reports need a word more:
 
   The personal files `.tcw/.gitignore` ignores on purpose are never named, and
   a project outside git is not checked.
-- **B18** names a folder the run would change files in that is another
+- **B19** names a folder the run would change files in that is another
   checkout of a repository the project sits in, such as the main checkout a
   linked worktree was made from (see step 2 of
   [Before you start](#before-you-start)). Run `tcw migrate` in that folder
