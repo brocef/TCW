@@ -7,6 +7,7 @@ Each converted location must name, in TCW 4, the folder TCW 3 resolved.
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -122,9 +123,11 @@ def test_a_store_repository_is_kept_and_its_clone_converted(tcw, tmp_path):
     assert (clone / "x/tcw-taxonomy.yaml").is_file()
     said = done.err.splitlines()
     at = said.index(f"left in another repository: {clone.resolve()}")
-    rel = os.path.relpath(clone.resolve(), app.resolve())
-    assert said[at + 1:at + 4] == [f"  {rel}/x/description.md", f"  {rel}/x/meta.yaml",
-                                   f"  {rel}/x/tcw-taxonomy.yaml"]
+    # The clone is in no checkout the project sits in: its files are named
+    # by absolute paths, not by a relative path climbing towards `/`.
+    held = clone.resolve()
+    assert said[at + 1:at + 4] == [f"  {held}/x/description.md", f"  {held}/x/meta.yaml",
+                                   f"  {held}/x/tcw-taxonomy.yaml"]
     assert not any("/.git/" in line for line in said)
 
 
@@ -168,3 +171,69 @@ def test_a_store_that_is_a_related_project_s_store_is_b7(tcw, tmp_path):
     done = migrate(tcw, app, 3)
     assert "  B7 ../docs/work: the work store is 'ws''s work store" in done.err
     assert tree(ws) == before
+
+
+# ── A copy made with linked worktrees (Design 6.6, criterion 49) ────────────
+
+def _commit(root: Path) -> None:
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t",
+                    "commit", "-qm", "x"], check=True)
+
+
+def _worktree(main: Path, at: Path) -> Path:
+    subprocess.run(["git", "-C", str(main), "worktree", "add", "-q", "--detach", str(at)],
+                   check=True)
+    return at
+
+
+def _workspace_with_a_child_repository(base: Path) -> Path:
+    """A workspace repository holding its descendants' work stores, with a
+    child project that is a repository of its own checked out inside it,
+    and a grandchild below the child."""
+    ws = project(base / "ws", "id: ws\nprojects:\n  children:\n    app: app\n",
+                 {".gitignore": "/app/\n", "docs/work/w-1/item.yaml": ITEM,
+                  "docs/app/work/a-1/item.yaml": ITEM,
+                  "docs/app/work/a-1/attachments/a.txt": "A.\n",
+                  "docs/srv/work/s-1/item.yaml": ITEM,
+                  "docs/srv/work/s-1/attachments/s.txt": "S.\n"}, git=True)
+    app = project(ws / "app", "id: app\nprojects:\n  parent:\n    ws: ..\n  children:\n"
+                              "    srv: apps/server\nwork:\n  path: ../docs/app/work\n",
+                  {"apps/server/tcw-config.yaml":
+                   "id: srv\nprojects:\n  parent:\n    app: ../..\n"
+                   "work:\n  path: ../../../docs/srv/work\n"}, git=True)
+    _commit(ws)
+    _commit(app)
+    return ws
+
+
+def test_a_copy_of_nested_worktrees_never_changes_the_main_checkouts(tcw, tmp_path):
+    ws = _workspace_with_a_child_repository(tmp_path / "real")
+    copy = _worktree(ws, tmp_path / "copy/ws")
+    _worktree(ws / "app", copy / "app")
+    real = tree(ws)
+    for folder in (copy / "app/apps/server", copy / "app"):
+        dry = tcw(["migrate", "--dry-run", "--no-jira"], folder)
+        assert dry.code == 3, dry.err
+        b18 = [line for line in dry.err.splitlines() if line.startswith("  B18 ")]
+        assert len(b18) == 1, dry.err
+        assert b18[0].startswith(f"  B18 {ws.resolve()}: ")
+        assert not any("../real/" in line for line in dry.err.splitlines()), dry.err
+        done = migrate(tcw, folder, 3)
+        assert "  B18 " in done.err
+    assert tree(ws) == real
+
+
+def test_a_worktree_beside_the_workspace_still_reaches_its_store(tcw, tmp_path):
+    """A worktree of the child made away from the workspace: the store path
+    leaves it and lands on nothing, so it is read beside the main checkout,
+    as 3.x read it; files there are named by absolute paths."""
+    ws = _workspace_with_a_child_repository(tmp_path / "real")
+    linked = _worktree(ws / "app", tmp_path / "elsewhere/app")
+    done = migrate(tcw, linked)
+    assert "B18" not in done.err
+    assert (ws / "docs/app/work/a-1/tcw-work-item.yaml").is_file()
+    said = done.err.splitlines()
+    assert f"left in another repository: {ws.resolve()}" in said
+    assert f"  {ws.resolve()}/docs/app/work/a-1/tcw-work-item.yaml" in said
+    assert not any("../" in line for line in said), done.err

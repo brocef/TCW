@@ -233,6 +233,7 @@ def left_elsewhere(root: Path, mapping: dict, steps, git: Path | None) -> list[s
     repository, `left in another repository: <folder>`, then each file the
     run changes there."""
     from tcw.migrate.model import Move
+    from tcw.migrate.report import shown
     from tcw.store.fs import git_root
     out = []
     for store in stores_of(root, mapping):
@@ -249,9 +250,9 @@ def left_elsewhere(root: Path, mapping: dict, steps, git: Path | None) -> list[s
                                      else (step.path,))
                         if path.startswith(prefix)})
         if files:
-            shown = repository if repository is not None else store.folder
-            out.append(f"left in another repository: {shown}")
-            out += [f"  {path}" for path in files]
+            folder = repository if repository is not None else store.folder
+            out.append(f"left in another repository: {folder}")
+            out += [f"  {shown(root, path)}" for path in files]
     return out
 
 

@@ -8,6 +8,7 @@ steps in the order of Design 2.4. Nothing here writes.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -228,6 +229,54 @@ def ignored_blockers(root: Path, steps) -> list[Blocker]:
 
 
 # ---------------------------------------------------------------------------
+# Another checkout of a repository the project sits in (B18; Design 6.6)
+
+B18_FIX = ("run 'tcw migrate' in that folder itself, or make the copy by cloning or by "
+           "copying the folders, where a relative store path is read where it lands")
+
+
+def other_checkout_blockers(root: Path, steps) -> list[Blocker]:
+    """B18, once for each folder the plan would change files in that is a
+    checkout of a repository the project sits in (its own, or one holding
+    it) other than the checkout it sits in. A run in a linked checkout
+    changes files only there (Design 6.6), but 3.x read a relative store
+    path that leaves a linked checkout from beside its main checkout. A copy
+    made of linked checkouts, one inside another, would so plan its store's
+    changes in the folders it was copied from."""
+    from tcw.migrate.model import Move
+    from tcw.migrate.report import checkouts
+    from tcw.store.project import _git_lines
+    base = Path(os.path.realpath(root))
+    common: dict[Path, Path | None] = {}
+
+    def repository(top: Path) -> Path | None:
+        if top not in common:
+            out = _git_lines(top, "rev-parse", "--path-format=absolute",
+                             "--git-common-dir")
+            common[top] = Path(out[0]).resolve() if out else None
+        return common[top]
+    mine = {repository(top): top for top in reversed(checkouts(base))}
+    mine.pop(None, None)
+    found: dict[Path, set[str]] = {}
+    for step in steps:
+        for rel in ((step.old, step.new) if isinstance(step, Move) else (step.path,)):
+            target = Path(os.path.normpath(base / rel))
+            tops = checkouts(target.parent)
+            top = tops[0] if tops else None
+            if top is None or top in mine.values():
+                continue
+            if repository(top) in mine:
+                found.setdefault(top, set()).add(rel)
+    return [Blocker("B18", str(top),
+                    f"the run would change {len(rels)} "
+                    f"{'file' if len(rels) == 1 else 'files'} here, in another checkout "
+                    f"of the repository checked out at {mine[repository(top)]}: TCW 3 "
+                    f"read a relative store path that leaves a linked checkout from "
+                    f"beside its main checkout", B18_FIX)
+            for top, rels in found.items()]
+
+
+# ---------------------------------------------------------------------------
 # The Jira half (Decided 19)
 
 
@@ -329,6 +378,7 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
     plan.blockers += planned_file_blockers(read.root, plan.steps)
     if read.git is not None:
         plan.blockers += ignored_blockers(read.root, plan.steps)
+    plan.blockers += other_checkout_blockers(read.root, plan.steps)
     jira_backed = read.work_backend == "jira"
     if not plan.blockers:
         # A blocker refuses the run whatever Jira holds, so Jira is asked

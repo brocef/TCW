@@ -65,12 +65,12 @@ def run(root: Path, *, dry_run: bool, no_jira: bool) -> int:
     from tcw.migrate.plan import make_plan
     plan = make_plan(root, no_jira=no_jira)
     if plan.blockers:
-        _would(plan.steps, plan.tickets)
+        _would(plan.steps, plan.tickets, root)
         report.reports(plan.reports)
         report.blockers(plan.blockers)
         return codes.REFUSED
     if plan.jira_failure is not None:
-        return _planning_failed(plan, dry_run)
+        return _planning_failed(plan, dry_run, root)
     if plan.empty:
         report.reports(plan.reports)
         if no_jira and plan.work_backend == "jira":
@@ -79,7 +79,7 @@ def run(root: Path, *, dry_run: bool, no_jira: bool) -> int:
             report.say("nothing to migrate")
         return codes.OK
     if dry_run:
-        _would(plan.steps, plan.tickets)
+        _would(plan.steps, plan.tickets, root)
         report.reports(plan.reports)
         _summary([report.counts(plan.steps, len(plan.tickets), dry=True), *plan.summary,
                   *([report.KNOWN_AFTER] if plan.steps else [])])
@@ -112,9 +112,9 @@ def _check_after(root: Path, predicts, work_backend: str, no_jira: bool,
             *([] if work else [report.NOT_CHECKED_WORK])]
 
 
-def _would(steps, tickets) -> None:
+def _would(steps, tickets, root: Path) -> None:
     from tcw.migrate import report
-    report.say_steps(steps, dry=True)
+    report.say_steps(steps, dry=True, root=root)
     for edit in tickets:
         report.say(report.ticket_line(edit, dry=True))
 
@@ -125,11 +125,11 @@ def _summary(lines: list[str]) -> None:
         report.say(line)
 
 
-def _planning_failed(plan, dry_run: bool) -> int:
+def _planning_failed(plan, dry_run: bool, root: Path) -> int:
     """Jira failed while planning: nothing is written (Design 2.3, 2.6)."""
     from tcw.migrate import report
     error = plan.jira_failure
-    _would(plan.steps, [])
+    _would(plan.steps, [], root)
     report.reports(plan.reports)
     report.say(f"error: {error}")
     if not plan.steps:
@@ -189,13 +189,13 @@ def apply_plan(plan, root: Path) -> int:
     the exit code. A stop says what was not done and how to finish it."""
     from tcw.migrate import execute, report
     try:
-        line = report.once(plan.steps)
+        line = report.once(plan.steps, root=root)
         execute.apply(plan, root, lambda step: _say_once(line(step)))
     except execute.MigrateRefused as refused:
         report.blockers([refused.blocker])
         return codes.REFUSED
     except execute.MigrateStopped as stop:
-        report.stopped(stop.reason, stop.not_done)
+        report.stopped(stop.reason, stop.not_done, root)
         return codes.ERROR
     return codes.OK
 
@@ -214,28 +214,28 @@ def follow_progress(root: Path, record, *, dry_run: bool, no_jira: bool = False)
                               no_jira=no_jira)
     except TcwError as error:
         if dry_run:
-            _would(execute.pending(record.steps, root), [])
+            _would(execute.pending(record.steps, root), [], root)
         report.say(f"error: {error}")
         report.say(NOT_LISTED if dry_run else NOTHING_MORE)
         return error.code
     tickets = list(half.tickets) if half is not None else []
     summary = [no_jira_line(root, record.project)] if no_jira and jira_backed else []
     if half is not None and half.blockers:
-        _would(execute.pending(record.steps, root), tickets)
+        _would(execute.pending(record.steps, root), tickets, root)
         report.blockers(half.blockers)
         return codes.REFUSED
     if dry_run and (refused := execute.refusal(record.steps, root)) is not None:
-        _would(execute.pending(record.steps, root), tickets)
+        _would(execute.pending(record.steps, root), tickets, root)
         report.blockers([refused])
         return codes.REFUSED
     if dry_run:
         pending = execute.pending(record.steps, root)
-        _would(pending, tickets)
+        _would(pending, tickets, root)
         _summary([report.counts(pending, len(tickets), dry=True), *summary,
                   report.KNOWN_AFTER])
         return codes.OK
     done: list = []
-    line = report.once(record.steps)
+    line = report.once(record.steps, root=root)
 
     def made(step) -> None:
         done.append(step)
@@ -246,7 +246,7 @@ def follow_progress(root: Path, record, *, dry_run: bool, no_jira: bool = False)
         report.blockers([refused.blocker])
         return codes.REFUSED
     except execute.MigrateStopped as stop:
-        report.stopped(stop.reason, stop.not_done)
+        report.stopped(stop.reason, stop.not_done, root)
         return codes.ERROR
     reports = list(half.reports) if half is not None else []
     after = _check_after(root, record.predicts, record.work_backend, no_jira, reports)

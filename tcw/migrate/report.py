@@ -19,7 +19,9 @@ Reports are `<code> <where>: <text>` under `needs attention:` (A1-A14) and
 
 from __future__ import annotations
 
+import os
 import sys
+from pathlib import Path
 from typing import Callable, Iterable
 
 from tcw.migrate.model import Blocker, Delete, Move, Report, Step, TicketEdit, Write
@@ -48,20 +50,44 @@ def _conversions(codes: Iterable[str]) -> str:
     return f": {', '.join(codes)}" if codes else ""
 
 
-def step_line(step: Step, *, dry: bool = False) -> str:
+def checkouts(folder: Path) -> list[Path]:
+    """The folders at and above `folder` holding a `.git` marker, nearest
+    first: the checkouts it sits in."""
+    return [f for f in (folder, *folder.parents) if (f / ".git").exists()]
+
+
+def shown(root: Path | None, rel: str) -> str:
+    """A planned path, relative to the project at `root`, as a line shows it:
+    as it is when it is inside the project or inside a checkout the project
+    sits in (a planning workspace holding it, say); otherwise absolute, since
+    a relative path to anywhere else climbs most of the way to `/`."""
+    if root is None or not rel.startswith(".."):
+        return rel
+    base = Path(os.path.realpath(root))
+    target = Path(os.path.normpath(base / rel))
+    outer = checkouts(base)
+    if outer and target.is_relative_to(outer[-1]):
+        return rel
+    return str(target)
+
+
+def step_line(step: Step, *, dry: bool = False, root: Path | None = None) -> str:
+    """`root`, the project's folder, decides how a path outside it is shown."""
     would = "would " if dry else ""
     if isinstance(step, Write):
-        return f"{would}write {step.path}{_conversions(step.conversions)}"
+        return f"{would}write {shown(root, step.path)}{_conversions(step.conversions)}"
     if isinstance(step, Move):
-        return f"{would}move {step.old} -> {step.new}{_conversions(step.conversions)}"
-    return f"{would}delete {step.path}{_conversions(step.conversions)}"
+        return (f"{would}move {shown(root, step.old)} -> {shown(root, step.new)}"
+                f"{_conversions(step.conversions)}")
+    return f"{would}delete {shown(root, step.path)}{_conversions(step.conversions)}"
 
 
 def _number_of(code: str) -> tuple[int, str]:
     return (int(code[1:]), code) if code[1:].isdigit() else (sys.maxsize, code)
 
 
-def once(steps: Iterable[Step], *, dry: bool = False) -> Callable[[Step], str | None]:
+def once(steps: Iterable[Step], *, dry: bool = False,
+         root: Path | None = None) -> Callable[[Step], str | None]:
     """A function giving each step of `steps` its line, with each written file
     named once: at its first write, with every write's conversions in number
     order, and None for its later writes."""
@@ -73,19 +99,21 @@ def once(steps: Iterable[Step], *, dry: bool = False) -> Callable[[Step], str | 
 
     def line(step: Step) -> str | None:
         if not isinstance(step, Write) or step.path not in union:
-            return step_line(step, dry=dry)
+            return step_line(step, dry=dry, root=root)
         if step.path in said:
             return None
         said.add(step.path)
         codes = sorted(union[step.path], key=_number_of)
-        return f"{'would ' if dry else ''}write {step.path}{_conversions(codes)}"
+        would = "would " if dry else ""
+        return f"{would}write {shown(root, step.path)}{_conversions(codes)}"
     return line
 
 
-def say_steps(steps: Iterable[Step], *, dry: bool = False, indent: str = "") -> None:
+def say_steps(steps: Iterable[Step], *, dry: bool = False, indent: str = "",
+              root: Path | None = None) -> None:
     """Each line of `steps`, each written file once."""
     steps = list(steps)
-    line = once(steps, dry=dry)
+    line = once(steps, dry=dry, root=root)
     for step in steps:
         if (text := line(step)) is not None:
             say(f"{indent}{text}")
@@ -130,13 +158,13 @@ def blockers(found: list[Blocker]) -> None:
             say(f"  {blocker_line(blocker)}")
 
 
-def stopped(reason: str, not_done: list[Step]) -> None:
+def stopped(reason: str, not_done: list[Step], root: Path | None = None) -> None:
     """A stopped run's end (Design 2.7): why, what was not done, and the two
     instructions."""
     say(f"stopped: {reason}")
     if not_done:
         say("not done:")
-        say_steps(not_done, indent="  ")
+        say_steps(not_done, indent="  ", root=root)
     say(RUN_AGAIN)
     say(DO_NOT_SAVE)
 
