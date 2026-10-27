@@ -96,6 +96,7 @@
   as an address, not as a folder to rename by hand. (TCW-118)
 - `tcw capabilities set <path> --parent <path>` on an inherited capability is refused as naming the
   capability itself, instead of writing the capability it overrides as its parent. (TCW-118)
+- `tcw work move --into` no longer makes a folder named like a tracker key at any depth: `--into TCW-1/sub` or `--into 2026/TCW-5` is refused with exit code 2, where it used to make `TCW-1/` beside the item carrying that key (and, in Jira, write that path to the ticket). A key-shaped folder that already exists can still be used as part of the path. (TCW-118)
 
 ## Removed
 
