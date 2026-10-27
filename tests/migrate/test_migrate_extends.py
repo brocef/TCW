@@ -526,6 +526,27 @@ def test_d1_through_a_middle_project_names_only_what_3_x_did_not_pass(
         "TCW 3 did not pass to this project"]
 
 
+def test_parents_first_the_check_stops_only_in_a_project_with_3_x_children(tcw, tmp_path):
+    """The check after a run reads the project's parents and theirs, and its
+    children and theirs, never a sibling; so, parents first, each run in a
+    project with children stops, and each run in one without lists its own
+    findings while its siblings are still 3.x (the guide's "Migrating related
+    projects", item 2)."""
+    from tcw.migrate.report import CHECK_STOPPED
+    base = tmp_path / "r"
+    roots = {"r": project(base, "id: r\nprojects:\n  children:\n    l: l\n    s: s\n",
+                          git=True),
+             "l": project(base / "l", "id: l\nprojects:\n  parent:\n    r: ..\n", git=True),
+             "s": project(base / "s", "id: s\nprojects:\n  parent:\n    r: ..\n"
+                                      "  children:\n    k1: k1\n    k2: k2\n", git=True)}
+    for kid in ("k1", "k2"):
+        roots[kid] = project(base / "s" / kid, f"id: {kid}\nprojects:\n  parent:\n"
+                                               f"    s: ..\n", git=True)
+    stopped = {pid: CHECK_STOPPED in migrate(tcw, roots[pid]).err.splitlines()
+               for pid in ("r", "l", "s", "k1", "k2")}
+    assert stopped == {"r": True, "l": False, "s": True, "k1": False, "k2": False}
+
+
 # ── A related project this run must read and that is not here (48) ──────────
 
 def test_an_absent_parent_named_for_its_location_converts(tcw, tmp_path):

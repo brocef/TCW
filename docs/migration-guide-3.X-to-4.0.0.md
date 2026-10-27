@@ -513,11 +513,14 @@ explains them.
     ```
 
     Migrating each parent first leaves no 4.0 project below a 3.x one at any
-    moment. It does not keep the check from stopping: in a family, every run
-    but the last still ends with that line, because the project's children
-    are still 3.x. Only the run in the last project migrated lists its A12
-    findings, so once every project is migrated, run `tcw validate` in each
-    of the others.
+    moment. It does not keep the check from stopping everywhere: the check
+    reads the project's parents and their parents, and its children and
+    theirs, but never a sibling, and it stops at any of them still in 3.x
+    form. So, parents first, a run in a project that has children still ends
+    with that line, because its children are still 3.x, while a run in a
+    project with no children lists its own A12 findings even when other
+    projects of the family are still 3.x. Once every project is migrated,
+    run `tcw validate` in each project that has children.
 
 3. **Each run's summary lists the family's projects still in 3.x form**, the
    parents first, each with the command that migrates it:

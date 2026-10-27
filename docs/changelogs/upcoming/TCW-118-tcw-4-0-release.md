@@ -12,6 +12,9 @@
   `taxonomy.extends` as that project's, as 3.x read it, also once the
   project in between is migrated; before, it became a path in this
   project's own taxonomy that named nothing. (TCW-118)
+- The 3.x-to-4.0 migration guide says which runs' check stops at a project
+  still in 3.x form: a run in a project whose parents or children are, not
+  every run but the last. (TCW-118)
 - `tcw migrate`'s D1 no longer says a project now inherits terms that 3.x
   already passed it through a chain of `taxonomy.extends`, and no longer
   names a project with no terms, or no capabilities, to pass. (TCW-118)
