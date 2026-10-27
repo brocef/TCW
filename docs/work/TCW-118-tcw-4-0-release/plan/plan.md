@@ -2003,7 +2003,7 @@ python3.14 -m venv "$Q/venv-4" && "$Q/venv-4/bin/pip" install -q "$Q/clone/dist/
 "$Q/venv-4/bin/tcw" --version | grep -q '^tcw 4\.0\.0$' || stop "the tarball's tcw is not 4.0.0"
 test "$("$Q/venv-4/bin/tcw" --help | grep -cE '^\s+(project|migrate)\b')" -eq 2 || stop "project or migrate missing from --help"
 "$Q/venv-4/bin/python" -c "import tcw, pathlib; r = pathlib.Path(tcw.__file__).parent; \
-  assert (r/'serve/dist/index.html').is_file() and any((r/'work/prompts').iterdir())"
+  assert (r/'serve/dist/client/index.html').is_file() and any((r/'work/prompts').iterdir())"
 mkdir "$Q/new" && cd "$Q/new" && git init -q && git config user.email t@t && git config user.name t
 "$Q/venv-4/bin/tcw" project new --id demo && "$Q/venv-4/bin/tcw" work new "first item" \
   && "$Q/venv-4/bin/tcw" work list && "$Q/venv-4/bin/tcw" validate
@@ -2652,3 +2652,12 @@ session: Revision 4's stub tests (`tp118c/run.sh` in the session's
 scratchpad, cut from this plan's own text) give `17 passed, 0 failed` under
 `/bin/bash` 3.2, and the dispatching session read both fixes in the plan.
 Accepted by the dispatching session on that basis, 2026-10-26.
+
+## Revision 5
+
+Decided by the dispatching session, 2026-10-27, after Step 17 stopped on it:
+Step 32's packaged-files check looked for `tcw/serve/dist/index.html`; the web
+app is packaged, and served, at `tcw/serve/dist/client/index.html`
+(`tcw/serve/server.py` reads `dist/client`, as 3.x did), so the check names
+that path. Spec 6.2 (f) (`spec.md:874`) carries the same wrong path; the spec
+is not edited at implement, and this revision records the correction.
