@@ -20,7 +20,7 @@ from tests.projectfiles import (config_file, connect_projects, write_config,
                                 write_manifest)
 from tests.provision_support import (make_remote, project_files, real_git,
                                      stand_in_git)  # noqa: F401  (a fixture)
-from tests.test_project_files_cli import tcw
+from tests.test_project_files_cli import SOURCE, tcw
 from tests.work.projects import make_project
 
 PERSONAL = {"TCW_NO_PERSONAL_CONFIG": None}
@@ -316,18 +316,49 @@ def test_ac24_an_occupied_folder(tmp_path, ac19, stand_in_git):
     assert str(app / ".tcw/tcw-manifest.yaml") in done.err, done.err
 
 
+# Python 3.11's `Path.is_file()`, `is_dir()` and `exists()` raise
+# PermissionError for a path inside a folder that cannot be searched, where
+# 3.12 and later answer False. Loaded as `sitecustomize`, this makes any
+# Python answer as 3.11 does.
+AS_PYTHON_311 = """\
+import os, pathlib
+
+def _as_311(name):
+    answer = getattr(pathlib.Path, name)
+    def check(self, *args, **kwargs):
+        try:
+            os.stat(self)
+        except PermissionError:
+            raise
+        except OSError:
+            pass
+        return answer(self, *args, **kwargs)
+    setattr(pathlib.Path, name, check)
+
+for _name in ("exists", "is_file", "is_dir"):
+    _as_311(_name)
+"""
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root reads a folder whatever its mode")
-def test_ac24_an_unreadable_folder(tmp_path, ac19, stand_in_git):
+@pytest.mark.parametrize("python", ["this", "3.11"])
+def test_ac24_an_unreadable_folder(tmp_path, ac19, stand_in_git, python):
     """A target folder that cannot be listed is refused, naming it, with no
-    traceback, and nothing is written or removed (review round 1, finding 3)."""
+    traceback, and nothing is written or removed (review round 1, finding 3),
+    on 3.11 as well, whose existence checks raise inside it."""
     app, _ = ac19
+    env = None
+    if python == "3.11":
+        (tmp_path / "as-311").mkdir()
+        (tmp_path / "as-311" / "sitecustomize.py").write_text(AS_PYTHON_311)
+        env = {"PYTHONPATH": os.pathsep.join([str(tmp_path / "as-311"), SOURCE])}
     core = tmp_path / "core"
     core.mkdir()
     (core / "f").write_text("mine\n")
     listing_before = sorted(p.name for p in tmp_path.iterdir())
     core.chmod(0)
     try:
-        done = provision(app)
+        done = provision(app, env=env)
     finally:
         core.chmod(0o755)
     assert done.code == 1, done

@@ -120,6 +120,16 @@ def personal_file(root: Path, name: str,
     return borrowed if borrowed.is_file() else own
 
 
+def _is_file(path: Path) -> bool:
+    """`path.is_file()`, answering False for a path that cannot be looked at.
+    Python 3.11 raises PermissionError for a path inside a folder that cannot
+    be searched, where 3.12 and later answer False; this answers as they do."""
+    try:
+        return path.is_file()
+    except OSError:
+        return False
+
+
 def _below(path: Path, root: Path) -> Path | None:
     """The part of `path` below `root` when `path` is `root` or inside it, else
     None — deciding "inside" by folder identity, not by text.
@@ -883,7 +893,7 @@ class FsProjectRegistry(ProjectRegistry):
 
     def _read_config(self, path: Path, declared_id: str | None,
                      declared_in: Path | None, role: str) -> _Config | None:
-        if not path.is_file() and (root_of(path) / LEGACY_SENTINEL).is_file():
+        if not _is_file(path) and _is_file(root_of(path) / LEGACY_SENTINEL):
             # A 3.x project: present, and in a format this TCW does not read
             # (TCW-106 Design 4.2). Not "this machine does not have it". A
             # TCW_PROJECT_<ID> that named it has already said so, naming itself.
@@ -891,7 +901,7 @@ class FsProjectRegistry(ProjectRegistry):
                        for o in self._overrides):
                 self._problem(root_of(path), f"is {LEGACY_PROJECT}")
             return None
-        if not path.is_file():
+        if not _is_file(path):
             # Not a defect. A locator is a fact about one machine — the same
             # thing `work.path` is — so a target that is not here means this
             # checkout does not have that project, not that the declaration
@@ -1557,7 +1567,7 @@ class FsProjectRegistry(ProjectRegistry):
         known = self._cache.get(path) or self._outside.get(path)
         if known is not None:
             return known
-        if not path.is_file():
+        if not _is_file(path):
             return None
         cfg = self._visit(path, None, root, "outside")
         if cfg is not None:
