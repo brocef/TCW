@@ -592,11 +592,14 @@ this way:
   manifest entry or a store location that leads out of the repository is
   read where it is written when it lands on a project or folder inside a
   checkout, main or linked, of another repository, and of the repository the
-  entry names when it names one. So worktrees made one inside another, such
-  as a child repository's worktree placed inside its workspace's worktree,
-  read each other, not the folders they were made from. The search does the
-  same: from a worktree whose folder lies inside another repository's
-  checkout, it looks next to and above the worktree itself.
+  entry or the store's `repository` names when it names one. So worktrees
+  made one inside another, such as a child repository's worktree placed
+  inside its workspace's worktree, read each other, not the folders they
+  were made from. The search does the same: from a worktree whose folder
+  lies inside another repository's checkout, it looks next to and above the
+  worktree itself first, and next to and above the main checkout only when
+  that finds nothing, so a worktree kept in a workspace repository's
+  `.worktrees/` folder still finds the projects beside its main checkout.
 
 ## Moving from 3.x
 

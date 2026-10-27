@@ -17,7 +17,8 @@ behaves the same inside a worktree as outside it. The search for a project's
 folder works the same way: the folders outside the repository, next to it or
 enclosing it, are looked for from the main checkout, except from a worktree
 whose folder lies inside another repository's checkout, which is searched from
-where it is. A project found in the
+where it is first, and from the main checkout only when that finds nothing. A
+project found in the
 main checkout whose copy is in the worktree is the worktree's copy, so it
 appears once rather than twice.
 
@@ -32,7 +33,8 @@ point `work.path`, `taxonomy.path` or `capabilities.path` somewhere else, a
 relative one that leaves the checkout re-anchors — at *this project's*
 counterpart under the main checkout, so a project nested inside the repository
 keeps its own sub-path — unless, read as written, it lands on a folder inside
-another repository's checkout, and one that stays inside belongs to the
+another repository's checkout (a checkout of the repository the store declares
+in `repository`, when it declares one), and one that stays inside belongs to the
 worktree, exactly as the default does. An absolute store path is never re-anchored.
 
 The project I operate on is the **worktree**: its `docs/work/`,

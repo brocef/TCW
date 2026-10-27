@@ -125,7 +125,8 @@
   main or linked, of another repository (of the repository the entry or store
   declares, when it declares one), it is read there, and only otherwise
   beside the main checkout. The search for a project with no manifest entry
-  starts from such a worktree too. Worktrees made one inside another, such as
+  starts from such a worktree too, and from the main checkout when that finds
+  nothing. Worktrees made one inside another, such as
   a child repository's worktree placed inside its workspace's worktree, read
   each other instead of the folders they were made from; `tcw migrate` reads
   a 3.x store path the same way. (TCW-118)
