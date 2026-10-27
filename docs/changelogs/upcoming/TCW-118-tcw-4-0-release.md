@@ -104,6 +104,14 @@
 - The migration guide says that `TCW_SLUG` holds the full identifier in 4.0, that a `generate:` script's
   input is `"schema": 2`, and that converting tickets from any copy affects every 3.x user of that Jira
   project.
+- `tcw validate` no longer warns about a `README.md` directly inside an organising folder of any store,
+  which 3.x accepted, so a migrated capability ledger that describes its group folders can reach 0
+  warnings. Any other file there, and a `README.md` in a store's root, still warn.
+- `tcw migrate` names each file it writes once: `.tcw/.gitignore`, written twice in a run, is one change
+  line with the conversions of both writes.
+- The migration guide says `.tcw/tcw-migration.yaml` is written only when there is something to record,
+  and that in a family migrated parents first every run but the last stops its check, so the other
+  projects need a `tcw validate` once all are migrated.
 
 ## Removed
 
