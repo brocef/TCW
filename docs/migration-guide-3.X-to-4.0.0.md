@@ -88,7 +88,6 @@ would delete docs/capabilities/pay-an-invoice/meta.yaml: C9
 would write docs/work/2026-10-24-add-export/tcw-work-item.yaml: C9
 would delete docs/work/2026-10-24-add-export/item.yaml: C9
 would write .tcw/tcw-config.yaml: C1
-would write .tcw/.gitignore: C1
 would delete tcw-config.yaml: C1
 needs attention:
   A4 .gitignore:1: /tcw-config.local.yaml now ignores nothing: the personal file is .tcw/tcw-config.local.yaml, which .tcw/.gitignore ignores
@@ -112,7 +111,9 @@ credentials.
 conversion that makes it (`C1` to `C17`, the code TCW uses for each kind of
 conversion):
 
-- `write <path>: <codes>`: a file written, new or rewritten;
+- `write <path>: <codes>`: a file written, new or rewritten. A file the run
+  writes twice, such as `.tcw/.gitignore`, is one line, at its first write,
+  with the codes of both;
 - `move <old> -> <new>: <codes>`: a file or folder moved;
 - `delete <path>: <codes>`: a file deleted, once its 4.0 copy is written and
   read back;
@@ -226,10 +227,12 @@ the working tree has changes, and leaves committing to you.
 
 **What it writes**, besides the converted files:
 
-- **`.tcw/tcw-migration.yaml`**, the migration record. It holds what the
-  migration removed that has no 4.0 place of its own: every 3.x capability id
-  with the capability's path now, every override it moved, and every removed
-  value. Commit it. Only `tcw migrate` reads it: a project that reads this one
+- **`.tcw/tcw-migration.yaml`**, the migration record, written only when
+  there is something to record. It holds what the migration removed that has
+  no 4.0 place of its own: every 3.x capability id with the capability's path
+  now, every override it moved, and every removed value. A project with no
+  capabilities, no overrides and no removed values gets no record. Commit it
+  when it is written. Only `tcw migrate` reads it: a project that reads this one
   as a parent uses it when it migrates later, to find what this one's 3.x
   names became. Keep it through TCW 4.x. A library that other projects read
   must keep it; a project whose every reader has migrated may delete it.
@@ -410,7 +413,11 @@ explains them.
     ```
 
     Migrating each parent first leaves no 4.0 project below a 3.x one at any
-    moment.
+    moment. It does not keep the check from stopping: in a family, every run
+    but the last still ends with that line, because the project's children
+    are still 3.x. Only the run in the last project migrated lists its A12
+    findings, so once every project is migrated, run `tcw validate` in each
+    of the others.
 
 3. **Each run's summary lists the family's projects still in 3.x form**, the
    parents first, each with the command that migrates it:

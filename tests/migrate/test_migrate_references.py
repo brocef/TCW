@@ -156,7 +156,7 @@ def test_only_the_3x_files_a_branch_brought_back_convert(tcw, tmp_path):
     assert done.code == 0, done.err
     changed = sorted(line for line in done.err.splitlines() if line.startswith("write"))
     assert changed == [
-        "write .tcw/.gitignore: C1", "write .tcw/.gitignore: C1",
+        "write .tcw/.gitignore: C1",
         "write .tcw/tcw-migration.yaml: C10",
         f"write {C}/cli/back/tcw-capability.yaml: C9, C10, C16",
         f"write {W}/2026-10-02-b/tcw-work-item.yaml: C9, C16"]

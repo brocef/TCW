@@ -114,8 +114,7 @@ def _check_after(root: Path, predicts, work_backend: str, no_jira: bool,
 
 def _would(steps, tickets) -> None:
     from tcw.migrate import report
-    for step in steps:
-        report.say(report.step_line(step, dry=True))
+    report.say_steps(steps, dry=True)
     for edit in tickets:
         report.say(report.ticket_line(edit, dry=True))
 
@@ -178,12 +177,20 @@ def _unreadable(error) -> "Blocker":
                    f"{progress.PROGRESS}, and run 'tcw migrate' again")
 
 
+def _say_once(line: str | None) -> None:
+    """Say a step's line; None for a file's later write, said at its first."""
+    from tcw.migrate import report
+    if line is not None:
+        report.say(line)
+
+
 def apply_plan(plan, root: Path) -> int:
     """Carry out `plan`'s local steps, printing each change as it is made;
     the exit code. A stop says what was not done and how to finish it."""
     from tcw.migrate import execute, report
     try:
-        execute.apply(plan, root, lambda step: report.say(report.step_line(step)))
+        line = report.once(plan.steps)
+        execute.apply(plan, root, lambda step: _say_once(line(step)))
     except execute.MigrateRefused as refused:
         report.blockers([refused.blocker])
         return codes.REFUSED
@@ -228,10 +235,11 @@ def follow_progress(root: Path, record, *, dry_run: bool, no_jira: bool = False)
                   report.KNOWN_AFTER])
         return codes.OK
     done: list = []
+    line = report.once(record.steps)
 
     def made(step) -> None:
         done.append(step)
-        report.say(report.step_line(step))
+        _say_once(line(step))
     try:
         execute.follow(record.steps, root, made)
     except execute.MigrateRefused as refused:

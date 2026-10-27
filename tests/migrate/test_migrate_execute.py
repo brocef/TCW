@@ -259,6 +259,46 @@ def test_a_permission_error_says_to_run_again(tmp_path, monkeypatch, run):
     assert "not done:\n  write docs/capabilities/x/tcw-capability.yaml: C9" in stopped.err
 
 
+def twice_written(root: Path) -> Plan:
+    """`hand_plan` with `.tcw/.gitignore` written a second time, as a run
+    writes it: its ignore line first, the whole file later."""
+    plan = hand_plan(root)
+    plan.steps.insert(7, Write(".tcw/.gitignore", "D",
+                               digest(b"/tcw-migration-progress.yaml\n"),
+                               "/tcw-migration-progress.yaml\n/tcw-config.local.yaml\n",
+                               ("C2", "C1")))
+    return plan
+
+
+def test_a_file_written_twice_is_one_line_with_both_conversions(tmp_path, run, capsys):
+    root = three_x(tmp_path / "app")
+    plan = twice_written(root)
+    said = [line for line in run(root, plan).err.splitlines()
+            if ".gitignore" in line]
+    assert said == ["write .tcw/.gitignore: C1, C2"]
+    capsys.readouterr()
+    cli._would(plan.steps, [])
+    assert [line for line in capsys.readouterr().err.splitlines()
+            if ".gitignore" in line] == ["would write .tcw/.gitignore: C1, C2"]
+
+
+def test_a_stop_between_two_writes_of_a_file_names_the_second_as_not_done(
+        tmp_path, monkeypatch, run):
+    root = three_x(tmp_path / "app")
+    plan = twice_written(root)
+    real = execute._perform
+
+    def perform(step, at):
+        if plan.steps.index(step) == 7:
+            raise OSError(errno.EIO, "made to fail")
+        return real(step, at)
+    monkeypatch.setattr(execute, "_perform", perform)
+    said = run(root, plan).err.splitlines()
+    assert [line for line in said if ".gitignore" in line] == [
+        "write .tcw/.gitignore: C1, C2", "  write .tcw/.gitignore: C1, C2"]
+    assert said[said.index("not done:") + 1] == "  write .tcw/.gitignore: C1, C2"
+
+
 def test_the_stopped_lines_are_exact():
     assert report.RUN_AGAIN == "run 'tcw migrate' again to finish"
     assert report.DO_NOT_SAVE == ("do not save these files in version control until "

@@ -8,6 +8,10 @@ its action and its conversions, and a dry run puts `would ` first:
     delete <path>: C9
     edit <KEY>: C17 TCW Item: <old> -> <new>
 
+A file a run writes more than once (`.tcw/.gitignore`: its ignore line before
+the progress record, the whole file later) is one line, at its first write,
+with the conversions of all its writes.
+
 Reports are `<code> <where>: <text>` under `needs attention:` (A1-A14) and
 `reads differently in TCW 4:` (D1-D8); blockers are `<code> <where>: <why>;
 <what to do>` under `refused:`.
@@ -16,7 +20,7 @@ Reports are `<code> <where>: <text>` under `needs attention:` (A1-A14) and
 from __future__ import annotations
 
 import sys
-from typing import Iterable
+from typing import Callable, Iterable
 
 from tcw.migrate.model import Blocker, Delete, Move, Report, Step, TicketEdit, Write
 
@@ -51,6 +55,40 @@ def step_line(step: Step, *, dry: bool = False) -> str:
     if isinstance(step, Move):
         return f"{would}move {step.old} -> {step.new}{_conversions(step.conversions)}"
     return f"{would}delete {step.path}{_conversions(step.conversions)}"
+
+
+def _number_of(code: str) -> tuple[int, str]:
+    return (int(code[1:]), code) if code[1:].isdigit() else (sys.maxsize, code)
+
+
+def once(steps: Iterable[Step], *, dry: bool = False) -> Callable[[Step], str | None]:
+    """A function giving each step of `steps` its line, with each written file
+    named once: at its first write, with every write's conversions in number
+    order, and None for its later writes."""
+    union: dict[str, set[str]] = {}
+    for step in steps:
+        if isinstance(step, Write):
+            union.setdefault(step.path, set()).update(step.conversions)
+    said: set[str] = set()
+
+    def line(step: Step) -> str | None:
+        if not isinstance(step, Write) or step.path not in union:
+            return step_line(step, dry=dry)
+        if step.path in said:
+            return None
+        said.add(step.path)
+        codes = sorted(union[step.path], key=_number_of)
+        return f"{'would ' if dry else ''}write {step.path}{_conversions(codes)}"
+    return line
+
+
+def say_steps(steps: Iterable[Step], *, dry: bool = False, indent: str = "") -> None:
+    """Each line of `steps`, each written file once."""
+    steps = list(steps)
+    line = once(steps, dry=dry)
+    for step in steps:
+        if (text := line(step)) is not None:
+            say(f"{indent}{text}")
 
 
 def ticket_line(edit: TicketEdit, *, dry: bool = False) -> str:
@@ -98,8 +136,7 @@ def stopped(reason: str, not_done: list[Step]) -> None:
     say(f"stopped: {reason}")
     if not_done:
         say("not done:")
-        for step in not_done:
-            say(f"  {step_line(step)}")
+        say_steps(not_done, indent="  ")
     say(RUN_AGAIN)
     say(DO_NOT_SAVE)
 
