@@ -37,11 +37,15 @@ says how.
   move back installs the 4.0 CLI. In Codex and Pi, the setup skill runs the
   same install when `tcw` is missing. It leaves alone a `tcw` that is not a
   plain installed copy, such as one installed from a source folder for
-  development, and does nothing when `pipx` is not installed. So after the first session on the 3.0.2 plugin, or after the
-  setup skill installs `tcw`, run `pipx install --force 'tcw-cli<4'` once.
-  Running it before that first session does not last, since that session
-  installs the newest CLI again. After it, the record matches the plugin,
-  and the 3.0.2 plugin leaves the CLI alone.
+  development, and does nothing when `pipx` is not installed. So once the
+  first session on the 3.0.2 plugin has started (its start-up hook has
+  already run), or once the setup skill has installed `tcw`, run
+  `pipx install --force 'tcw-cli<4'` once. Running it before that first
+  session does not last, since that session's start-up installs the newest
+  CLI again. Until you run it, that first session has the 4.0 CLI under the
+  3.x skills, so do nothing in a 3.x project in it until the CLI is pinned.
+  After it, the record matches the plugin, and the 3.0.2 plugin leaves the
+  CLI alone.
 - TCW 3.x keeps a home: the branch `3.x` holds the last 3.x code. If a 3.x
   patch is ever needed, it is cut on that branch and published by pushing its
   tag.
