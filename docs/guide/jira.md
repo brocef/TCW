@@ -466,3 +466,15 @@ person changes their name.
 - **Transition screens.** TCW fills in only the comment on a transition's
   screen; a transition whose screen requires anything else cannot be used by
   TCW.
+- **One issue type and one status per stage.** A Jira-mode project creates
+  tickets of one issue type, and every enabled stage maps to its own status
+  of that type's workflow, so `tcw work advance` always moves the ticket.
+  Only `spec`, `plan`, `review`, `qa` and `postmortem` can be turned off, and
+  a turned-off stage is skipped, not kept in files. There is no way to keep
+  some stages local while the ticket stays where people left it, to map
+  stages differently for different issue types, or to have a
+  filesystem-mode item take its request from a ticket or comment on it.
+  A team whose workflows cannot change keeps its projects in filesystem
+  mode, and records the ticket's key in the item's request (and copies what
+  the ticket needs back by hand). The two TCW fields are needed only in Jira
+  mode.

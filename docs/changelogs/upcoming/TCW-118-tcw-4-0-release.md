@@ -166,6 +166,8 @@
 - `tcw migrate` names a planned file in no checkout the project sits in, such
   as one in a clone of a store's repository, by its absolute path, instead of
   a relative path climbing towards `/`. (TCW-118)
+- The Jira guide's limits say that a Jira-mode project uses one issue type and moves its ticket at every
+  stage, and what a team whose Jira workflows cannot change does instead.
 
 ## Removed
 
