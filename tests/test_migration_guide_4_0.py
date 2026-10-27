@@ -193,13 +193,23 @@ def test_related_projects_come_first():
 SCRIPTS_SECTION = "Scripts, hooks and agent instructions"
 
 
-def removed_search_pattern() -> str:
-    """The one regular expression of the guide's ready search, a
-    `grep -rnE --exclude-dir=.git '<pattern>' .` line in a fenced block."""
+def ready_searches() -> list[str]:
+    """The regular expressions of the guide's two ready searches, each a
+    `grep -rnE --exclude-dir=.git '<pattern>' .` line in a fenced block: the
+    first for removed commands and flags, the second for 3.x file names and
+    name forms."""
     body = section(GUIDE, 2, SCRIPTS_SECTION)
     found = re.findall(r"^ *grep -rnE --exclude-dir=\.git '([^']+)' \.$", body, re.M)
-    assert len(found) == 1, f"expected one ready search, found {found}"
-    return found[0]
+    assert len(found) == 2, f"expected two ready searches, found {found}"
+    return found
+
+
+def removed_search_pattern() -> str:
+    return ready_searches()[0]
+
+
+def names_search_pattern() -> str:
+    return ready_searches()[1]
 
 
 def removed_lines() -> list[str]:
@@ -266,4 +276,104 @@ def test_the_ready_search_finds_no_current_command():
     ]
     assert len(current) > 20
     wrong = _grep_matches(removed_search_pattern(), current)
+    assert not wrong, sorted(wrong)
+
+
+# -- the ready search for 3.x file names and name forms (evaluator finding) --------
+
+# What each placeholder of the Files, "Names and addresses" and configuration
+# file rows stands for in a line a reader would have written. `<id-path>` is
+# filled with an item's folder so that a 4.0 address holding one is tested
+# against the 3.x slug form.
+PLACEHOLDERS = {
+    "<project>": "app", "<folder>": "2026-10-24-add-export",
+    "<id-path>": "2026-10-24-add-export", "<term>": "invoice",
+}
+
+
+def _filled(span: str) -> str:
+    for name, value in PLACEHOLDERS.items():
+        span = span.replace(name, value)
+    return span
+
+
+def name_rows() -> list[list[str]]:
+    """Each row of the Files and "Names and addresses" tables, and the
+    configuration rows naming a 3.x file (`tcw-config.yaml`,
+    `tcw-config.local.yaml`)."""
+    rows = []
+    for title in ("Files", "Names and addresses"):
+        found = tables(section(GUIDE, 3, title))
+        assert len(found) == 1, title
+        rows += found[0][1:]
+    config = tables(section(GUIDE, 3, "Configuration"))[0][1:]
+    rows += [r for r in config if re.match(r"`tcw-config(\.local)?\.yaml`", r[0])]
+    return rows
+
+
+def three_x_name_lines() -> list[str]:
+    """A line for each 3.x name in the first column of `name_rows`, except
+    `TCW Item`: the ticket field keeps its name in 4.0, only its value
+    changes."""
+    return [_filled(span) for row in name_rows()
+            for span in re.findall(r"`([^`]+)`", row[0]) if span != "TCW Item"]
+
+
+def four_0_name_lines() -> list[str]:
+    """A line for each 4.0 name in the second column of `name_rows`."""
+    return [_filled(span) for row in name_rows()
+            for span in re.findall(r"`([^`]+)`", row[1])]
+
+
+# Agent instructions written for 3.x, the forms an evaluator found the first
+# search missed in a team's CLAUDE.md above several projects.
+STALE_INSTRUCTIONS = [
+    "configuration lives in a `tcw-config.yaml` at each repository's root",
+    "an item's stage is recorded in its `item.yaml`",
+    "run tcw from inside a project; it uses the nearest enclosing `tcw-config.yaml`",
+    "any work command accepts another project's item as `<project-id>/<folder>`",
+]
+
+
+def test_the_names_search_finds_every_3x_file_name_and_name_form():
+    lines = three_x_name_lines() + STALE_INSTRUCTIONS + [
+        # as a script or an agent instruction might write them
+        "cat tcw-config.yaml",
+        "cp ../core/tcw-config.local.yaml .",
+        "see docs/taxonomy/invoice/meta.yaml",
+        "yq .stage docs/work/2026-10-24-add-export/item.yaml",
+        "tcw work show core/2026-10-24-add-export",
+        "tcw work show tcw/TCW-12-add-export",
+        "[link](tcw://C/billing/export)",
+    ]
+    assert len(three_x_name_lines()) >= 13, three_x_name_lines()
+    missed = [line for line in lines
+              if line not in _grep_matches(names_search_pattern(), lines)]
+    assert not missed, missed
+
+
+def test_the_names_search_finds_no_4_0_name():
+    """No 4.0 name of those rows matches. What may match in a migrated
+    project is text that names a 3.x form on purpose, such as a changelog or
+    this guide, which is why the guide says each hit needs reading."""
+    lines = four_0_name_lines() + [
+        "cat .tcw/tcw-config.yaml",
+        "edit .tcw/tcw-config.local.yaml",
+        "yq .stage docs/work/2026-10-24-add-export/tcw-work-item.yaml",
+        "tcw work show core.work/2026-10-24-add-export",
+        "tcw work show tcw.work/TCW-12-add-export",
+        "[link](tcw://core.capabilities/billing/export)",
+        "tcw -C tcw://workspace.path/docs/app work list",
+        "ls docs/work/2026-10-24-add-export/resources/",
+        "ls docs/work/TCW-12-add-export",
+    ]
+    assert len(four_0_name_lines()) >= 13, four_0_name_lines()
+    wrong = _grep_matches(names_search_pattern(), lines)
+    assert not wrong, sorted(wrong)
+
+
+def test_the_names_search_finds_no_current_command():
+    current = _invocations(exempt_blanked())
+    assert len(current) > 20
+    wrong = _grep_matches(names_search_pattern(), current)
     assert not wrong, sorted(wrong)

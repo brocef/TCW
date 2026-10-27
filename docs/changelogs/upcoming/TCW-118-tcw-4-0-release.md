@@ -101,6 +101,10 @@
   it was resolving that address, and from which folder, before the refusal.
 - The 3.x to 4.0 migration guide gives one `grep` command that finds every removed command and flag in
   agent-instruction files and scripts.
+- The 3.x to 4.0 migration guide gives a second `grep` command that finds 3.x file names
+  (`tcw-config.yaml` at a project's root, `item.yaml`, `meta.yaml`) and name forms (`<project>/<folder>`,
+  `tcw://C/…`, a capability's `cap-` id) in agent-instruction files and scripts, leaving out the 4.0
+  forms, and says its hits need reading.
 - The migration guide says that `TCW_SLUG` holds the full identifier in 4.0, that a `generate:` script's
   input is `"schema": 2`, and that converting tickets from any copy affects every 3.x user of that Jira
   project.

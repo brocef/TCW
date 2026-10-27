@@ -805,7 +805,24 @@ states the rules in full; in short:
    grep -rnE --exclude-dir=.git 'tcw (init|projects|config|provision)([^a-z-]|$)|(taxonomy|capabilities) extends (add|rm)|tcw work new .*--project([^a-z-]|$)|--blocks([^a-z-]|$)|(taxonomy|capabilities) list .*--local([^a-z-]|$)' .
    ```
 
-   Run it again with another folder in place of the final `.` for
+   A second search lists every line that uses a 3.x file name or name form
+   of the [Files](#files) and [Names and addresses](#names-and-addresses)
+   tables, or the 3.x root `tcw-config.yaml` and `tcw-config.local.yaml`:
+   instructions such as "an item's stage is in its `item.yaml`" or "name
+   another project's item as `<project>/<folder>`":
+
+   ```sh
+   grep -rnE --exclude-dir=.git '(^|[^/]|(^|[^w])/|(^|[^c])w/|(^|[^t])cw/|(^|[^.])tcw/)tcw-config(\.local)?\.yaml|(^|[^-])item\.yaml|meta\.yaml|cap-[0-9a-f]{6}|tcw://([a-z0-9-]+/)?[CWT]/|(^|[^a-zA-Z0-9./_-])[a-z0-9-]+/([0-9]{4}-[0-9]{2}-[0-9]{2}|[A-Z][A-Z0-9_]*-[0-9]+)-|>/<folder>' .
+   ```
+
+   It leaves out the 4.0 forms, such as `.tcw/tcw-config.yaml`,
+   `tcw-work-item.yaml` and `app.work/2026-10-24-add-export`, but each hit
+   still needs reading: text that names a 3.x form on purpose, such as a
+   changelog, an old work item's documents or this guide, matches too, as
+   can a path that only looks like an item's slug, and a `meta.yaml` some
+   other tool uses.
+
+   Run either search again with another folder in place of the final `.` for
    instructions kept outside the project, such as an agent's memories. The
    tables above give each replacement.
 2. **A script that reads `--json` output** reads `"schema": 2` and full
