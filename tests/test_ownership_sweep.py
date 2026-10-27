@@ -75,8 +75,8 @@ WRITER_CALLERS = {
                                                    "enclosing function"),
     "store/base.py:_path_back.climb": (NOT_A_STORE, "`visited` is a set made by the "
                                                     "enclosing function"),
-    "store/base.py:load_order_of.resolve": (NOT_A_STORE, "`in_progress` is a set made "
-                                                         "by the enclosing function"),
+    "store/base.py:_c3.resolve": (NOT_A_STORE, "`in_progress` is a set made by the "
+                                               "enclosing function"),
     "store/config_edit.py:_Document.end_of": (NOT_A_STORE, "`seen` is a set made by "
                                                            "the enclosing function"),
     "store/fs.py:_View.combined": (NOT_A_STORE, "`unreadable` is a set made by the "
@@ -109,6 +109,12 @@ WRITER_CALLERS = {
                                                            "converter's sets of IDs"),
     "migrate/config.py:_parents_first": (NOT_A_STORE, "`left` is a list made in the "
                                                       "function"),
+    "migrate/plan.py:other_checkout_blockers": (NOT_A_STORE, "`found` is a dict of sets "
+                                                             "made in the function"),
+    "migrate/report.py:once": (NOT_A_STORE, "`union` is a dict of sets made in the "
+                                            "function"),
+    "migrate/report.py:once.line": (NOT_A_STORE, "`said` is a set made by the enclosing "
+                                                 "function"),
     **{f"work/config.py:{name}": (NOT_A_STORE, _PROBLEMS) for name in (
         "_parse_when", "_parse_binding", "parse_bindings", "_parse_hooks", "_parse_stage",
         "_parse_stages", "_parse_procedures", "_parse_tags", "parse_work_config")},
@@ -128,6 +134,10 @@ CURRENT_FOLDER_READS = {
     # TCW-116: TCW 3's reading of a relative TCW_PROJECT_<ID>, against the
     # folder the command runs in, as 3.x read it.
     "migrate/legacy.py:override_folder_3x",
+    # TCW-118: `tcw -C <address>` names the folder it was resolving the
+    # address from when the project there is refused. The read is only for
+    # that message, and runs before the folder is changed.
+    "cli.py:_enter",
 }
 
 

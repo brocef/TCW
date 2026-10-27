@@ -8,7 +8,10 @@ reintroducing it.
 
 It asserts **explicitness**, not one particular value: `tcw/work/generate.py`
 passes `stdin=subprocess.PIPE` on purpose, because writing the payload is the
-`generate:` contract. What is banned is saying nothing and inheriting.
+`generate:` contract. `input=` declares it too: `subprocess.run` then makes
+stdin a pipe and writes the text to it, and refuses `stdin=` beside it, as
+`tcw/migrate/plan.py` does to hand `git check-ignore --stdin` its paths. What
+is banned is saying nothing and inheriting.
 """
 
 import ast
@@ -30,7 +33,7 @@ def _spawning_calls(path: Path):
             continue
         yield (node.lineno,
                ast.unparse(node.args[0])[:60] if node.args else "?",
-               any(k.arg == "stdin" for k in node.keywords))
+               any(k.arg in ("stdin", "input") for k in node.keywords))
 
 
 def test_the_walk_actually_finds_the_spawns_it_should():

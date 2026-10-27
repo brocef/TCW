@@ -141,9 +141,13 @@ def test_a_pinned_repository_names_its_ref():
 
 
 def test_the_static_guard_allows_the_clone_line_only_here():
-    """Criterion 69: the one exemption migration adds to TCW-73's guard."""
+    """Criterion 69: the clone line is the one exemption TCW-116 adds to
+    TCW-73's guard. TCW-118 adds one more, B18's messages, which name the
+    git ignore rule that is the reason the run refuses; no other function in
+    `tcw/migrate/` may name git."""
     from tests import test_static_guards
     assert ("migrate/family.py", "absent_project_message") in test_static_guards.EXEMPT
-    assert [e for e in test_static_guards.EXEMPT if e[0].startswith("migrate/")] == [
-        ("migrate/family.py", "absent_project_message")]
+    assert sorted(e for e in test_static_guards.EXEMPT if e[0].startswith("migrate/")) == [
+        ("migrate/family.py", "absent_project_message"),
+        ("migrate/plan.py", "ignored_blockers")]
     assert family_module.absent_project_message is absent_project_message
