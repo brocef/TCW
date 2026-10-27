@@ -588,6 +588,14 @@ this way:
   anywhere, and a clone `tcw project provision` makes goes beside the main
   checkout. A path that stays inside the repository is read inside the
   worktree.
+- **Except where the path, read as written, lands in another checkout**: a
+  manifest entry or a store location that leads out of the repository is
+  read where it is written when it lands on a project or folder inside a
+  checkout, main or linked, of another repository, and of the repository the
+  entry names when it names one. So worktrees made one inside another, such
+  as a child repository's worktree placed inside its workspace's worktree,
+  read each other, not the folders they were made from. The search is not
+  changed by this.
 
 ## Moving from 3.x
 

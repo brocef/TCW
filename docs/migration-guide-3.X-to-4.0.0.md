@@ -32,15 +32,19 @@ is a 3.x file, and TCW 4.0 reads only 4.0 files.
    inside the planning workspace's folder, say). In such a copy a relative
    store path, such as `work.path: ../docs/app/work`, is read from the copy's
    own folders, so the run changes only the copy. A copy made with
-   `git worktree add` behaves differently: TCW 3 read a relative store path
-   that leaves a linked worktree from beside that worktree's main checkout,
-   and `tcw migrate` converts each store where TCW 3 read it. So in worktrees
-   made one inside another, such as a child repository's worktree placed
-   inside the workspace's worktree, the store a child's path names is the one
-   in the folders the worktrees were made from. The run then refuses with
-   blocker **B18**, naming that folder, and writes nothing; make the copy by
-   cloning or copying instead. A single worktree whose stores are all inside
-   it migrates in place.
+   `git worktree add` works too, with the worktrees made one inside another
+   in the same way (a child repository's worktree placed inside the
+   workspace's worktree): a relative store path that leaves the child's
+   worktree is read as written when it lands in a checkout of the repository
+   the store declares in `repository`, or of any repository when it declares
+   none, so the run changes only the copy. A worktree made anywhere else has
+   no such folder where the path leads, so the store is read beside its main
+   checkout, as TCW 3 read it, and converted there. If a run would change
+   files in another checkout of a repository the copy sits in, such as the
+   main checkout the copy's worktrees were made from (when the store declares
+   a repository the copy's checkout does not have as a remote, say), it
+   refuses with blocker **B18**, naming that folder, and writes nothing. A
+   single worktree whose stores are all inside it migrates in place.
 3. **Upgrade together with everyone who works on the project.** TCW 4.0 reads
    only 4.0 files and refuses a 3.x project it reaches, and TCW 3.x cannot read
    a migrated project. So everyone working on the project, and every agent,

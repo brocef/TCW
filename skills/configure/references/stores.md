@@ -46,9 +46,11 @@ The rules for every `<component>.path`:
 
 - A symbolic link is followed. When the project is
   opened from a linked worktree (a second working folder of the same
-  repository), a relative path that leads out of the repository is read from
-  the main checkout's copy of the project instead, and one that stays inside
-  the repository is read in the folder the project was opened from.
+  repository), a relative path that leads out of the repository is read
+  where it lands when that is a folder inside another repository's checkout
+  (as when such working folders are made one inside another), and otherwise
+  from the main checkout's copy of the project; one that stays inside the
+  repository is read in the folder the project was opened from.
 - **Stores never nest or share a folder**, within one project or across
   related projects, and their locations may not loop, such as `app`'s
   `work.path` naming a folder in `core`'s work store while `core`'s names one
