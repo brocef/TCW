@@ -187,28 +187,58 @@ def _worktree(main: Path, at: Path) -> Path:
     return at
 
 
-def _workspace_with_a_child_repository(base: Path) -> Path:
-    """A workspace repository holding its descendants' work stores, with a
-    child project that is a repository of its own checked out inside it,
-    and a grandchild below the child."""
+WS_URL = "https://example.invalid/ws.git"
+
+
+def _workspace_with_a_child_repository(base: Path, url: str = WS_URL) -> Path:
+    """A workspace repository, its remote `WS_URL`, holding its descendants'
+    work stores, with a child project that is a repository of its own checked
+    out inside it, which the workspace ignores, and a grandchild below the
+    child. Each store declares the repository `url`."""
+    def declared(path: str) -> str:
+        return (f"work:\n  path: {path}\n  repository:\n    url: {url}\n"
+                f"    path: {path.lstrip('./')}\n")
     ws = project(base / "ws", "id: ws\nprojects:\n  children:\n    app: app\n",
-                 {".gitignore": "/app/\n", "docs/work/w-1/item.yaml": ITEM,
+                 {".gitignore": "/*\n!/.gitignore\n!/tcw-config.yaml\n!/docs/\n",
+                  "docs/work/w-1/item.yaml": ITEM,
                   "docs/app/work/a-1/item.yaml": ITEM,
                   "docs/app/work/a-1/attachments/a.txt": "A.\n",
                   "docs/srv/work/s-1/item.yaml": ITEM,
                   "docs/srv/work/s-1/attachments/s.txt": "S.\n"}, git=True)
+    subprocess.run(["git", "-C", str(ws), "remote", "add", "origin", WS_URL], check=True)
     app = project(ws / "app", "id: app\nprojects:\n  parent:\n    ws: ..\n  children:\n"
-                              "    srv: apps/server\nwork:\n  path: ../docs/app/work\n",
+                              "    srv: apps/server\n" + declared("../docs/app/work"),
                   {"apps/server/tcw-config.yaml":
                    "id: srv\nprojects:\n  parent:\n    app: ../..\n"
-                   "work:\n  path: ../../../docs/srv/work\n"}, git=True)
+                   + declared("../../../docs/srv/work")}, git=True)
     _commit(ws)
     _commit(app)
     return ws
 
 
-def test_a_copy_of_nested_worktrees_never_changes_the_main_checkouts(tcw, tmp_path):
+def test_a_copy_of_nested_worktrees_is_migrated_in_the_copy(tcw, tmp_path):
+    """A store path read as written lands in the copy's own checkout of the
+    repository it declares, so it is read there."""
     ws = _workspace_with_a_child_repository(tmp_path / "real")
+    copy = _worktree(ws, tmp_path / "copy/ws")
+    _worktree(ws / "app", copy / "app")
+    real = tree(ws)
+    for folder, store in ((copy / "app/apps/server", "srv"), (copy / "app", "app")):
+        dry = tcw(["migrate", "--dry-run", "--no-jira"], folder)
+        assert dry.code == 0, dry.err
+        assert f"left in another repository: {copy.resolve()}" in dry.err.splitlines()
+        assert "/real/" not in dry.err, dry.err
+        migrate(tcw, folder)
+        assert (copy / f"docs/{store}/work/{store[0]}-1/tcw-work-item.yaml").is_file()
+    assert tree(ws) == real
+
+
+def test_nested_worktrees_whose_store_names_another_repository_are_refused(tcw, tmp_path):
+    """B18 stays the safety net: a copy whose checkout is not of the
+    repository the store declares reads it beside the main checkout, which is
+    another checkout of the repository the copy sits in."""
+    ws = _workspace_with_a_child_repository(tmp_path / "real",
+                                            url="https://example.invalid/other.git")
     copy = _worktree(ws, tmp_path / "copy/ws")
     _worktree(ws / "app", copy / "app")
     real = tree(ws)

@@ -235,6 +235,31 @@ def _probe_worktree(directory: Path) -> tuple[Path, Path] | None:
     return worktree_anchors(Path(outer[0])) if outer else None
 
 
+def read_as_written(target: Path, anchors: tuple[Path, Path],
+                    url: str | None = None) -> bool:
+    """Whether a relative path that leads out of the linked worktree whose
+    `(top, main)` are `anchors` is read where it lands, as written, rather
+    than beside the main checkout: `target`, the folder it names, is there
+    and inside a git checkout, main or linked, of a repository other than
+    this worktree's own, and, when the path's declaration names a
+    repository `url`, that checkout's remotes include it. This is what reads
+    a copy made of linked worktrees, one inside another, in the copy, while
+    a worktree made away from the folders its paths lead to (GitHub #26,
+    #39) still reads them beside its main checkout."""
+    if not target.is_dir():
+        return False
+    found = _git_lines(target, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    own = _git_lines(anchors[0], "rev-parse", "--path-format=absolute", "--git-common-dir")
+    if not found or not own or Path(found[0]).resolve() == Path(own[0]).resolve():
+        return False
+    if url is None:
+        return True
+    wanted = normalized_url(url.split("#", 1)[0])
+    remotes = _git_lines(target, "config", "--get-regexp", r"^remote\..*\.url$") or []
+    return any(normalized_url(line.split(" ", 1)[1]) == wanted
+               for line in remotes if " " in line)
+
+
 # ---------------------------------------------------------------------------
 # Finding a project's folder from its ID (TCW-107 Design 2)
 
@@ -1109,7 +1134,10 @@ class FsProjectRegistry(ProjectRegistry):
                                                locator=root))
         return config_path
 
-    def _locator_path(self, source_config: Path, locator: str) -> Path:
+    def _locator_path(self, source_config: Path, locator: str,
+                      url: str | None = None) -> Path:
+        """The config file a locator written in `source_config` names; `url`,
+        the repository its entry names, if any."""
         target = Path(locator)
         source_dir = root_of(source_config).resolve()
         resolved = _config_file(
@@ -1123,12 +1151,16 @@ class FsProjectRegistry(ProjectRegistry):
         # belongs to the worktree (this is what keeps multi-project-in-one-repo
         # working). Only a target that leaves the checkout was authored against
         # the primary checkout's position on disk, so resolve it against the
-        # source directory's counterpart under the main worktree root instead.
+        # source directory's counterpart under the main worktree root instead
+        # — unless, read as written, it lands on a project in a checkout of the
+        # repository its entry names (`read_as_written`).
         inside = _below(source_dir, top)
         if (
             not target.is_absolute()
             and inside is not None
             and _below(root_of(resolved), top) is None
+            and not (resolved.is_file()
+                     and read_as_written(root_of(resolved), self._anchors, url))
         ):
             counterpart = main / inside
             resolved = _config_file(counterpart / target / SENTINEL)
@@ -1478,19 +1510,22 @@ class FsProjectRegistry(ProjectRegistry):
             return Placement(id=project_id, asked_by=asked_by, folder=folder)
         written = Path(entry.path).expanduser()
         entry_folder = Path(os.path.realpath(
-            root_of(self._locator_path(answer.owner / SENTINEL, str(written)))))
+            root_of(self._locator_path(answer.owner / SENTINEL, str(written),
+                                       entry.url))))
         return Placement(
             id=project_id, asked_by=asked_by, folder=folder, entry=entry,
             owner=Path(os.path.realpath(answer.owner)), entry_folder=entry_folder,
             repository_folder=_without_subfolder(entry_folder, entry.subfolder),
             repository_path=_without_subfolder(
-                self._read_from(answer.owner, written) / written, entry.subfolder))
+                self._read_from(answer.owner, written, entry.url) / written,
+                entry.subfolder))
 
-    def _read_from(self, owner: Path, written: Path) -> Path:
+    def _read_from(self, owner: Path, written: Path, url: str | None = None) -> Path:
         """The folder an entry's relative path is read from: its owner's root,
         or, in the active project's linked worktree, the owner's counterpart in
-        the main checkout when the path leads outside the repository (TCW-107
-        Design 4.3, `_locator_path` rule 1). Nothing is resolved."""
+        the main checkout when the path leads outside the repository and is not
+        read as written (TCW-107 Design 4.3, `_locator_path` rule 1). Nothing
+        is resolved."""
         source = Path(owner)
         if written.is_absolute() or self._anchors is None:
             return source
@@ -1499,7 +1534,9 @@ class FsProjectRegistry(ProjectRegistry):
         if inside is None:
             return source
         leads_to = _config_file(source.resolve() / written / SENTINEL)
-        if _below(root_of(leads_to), top) is not None:
+        if _below(root_of(leads_to), top) is not None or (
+                leads_to.is_file()
+                and read_as_written(root_of(leads_to), self._anchors, url)):
             return source
         return main / inside
 
@@ -1809,7 +1846,7 @@ class FsProjectRegistry(ProjectRegistry):
         except RuntimeError as error:       # `~name` naming no user
             return _Answer(entry=entry, problem=self._recorded(entry.file, f"{named}: {error}")
                            if record else f"{named}: {error}")
-        folder = root_of(self._locator_path(base / SENTINEL, written))
+        folder = root_of(self._locator_path(base / SENTINEL, written, entry.url))
         probe = self._probe(folder)
         if probe.kind == "project" and probe.id == entry.id:
             return _Answer(folder=folder, by="manifest", entry=entry)

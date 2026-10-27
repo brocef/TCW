@@ -65,7 +65,8 @@ from tcw.project_files import (CONFIG_NAME, LOCAL_CONFIG_NAME, LOCAL_MANIFEST,
                                find_marker, legacy_message, version_problem,
                                without_version)
 from tcw.store.project import (FsProjectRegistry, _below, forget_registries, git_environment,
-                               validate_project_id, worktree_anchors)
+                               read_as_written, validate_project_id,
+                               worktree_anchors)
 
 # Component trees `tcw project new` scaffolds. `work` gets a status-folder skeleton;
 # `taxonomy` and `capabilities` are flat trees that fill in per their phases.
@@ -1010,6 +1011,11 @@ def anchor_configured_path(project_root: Path, value: Path) -> Path:
       the checkout was authored against the primary checkout's position on disk.
       Re-anchoring an inside-staying path used to send a worktree user to the
       primary checkout's store while the *identical* default did not.
+    - **Read as written first.** A path that leaves the worktree and lands
+      in a folder inside another repository's checkout is read there
+      (`read_as_written`): a copy made of linked worktrees, one inside
+      another, keeps to the copy. The path names no repository here, so any
+      repository's checkout counts.
     - **Anchor at this project's counterpart, not at the main worktree root.**
       `worktree_anchors` returns `(current top, main root)`; using the second
       alone drops the sub-path of a project nested inside the repository, so
@@ -1030,7 +1036,8 @@ def anchor_configured_path(project_root: Path, value: Path) -> Path:
     top, main = anchors
     resolved = (project_root / value).resolve()
     inside = _below(project_root, top)
-    if inside is not None and _below(resolved, top) is None:
+    if inside is not None and _below(resolved, top) is None \
+            and not read_as_written(resolved, anchors):
         return main / inside
     return project_root
 

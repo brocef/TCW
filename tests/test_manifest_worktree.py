@@ -181,3 +181,77 @@ def test_a_borrowed_personal_manifest_reports_a_missing_project_once(tmp_path):
         assert ran.code == 0, (cwd, ran)
         assert ran.out.count("unresolved: ") == 1, (cwd, ran)
         assert "0 errors, 0 warnings, 1 unresolved" in ran.err, (cwd, ran)
+
+
+# -- A copy made of linked worktrees, one inside another --------------------------------
+#
+# A relative path is first read as written: when it lands on a project in a
+# checkout of the repository its entry names (any repository, when none is
+# named), other than one of this project's own repository, it is read there.
+# Only otherwise is it read beside the main checkout.
+
+WS_URL = "https://example.invalid/ws.git"
+
+
+def _workspace(base: Path, url: str = WS_URL) -> Path:
+    """A workspace repository (with `url` as its remote) holding its child's
+    work store, and the child, a repository of its own, inside its folder."""
+    ws = proj(base / "ws", "ws", children=["app"])
+    (ws / ".gitignore").write_text("/*\n!/.gitignore\n!/.tcw/\n!/docs/\n")
+    (ws / "docs" / "app" / "work").mkdir(parents=True)
+    (ws / "docs" / "app" / "work" / ".gitkeep").write_text("")
+    write_manifest(ws, {"app": "app"})
+    app = ws / "app"
+    write_config(app, "id: app\nparents:\n- ws\nwork:\n  path: tcw://ws.path/docs/app/work\n")
+    write_manifest(app, {"ws": {"path": "..", "repository": f"{url}#main"}})
+    git(ws, "init", "-q", "-b", "main")
+    git(ws, "remote", "add", "origin", WS_URL)
+    git(app, "init", "-q", "-b", "main")
+    for repo in (ws, app):
+        git(repo, "add", "-A")
+        git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x")
+    return ws.resolve()
+
+
+def _linked(main: Path, at: Path) -> Path:
+    at.parent.mkdir(parents=True, exist_ok=True)
+    git(main, "worktree", "add", "-q", "--detach", str(at))
+    return at.resolve()
+
+
+def _where(cwd: Path) -> tuple[str, str]:
+    """`tcw project path ws` and the work store `tcw project info` names."""
+    path = tcw(cwd, "project", "path", "ws")
+    info = tcw(cwd, "project", "info")
+    assert path.code == 0 and info.code == 0, (path, info)
+    store = next(line for line in info.out.splitlines() if line.strip().startswith("work:"))
+    return path.out.strip(), store.split(":", 1)[1].strip()
+
+
+def test_nested_worktrees_read_the_workspace_in_the_copy(tmp_path):
+    ws = _workspace(tmp_path / "real")
+    copy = _linked(ws, tmp_path / "copy" / "ws")
+    _linked(ws / "app", copy / "app")
+    assert _where(copy / "app") == (str(copy), str(copy / "docs" / "app" / "work"))
+
+
+def test_nested_worktrees_whose_entry_names_another_repository_read_beside_the_main(tmp_path):
+    ws = _workspace(tmp_path / "real", url="https://example.invalid/other.git")
+    copy = _linked(ws, tmp_path / "copy" / "ws")
+    _linked(ws / "app", copy / "app")
+    assert _where(copy / "app")[0] == str(ws)
+
+
+def test_a_worktree_made_away_from_the_workspace_reads_beside_the_main(tmp_path):
+    ws = _workspace(tmp_path / "real")
+    linked = _linked(ws / "app", tmp_path / "elsewhere" / "app")
+    assert _where(linked) == (str(ws), str(ws / "docs" / "app" / "work"))
+
+
+def test_clones_nested_alike_read_the_clone(tmp_path):
+    ws = _workspace(tmp_path / "real")
+    clone = tmp_path / "clone" / "ws"
+    subprocess.run(["git", "clone", "-q", str(ws), str(clone)], check=True)
+    subprocess.run(["git", "clone", "-q", str(ws / "app"), str(clone / "app")], check=True)
+    clone = clone.resolve()
+    assert _where(clone / "app") == (str(clone), str(clone / "docs" / "app" / "work"))
