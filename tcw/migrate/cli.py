@@ -112,7 +112,7 @@ def _check_after(root: Path, predicts, work_backend: str, no_jira: bool,
             *([] if work else [report.NOT_CHECKED_WORK])]
 
 
-def _would(steps, tickets, root: Path) -> None:
+def _would(steps, tickets, root: Path | None = None) -> None:
     from tcw.migrate import report
     report.say_steps(steps, dry=True, root=root)
     for edit in tickets:
