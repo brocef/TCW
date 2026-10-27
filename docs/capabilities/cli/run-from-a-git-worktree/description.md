@@ -15,7 +15,9 @@ Hosting
 [multiple projects in one repo](tcw://C/cli/host-multiple-projects-in-one-repo)
 behaves the same inside a worktree as outside it. The search for a project's
 folder works the same way: the folders outside the repository, next to it or
-enclosing it, are looked for from the main checkout. A project found in the
+enclosing it, are looked for from the main checkout, except from a worktree
+whose folder lies inside another repository's checkout, which is searched from
+where it is. A project found in the
 main checkout whose copy is in the worktree is the worktree's copy, so it
 appears once rather than twice.
 

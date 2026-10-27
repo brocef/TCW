@@ -594,8 +594,9 @@ this way:
   checkout, main or linked, of another repository, and of the repository the
   entry names when it names one. So worktrees made one inside another, such
   as a child repository's worktree placed inside its workspace's worktree,
-  read each other, not the folders they were made from. The search is not
-  changed by this.
+  read each other, not the folders they were made from. The search does the
+  same: from a worktree whose folder lies inside another repository's
+  checkout, it looks next to and above the worktree itself.
 
 ## Moving from 3.x
 
