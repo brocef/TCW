@@ -53,6 +53,7 @@ def override_variable(project_id: str) -> str:
 # don't "fix" it into an LRU. The price is that a directory added or removed as
 # a linked worktree while a server runs is seen only after a restart.
 _ANCHOR_CACHE: dict[Path, tuple[Path, Path] | None] = {}
+_REPOSITORY_CACHE: dict[Path, tuple[Path, frozenset[str]] | None] = {}
 
 
 #: The registry opened for each project root while a command runs; None
@@ -248,16 +249,43 @@ def read_as_written(target: Path, anchors: tuple[Path, Path],
     #39) still reads them beside its main checkout."""
     if not target.is_dir():
         return False
-    found = _git_lines(target, "rev-parse", "--path-format=absolute", "--git-common-dir")
-    own = _git_lines(anchors[0], "rev-parse", "--path-format=absolute", "--git-common-dir")
-    if not found or not own or Path(found[0]).resolve() == Path(own[0]).resolve():
+    found, own = _repository_of(target), _repository_of(anchors[0])
+    if found is None or own is None or found[0] == own[0]:
         return False
-    if url is None:
-        return True
-    wanted = normalized_url(url.split("#", 1)[0])
-    remotes = _git_lines(target, "config", "--get-regexp", r"^remote\..*\.url$") or []
-    return any(normalized_url(line.split(" ", 1)[1]) == wanted
-               for line in remotes if " " in line)
+    return url is None or normalized_url(url.split("#", 1)[0]) in found[1]
+
+
+def _repository_of(folder: Path) -> tuple[Path, frozenset[str]] | None:
+    """The git common dir of the checkout `folder` is in, and its remotes'
+    URLs, normalized; None outside one. Cached as `worktree_anchors` is.
+    Only `git rev-parse` runs, as for every read of where a project is: the
+    remotes are read from the common dir's `config` file, which every
+    checkout of the repository shares."""
+    key = folder.resolve()
+    if key not in _REPOSITORY_CACHE:
+        found = _git_lines(key, "rev-parse", "--path-format=absolute", "--git-common-dir")
+        common = Path(found[0]).resolve() if found else None
+        _REPOSITORY_CACHE[key] = None if common is None else (
+            common, frozenset(normalized_url(url) for url in _remote_urls(common / "config")))
+    return _REPOSITORY_CACHE[key]
+
+
+def _remote_urls(config: Path) -> list[str]:
+    """Each `url` of a `[remote "<name>"]` section of a git config file."""
+    try:
+        text = config.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return []
+    urls, in_remote = [], False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("["):
+            in_remote = stripped.lower().startswith("[remote ")
+        elif in_remote and "=" in stripped:
+            key, _, value = stripped.partition("=")
+            if key.strip().lower() == "url":
+                urls.append(value.strip().strip('"'))
+    return urls
 
 
 # ---------------------------------------------------------------------------
@@ -2074,9 +2102,12 @@ class FsProjectRegistry(ProjectRegistry):
         is the worktree's top folder, the folders next to it are those next to
         the main checkout; the enclosing folders are the worktree's own up to
         its top, then those enclosing the main checkout, whose own root is not
-        tested again."""
+        tested again. A worktree whose folder lies inside another repository's
+        checkout (`read_as_written`), as in worktrees made one inside another,
+        is searched from where it is."""
         holder, own, enclosing = named_by.parent, named_by, list(named_by.parents)
-        if self._anchors is not None and _below(named_by, self._anchors[0]) is not None:
+        if self._anchors is not None and _below(named_by, self._anchors[0]) is not None \
+                and not read_as_written(self._anchors[0].parent, self._anchors):
             top, main = self._anchors
             if named_by == top:
                 holder, own = main.parent, main

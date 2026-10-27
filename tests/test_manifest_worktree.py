@@ -255,3 +255,17 @@ def test_clones_nested_alike_read_the_clone(tmp_path):
     subprocess.run(["git", "clone", "-q", str(ws / "app"), str(clone / "app")], check=True)
     clone = clone.resolve()
     assert _where(clone / "app") == (str(clone), str(clone / "docs" / "app" / "work"))
+
+
+def test_nested_worktrees_search_the_copy_for_an_enclosing_project(tmp_path):
+    """The search for a project with no manifest entry follows the same rule:
+    the worktree's folder lies inside another repository's checkout, so the
+    folders enclosing it are the copy's own."""
+    ws = _workspace(tmp_path / "real")
+    write_manifest(ws / "app", "tcw-version: 4.0.0\nprojects: {}\n")
+    git(ws / "app", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "no entry")
+    copy = _linked(ws, tmp_path / "copy" / "ws")
+    _linked(ws / "app", copy / "app")
+    assert _where(copy / "app") == (str(copy), str(copy / "docs" / "app" / "work"))
+    linked = _linked(ws / "app", tmp_path / "elsewhere" / "app")
+    assert _where(linked)[0] == str(ws)
