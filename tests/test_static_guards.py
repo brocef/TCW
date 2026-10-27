@@ -51,6 +51,10 @@ EXEMPT = {
     # read and that is not on this machine is fetched with the clone itself,
     # since every command but `tcw migrate` is refused in a 3.x project.
     ("migrate/family.py", "absent_project_message"),
+    # TCW-118, evaluation finding 2: a file the run would write that git would
+    # ignore refuses the run (B18); git's ignore rule is the reason, and the
+    # advice is a line of .gitignore.
+    ("migrate/plan.py", "ignored_blockers"),
 }
 
 WORKTREE_SENTENCE = ("while this worktree has its own at",
