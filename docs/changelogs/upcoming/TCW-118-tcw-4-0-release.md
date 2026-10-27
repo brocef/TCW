@@ -7,6 +7,11 @@
 
 ## Fixed
 
+- `tcw migrate` rewrites a taxonomy reference whose first folder names a
+  project that 3.x reached only through another project's
+  `taxonomy.extends` as that project's, as 3.x read it, also once the
+  project in between is migrated; before, it became a path in this
+  project's own taxonomy that named nothing. (TCW-118)
 - `tcw migrate`'s D1 no longer says a project now inherits terms that 3.x
   already passed it through a chain of `taxonomy.extends`, and no longer
   names a project with no terms, or no capabilities, to pass. (TCW-118)

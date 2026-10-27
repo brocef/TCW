@@ -1143,29 +1143,43 @@ def _d1(rel: str, project_id: str, mapping: dict, graph: dict, family,
 def _passed_by_3x(axis: str, mapping: dict, family) -> set[str]:
     """The projects 3.x passed `axis` to the project read as `mapping`
     (`tcw/store/fs.py` at v3.0.2): for capabilities, the ones its own
-    `extends` names (`list_all`, `:2389-2395`); for taxonomy, those and,
-    in turn, the ones each of them extends (`_inherited_stores`,
-    `:1751-1763`). `projects:` passed neither. An extended project already
-    migrated has its `extends` as parent links naming the axis."""
-    found: set[str] = set()
-    frontier = list(extended_by(mapping)[axis])
+    `extends` names (`list_all`, `:2389-2395`); for taxonomy, those and the
+    ones they reach in turn (`taxonomy_reach_3x`). `projects:` passed
+    neither. Only a migrated project's links naming taxonomy are followed,
+    so that a project 3.x may not have passed is reported rather than
+    left out."""
+    named = extended_by(mapping)[axis]
+    if axis != "taxonomy":
+        return set(named)
+    return set(taxonomy_reach_3x(named, family, plain=False))
+
+
+def taxonomy_reach_3x(named: list[str], family, *, plain: bool) -> list[str]:
+    """The projects whose terms 3.x's taxonomy store read for a project
+    whose `taxonomy.extends` is `named` (`_inherited_stores`,
+    `tcw/store/fs.py:1751-1763` at v3.0.2): each project named and, in
+    turn, each one its own `taxonomy.extends` names; its `get` took a first
+    folder naming any of them as that project's (`:1779-1783`). A project
+    already migrated has its `extends` as parent links: those naming
+    taxonomy are followed, and, when `plain`, those passing everything,
+    which is what an `extends` naming a project's own parent became (E1)."""
+    found: list[str] = []
+    frontier = list(named)
     while frontier:
-        pid = frontier.pop()
+        pid = frontier.pop(0)
         if pid in found:
             continue
-        found.add(pid)
-        if axis != "taxonomy":
-            continue
-        member = family.quiet(pid)
+        found.append(pid)
+        member = family.quiet(pid) if family is not None else None
         if member is None:
             continue
         if member.three_x:
-            frontier += extended_by(member.raw)[axis]
-        else:
-            from tcw.store.links import parse_parents
-            links = _from_parent_links(parse_parents(member.raw.get("parents"), ".")[0]
-                                       or [])
-            frontier += [l.id for l in links if l.inherit is not None and axis in l.inherit]
+            frontier += extended_by(member.raw)["taxonomy"]
+            continue
+        from tcw.store.links import parse_parents
+        links = _from_parent_links(parse_parents(member.raw.get("parents"), ".")[0] or [])
+        frontier += [l.id for l in links if (l.inherit is None and plain)
+                     or (l.inherit is not None and "taxonomy" in l.inherit)]
     return found
 
 

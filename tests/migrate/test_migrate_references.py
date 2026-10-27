@@ -283,3 +283,68 @@ def test_a_bare_reference_two_sources_have_is_b10(tcw, tmp_path):
     assert done.code == 3
     assert (f"  B10 {C}/cli/x/meta.yaml: Blocked by: auth/login is in more than one "
             f"project this one inherits from (core, lib), and TCW 3 refused it") in done.err
+
+
+# ── A prefix 3.x resolved through a source's own taxonomy extends ───────────
+
+def term(name: str) -> dict[str, str]:
+    return {f"{T}/{name}/meta.yaml": f"name: {name}\nkind: Vocabulary\n"}
+
+
+def chain_family(base: Path, depth: int) -> dict[str, Path]:
+    """A root `r` with nothing of its own; a library `l`; `depth` projects
+    `m1`, ..., each the next one's parent, `m1` extending `l` and each other
+    the one above it; and `kid`, extending the last, which reaches `l`'s
+    terms through `depth` taxonomy `extends`. Each project but `r` has one
+    term of its own."""
+    roots = {"r": make(base, {"tcw-config.yaml": "id: r\nprojects:\n  children:\n"
+                                                 "    l: l\n    m1: m1\n"})}
+    roots["l"] = make(base / "l", {"tcw-config.yaml": "id: l\nprojects:\n  parent:\n"
+                                                       "    r: ..\n",
+                                   **term("lib-term")})
+    above, folder = "r", base
+    for n in range(1, depth + 1):
+        pid, nxt = f"m{n}", (f"m{n - 1}" if n > 1 else "l")
+        folder = folder / pid
+        child = f"m{n + 1}" if n < depth else "kid"
+        roots[pid] = make(folder, {
+            "tcw-config.yaml": f"id: {pid}\nprojects:\n  parent:\n    {above}: ..\n"
+                               f"  children:\n    {child}: {child}\n"
+                               f"taxonomy:\n  extends:\n  - {nxt}\n",
+            **term(f"term-{n}")})
+        above = pid
+    roots["kid"] = make(folder / "kid", {
+        "tcw-config.yaml": f"id: kid\nprojects:\n  parent:\n    {above}: ..\n"
+                           f"taxonomy:\n  extends:\n  - {above}\n",
+        **term("own-term"),
+        f"{T}/check/meta.yaml": (
+            "name: Check\nkind: Feature\n"
+            f"vocabulary:\n- {above}/term-{depth}\n- own-term\n"
+            "- l/lib-term\n"
+            f"relatesTo:\n- {above}/term-{depth}\n- own-term\n"
+            "- l/lib-term\n")})
+    return roots
+
+
+@pytest.mark.parametrize("depth", [1, 3])
+@pytest.mark.parametrize("migrated_first", [False, True])
+def test_a_prefix_3_x_reached_through_a_source_s_extends_names_that_project(
+        tcw, tmp_path, depth, migrated_first):
+    """3.x's taxonomy `get` took a first folder naming any project its
+    `extends` reached, through each source's own (`_inherited_stores`), as
+    that project's; so does C16, whether those projects are still 3.x or
+    already migrated."""
+    fam = chain_family(tmp_path / "r", depth)
+    if migrated_first:
+        for pid in ("r", "l", *[f"m{n}" for n in range(1, depth + 1)]):
+            migrated(tcw, fam[pid])
+    migrated(tcw, fam["kid"])
+    data = own_state(fam["kid"], f"{T}/check/tcw-taxonomy.yaml")
+    above = f"m{depth}"
+    expected = [f"{above}.taxonomy/term-{depth}", "kid.taxonomy/own-term",
+                "l.taxonomy/lib-term"]
+    assert data["vocabulary"] == expected
+    assert data["relatesTo"] == expected
+    if migrated_first:
+        found = tcw(["validate"], fam["kid"])
+        assert found.code == 0, (found.out, found.err)

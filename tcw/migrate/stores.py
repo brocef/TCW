@@ -442,8 +442,10 @@ def view_of(mapping: dict, family, own: dict[str, set[str]]) -> View:
     (C16): each axis's `extends` sources with their id-paths as they are
     once migrated, an override of a 3.x source left out, and a taxonomy
     source's own taxonomy sources too, since 3.x's taxonomy reads followed
-    them (`_inherited_stores`, `tcw/store/fs.py:1751-1766` at v3.0.2); the
-    listed children; and each migrated source's record's `moved:`."""
+    them (`taxonomy_reach_3x`), a migrated source's through its parent
+    links; the listed children; and each migrated source's record's
+    `moved:`."""
+    from tcw.migrate.config import taxonomy_reach_3x
     from tcw.migrate.legacy import extends_3x, relations_3x
     from tcw.migrate.overrides import ancestor_paths
     from tcw.migrate.record import read_record
@@ -455,25 +457,15 @@ def view_of(mapping: dict, family, own: dict[str, set[str]]) -> View:
             named = list(extends_3x(mapping.get(axis), axis))
         except ValueError:
             continue
-        seen = set()
-        while named:
-            pid = named.pop(0)
-            if pid in seen:
-                continue
-            seen.add(pid)
+        if axis == "taxonomy":
+            named = taxonomy_reach_3x(named, family, plain=True)
+        for pid in named:
             view.sources.setdefault(pid, {})[axis] = ancestor_paths(axis, pid, family)
             member = family.quiet(pid) if family is not None else None
-            if member is None:
-                continue
-            if not member.three_x:
+            if member is not None and not member.three_x:
                 moved = read_record(member.folder).get("moved")
                 if isinstance(moved, dict):
                     view.moved[pid] = {str(k): str(v) for k, v in moved.items()}
-            elif axis == "taxonomy":
-                try:
-                    named += extends_3x(member.raw.get("taxonomy"), "taxonomy")
-                except ValueError:
-                    pass
     return view
 
 
