@@ -25,6 +25,22 @@ is a 3.x file, and TCW 4.0 reads only 4.0 files.
 2. **Commit the project, or back it up.** `tcw migrate` rewrites, moves and
    deletes files. Inside git, a commit made just before the run is your way
    back. A folder that is not in git has no way back unless you copy it first.
+
+   To try the migration on a copy before the real run, make the copy with
+   `git clone`, or by copying the folders, keeping each repository in the
+   same place inside the others as it is now (a child project's repository
+   inside the planning workspace's folder, say). In such a copy a relative
+   store path, such as `work.path: ../docs/app/work`, is read from the copy's
+   own folders, so the run changes only the copy. A copy made with
+   `git worktree add` behaves differently: TCW 3 read a relative store path
+   that leaves a linked worktree from beside that worktree's main checkout,
+   and `tcw migrate` converts each store where TCW 3 read it. So in worktrees
+   made one inside another, such as a child repository's worktree placed
+   inside the workspace's worktree, the store a child's path names is the one
+   in the folders the worktrees were made from. The run then refuses with
+   blocker **B18**, naming that folder, and writes nothing; make the copy by
+   cloning or copying instead. A single worktree whose stores are all inside
+   it migrates in place.
 3. **Upgrade together with everyone who works on the project.** TCW 4.0 reads
    only 4.0 files and refuses a 3.x project it reaches, and TCW 3.x cannot read
    a migrated project. So everyone working on the project, and every agent,
@@ -212,6 +228,11 @@ Some of the reports need a word more:
 
   The personal files `.tcw/.gitignore` ignores on purpose are never named, and
   a project outside git is not checked.
+- **B18** names a folder the run would change files in that is another
+  checkout of a repository the project sits in, such as the main checkout a
+  linked worktree was made from (see step 2 of
+  [Before you start](#before-you-start)). Run `tcw migrate` in that folder
+  itself, or in a copy made by cloning or copying.
 - **D8** says that, once converted, no order of the family's projects keeps
   every project's own order of parents. The **load order** is the order a
   project's parents are read in, a later one winning over an earlier one (the
@@ -469,6 +490,9 @@ explains them.
    migration converts that store, and the files it changed there are listed
    under `left in another repository: <folder>`, for whoever commits in that
    repository. The workspace's own migration converts only its own stores.
+   A file inside a repository the project sits in, such as the workspace's,
+   is named relative to the project (`../docs/app/work/...`); one anywhere
+   else, such as in a clone of a store's repository, by its absolute path.
 
 5. **A related project that is not on this machine.** Most related projects
    are converted from what this project's own files say about them, without
