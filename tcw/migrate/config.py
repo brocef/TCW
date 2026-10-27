@@ -797,6 +797,8 @@ class _Converter:
         self.memo: dict[str, list[Link]] = family.predicted
         self.absent: set[str] = set()
         self.busy: set[str] = set()
+        #: The projects whose `convert` has started and not yet returned.
+        self.converting: set[str] = set()
 
     def links_of(self, project_id: str) -> list[Link]:
         """`project_id`'s parent links in 4.0: its own when migrated, the
@@ -844,6 +846,13 @@ class _Converter:
         """`subject`'s links: C3 (with Design 6.1's drop of a parent that
         extends it as its listed child), then each `extends` entry by E1 to
         E5, taxonomy first, each in the order written."""
+        self.converting.add(subject.id)
+        try:
+            return self._convert(subject)
+        finally:
+            self.converting.discard(subject.id)
+
+    def _convert(self, subject) -> Links:
         from tcw.store.base import find_loop, passing
         rel = ROOT_CONFIG if subject.three_x else SENTINEL
         relations = plan_relations(rel, subject.raw)
@@ -936,12 +945,41 @@ class _Converter:
 
     def _keep_every_order(self, project_id: str, relations: Relations) -> None:
         """The parents reordered by `order_keeping_values`, when it finds an
-        order that is certain to change no value; otherwise left as
-        converted, for D8 to report."""
+        order that is certain to change no value here or in any project
+        below this one on this machine; otherwise left as converted, for D8
+        to report."""
+        absent = frozenset(self.absent)
         graph = self.graph(project_id, relations.parents)
-        kept = order_keeping_values(project_id, graph, frozenset(self.absent))
+        if order_keeping_values(project_id, graph, absent) is None:
+            return
+        below = self._below_graphs(project_id, relations.parents)
+        kept = order_keeping_values(project_id, graph, frozenset(self.absent), below)
         if kept is not None:
             relations.parents[:] = [relations.parents[i] for i in kept]
+
+    def _below_graphs(self, project_id: str, parents: list[Link]) -> list[tuple[str, dict]]:
+        """Each project of the family on this machine that has `project_id`
+        among its ancestors, with the parent links of it and every project
+        above it, `project_id`'s own taken as `parents`. A project whose
+        links are being converted at the moment is left out, since they are
+        not known yet. What is learnt of the others on the way is forgotten
+        afterwards, since it was learnt with `parents` in this order."""
+        saved = dict(self.memo)
+        self.memo[project_id] = list(parents)
+        try:
+            self.family._walk_to("\0")     # place every project the walk reaches
+            out = []
+            for pid in [self.family.active.id, *self.family.placed]:
+                if (pid == project_id or pid in self.converting
+                        or self.family.quiet(pid) is None):
+                    continue
+                graph = self.graph(pid, self.links_of(pid))
+                if project_id in graph:
+                    out.append((pid, graph))
+            return out
+        finally:
+            self.memo.clear()
+            self.memo.update(saved)
 
     def _add(self, relations: Relations, link: Link, axis: str) -> None:
         """A new parent appended, or `axis` added to the entry already made
@@ -959,7 +997,8 @@ class _Converter:
         relations.parents.insert(at, link)
 
 
-def order_keeping_values(project_id: str, links, absent=frozenset()) -> list[int] | None:
+def order_keeping_values(project_id: str, links, absent=frozenset(),
+                         below=()) -> list[int] | None:
     """When the parents of `project_id` as written leave C3 no order (D8),
     the positions of those parents in a new order: each placed before the
     first earlier parent that inherits it, as `_add` places one. None when
@@ -968,8 +1007,12 @@ def order_keeping_values(project_id: str, links, absent=frozenset()) -> list[int
     4.4). Only then is it certain that no value changes, since 4.0 would
     load the projects in that order anyway; a reorder that let C3 succeed
     with some other order would change which project wins a value, so it
-    is left for the person (D8 names one). `links` is every project's
-    parent links, as `load_order_of` takes them."""
+    is left for the person (D8 names one). The same holds for each project
+    of `below`, given as its ID and the parent links of it and every project
+    above it: its load order, the one 4.0 would use, C3's or the depth-first
+    one, must be the same with the new order as with the list as written.
+    `links` is every project's parent links, as `load_order_of` takes
+    them."""
     from tcw.store.base import load_order_of
 
     def above(pid: str) -> set[str]:
@@ -996,9 +1039,14 @@ def order_keeping_values(project_id: str, links, absent=frozenset()) -> list[int
         ordered.insert(at, position)
     trial = {**links, project_id: [own[i] for i in ordered]}
     found = load_order_of(project_id, trial, missing=absent)
-    if found.warning is None and found.ids == written.ids:
-        return ordered
-    return None
+    if found.warning is not None or found.ids != written.ids:
+        return None
+    reordered = [own[i] for i in ordered]
+    for pid, graph in below:
+        before = load_order_of(pid, graph, missing=absent).ids
+        if load_order_of(pid, {**graph, project_id: reordered}, missing=absent).ids != before:
+            return None
+    return ordered
 
 def plan_links(root: Path, project_id: str, mapping: dict, family) -> Links:
     """The active project's links (C3, C8), its D1 and D8 reports, and the

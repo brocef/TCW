@@ -303,9 +303,35 @@ def test_a_reorder_that_would_change_the_load_order_is_not_written(tcw, tmp_path
     assert [e["id"] for e in shared(p)["parents"]] == ["n0", "n1", "n3"]
 
 
+
+def test_a_reorder_that_would_change_a_grandchild_s_load_order_is_not_written(tcw,
+                                                                            tmp_path):
+    """p lists n0, n2, and n0 names n1 then n2: listing n2 first keeps p's own
+    load order (n1, n2, n0, p), but its grandchild grand, whose other parent
+    is n2, would load n2 before n1 instead of after it. So p is written as
+    converted, and D8 is reported."""
+    for name in ("n1", "n2"):
+        migrate(tcw, project(tmp_path / f"far/{name}", f"id: {name}\n", git=True))
+    migrate(tcw, project(tmp_path / "far/n0", "id: n0\nprojects:\n  upstream:\n"
+                                              "    n1: ../n1\n    n2: ../n2\n", git=True))
+    p = project(tmp_path / "ws", "id: p\nprojects:\n  children:\n    kid: kid\n"
+                                 "  upstream:\n    n0: ../far/n0\n    n2: ../far/n2\n",
+                git=True)
+    project(tmp_path / "ws/kid", "id: kid\nprojects:\n  parent:\n    p: ..\n"
+                                 "  children:\n    grand: grand\n")
+    project(tmp_path / "ws/kid/grand", "id: grand\nprojects:\n  parent:\n    kid: ..\n"
+                                       "  upstream:\n    n2: ../../../far/n2\n")
+    done = migrate(tcw, p)
+    [d8] = [l for l in done.err.splitlines() if l.startswith("  D8 ")]
+    assert "using depth-first order n1, n2, n0, p" in d8, d8
+    assert [e["id"] for e in shared(p)["parents"]] == ["n0", "n2"]
+
+
 def _random_family(rng):
     """Up to six projects above "p", each with parents only among those
-    after it, so no loop can form, and p's own parents in a random order."""
+    after it, so no loop can form; p's own parents in a random order; and
+    one or two projects below p, each with p or the one before it as a
+    parent, and another project or two as well."""
     from tcw.store.base import ParentLink
     names = [f"n{i}" for i in range(rng.randint(2, 6))]
     links = {}
@@ -315,7 +341,18 @@ def _random_family(rng):
                        rng.sample(later, rng.randint(0, min(3, len(later))))]
     links["p"] = [ParentLink(pid) for pid in
                   rng.sample(names, rng.randint(2, min(4, len(names))))]
-    return links
+    below = []
+    for name in ("d0", "d1")[:rng.randint(1, 2)]:
+        others = rng.sample(names, rng.randint(0, 2))
+        own = [rng.choice(["p", *below]), *others]
+        rng.shuffle(own)
+        links[name] = [ParentLink(pid) for pid in own]
+        below.append(name)
+    return links, below
+
+
+def _below_graphs(links, below):
+    return [(pid, links) for pid in below]
 
 
 def test_a_reorder_is_written_only_when_it_keeps_the_load_order():
@@ -329,9 +366,9 @@ def test_a_reorder_is_written_only_when_it_keeps_the_load_order():
     rng = random.Random(118)
     reordered = 0
     for _ in range(300):
-        links = _random_family(rng)
+        links, below = _random_family(rng)
         written = load_order_of("p", links)
-        kept = order_keeping_values("p", links)
+        kept = order_keeping_values("p", links, below=_below_graphs(links, below))
         if kept is None:
             continue
         reordered += 1
@@ -340,6 +377,8 @@ def test_a_reorder_is_written_only_when_it_keeps_the_load_order():
         trial = {**links, "p": [links["p"][i] for i in kept]}
         found = load_order_of("p", trial)
         assert (found.ids, found.warning) == (written.ids, None), links
+        for pid in below:
+            assert load_order_of(pid, trial).ids == load_order_of(pid, links).ids, links
     assert reordered > 0
 
 
@@ -351,6 +390,10 @@ def test_the_counterexample_and_the_middle_project_unit():
     assert order_keeping_values("p", counter) is None
     middle = {"b": [L("a"), L("core")], "a": [L("core")], "core": []}
     assert order_keeping_values("b", middle) == [1, 0]
+    child = {"p": [L("n0"), L("n2")], "n0": [L("n1"), L("n2")], "n1": [], "n2": [],
+             "g": [L("n2"), L("p")]}
+    assert order_keeping_values("p", child) == [1, 0]
+    assert order_keeping_values("p", child, below=[("g", child)]) is None
 
 # ── D1 (criteria 32 and 65) ─────────────────────────────────────────────────
 

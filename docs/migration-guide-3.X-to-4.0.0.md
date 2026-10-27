@@ -247,9 +247,13 @@ Some of the reports need a word more:
   each parent before the first earlier parent that inherits it (such as an
   upstream listed after a parent that itself names that upstream), and
   writes that order only when its load order is exactly the depth-first
-  order TCW 4.0 would use for the list as written. It never changes a
-  value: when the moved order would load the projects in any other order,
-  the list is written as converted and D8 is reported. D8 is also left for
+  order TCW 4.0 would use for the list as written, and every project below
+  it that is on this machine keeps the load order it would have had too.
+  It never changes a value there: when the moved order would load the
+  projects of any of them in another order, the list is written as
+  converted and D8 is reported. A project below it that is not on this
+  machine is not checked, so run `tcw validate` in it once it is migrated.
+  D8 is also left for
   parents whose own lists disagree, such as `x` listing `a` before `b` and
   `y` listing `b` before `a`, both parents of `app`:
 
