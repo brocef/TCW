@@ -112,6 +112,14 @@
 - The migration guide says `.tcw/tcw-migration.yaml` is written only when there is something to record,
   and that in a family migrated parents first every run but the last stops its check, so the other
   projects need a `tcw validate` once all are migrated.
+- `tcw migrate` refuses, with blocker B18, a run that would write a file git ignores, such as `.tcw/`
+  under a root `.gitignore` that ignores everything and re-includes only what is tracked, naming the rule
+  and the line to add; it used to write the ignored files and delete the tracked `tcw-config.yaml`.
+- `tcw migrate` lists a project's upstream before its parent when that parent names the same upstream, so
+  the converted project no longer gets a load-order warning in every `tcw validate`.
+- The load-order warning names the `parents:` list to reorder, and the order that would keep every other
+  project's own order, instead of only "set it in '<project>'".
+- `tcw migrate` no longer reports its D8 load-order report a second time as A12.
 
 ## Removed
 
