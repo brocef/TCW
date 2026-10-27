@@ -245,6 +245,11 @@ links, comments and labels stay as they were. The Jira settings it uses are
 the project's own `work.jira`, in its 3.x or 4.0 files, never a parent's; a
 problem elsewhere in the configuration does not stop the ticket conversion.
 
+**Converting the tickets is not local to a copy.** Running `tcw migrate`
+without `--no-jira` from any copy of the project rewrites the shared tickets,
+which every 3.x user of that Jira project then stops seeing, so convert the
+tickets only when everyone sharing that Jira project upgrades together.
+
 **`--no-jira` converts the files only.** It never builds a Jira client, so it
 needs no credentials and cannot reach Jira, whatever the configuration says.
 It is the way to keep a run off a live board, and to convert the files when
@@ -533,10 +538,12 @@ grammar.
 
 ### Output a script reads
 
-| 3.x output                                 | In 4.0                                                                                                                          |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `"schema": 1` in `--json` output           | `"schema": 2`; each record carries `full-id` and `owner`                                                                        |
-| the `--origin` comment `# <layer>: <file>` | `# <project>, <layer> <file>`, such as `# app, project .tcw/tcw-config.yaml` or `# my-proj, environment TCW_USER_NAME__MY_PROJ` |
+| 3.x output                                                                                  | In 4.0                                                                                                                                                                                         |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"schema": 1` in `--json` output                                                            | `"schema": 2`; each record carries `full-id` and `owner`                                                                                                                                       |
+| the `--origin` comment `# <layer>: <file>`                                                  | `# <project>, <layer> <file>`, such as `# app, project .tcw/tcw-config.yaml` or `# my-proj, environment TCW_USER_NAME__MY_PROJ`                                                                |
+| `TCW_SLUG`, given to stage hooks and `generate:` scripts, `app/2026-10-24-add-export`       | `app.work/2026-10-24-add-export`, the item's full identifier; the name is unchanged, so a script that splits it at `/` or writes it into commit messages changes what it does without an error |
+| the JSON a `generate:` script reads on standard input, `{"schema": 1, "item": {"slug": …}}` | `"schema": 2`; the item carries `full-id` and `owner` in place of `slug`, and its `parent`, `blocked-by`, `blocks` and `children` hold full identifiers                                        |
 
 ### What reads differently with no name change
 
@@ -693,7 +700,16 @@ states the rules in full; in short:
    tables above give each replacement.
 2. **A script that reads `--json` output** reads `"schema": 2` and full
    identifiers (`full-id`, `owner`). One that reads `tcw project config --origin`
-   comments reads their new shape.
+   comments reads their new shape. **A stage hook or `generate:` script**
+   gets one environment variable whose value changed: `TCW_SLUG` is the
+   item's full identifier, `app.work/2026-10-24-add-export` where 3.x gave
+   `app/2026-10-24-add-export`. A script that parses it, or puts it in a
+   commit message, changes what it does with no error; one that needs the
+   item's folder reads `TCW_ITEM_PATH`. `TCW_STAGE`, `TCW_FROM_STAGE`,
+   `TCW_ITEM_PATH`, `TCW_PROJECT_ROOT`, `TCW_CONFIG_DIR`, `TCW_FORCED`,
+   `TCW_REASON` and the `TCW_HOOK_*` variables hold what they held in 3.x.
+   A `generate:` script's standard input changes too, as
+   [Output a script reads](#output-a-script-reads) says.
 3. **A script that checks the exit code for a related project that is not on
    this machine** checks both 5 and 7: 5 when the command named or reached
    that project's own object or folder, 7 when the command needed something
