@@ -104,8 +104,9 @@ class WorkLocation:
 
     @classmethod
     def _local_root(cls, project_root: Path, configured: str | None, *,
-                    locator=None) -> Path:
-        return store_location(project_root, cls.COMPONENT, configured, locator=locator)
+                    locator=None, url: str | None = None) -> Path:
+        return store_location(project_root, cls.COMPONENT, configured, locator=locator,
+                              url=url)
 
     @classmethod
     def _open_at(cls, raw_root: Path, project_root: Path, config_path: Path, *,
@@ -568,7 +569,8 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     # Where each store is, as the readers find it (`store_location`): a
     # relative path leaving a linked worktree re-anchors there, and a folder
     # address resolves, so a store is built where it will be looked for.
-    located = {c: store_location(root, c, configured_text.get(c, str(given)))
+    located = {c: store_location(root, c, configured_text.get(c, str(given)),
+                                 url=declared_url(existing_config.get(c)))
                for c, given in paths.items() if c in components}
     work_path = paths.get("work")
     # Everything `init` can refuse over, decided before it writes anything at
@@ -998,7 +1000,18 @@ def _mkdir_owned(d: Path) -> bool:
         return False
 
 
-def anchor_configured_path(project_root: Path, value: Path) -> Path:
+def declared_url(section: object) -> str | None:
+    """The `url` a store's configuration section declares under
+    `repository:`, when it is a string, else None. `<component>.path` sits
+    beside it, so a path that leaves a linked worktree is read as written
+    only in a checkout of that repository (`anchor_configured_path`)."""
+    repository = section.get("repository") if isinstance(section, dict) else None
+    url = repository.get("url") if isinstance(repository, dict) else None
+    return url if isinstance(url, str) else None
+
+
+def anchor_configured_path(project_root: Path, value: Path,
+                           url: str | None = None) -> Path:
     """The directory a relative `<component>.path` is resolved against.
 
     Inside a *linked worktree* this follows the same rule
@@ -1014,8 +1027,12 @@ def anchor_configured_path(project_root: Path, value: Path) -> Path:
     - **Read as written first.** A path that leaves the worktree and lands
       in a folder inside another repository's checkout is read there
       (`read_as_written`): a copy made of linked worktrees, one inside
-      another, keeps to the copy. The path names no repository here, so any
-      repository's checkout counts.
+      another, keeps to the copy. `url` is the repository the store's
+      `repository:` declares (`declared_url`): when one is declared, only a
+      checkout of it counts, as `tcw migrate` reads the path
+      (`tcw.migrate.legacy.store_folder_3x`); with none, any other
+      repository's checkout does. A path landing anywhere else, or on no
+      folder at all, is read beside the main checkout.
     - **Anchor at this project's counterpart, not at the main worktree root.**
       `worktree_anchors` returns `(current top, main root)`; using the second
       alone drops the sub-path of a project nested inside the repository, so
@@ -1037,7 +1054,7 @@ def anchor_configured_path(project_root: Path, value: Path) -> Path:
     resolved = (project_root / value).resolve()
     inside = _below(project_root, top)
     if inside is not None and _below(resolved, top) is None \
-            and not read_as_written(resolved, anchors):
+            and not read_as_written(resolved, anchors, url):
         return main / inside
     return project_root
 
@@ -1295,11 +1312,12 @@ class FsTreeStore:
 
     @classmethod
     def _local_root(cls, project_root: Path, configured: str | None, *,
-                    locator=None) -> Path:
+                    locator=None, url: str | None = None) -> Path:
         """Where this component's tree sits on this machine, per
         `<component>.path`, or the default `docs/<component>`
         (`store_location`)."""
-        return store_location(project_root, cls.COMPONENT, configured, locator=locator)
+        return store_location(project_root, cls.COMPONENT, configured, locator=locator,
+                              url=url)
 
     @classmethod
     def _open_at(cls, raw_root: Path, project_root: Path, config_path: Path, *,
@@ -3725,13 +3743,14 @@ class LocationProjectAbsent(StoreLocationUnusable):
 
 
 def store_location(project_root: Path, component: str, configured: str | None, *,
-                   locator=None, chain: tuple = ()) -> Path:
+                   locator=None, chain: tuple = (), url: str | None = None) -> Path:
     """The folder a configured `<component>.path` names, written in the
     configuration of the project at `project_root` (TCW-110 Design 7.5): the
     one function every reader calls.
 
     `None` is the default `docs/<component>`. A plain path is relative to the
-    project, re-anchored in a linked worktree (`anchor_configured_path`). A
+    project, re-anchored in a linked worktree (`anchor_configured_path`,
+    given `url`, the repository the store declares, from `declared_url`). A
     folder address is resolved by Design 7.2 through `locator`, the command's
     one `Locator` (the active project's when None): `tcw://<id>.path/<rest>`
     is that project's root joined with `<rest>`, and
@@ -3750,7 +3769,7 @@ def store_location(project_root: Path, component: str, configured: str | None, *
         value = Path(configured).expanduser()
         if value.is_absolute():            # names a place, not an offset
             return value
-        return anchor_configured_path(project_root, value) / value
+        return anchor_configured_path(project_root, value, url) / value
     key = f"{component}.path"
     try:
         found = parse_address(configured)
@@ -3831,7 +3850,8 @@ def resolve_store(store_cls, project_root: Path, active_root: Path | None = None
         from tcw.locate import Locator
         locator = Locator.of(active_root or project_root)
     try:
-        raw_root = store_cls._local_root(project_root, configured, locator=locator)
+        raw_root = store_cls._local_root(project_root, configured, locator=locator,
+                                         url=declared_url(section))
     except LocationProjectAbsent as absent:
         if declaration is None:
             raise absent.unreachable from None

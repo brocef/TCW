@@ -259,7 +259,8 @@ def resolve_folder_address(address, locator: "Locator", named_by: Path, *,
     `owner_root` does, and `StoreDeclarationError` for a loop or a
     malformed location in the named project's configuration. The folder
     need not exist."""
-    from tcw.store.fs import SENTINEL, StoreDeclarationError, load_config, store_location
+    from tcw.store.fs import (SENTINEL, StoreDeclarationError, declared_url, load_config,
+                              store_location)
     root = locator.owner_root(address.project, Path(named_by))
     if address.namespace is None:
         return Path(root).joinpath(*address.parts)
@@ -276,5 +277,5 @@ def resolve_folder_address(address, locator: "Locator", named_by: Path, *,
             f"{Path(root) / SENTINEL}: {address.namespace}.path must be a non-empty "
             f"path string")
     base = store_location(Path(root), address.namespace, inner, locator=locator,
-                          chain=(*chain, pair))
+                          chain=(*chain, pair), url=declared_url(section))
     return base.joinpath(*address.parts)

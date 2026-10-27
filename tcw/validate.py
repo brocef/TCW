@@ -43,7 +43,7 @@ from tcw.store.yaml_source import load as _load_named_yaml
 from tcw.store.base import StoreLocationUnusable
 from tcw.store.fs import (
     OWNED_YAML_NAMES, STORE_CLASSES, FsCapabilitiesStore, FsTaxonomyStore,
-    WorkLocation, _UniqueKeyLoader, load_yaml,
+    WorkLocation, _UniqueKeyLoader, declared_url, load_yaml,
 )
 
 if TYPE_CHECKING:
@@ -257,7 +257,7 @@ def _configured_path_problem(project_root: Path, comp: str) -> str | None:
     if not isinstance(configured, str) or not configured.strip():
         return None
     store_cls = STORE_CLASSES[comp]
-    raw_root = store_cls._local_root(project_root, configured)
+    raw_root = store_cls._local_root(project_root, configured, url=declared_url(section))
     if not raw_root.exists():
         return None
     try:
@@ -950,7 +950,8 @@ def _store_overlaps(locator) -> list[Finding]:
                     locate(address.project, root)
             try:
                 folder = store_location(root, comp, value if isinstance(value, str)
-                                        else None, locator=locator)
+                                        else None, locator=locator,
+                                        url=declared_url(section))
             except (ValueError, Unreachable, ProjectGraphError):
                 continue         # reported at its key
             if folder.is_dir():

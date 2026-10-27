@@ -471,12 +471,14 @@ def store_folder_3x(root: Path, component: str, section: Any) -> StoreFolder3:
     (`:1192-1226`): `<component>.path`, else `docs/<component>`; `~`
     expanded; absolute as written; relative re-anchored only when it leaves a
     linked worktree, and, read as written, does not land in a checkout of the
-    repository the store declares (`read_as_written`, as 4.0 reads a path; a
+    repository the store declares (`read_as_written` with `declared_url`, as
+    4.0 reads a path, `tcw.store.fs.anchor_configured_path`; a
     copy made of linked worktrees, one inside another, is migrated in the
     copy, which 3.x did not read). A store declaring a `repository` and no
     path is `form="repository"`; one whose folder is outside the project is
     `form="outside"`."""
     from tcw.store.project import _below, read_as_written, worktree_anchors
+    from tcw.store.fs import declared_url
     root = Path(root)
     section = section if isinstance(section, dict) else {}
     configured = section.get("path")
@@ -498,10 +500,8 @@ def store_folder_3x(root: Path, component: str, section: Any) -> StoreFolder3:
             top, main = anchors
             resolved = (root / value).resolve()
             inside = _below(root.resolve(), top)
-            repository = section.get("repository")
-            url = repository.get("url") if isinstance(repository, dict) else None
             if inside is not None and _below(resolved, top) is None and not \
-                    read_as_written(resolved, anchors, url if isinstance(url, str) else None):
+                    read_as_written(resolved, anchors, declared_url(section)):
                 anchor = main / inside
         folder = anchor / value
     # Lexically, so a `..` that comes back into the project stays inside.

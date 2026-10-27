@@ -254,6 +254,26 @@ def test_nested_worktrees_whose_store_names_another_repository_are_refused(tcw, 
     assert tree(ws) == real
 
 
+@pytest.mark.parametrize("url, read_in", [("https://example.invalid/other.git", "real"),
+                                           (WS_URL, "copy")])
+def test_the_runtime_and_migrate_read_a_store_path_by_one_rule(tmp_path, url, read_in):
+    """`<component>.path` sits beside `<component>.repository`: where the
+    path, read as written, lands in a checkout of a repository other than the
+    declared one, both the runtime and migrate read it beside the main
+    checkout, and where it lands in one of the declared one, both read it as
+    written."""
+    from tcw.store.fs import declared_url, store_location
+    ws = _workspace_with_a_child_repository(tmp_path / "real", url=url)
+    copy = _worktree(ws, tmp_path / "copy/ws")
+    _worktree(ws / "app", copy / "app")
+    root = (copy / "app").resolve()
+    section = yaml.safe_load((root / "tcw-config.yaml").read_text())["work"]
+    expected = {"real": ws, "copy": copy}[read_in].resolve() / "docs/app/work"
+    runtime = store_location(root, "work", section["path"], url=declared_url(section))
+    assert runtime.resolve() == expected
+    assert store_folder_3x(root, "work", section).folder.resolve() == expected
+
+
 def test_a_worktree_beside_the_workspace_still_reaches_its_store(tcw, tmp_path):
     """A worktree of the child made away from the workspace: the store path
     leaves it and lands on nothing, so it is read beside the main checkout,
