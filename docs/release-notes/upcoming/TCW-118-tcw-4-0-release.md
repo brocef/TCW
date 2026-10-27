@@ -93,3 +93,9 @@ where it is.
   on to fetch the projects it names; it says there is no store to fetch.
 - The migration guide now says that a dry run in a project whose work is kept
   in Jira needs the Jira credentials, or `--no-jira`.
+- Git worktrees made one inside another, such as a child repository's
+  worktree inside its workspace's worktree, now read the workspace and its
+  stores in those worktrees, not in the folders they were made from, so
+  `tcw migrate` and every other command in such a copy change only the copy.
+  `tcw migrate` refuses (B18) a run that would still change another checkout,
+  and names files outside the project's folders by their full paths.

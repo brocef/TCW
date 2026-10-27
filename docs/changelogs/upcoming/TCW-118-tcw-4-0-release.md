@@ -120,6 +120,21 @@
 - The load-order warning names the `parents:` list to reorder, and the order that would keep every other
   project's own order, instead of only "set it in '<project>'".
 - `tcw migrate` no longer reports its D8 load-order report a second time as A12.
+- In a linked git worktree, a relative manifest path or store path that leads
+  out of the worktree is first read as written: when it lands in a checkout,
+  main or linked, of another repository (of the repository the entry or store
+  declares, when it declares one), it is read there, and only otherwise
+  beside the main checkout. The search for a project with no manifest entry
+  starts from such a worktree too. Worktrees made one inside another, such as
+  a child repository's worktree placed inside its workspace's worktree, read
+  each other instead of the folders they were made from; `tcw migrate` reads
+  a 3.x store path the same way. (TCW-118)
+- `tcw migrate` refuses, with blocker B18 and nothing written, a run that
+  would change files in another checkout of a repository the project sits
+  in, such as a linked worktree's main checkout. (TCW-118)
+- `tcw migrate` names a planned file in no checkout the project sits in, such
+  as one in a clone of a store's repository, by its absolute path, instead of
+  a relative path climbing towards `/`. (TCW-118)
 
 ## Removed
 
