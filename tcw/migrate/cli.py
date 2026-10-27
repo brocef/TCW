@@ -67,6 +67,7 @@ def run(root: Path, *, dry_run: bool, no_jira: bool) -> int:
     if plan.blockers:
         _would(plan.steps, plan.tickets, root)
         report.reports(plan.reports)
+        _summary(plan.summary)
         report.blockers(plan.blockers)
         return codes.REFUSED
     if plan.jira_failure is not None:
@@ -84,6 +85,9 @@ def run(root: Path, *, dry_run: bool, no_jira: bool) -> int:
         _summary([report.counts(plan.steps, len(plan.tickets), dry=True), *plan.summary,
                   *([report.KNOWN_AFTER] if plan.steps else [])])
         return codes.OK
+    # The plan's notes are said before anything is written, so a run that
+    # stops, and is finished from its progress record, still said them.
+    _summary(plan.summary)
     code = apply_plan(plan, root) if plan.steps else codes.OK
     after = []
     if code == codes.OK and plan.steps:
@@ -94,8 +98,7 @@ def run(root: Path, *, dry_run: bool, no_jira: bool) -> int:
         code = phase_f(plan.half, plan.tickets, edited)
     if code == codes.OK:
         report.reports(plan.reports)
-        _summary([report.counts(plan.steps, len(edited), dry=False), *plan.summary,
-                  *after])
+        _summary([report.counts(plan.steps, len(edited), dry=False), *after])
     return code
 
 
@@ -131,6 +134,7 @@ def _planning_failed(plan, dry_run: bool, root: Path) -> int:
     error = plan.jira_failure
     _would(plan.steps, [], root)
     report.reports(plan.reports)
+    _summary(plan.summary)
     report.say(f"error: {error}")
     if not plan.steps:
         report.say(NOT_CHECKED)

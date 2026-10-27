@@ -217,3 +217,137 @@ def test_the_advice_given_lets_git_see_the_files(tcw, tmp_path, rule):
     assert not b18(done.err)
     status = _git(app, "status", "--porcelain", "--untracked-files=all").splitlines()
     assert "?? docs/capabilities/x/resources/notes/one.md" in status, status
+
+
+# ── Advice as deep as the path, and the commonest allowlist (review 2) ───────
+
+@pytest.mark.parametrize("rel, rule, lines", [
+    ("tcw-config.yaml", "*.yaml", ["!/tcw-config.yaml"]),
+    (".tcw/tcw-config.yaml", "*", ["!/.tcw/", "!/.tcw/tcw-config.yaml"]),
+    ("a/b/c.md", "*", ["!/a/", "!/a/b/", "!/a/b/c.md"]),
+    ("docs/a/b.md", "/docs/", ["!/docs/"]),
+])
+def test_the_lines_needed_may_be_as_many_as_the_paths_depth(tmp_path, rel, rule, lines):
+    """One line for each folder the rule ignores and one for the file: the
+    last line added is confirmed by asking git once more, so a path needing
+    as many lines as it is deep still gets them; and git, given the rule and
+    those lines, shows the file."""
+    from tcw.migrate.plan import _reinclude
+    top = make(tmp_path / "top", {}, git=True)
+    assert _reinclude(top, top / rel, ".gitignore", rule) == lines
+    (top / ".gitignore").write_text("".join(f"{line}\n" for line in [rule, *lines]))
+    (top / rel).parent.mkdir(parents=True, exist_ok=True)
+    (top / rel).write_text("x\n")
+    assert f"?? {rel}" in _git(top, "status", "--porcelain", "--untracked-files=all"
+                               ).splitlines()
+
+
+STAR = "*\n!.gitignore\n!tcw-config.yaml\n"
+
+
+def test_a_star_allowlist_gets_advice_that_lets_the_run_pass(tcw, tmp_path):
+    """A root `.gitignore` of `*` that re-includes only `.gitignore` and
+    `tcw-config.yaml`: B18 names the lines that re-include `.tcw/` and each
+    file in it, and with them added after `*` the run passes and git shows
+    the new files."""
+    app = _committed(tmp_path / "app", {".gitignore": STAR, "tcw-config.yaml": CONFIG})
+    done = tcw(["migrate", "--dry-run"], app)
+    assert done.code == 3, done.err
+    assert ("  B18 .tcw/tcw-config.yaml: git would ignore it, by .gitignore:1:*, so "
+            "committing what git shows would leave it out; add the lines '!/.tcw/' and "
+            "'!/.tcw/tcw-config.yaml', in that order, after that line of .gitignore, then "
+            "run 'tcw migrate' again") in done.err, done.err
+    advice: list[str] = []
+    for line in b18(done.err):
+        assert "change that rule" not in line, line
+        advice += [a for a in re.findall(r"'(![^']*)'", line) if a not in advice]
+    rest = STAR.split("\n", 1)[1]
+    (app / ".gitignore").write_text("*\n" + "".join(a + "\n" for a in advice) + rest)
+    done = tcw(["migrate", "--no-jira"], app)
+    assert done.code == 0, done.err
+    assert not b18(done.err)
+    status = _git(app, "status", "--porcelain", "--untracked-files=all").splitlines()
+    assert "?? .tcw/tcw-config.yaml" in status and "?? .tcw/.gitignore" in status, status
+
+
+# ── A new file in a store object's folder comes from that object (review 2) ──
+
+def test_new_files_in_an_ignored_store_are_not_refused(tcw, tmp_path):
+    """The stores kept out of git, the configuration tracked: the empty
+    description C12 writes and a state file written where TCW 3 had none
+    come from their object's own files, which git does not track, so the
+    run passes and `/docs/` is never advised."""
+    app = _committed(tmp_path / "app", {".gitignore": "/docs/\n", "tcw-config.yaml": CONFIG,
+                                        "docs/capabilities/x/meta.yaml": "name: X\n",
+                                        "docs/taxonomy/t/notes.md": "T.\n"})
+    assert _git(app, "ls-files").split() == [".gitignore", "tcw-config.yaml"]
+    done = tcw(["migrate", "--no-jira"], app)
+    assert done.code == 0, done.err
+    assert not b18(done.err)
+    assert (app / "docs/capabilities/x/description.md").is_file()
+    assert (app / "docs/taxonomy/t/tcw-taxonomy.yaml").is_file()
+
+
+def test_a_new_file_beside_a_tracked_state_file_is_still_refused(tcw, tmp_path):
+    """The object's meta.yaml tracked and the configuration not: the new
+    description git would ignore comes from a tracked file, so it is
+    refused."""
+    app = _committed(tmp_path / "app", {".gitignore": "tcw-config.yaml\ndescription.md\n",
+                                        "tcw-config.yaml": CONFIG,
+                                        "docs/capabilities/x/meta.yaml": "name: X\n"})
+    assert "tcw-config.yaml" not in _git(app, "ls-files").split()
+    done = tcw(["migrate", "--dry-run"], app)
+    assert done.code == 3, done.err
+    assert [line.split(":")[0] for line in b18(done.err)] == [
+        "  B18 docs/capabilities/x/description.md"], done.err
+
+
+# ── The plan's notes are said in every mode (review 2) ───────────────────────
+
+GIT_NOTE = "were not checked against git's ignore rules"
+
+
+def _broken_index(tmp_path: Path) -> Path:
+    app = _committed(tmp_path / "app", {".gitignore": ALLOWLIST, "tcw-config.yaml": CONFIG})
+    (app / ".git/index").write_bytes(b"garbage")
+    return app
+
+
+def test_a_real_run_says_the_note_before_it_writes(tcw, tmp_path):
+    app = _broken_index(tmp_path)
+    done = tcw(["migrate", "--no-jira"], app)
+    assert done.code == 0, done.err
+    lines = done.err.splitlines()
+    note = [at for at, line in enumerate(lines) if GIT_NOTE in line]
+    first = next(at for at, line in enumerate(lines) if line.startswith("write "))
+    assert len(note) == 1 and note[0] < first, done.err
+
+
+def test_a_run_another_blocker_refuses_still_says_the_note(tcw, tmp_path, monkeypatch):
+    from tcw.migrate import plan
+    from tcw.migrate.model import Blocker
+    app = _broken_index(tmp_path)
+    monkeypatch.setattr(plan, "other_checkout_blockers",
+                        lambda root, steps: [Blocker("B19", "x", "a reason", "a fix")])
+    for argv in (["migrate", "--dry-run"], ["migrate", "--no-jira"]):
+        done = tcw(argv, app)
+        assert done.code == 3, done.err
+        assert "  B19 x: a reason; a fix" in done.err
+        assert len([line for line in done.err.splitlines() if GIT_NOTE in line]) == 1, \
+            done.err
+
+
+def test_a_jira_failure_while_planning_still_says_the_note(tcw, tmp_path, monkeypatch):
+    from tcw.errors import TcwError
+    from tcw.migrate import plan
+
+    def failing(*args, **kwargs):
+        raise TcwError("Jira is down")
+    app = _broken_index(tmp_path)
+    monkeypatch.setattr(plan, "plan_jira_half", failing)
+    for argv in (["migrate", "--dry-run"], ["migrate"]):
+        done = tcw(argv, app)
+        assert done.code != 0, done.err
+        assert "error: Jira is down" in done.err
+        assert len([line for line in done.err.splitlines() if GIT_NOTE in line]) == 1, \
+            done.err

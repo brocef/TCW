@@ -127,11 +127,30 @@ def _before_moves(rel: str, moves: list[Move]) -> str:
     return rel
 
 
+def _new_file_sources(root: Path, rel: str, moves: list[Move], config_rel: str
+                      ) -> list[str]:
+    """What a new file at `rel` comes from: in the project's own folder or
+    its `.tcw/`, the shared configuration `config_rel`; anywhere else, such
+    as a store object's folder, the files already in its folder before the
+    moves (the object's 3.x state file and its other files)."""
+    from tcw.migrate.model import resolve
+    from tcw.project_files import TCW_FOLDER
+    folder = rel.rpartition("/")[0]
+    if folder in ("", TCW_FOLDER):
+        return [config_rel]
+    before = _before_moves(folder, moves)
+    try:
+        return sorted(f"{before}/{entry.name}" for entry in resolve(root, before).iterdir()
+                      if entry.is_file())
+    except OSError:
+        return []
+
+
 def _planned_sources(root: Path, steps, config_rel: str) -> dict[str, list[str]]:
     """Each file the steps write or move into that is meant to be committed,
     as the plan names it, with the files it comes from: for a move, the file
     moved; for a write, the files its text was planned from, else the file
-    it replaces, else (a new file) the shared configuration `config_rel`."""
+    it replaces, else (a new file) `_new_file_sources`."""
     from tcw.migrate.model import resolve
     moves = [step for step in steps if isinstance(step, Move)]
     out: dict[str, list[str]] = {}
@@ -141,8 +160,9 @@ def _planned_sources(root: Path, steps, config_rel: str) -> dict[str, list[str]]
                 found = [(step.path, rel) for rel, _ in step.reads]
             else:
                 before = _before_moves(step.path, moves)
-                found = [(step.path, before if resolve(root, before).is_file()
-                          else config_rel)]
+                found = [(step.path, source) for source in
+                         ([before] if resolve(root, before).is_file()
+                          else _new_file_sources(root, step.path, moves, config_rel))]
         elif isinstance(step, Move):
             found = [(f"{step.new}/{inner}", f"{step.old}/{inner}") if inner
                      else (step.new, step.old) for inner, _ in step.files]
@@ -235,7 +255,9 @@ def _reinclude(top: Path, path: Path, source: str, pattern: str) -> list[str] | 
         try:
             _ask_git(work, ["init", "-q", "--template="])
             (work / prefix / rel).parent.mkdir(parents=True, exist_ok=True)
-            for _ in range(len(inside)):
+            # One line for each folder above and one for the file, then a
+            # last round to confirm git no longer ignores it.
+            for _ in range(len(inside) + 1):
                 (work / source).write_text("".join(f"{line}\n" for line in [pattern, *lines]),
                                            encoding="utf-8")
                 rules = _git_ignoring(work, [prefix + f for f in [*above, rel]], tracked=True,
