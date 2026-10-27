@@ -243,10 +243,15 @@ Some of the reports need a word more:
   [Related projects guide](guide/multi-repo.md#the-load-order) explains it);
   the order of each `parents:` list sets it. TCW 4.0 then uses another order
   and `tcw validate` warns, in this project and every project below it.
-  `tcw migrate` already lists an upstream before a parent that itself names
-  that upstream, the one case where this is certain to change no value, so
-  D8 is left for parents whose own lists disagree, such as `x` listing `a`
-  before `b` and `y` listing `b` before `a`, both parents of `app`:
+  When a converted `parents:` list would warn, `tcw migrate` tries moving
+  each parent before the first earlier parent that inherits it (such as an
+  upstream listed after a parent that itself names that upstream), and
+  writes that order only when its load order is exactly the depth-first
+  order TCW 4.0 would use for the list as written. It never changes a
+  value: when the moved order would load the projects in any other order,
+  the list is written as converted and D8 is reported. D8 is also left for
+  parents whose own lists disagree, such as `x` listing `a` before `b` and
+  `y` listing `b` before `a`, both parents of `app`:
 
     ```text
     reads differently in TCW 4:

@@ -935,29 +935,13 @@ class _Converter:
                                        placed.folder if placed.here else None))
 
     def _keep_every_order(self, project_id: str, relations: Relations) -> None:
-        """When the links as written leave C3 no order (D8), each parent
-        placed before the first parent that inherits it, as `_add` places
-        one: a parent link before an upstream the parent itself names, say.
-        Kept only when C3 then finds an order. Every order that keeps the
-        ancestors' own lists loads such a parent first anyway, so no value
-        changes; any other reordering would change which parent wins, so it
-        is left for the person (D8 names one)."""
-        from tcw.store.base import load_order_of
-        absent = frozenset(self.absent)
+        """The parents reordered by `order_keeping_values`, when it finds an
+        order that is certain to change no value; otherwise left as
+        converted, for D8 to report."""
         graph = self.graph(project_id, relations.parents)
-        if load_order_of(project_id, graph, missing=absent).warning is None:
-            return
-        ordered: list[Link] = []
-        for link in relations.parents:
-            at = len(ordered)
-            for index, existing in enumerate(ordered):
-                if link.id in self.ancestors(existing.id):
-                    at = index
-                    break
-            ordered.insert(at, link)
-        graph = self.graph(project_id, ordered)
-        if load_order_of(project_id, graph, missing=frozenset(self.absent)).warning is None:
-            relations.parents[:] = ordered
+        kept = order_keeping_values(project_id, graph, frozenset(self.absent))
+        if kept is not None:
+            relations.parents[:] = [relations.parents[i] for i in kept]
 
     def _add(self, relations: Relations, link: Link, axis: str) -> None:
         """A new parent appended, or `axis` added to the entry already made
@@ -974,6 +958,47 @@ class _Converter:
                 break
         relations.parents.insert(at, link)
 
+
+def order_keeping_values(project_id: str, links, absent=frozenset()) -> list[int] | None:
+    """When the parents of `project_id` as written leave C3 no order (D8),
+    the positions of those parents in a new order: each placed before the
+    first earlier parent that inherits it, as `_add` places one. None when
+    C3 already finds an order, or when the new order's load order is not
+    the depth-first order TCW 4.0 uses for the list as written (Design
+    4.4). Only then is it certain that no value changes, since 4.0 would
+    load the projects in that order anyway; a reorder that let C3 succeed
+    with some other order would change which project wins a value, so it
+    is left for the person (D8 names one). `links` is every project's
+    parent links, as `load_order_of` takes them."""
+    from tcw.store.base import load_order_of
+
+    def above(pid: str) -> set[str]:
+        found: set[str] = set()
+        frontier = [pid]
+        while frontier:
+            for link in links.get(frontier.pop(), ()):
+                if link.id not in found:
+                    found.add(link.id)
+                    frontier.append(link.id)
+        return found
+
+    written = load_order_of(project_id, links, missing=absent)
+    if written.warning is None:
+        return None
+    own = list(links.get(project_id, ()))
+    ordered: list[int] = []
+    for position, link in enumerate(own):
+        at = len(ordered)
+        for index, earlier in enumerate(ordered):
+            if link.id in above(own[earlier].id):
+                at = index
+                break
+        ordered.insert(at, position)
+    trial = {**links, project_id: [own[i] for i in ordered]}
+    found = load_order_of(project_id, trial, missing=absent)
+    if found.warning is None and found.ids == written.ids:
+        return ordered
+    return None
 
 def plan_links(root: Path, project_id: str, mapping: dict, family) -> Links:
     """The active project's links (C3, C8), its D1 and D8 reports, and the

@@ -278,6 +278,80 @@ def test_a_middle_project_s_upstream_goes_before_its_parent(tcw, tmp_path, first
     assert "load order" not in checked.out + checked.err, checked.out + checked.err
 
 
+
+def test_a_reorder_that_would_change_the_load_order_is_not_written(tcw, tmp_path):
+    """p lists n0, n1, n3; n0 names n3, n1 names n2 then n3. As written the
+    depth-first order n3, n0, n2, n1, p is used, n2 winning over n3; listing
+    n3 first would give C3's n2, n3, n0, n1, p, n3 winning. That changes a
+    value, so the list is written as converted and D8 is reported."""
+    ext = "capabilities:\n  extends:\n"
+    roots = [project(tmp_path / "w/n3", "id: n3\n", git=True),
+             project(tmp_path / "w/n2", "id: n2\n", git=True),
+             project(tmp_path / "w/n0", "id: n0\nprojects:\n  upstream:\n    n3: ../n3\n"
+                                        + ext + "  - n3\n", git=True),
+             project(tmp_path / "w/n1", "id: n1\nprojects:\n  upstream:\n    n2: ../n2\n"
+                                        "    n3: ../n3\n" + ext + "  - n2\n  - n3\n",
+                     git=True)]
+    p = project(tmp_path / "w/p", "id: p\nprojects:\n  upstream:\n    n0: ../n0\n"
+                                  "    n1: ../n1\n    n3: ../n3\n" + ext
+                                  + "  - n0\n  - n1\n  - n3\n", git=True)
+    for root in roots:
+        migrate(tcw, root)
+    done = migrate(tcw, p)
+    [d8] = [l for l in done.err.splitlines() if l.startswith("  D8 ")]
+    assert "using depth-first order n3, n0, n2, n1, p" in d8, d8
+    assert [e["id"] for e in shared(p)["parents"]] == ["n0", "n1", "n3"]
+
+
+def _random_family(rng):
+    """Up to six projects above "p", each with parents only among those
+    after it, so no loop can form, and p's own parents in a random order."""
+    from tcw.store.base import ParentLink
+    names = [f"n{i}" for i in range(rng.randint(2, 6))]
+    links = {}
+    for index, name in enumerate(names):
+        later = names[index + 1:]
+        links[name] = [ParentLink(pid) for pid in
+                       rng.sample(later, rng.randint(0, min(3, len(later))))]
+    links["p"] = [ParentLink(pid) for pid in
+                  rng.sample(names, rng.randint(2, min(4, len(names))))]
+    return links
+
+
+def test_a_reorder_is_written_only_when_it_keeps_the_load_order():
+    """Over random families: whenever the parents of p are reordered, the
+    reordered list's load order is the one 4.0 would use for the list as
+    written (its depth-first fallback), with no warning, so no value
+    changes. Some families are reordered, so the check is not empty."""
+    import random
+    from tcw.migrate.config import order_keeping_values
+    from tcw.store.base import load_order_of
+    rng = random.Random(118)
+    reordered = 0
+    for _ in range(300):
+        links = _random_family(rng)
+        written = load_order_of("p", links)
+        kept = order_keeping_values("p", links)
+        if kept is None:
+            continue
+        reordered += 1
+        assert written.warning is not None
+        assert sorted(kept) == list(range(len(links["p"])))
+        trial = {**links, "p": [links["p"][i] for i in kept]}
+        found = load_order_of("p", trial)
+        assert (found.ids, found.warning) == (written.ids, None), links
+    assert reordered > 0
+
+
+def test_the_counterexample_and_the_middle_project_unit():
+    from tcw.migrate.config import order_keeping_values
+    from tcw.store.base import ParentLink as L
+    counter = {"p": [L("n0"), L("n1"), L("n3")], "n0": [L("n3")],
+               "n1": [L("n2"), L("n3")], "n2": [], "n3": []}
+    assert order_keeping_values("p", counter) is None
+    middle = {"b": [L("a"), L("core")], "a": [L("core")], "core": []}
+    assert order_keeping_values("b", middle) == [1, 0]
+
 # ── D1 (criteria 32 and 65) ─────────────────────────────────────────────────
 
 def test_d1_names_the_axes_and_keys_a_parent_now_passes(tcw, tmp_path):

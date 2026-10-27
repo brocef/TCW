@@ -115,8 +115,10 @@
 - `tcw migrate` refuses, with blocker B18, a run that would write a file git ignores, such as `.tcw/`
   under a root `.gitignore` that ignores everything and re-includes only what is tracked, naming the rule
   and the line to add; it used to write the ignored files and delete the tracked `tcw-config.yaml`.
-- `tcw migrate` lists a project's upstream before its parent when that parent names the same upstream, so
-  the converted project no longer gets a load-order warning in every `tcw validate`.
+- `tcw migrate` lists a parent before an earlier parent that inherits it, such as a project's upstream
+  before its parent when that parent names the same upstream, so the converted project no longer gets a
+  load-order warning in every `tcw validate`; it does so only when the new order loads the projects
+  exactly as TCW 4.0 would load the list as written, so no value changes, and otherwise reports D8.
 - The load-order warning names the `parents:` list to reorder, and the order that would keep every other
   project's own order, instead of only "set it in '<project>'".
 - `tcw migrate` no longer reports its D8 load-order report a second time as A12.
