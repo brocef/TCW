@@ -97,6 +97,13 @@
 - `tcw capabilities set <path> --parent <path>` on an inherited capability is refused as naming the
   capability itself, instead of writing the capability it overrides as its parent. (TCW-118)
 - `tcw work move --into` no longer makes a folder named like a tracker key at any depth: `--into TCW-1/sub` or `--into 2026/TCW-5` is refused with exit code 2, where it used to make `TCW-1/` beside the item carrying that key (and, in Jira, write that path to the ticket). A key-shaped folder that already exists can still be used as part of the path. (TCW-118)
+- `tcw -C <address>` run from a TCW 3.x project, or from one whose configuration has problems, now says
+  it was resolving that address, and from which folder, before the refusal.
+- The 3.x to 4.0 migration guide gives one `grep` command that finds every removed command and flag in
+  agent-instruction files and scripts.
+- The migration guide says that `TCW_SLUG` holds the full identifier in 4.0, that a `generate:` script's
+  input is `"schema": 2`, and that converting tickets from any copy affects every 3.x user of that Jira
+  project.
 
 ## Removed
 
