@@ -163,6 +163,17 @@
 - `tcw migrate` refuses, with blocker B19 and nothing written, a run that
   would change files in another checkout of a repository the project sits
   in, such as a linked worktree's main checkout. (TCW-118)
+- A checkout counts as one of the repository a store or manifest entry
+  declares when one of its remotes names it in another form: the same
+  owner and name through an SSH host alias (`git@<alias>:<owner>/<name>.git`
+  for `https://github.com/<owner>/<name>.git`), or a URL that a
+  `url.<base>.insteadOf` rule in the checkout's git config, `~/.gitconfig` or
+  `$XDG_CONFIG_HOME/git/config` rewrites to it. A store path leaving a linked
+  worktree that lands on a checkout of another repository, one with no
+  remote included, and is therefore read beside the main checkout, is now
+  named, with both folders and what to do, in `tcw migrate`'s summary and as
+  a `tcw validate` warning; before, the store was read beside the main
+  checkout without a word. (TCW-118)
 - `tcw migrate` names a planned file in no checkout the project sits in, such
   as one in a clone of a store's repository, by its absolute path, instead of
   a relative path climbing towards `/`. (TCW-118)

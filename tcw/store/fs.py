@@ -65,7 +65,7 @@ from tcw.project_files import (CONFIG_NAME, LOCAL_CONFIG_NAME, LOCAL_MANIFEST,
                                find_marker, legacy_message, version_problem,
                                without_version)
 from tcw.store.project import (FsProjectRegistry, _below, forget_registries, git_environment,
-                               read_as_written, validate_project_id,
+                               passed_over, read_as_written, validate_project_id,
                                worktree_anchors)
 
 # Component trees `tcw project new` scaffolds. `work` gets a status-folder skeleton;
@@ -1057,6 +1057,46 @@ def anchor_configured_path(project_root: Path, value: Path,
             and not read_as_written(resolved, anchors, url):
         return main / inside
     return project_root
+
+
+def store_passed_over(project_root: Path, value: Path,
+                      url: str | None) -> tuple[Path, Path] | None:
+    """`(landing, instead)` when the relative store path `value`, leaving the
+    linked worktree `project_root` is in, lands on a folder in a checkout of
+    another repository that `anchor_configured_path` does not read only
+    because no remote of that checkout names the declared repository `url`
+    (`tcw.store.project.passed_over`): the folder it lands on, and the one it
+    is read at instead, beside the main checkout. None otherwise, a path
+    landing on nothing included."""
+    anchors = worktree_anchors(project_root)
+    if anchors is None or value.is_absolute():
+        return None
+    top, main = anchors
+    resolved = (project_root / value).resolve()
+    inside = _below(Path(project_root).resolve(), top)
+    if inside is None or _below(resolved, top) is not None \
+            or not passed_over(resolved, anchors, url):
+        return None
+    return resolved, Path(os.path.normpath(main / inside / value))
+
+
+def passed_over_stores(project_root: Path, mapping: object) -> list[str]:
+    """A line for each store of the configuration `mapping` whose relative
+    path `store_passed_over` a checkout (`passed_over_message`), for
+    `tcw migrate`'s summary and `tcw validate`'s warnings."""
+    from tcw.store.project import passed_over_message
+    out = []
+    for component in COMPONENTS:
+        section = mapping.get(component) if isinstance(mapping, dict) else None
+        configured = section.get("path") if isinstance(section, dict) else None
+        url = declared_url(section)
+        if not isinstance(configured, str) or not configured.strip() \
+                or has_scheme(configured) or url is None:
+            continue
+        found = store_passed_over(project_root, Path(configured).expanduser(), url)
+        if found is not None:
+            out.append(passed_over_message(f"{component}.path", *found, url))
+    return out
 
 
 class FsTreeStore:

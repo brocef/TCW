@@ -524,6 +524,8 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
         steps += config.plan_ignore(read.root)
     plan.steps = sorted(steps, key=lambda step: PHASES.index(step.phase))
     plan.summary += stores.left_elsewhere(read.root, read.shared[1], plan.steps, read.git)
+    from tcw.store.fs import passed_over_stores
+    plan.summary += passed_over_stores(read.root, read.shared[1])
     plan.blockers += planned_file_blockers(read.root, plan.steps)
     if read.git is not None:
         ignored, notes = ignored_blockers(read.root, plan.steps, read.shared[0])

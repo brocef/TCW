@@ -524,7 +524,7 @@ def config_findings(project_root: Path) -> list[Finding]:
     10.3; TCW-107 Design 1.9)."""
     from tcw.config import LOCAL_FILE, effective
     from tcw.project_files import LOCAL_MANIFEST
-    from tcw.store.fs import personal_file_tracked
+    from tcw.store.fs import passed_over_stores, personal_file_tracked
     config = effective(project_root)
     problems = config.problems
     if config.unreadable:
@@ -539,6 +539,10 @@ def config_findings(project_root: Path) -> list[Finding]:
     # file may not set: warnings here, errors in that project (TCW-109 1.6).
     findings += [Finding("warning", str(p.file), p.detail)
                  for p in [*config.inherited_problems, *config.inherited_refusals]]
+    # A store path leaving a linked worktree that lands on a checkout whose
+    # remotes do not name the repository the store declares (TCW-118).
+    findings += [Finding("warning", SENTINEL, line)
+                 for line in passed_over_stores(project_root, config.values)]
     if personal_file_tracked(project_root):
         findings.append(Finding("warning", LOCAL_FILE, TRACKED_PERSONAL_FILE))
     if personal_file_tracked(project_root, LOCAL_MANIFEST):         # TCW-107 1.9

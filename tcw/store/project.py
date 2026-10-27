@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, replace
@@ -53,7 +54,8 @@ def override_variable(project_id: str) -> str:
 # don't "fix" it into an LRU. The price is that a directory added or removed as
 # a linked worktree while a server runs is seen only after a restart.
 _ANCHOR_CACHE: dict[Path, tuple[Path, Path] | None] = {}
-_REPOSITORY_CACHE: dict[Path, tuple[Path, frozenset[str]] | None] = {}
+_REPOSITORY_CACHE: dict[Path, tuple[Path, tuple[str, ...],
+                                  tuple[tuple[str, str], ...]] | None] = {}
 
 
 #: The registry opened for each project root while a command runs; None
@@ -243,16 +245,87 @@ def read_as_written(target: Path, anchors: tuple[Path, Path],
     than beside the main checkout: `target`, the folder it names, is there
     and inside a git checkout, main or linked, of a repository other than
     this worktree's own, and, when the path's declaration names a
-    repository `url`, that checkout's remotes include it. This is what reads
-    a copy made of linked worktrees, one inside another, in the copy, while
-    a worktree made away from the folders its paths lead to (GitHub #26,
-    #39) still reads them beside its main checkout."""
-    if not target.is_dir():
+    repository `url`, one of that checkout's remotes names it
+    (`_names_repository`). This is what reads a copy made of linked
+    worktrees, one inside another, in the copy, while a worktree made away
+    from the folders its paths lead to (GitHub #26, #39) still reads them
+    beside its main checkout."""
+    found = _other_checkout(target, anchors)
+    if found is None:
         return False
+    return url is None or _names_repository(url, found)
+
+
+def passed_over(target: Path, anchors: tuple[Path, Path], url: str | None) -> bool:
+    """Whether `target`, where such a path lands, is a folder in a checkout
+    of another repository that is read beside the main checkout only
+    because none of that checkout's remotes names the repository `url` the
+    path's declaration names: a checkout with no remote, or one whose
+    remote is written in a form not recognised, which the person is told
+    about (`passed_over_message`)."""
+    if url is None:
+        return False
+    found = _other_checkout(target, anchors)
+    return found is not None and not _names_repository(url, found)
+
+
+def passed_over_message(key: str, landing: Path, instead: Path, url: str) -> str:
+    """What `tcw migrate` and `tcw validate` say of a store path `key` that
+    `passed_over` the folder `landing` and is read at `instead`."""
+    return (f"{key} leads to {landing}, but no remote of the checkout there names "
+            f"the repository the store declares, {url}, so the store is read beside "
+            f"the main checkout, at {instead}; if the store at {landing} is the one "
+            f"meant, add that repository's remote to its checkout, or correct the "
+            f"remote's URL")
+
+
+def _other_checkout(target: Path, anchors: tuple[Path, Path]):
+    """`_repository_of(target)` when `target` is a folder in a checkout of a
+    repository other than the worktree's own, else None."""
+    if not target.is_dir():
+        return None
     found, own = _repository_of(target), _repository_of(anchors[0])
     if found is None or own is None or found[0] == own[0]:
-        return False
-    return url is None or normalized_url(url.split("#", 1)[0]) in found[1]
+        return None
+    return found
+
+
+def _names_repository(url: str, found) -> bool:
+    """Whether one of the remotes of the checkout `found` describes
+    (`_repository_of`) names the repository `url`. Two URLs name one
+    repository when their normalized forms are equal, before or after the
+    `url.<base>.insteadOf` rules of the checkout's git config and of the
+    user's own git config files rewrite either; or when one of them names
+    its host by an SSH alias, a name with no dot in it that the user's SSH
+    configuration maps to a real host, and their last two path parts, the
+    owner and the repository's name, are equal, ignoring case. A checkout
+    with no remote names nothing."""
+    rules = (*found[2], *_insteadof_rules_of_user())
+    wanted = _forms(url.split("#", 1)[0], rules)
+    return any(_same(a, b) for remote in found[1] for b in _forms(remote, rules)
+               for a in wanted)
+
+
+def _forms(url: str, rules) -> set[str]:
+    """`url` normalized, as written and as git's longest matching insteadOf
+    rule rewrites it."""
+    prefixes = [(prefix, base) for prefix, base in rules if url.startswith(prefix)]
+    forms = {normalized_url(url)}
+    if prefixes:
+        prefix, base = max(prefixes, key=lambda rule: len(rule[0]))
+        forms.add(normalized_url(base + url[len(prefix):]))
+    return forms
+
+
+def _same(a: str, b: str) -> bool:
+    """Two normalized URLs name one repository (`_names_repository`)."""
+    if a == b:
+        return True
+    (host_a, _, path_a), (host_b, _, path_b) = a.partition("/"), b.partition("/")
+    owner_a, owner_b = path_a.lower().split("/")[-2:], path_b.lower().split("/")[-2:]
+    alias = re.compile(r"[a-z0-9][a-z0-9_-]*")
+    return (len(owner_a) == 2 and owner_a == owner_b and bool(host_a) and bool(host_b)
+            and bool(alias.fullmatch(host_a) or alias.fullmatch(host_b)))
 
 
 def search_rounds(named_by: Path, anchors: tuple[Path, Path] | None
@@ -298,37 +371,70 @@ def search_rounds(named_by: Path, anchors: tuple[Path, Path] | None
     return [as_written, from_main]
 
 
-def _repository_of(folder: Path) -> tuple[Path, frozenset[str]] | None:
-    """The git common dir of the checkout `folder` is in, and its remotes'
-    URLs, normalized; None outside one. Cached as `worktree_anchors` is.
-    Only `git rev-parse` runs, as for every read of where a project is: the
-    remotes are read from the common dir's `config` file, which every
-    checkout of the repository shares."""
+def _repository_of(folder: Path):
+    """The git common dir of the checkout `folder` is in, its remotes' URLs,
+    and the `url.<base>.insteadOf` rules of its config, as (prefix, base);
+    None outside one. Cached as `worktree_anchors` is. Only `git rev-parse`
+    runs, as for every read of where a project is: the remotes and rules are
+    read from the common dir's `config` file, which every checkout of the
+    repository shares."""
     key = folder.resolve()
     if key not in _REPOSITORY_CACHE:
         found = _git_lines(key, "rev-parse", "--path-format=absolute", "--git-common-dir")
         common = Path(found[0]).resolve() if found else None
+        entries = [] if common is None else _config_entries(common / "config")
         _REPOSITORY_CACHE[key] = None if common is None else (
-            common, frozenset(normalized_url(url) for url in _remote_urls(common / "config")))
+            common, tuple(_remote_urls(entries)), tuple(_insteadof_rules(entries)))
     return _REPOSITORY_CACHE[key]
 
 
-def _remote_urls(config: Path) -> list[str]:
-    """Each `url` of a `[remote "<name>"]` section of a git config file."""
+def _insteadof_rules_of_user() -> list[tuple[str, str]]:
+    """The `url.<base>.insteadOf` rules of the user's own git config files,
+    `$XDG_CONFIG_HOME/git/config` (`~/.config/git/config` when it is not set)
+    and `~/.gitconfig`, read as the files are, with no `git config` call."""
+    xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+    files = (Path(xdg) / "git" / "config", Path.home() / ".gitconfig")
+    return [rule for file in files for rule in _insteadof_rules(_config_entries(file))]
+
+
+def _config_entries(config: Path) -> list[tuple[str, str, str, str]]:
+    """Each `key = value` of a git config file, as (section, subsection,
+    key, value), the section and key lowercased; [] when it cannot be read.
+    A value's quotes and a comment after it are dropped; an include is not
+    followed."""
     try:
         text = config.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return []
-    urls, in_remote = [], False
+    header = re.compile(r'\[\s*([^\s\]"]+)\s*(?:"((?:[^"\\]|\\.)*)")?\s*\]')
+    entries, section, subsection = [], "", ""
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith("["):
-            in_remote = stripped.lower().startswith("[remote ")
-        elif in_remote and "=" in stripped:
+            match = header.match(stripped)
+            section, subsection = ((match.group(1).lower(), match.group(2) or "")
+                                   if match else ("", ""))
+        elif "=" in stripped and not stripped.startswith(("#", ";")):
             key, _, value = stripped.partition("=")
-            if key.strip().lower() == "url":
-                urls.append(value.strip().strip('"'))
-    return urls
+            value = value.strip()
+            if value.startswith('"'):
+                value = value[1:].partition('"')[0]
+            else:
+                value = re.split(r"\s[#;]", value, maxsplit=1)[0].strip()
+            entries.append((section, subsection, key.strip().lower(), value))
+    return entries
+
+
+def _remote_urls(entries) -> list[str]:
+    """Each `url` of a `[remote "<name>"]` section."""
+    return [value for section, _, key, value in entries
+            if section == "remote" and key == "url"]
+
+
+def _insteadof_rules(entries) -> list[tuple[str, str]]:
+    """Each `insteadOf` of a `[url "<base>"]` section, as (prefix, base)."""
+    return [(value, base) for section, base, key, value in entries
+            if section == "url" and key == "insteadof" and value]
 
 
 # ---------------------------------------------------------------------------

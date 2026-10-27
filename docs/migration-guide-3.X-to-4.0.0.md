@@ -37,7 +37,13 @@ is a 3.x file, and TCW 4.0 reads only 4.0 files.
    workspace's worktree): a relative store path that leaves the child's
    worktree is read as written when it lands in a checkout of the repository
    the store declares in `repository`, or of any repository when it declares
-   none, so the run changes only the copy. A worktree made anywhere else has
+   none, so the run changes only the copy. A checkout's remote names the
+   declared repository in any of its usual forms: `https://` or `git@`, an
+   SSH host alias for the same owner and name, or a URL that a
+   `url.<base>.insteadOf` rule in git's configuration rewrites. When the path
+   lands on a checkout none of whose remotes names it, one with no remote
+   included, the run's summary says so, naming both folders: add or correct
+   that checkout's remote and run again. A worktree made anywhere else has
    no such folder where the path leads, so the store is read beside its main
    checkout, as TCW 3 read it, and converted there. If a run would change
    files in another checkout of a repository the copy sits in, such as the
