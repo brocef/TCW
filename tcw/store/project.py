@@ -273,14 +273,15 @@ def search_rounds(named_by: Path, anchors: tuple[Path, Path] | None
 
     A worktree whose folder lies inside another repository's checkout
     (`read_as_written`) is searched from where it is. When that checkout is
-    itself a linked worktree, the worktree is part of a copy made of linked
-    worktrees, one inside another, and that is the only round: the main
-    checkout's neighbours are the projects it was copied from, which the
-    copy must not read or write. When that checkout is a main checkout, a
-    second round, from the main checkout as above, follows when the first
-    finds nothing: a workspace repository's `.worktrees/` folder, or a home
-    folder kept in git, holds a worktree whose sibling projects are beside
-    the main checkout only."""
+    itself a linked worktree and the worktree's own main checkout lies
+    inside that checkout's main checkout, the worktree is part of a copy
+    made of linked worktrees, one inside another, and that is the only
+    round: the main checkout's neighbours are the projects it was copied
+    from, which the copy must not read or write. Otherwise a second round,
+    from the main checkout as above, follows when the first finds nothing:
+    a workspace repository's `.worktrees/` folder, in its main checkout or
+    in one of its linked worktrees, or a home folder kept in git, holds a
+    worktree whose sibling projects are beside the main checkout only."""
     as_written = (named_by.parent, named_by, list(named_by.parents))
     if anchors is None or _below(named_by, anchors[0]) is None:
         return [as_written]
@@ -291,7 +292,8 @@ def search_rounds(named_by: Path, anchors: tuple[Path, Path] | None
     from_main = (holder, own, enclosing)
     if not read_as_written(top.parent, anchors):
         return [from_main]
-    if worktree_anchors(top.parent) is not None:
+    holding = worktree_anchors(top.parent)
+    if holding is not None and _below(main, holding[1]) is not None:
         return [as_written]
     return [as_written, from_main]
 

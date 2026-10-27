@@ -59,3 +59,14 @@ def test_nested_worktrees_lacking_the_sibling_predict_none(tmp_path):
     copy = _linked(ws, tmp_path / "copy" / "ws")
     _linked(r1, copy / "r1")
     _agree(copy / "r1", None)
+
+
+def test_a_worktree_in_a_linked_worktrees_worktrees_folder(tmp_path):
+    """The checkout holding the worktree is a linked worktree of a workspace
+    repository, but the worktree's own main checkout is not inside that
+    repository's main checkout: it is no copy, and the folders beside its
+    main checkout are searched."""
+    ws = _repository(tmp_path / "ws")
+    feat = _linked(ws, tmp_path / "ws-feat")
+    r1, r2 = _siblings(tmp_path / "code")
+    _agree(_linked(r1, feat / ".worktrees" / "r1-feat"), r2)
