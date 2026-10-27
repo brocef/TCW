@@ -513,3 +513,34 @@ file). Reviewed `d16c88ed..878dead0`; 315 named tests passed.
 - Needs a separate change: (2) if preferred; the guides' "organising folder
   … made when missing" sentences do not say a key-shaped name is never made.
 - NOT DONE.
+
+## Step 10 — CI on `v4`
+
+Run 40512936457 on `602b8b76`: `web-build` and `pytest (3.14)` passed, and
+`pytest (3.11)` failed once, `tests/test_project_provision.py::test_ac24_an_unreadable_folder`
+(`[Errno 13] Permission denied` instead of `cannot be listed`): on 3.11,
+`Path.is_file()` on a file inside an unreadable folder raises, where 3.12 and
+later answer False. Fixed test first in `08e59cdf` (`tcw/store/project.py`'s
+`_read_config` and `_config_at`; the test also runs with the checks made to
+raise as 3.11 does). This machine has no Python 3.11.
+
+Run 40516334199 on `08e59cdf`, `gh run view --json headSha,jobs`:
+
+```text
+{"headSha":"08e59cdff43f7cc631eaa955d0c9d882b75231d7","jobs":[{"conclusion":"success","name":"web-build"},{"conclusion":"success","name":"pytest (3.14)"},{"conclusion":"success","name":"pytest (3.11)"}]}
+```
+
+`gh run watch` stopped on an HTTP 500 from GitHub's jobs endpoint, and the
+run's own status stayed `in_progress` after every job had completed with
+success; the dispatching session read the jobs directly and recorded CI
+`08e59cdf` in `refs.txt`. `gh pr list --head v4` printed `[]`.
+
+## Step 11 — the user told
+
+2026-10-27, to the user, in this session: from Step 12 until Step 26 no `tcw`
+command runs in this repository, by any agent or session, and the user is
+asked to run none here or on another machine; the window holds gates 1 and 2
+and lasts as long as their review and test take; the shared `tcw` stays 3.0.2
+until gate 2's go; from 5.5 until the user's own setups are migrated, this
+machine's `tcw` is 4.0 and refuses every 3.x project except to migrate it;
+and the window also holds gate 3.
