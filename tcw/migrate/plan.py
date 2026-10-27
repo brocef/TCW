@@ -13,12 +13,13 @@ from pathlib import Path
 
 import yaml
 
-from tcw.migrate import config, record, stores
+from tcw.migrate import config, progress, record, stores
 from tcw.errors import TcwError
 from tcw.migrate.legacy import (ROOT_CONFIG, Layer3, Layers3, own_jira_layers,
                                 read_3x_layers, read_layer_3x)
-from tcw.migrate.model import PHASES, Blocker, Plan, Write
-from tcw.project_files import LOCAL_SENTINEL, SENTINEL, VERSION_KEY, without_version
+from tcw.migrate.model import PHASES, Blocker, Move, Plan, Write
+from tcw.project_files import (LOCAL_MANIFEST, LOCAL_SENTINEL, SENTINEL, VERSION_KEY,
+                               without_version)
 
 
 @dataclass
@@ -105,6 +106,124 @@ def planned_file_blockers(root: Path, steps) -> list[Blocker]:
                 problem = f"is not valid YAML: {' '.join(str(error).split())}"
             if problem is not None:
                 out.append(_refused(step.path, problem))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# A planned file git would ignore (B18)
+
+#: The planned files `.tcw/.gitignore` ignores on purpose: never committed.
+_PERSONAL = (LOCAL_SENTINEL, LOCAL_MANIFEST, progress.PROGRESS)
+
+
+def _committed_paths(steps) -> list[str]:
+    """Each file the steps write or move into that is meant to be committed,
+    as the plan names it."""
+    out: list[str] = []
+    for step in steps:
+        if isinstance(step, Write):
+            found = [step.path]
+        elif isinstance(step, Move):
+            found = [f"{step.new}/{inner}" if inner else step.new
+                     for inner, _ in step.files]
+        else:
+            continue
+        out += [path for path in found if path not in _PERSONAL and path not in out]
+    return out
+
+
+def _git_ignoring(top: Path, paths: list[Path], *, tracked: bool = False
+                  ) -> dict[Path, tuple[str, int, str]]:
+    """The rule git would ignore each of `paths` by, in the git work tree at
+    `top`, as `(source, line, pattern)`; a path no rule ignores is left out,
+    and so is one git tracks unless `tracked`. A path need not exist."""
+    import subprocess
+    if not paths:
+        return {}
+    listed = "".join(f"{path.relative_to(top).as_posix()}\0" for path in paths)
+    try:
+        done = subprocess.run(["git", "-C", str(top), "check-ignore", "-v", "-z", "--stdin",
+                               *(["--no-index"] if tracked else [])], input=listed, capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        return {}
+    if done.returncode not in (0, 1):
+        return {}
+    fields = done.stdout.split("\0")
+    out = {}
+    for at in range(0, len(fields) - 3, 4):
+        source, line, pattern, path = fields[at:at + 4]
+        if pattern.startswith("!"):
+            continue                         # a rule that re-includes the path
+        out[top / path] = (source, int(line), pattern)
+    return out
+
+
+def _reinclude(top: Path, path: Path, source: str, line: int, pattern: str) -> str | None:
+    """The line that re-includes `path` after the rule in a `.gitignore`
+    file: `!/<folder>/` for the shortest folder above it the same rule
+    ignores, else `!/<path>`, relative to that file's folder; None for a
+    rule kept anywhere else, such as `.git/info/exclude`."""
+    if Path(source).name != ".gitignore" or Path(source).is_absolute():
+        return None
+    base = (top / source).parent
+    inside = path.relative_to(base).parts
+    folders = [base.joinpath(*inside[:n]) for n in range(1, len(inside))]
+    # A folder holding tracked files is matched by the rule all the same.
+    rules = _git_ignoring(top, folders, tracked=True)
+    for folder in folders:
+        if rules.get(folder) == (source, line, pattern):
+            return f"!/{folder.relative_to(base).as_posix()}/"
+    return f"!/{path.relative_to(base).as_posix()}"
+
+
+def _shown(root: Path, path: Path) -> str:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def ignored_blockers(root: Path, steps) -> list[Blocker]:
+    """B18 for each planned file meant to be committed that git would ignore
+    where it is written, such as the whole of `.tcw/` under a root
+    `.gitignore` that starts with `/*` and re-includes only what is tracked
+    (an allowlist). Committing what git then shows would leave the 4.0 files
+    out while the 3.x ones are deleted. A file outside any git work tree is
+    not checked."""
+    from tcw.migrate.model import resolve
+    from tcw.store.fs import git_root
+    root = Path(root).resolve()
+    by_top: dict[Path, list[tuple[str, Path]]] = {}
+    for rel in _committed_paths(steps):
+        path = resolve(root, rel)
+        path = path if path.is_absolute() else path.resolve()
+        here = path.parent
+        while not here.exists() and here != here.parent:
+            here = here.parent
+        top = git_root(here)
+        if top is None:
+            continue
+        top = top.resolve()
+        try:
+            path = top / path.resolve().relative_to(top)
+        except ValueError:
+            continue
+        by_top.setdefault(top, []).append((rel, path))
+    out = []
+    for top, found in by_top.items():
+        rules = _git_ignoring(top, [path for _, path in found])
+        for rel, path in found:
+            if path not in rules:
+                continue
+            source, line, pattern = rules[path]
+            shown = _shown(root, top / source)
+            fix = _reinclude(top, path, source, line, pattern)
+            how = (f"add the line '{fix}' after that line of {shown}" if fix else
+                   "change that rule so git does not ignore it")
+            out.append(Blocker(
+                "B18", rel, f"git would ignore it, by {shown}:{line}:{pattern}, so "
+                            f"committing what git shows would leave it out",
+                f"{how}, then run 'tcw migrate' again"))
     return out
 
 
@@ -208,6 +327,8 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
     plan.steps = sorted(steps, key=lambda step: PHASES.index(step.phase))
     plan.summary += stores.left_elsewhere(read.root, read.shared[1], plan.steps, read.git)
     plan.blockers += planned_file_blockers(read.root, plan.steps)
+    if read.git is not None:
+        plan.blockers += ignored_blockers(read.root, plan.steps)
     jira_backed = read.work_backend == "jira"
     if not plan.blockers:
         # A blocker refuses the run whatever Jira holds, so Jira is asked
