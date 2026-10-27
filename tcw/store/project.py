@@ -8,7 +8,8 @@ import subprocess
 import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from itertools import chain
+from typing import Any, Iterator
 
 import yaml
 
@@ -1858,15 +1859,18 @@ class FsProjectRegistry(ProjectRegistry):
             return _Probe("unreadable", detail="missing or invalid project id")
         return _Probe("project", project_id)
 
-    def _manifests_of(self, root: Path) -> list[tuple[Any, Path, dict]] | None:
+    def _manifests_of(self, root: Path, *,
+                      record: bool = True) -> list[tuple[Any, Path, dict]] | None:
         """`root`'s manifests, each as `(file as TCW names it, the root its
         paths are read from, entries)`, the personal one first, unless
         personal files are skipped (Design 1.10). None when one has a problem:
         it is recorded against its file, and a lookup that would consult it
-        fails (Design 1.8)."""
+        fails (Design 1.8). Unless `record` is false: then the problem is
+        neither recorded nor kept, for a manifest read only in passing."""
         root = self._root_key(root)
         if root in self._manifests:
             return self._manifests[root]
+        found: list[tuple[Path, str]] = []
         files = [] if personal_files_skipped() else [
             (personal_file(root, LOCAL_MANIFEST_NAME, self._anchors), True)]
         files.append((root / MANIFEST, False))
@@ -1889,11 +1893,14 @@ class FsProjectRegistry(ProjectRegistry):
                     entries, problems = parse_manifest(mapping, path, personal=personal)
                     if not problems and result is not None:
                         result.append((path, root, entries))
-            for problem in problems:
-                self._problem(path, problem)
+            found += [(path, problem) for problem in problems]
             if problems:
-                self._manifest_problem.setdefault(root, f"{path}: {problems[0]}")
                 result = None
+        if found and not record:
+            return None
+        for path, problem in found:
+            self._problem(path, problem)
+            self._manifest_problem.setdefault(root, f"{path}: {problem}")
         self._manifests[root] = result
         return result
 
@@ -1931,6 +1938,31 @@ class FsProjectRegistry(ProjectRegistry):
             named.update(_named_ids(cfg))
         return order, named
 
+    def _located_by(self, roots: list[Path]) -> Iterator[Path]:
+        """Design "Locating a project", step 1, "then, going down, in the
+        manifests of the children already found": after the manifests of
+        `roots` (the asking project's family), the roots of the projects
+        their entries place, then of those the next manifests place, breadth
+        first and in the order the entries are written, each project once.
+        So a child of a sibling, listed only in that sibling's manifest, is
+        found. A manifest read only here that has a problem is passed over
+        and not recorded: it names nothing this lookup can use, and it is
+        reported where it is part of the family."""
+        seen = {self._identity(root) for root in roots}
+        frontier = list(roots)
+        while frontier:
+            layer: list[Path] = []
+            for root in frontier:
+                for _, base, entries in self._manifests_of(root, record=False) or []:
+                    for entry in entries.values():
+                        folder = self._entry_answer(entry, base, record=False).folder
+                        if folder is None or self._identity(folder) in seen:
+                            continue
+                        seen.add(self._identity(folder))
+                        layer.append(folder)
+                        yield folder
+            frontier = layer
+
     def _known_config(self, root: Path) -> _Config | None:
         path = self._canonical(root / SENTINEL)
         return self._cache.get(path) or self._outside.get(path)
@@ -1967,8 +1999,10 @@ class FsProjectRegistry(ProjectRegistry):
                                             if o.id == project_id and o.problem))
             return _Answer(folder=root_of(override), by="variable")
         roots, named = self._family(named_by, project_id)
-        for index, root in enumerate(roots):
-            manifests = self._manifests_of(root)
+        for index, root in enumerate(chain(roots, self._located_by(roots))):
+            manifests = self._manifests_of(root, record=index < len(roots))
+            if manifests is None and index >= len(roots):
+                continue
             if manifests is None:
                 return _Answer(problem=self._manifest_problem[self._root_key(root)])
             for _, base, entries in manifests:

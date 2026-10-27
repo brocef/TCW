@@ -225,8 +225,11 @@ first answer of these:
    project is refused. A relative value is read from the current folder.
 2. **A manifest entry**: the naming project's personal manifest, then its
    shared one, then the manifests of its ancestors that TCW has read, in the
-   reverse of its load order, then those of the projects below it. **The
-   entry decides**, whatever is on disk: when the folder it gives is empty,
+   reverse of its load order, then those of the projects below it, and then,
+   going down, those of every project these manifests place, nearest first.
+   So a project can reach a child of a sibling that only the sibling's
+   manifest lists; a project found this way is not added to any view.
+   **The entry decides**, whatever is on disk: when the folder it gives is empty,
    or holds only `.git` (what a clone that stopped leaves behind), the
    project counts as not on this machine, and TCW does not go on looking
    elsewhere.
