@@ -269,3 +269,108 @@ def test_nested_worktrees_search_the_copy_for_an_enclosing_project(tmp_path):
     assert _where(copy / "app") == (str(copy), str(copy / "docs" / "app" / "work"))
     linked = _linked(ws / "app", tmp_path / "elsewhere" / "app")
     assert _where(linked)[0] == str(ws)
+
+
+# -- The search from a worktree inside another repository's checkout --------------------
+#
+# The worktree's own neighbours are searched first, then the main checkout's,
+# as before: a folder holding the worktree can lie in another repository's
+# checkout without the worktree being a copy, as a workspace repository's
+# `.worktrees/` folder or a home folder kept in git does.
+
+
+def _commit_all(repo: Path) -> None:
+    git(repo, "add", "-A")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x")
+
+
+def _siblings(holder: Path) -> tuple[Path, Path]:
+    """Two repositories side by side in `holder`: `r1`, whose project has a
+    parent `r2` that no manifest entry places, and `r2`."""
+    r1 = proj(holder / "r1", "r1", parent=["r2"])
+    r2 = proj(holder / "r2", "r2")
+    for repo in (r1, r2):
+        write_manifest(repo, "tcw-version: 4.0.0\nprojects: {}\n")
+        git(repo, "init", "-q", "-b", "main")
+        _commit_all(repo)
+    return r1, r2
+
+
+def _repository(folder: Path) -> Path:
+    """`folder` made a git repository of its own, ignoring what is in it."""
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / ".gitignore").write_text("/*\n!/.gitignore\n")
+    git(folder, "init", "-q", "-b", "main")
+    _commit_all(folder)
+    return folder.resolve()
+
+
+def test_a_worktree_in_a_workspace_repositorys_worktrees_folder_finds_a_sibling(tmp_path):
+    ws = _repository(tmp_path / "ws")
+    r1, r2 = _siblings(ws)
+    linked = _linked(r1, ws / ".worktrees" / "r1-feat")
+    found = tcw(linked, "project", "path", "r2")
+    assert found.code == 0, found
+    assert found.out.strip() == str(r2)
+
+
+def test_a_worktree_in_a_home_folder_kept_in_git_finds_a_sibling(tmp_path):
+    home = _repository(tmp_path / "home")
+    r1, r2 = _siblings(home / "code")
+    linked = _linked(r1, home / "elsewhere" / "r1-feat")
+    found = tcw(linked, "project", "path", "r2")
+    assert found.code == 0, found
+    assert found.out.strip() == str(r2)
+
+
+def test_a_plain_worktree_elsewhere_finds_a_sibling_beside_the_main(tmp_path):
+    r1, r2 = _siblings(tmp_path / "code")
+    linked = _linked(r1, tmp_path / "elsewhere" / "r1-feat")
+    found = tcw(linked, "project", "path", "r2")
+    assert found.code == 0, found
+    assert found.out.strip() == str(r2)
+
+
+def test_nested_worktrees_find_the_copys_sibling_before_the_real_one(tmp_path):
+    """Both are there: the worktree's own neighbours come first."""
+    ws = _repository(tmp_path / "real" / "ws")
+    r1, r2 = _siblings(ws)
+    copy = _linked(ws, tmp_path / "copy" / "ws")
+    _linked(r1, copy / "r1")
+    copied = _linked(r2, copy / "r2")
+    found = tcw(copy / "r1", "project", "path", "r2")
+    assert found.code == 0, found
+    assert found.out.strip() == str(copied)
+
+
+# -- A store path whose store declares a repository -------------------------------------
+#
+# `<component>.path` sits beside `<component>.repository`, so a path read as
+# written must land in a checkout of the declared repository, as `tcw migrate`
+# reads it (tests/migrate/test_migrate_locations.py).
+
+
+def _workspace_with_a_store_path(base: Path, url: str) -> Path:
+    """`_workspace`, with the child's store named by a relative path and
+    declared to be in the repository `url`."""
+    ws = _workspace(base)
+    write_config(ws / "app", "id: app\nparents:\n- ws\nwork:\n  path: ../docs/app/work\n"
+                             f"  repository:\n    url: {url}\n    path: docs/app/work\n")
+    _commit_all(ws / "app")
+    return ws
+
+
+def test_nested_worktrees_whose_store_names_another_repository_read_it_beside_the_main(
+        tmp_path):
+    ws = _workspace_with_a_store_path(tmp_path / "real", "https://example.invalid/other.git")
+    copy = _linked(ws, tmp_path / "copy" / "ws")
+    _linked(ws / "app", copy / "app")
+    assert _where(copy / "app")[1] == str(ws / "docs" / "app" / "work")
+
+
+def test_nested_worktrees_whose_store_names_the_copys_repository_read_it_in_the_copy(
+        tmp_path):
+    ws = _workspace_with_a_store_path(tmp_path / "real", WS_URL)
+    copy = _linked(ws, tmp_path / "copy" / "ws")
+    _linked(ws / "app", copy / "app")
+    assert _where(copy / "app")[1] == str(copy / "docs" / "app" / "work")

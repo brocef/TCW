@@ -424,23 +424,33 @@ def _search(registry: "FsProjectRegistry", project_id: str,
     """Design 2.4-2.8: the folders next to `named_by` and enclosing it that
     declare `project_id`, and the problems of candidates that are
     `project_id` but cannot be read as 4.0. Every match is collected; the
-    registry decides. Never reads below a folder it tests (Design 2.6).
+    registry decides. Never reads below a folder it tests (Design 2.6). The
+    folders are tested in the rounds `_search_candidates` gives, and a round
+    is tried only when the ones before it found neither a match nor a
+    problem.
 
     A module-level function, so a test run can replace it with one that finds
     nothing, and so show that each test's projects are placed by its
     manifests rather than found by accident."""
     matches: list[Path] = []
     problems: list[tuple[Path, str]] = []
-    for folder in registry._search_candidates(named_by):
-        probe = registry._probe(folder)
-        if probe.id != project_id:
-            continue
-        if probe.kind == "project":
-            matches.append(folder)
-        elif probe.kind == "version":
-            problems.append((folder / SENTINEL, probe.detail))
-        elif probe.kind == "legacy":
-            problems.append((folder, f"is {LEGACY_PROJECT}"))
+    tested: set[Path] = set()
+    for candidates in registry._search_candidates(named_by):
+        if matches or problems:
+            break
+        for folder in candidates:
+            if folder in tested:
+                continue
+            tested.add(folder)
+            probe = registry._probe(folder)
+            if probe.id != project_id:
+                continue
+            if probe.kind == "project":
+                matches.append(folder)
+            elif probe.kind == "version":
+                problems.append((folder / SENTINEL, probe.detail))
+            elif probe.kind == "legacy":
+                problems.append((folder, f"is {LEGACY_PROJECT}"))
     return matches, problems
 
 
@@ -2093,26 +2103,46 @@ class FsProjectRegistry(ProjectRegistry):
             fetch = f"{_holds_only_git(str(folder))}, then {fetch}"
         return f"{message}, from {entry.repository}; {fetch}"
 
-    def _search_candidates(self, named_by: Path):
-        """The folders the search tests, in order: each folder next to
-        `named_by` (Design 2.4), then each folder enclosing it (2.5).
+    def _search_candidates(self, named_by: Path) -> list:
+        """The rounds of folders the search tests (`_search`), each in order:
+        each folder next to `named_by` (Design 2.4), then each folder
+        enclosing it (2.5). There is one round but in the case below.
 
         Inside the active project's linked worktree (Design 4.3), what lies
         outside the repository is read from the main checkout: when `named_by`
         is the worktree's top folder, the folders next to it are those next to
         the main checkout; the enclosing folders are the worktree's own up to
         its top, then those enclosing the main checkout, whose own root is not
-        tested again. A worktree whose folder lies inside another repository's
-        checkout (`read_as_written`), as in worktrees made one inside another,
-        is searched from where it is."""
-        holder, own, enclosing = named_by.parent, named_by, list(named_by.parents)
-        if self._anchors is not None and _below(named_by, self._anchors[0]) is not None \
-                and not read_as_written(self._anchors[0].parent, self._anchors):
-            top, main = self._anchors
-            if named_by == top:
-                holder, own = main.parent, main
-            enclosing = [p for p in named_by.parents if _below(p, top) is not None]
-            enclosing += list(main.parents)
+        tested again.
+
+        A worktree whose folder lies inside another repository's checkout
+        (`read_as_written`) has two rounds: it is searched from where it is,
+        and only when that finds nothing, from the main checkout as above.
+        Its own neighbours come first so that a copy made of linked
+        worktrees, one inside another, finds the copy's projects, not the
+        ones it was copied from, which would otherwise be a second match
+        for each. The main checkout's still follow, because a worktree
+        placed in another repository's folder is not always such a copy: a
+        workspace repository's `.worktrees/` folder, or a home folder kept in
+        git, holds a worktree whose sibling projects are beside the main
+        checkout only."""
+        anchored = self._anchors is not None \
+            and _below(named_by, self._anchors[0]) is not None
+        as_written = self._candidates_from(named_by.parent, named_by,
+                                           list(named_by.parents))
+        if not anchored:
+            return [as_written]
+        top, main = self._anchors
+        holder, own = (main.parent, main) if named_by == top else (named_by.parent, named_by)
+        enclosing = [p for p in named_by.parents if _below(p, top) is not None]
+        enclosing += list(main.parents)
+        from_main = self._candidates_from(holder, own, enclosing)
+        if not read_as_written(top.parent, self._anchors):
+            return [from_main]
+        return [as_written, from_main]
+
+    def _candidates_from(self, holder: Path, own: Path, enclosing: list[Path]):
+        """Each folder in `holder` but `own`, then each of `enclosing`."""
         listing = self._listing(holder)
         if isinstance(listing, list):
             for name, is_dir in listing:
