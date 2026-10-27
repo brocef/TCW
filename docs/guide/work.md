@@ -158,7 +158,10 @@ item's request or its ticket, goes in `resources/`. TCW does not look inside
 letter case, are kept for these folders: `tcw work move` refuses one as an
 organising folder's name with exit code 2 (`'Resources' in Resources is a
 reserved name`). An organising folder that holds no item is reported as a
-warning, `holds no TCW object`.
+warning, `holds no TCW object`. An organising folder may hold a `README.md`
+describing the items in it, spelled exactly so, with no finding; any other file
+directly in it, or any file directly in the store's root, is reported as a
+warning, `is not part of any object`.
 
 ### Stage documents and rounds
 

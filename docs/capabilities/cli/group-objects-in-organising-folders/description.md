@@ -1,1 +1,1 @@
-In any of the three stores, a folder with no state file may group objects. It is not an object and is never listed, but its name is part of the full identifier of every object inside it.
+In any of the three stores, a folder with no state file may group objects. It is not an object and is never listed, but its name is part of the full identifier of every object inside it. It may hold a `README.md` describing the objects in it, which `tcw validate` accepts; any other file directly in it is reported as not part of any object.

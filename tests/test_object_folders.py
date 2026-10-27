@@ -223,6 +223,23 @@ def test_shape_problems_rows_a_to_h(tmp_path):
     }
 
 
+def test_a_readme_in_an_organising_folder_is_no_finding(tmp_path):
+    obj(tmp_path, "group/a", ITEM)
+    (tmp_path / "group" / "README.md").write_text("x")
+    (tmp_path / "group" / "notes.md").write_text("x")
+    (tmp_path / "README.md").write_text("x")
+    # Only the name as written: a disk that ignores case holds one of the two.
+    obj(tmp_path, "other/b", ITEM)
+    (tmp_path / "other" / "readme.md").write_text("x")
+    problems = shape_problems(walk(tmp_path, "work"), tmp_path, "work", "demo",
+                              where=lambda p: p.relative_to(tmp_path).as_posix())
+    assert set(problems) == {
+        Finding("warning", "README.md", "is not part of any object"),
+        Finding("warning", "group/notes.md", "is not part of any object"),
+        Finding("warning", "other/readme.md", "is not part of any object"),
+    }
+
+
 def test_a_state_file_in_the_root_and_a_skipped_file(tmp_path):
     (tmp_path / TERM).write_text(version_line())
     (tmp_path / "config.yaml").write_text("extends: []\n")

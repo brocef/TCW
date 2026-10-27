@@ -88,6 +88,27 @@ def test_a_loose_file_in_the_root_and_an_empty_organising_folder_warn(tcw, demo)
     ])
 
 
+def test_a_readme_in_an_organising_folder_is_accepted(tcw, demo):
+    # A README.md directly in an organising folder describes the folder of
+    # objects, as 3.x accepted; any other file there, and a README.md in the
+    # store root, still warn, and one in an object's folder is still row a.
+    (store(demo, "capabilities") / "cli" / "README.md").write_text("about")
+    (store(demo, "taxonomy") / "group").mkdir()
+    (store(demo, "taxonomy") / "group" / "README.md").write_text("about")
+    obj(demo, "taxonomy", "group/term", name="Term")
+    assert validate(tcw, demo)[:2] == (0, [])
+    (store(demo, "capabilities") / "cli" / "notes.md").write_text("about")
+    (store(demo, "capabilities") / "README.md").write_text("about")
+    (store(demo, "taxonomy") / "invoice" / "README.md").write_text("about")
+    code, found, _ = validate(tcw, demo)
+    assert (code, sorted(found)) == (1, [
+        "error: docs/taxonomy/invoice/README.md: is not one of "
+        "demo.taxonomy/invoice's files; move it into resources/",
+        "warning: docs/capabilities/README.md: is not part of any object",
+        "warning: docs/capabilities/cli/notes.md: is not part of any object",
+    ])
+
+
 # -- AC 6 -------------------------------------------------------------------------
 
 def test_a_term_named_review_passes(tcw, demo):
