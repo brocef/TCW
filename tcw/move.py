@@ -177,10 +177,11 @@ def _moved_to(target: Target, namespace: str, into: str | None, top: bool) -> st
         if named.namespace != namespace:
             raise UsageError(f"{into} is not in the {namespace} store")
         destination = named.id_path
+    key = None
     if namespace == "work" and isinstance(destination, str):
-        from tcw.work.jira.backend import KEY
+        from tcw.work.jira.backend import KEY as key
         from tcw.work.open import by_key
-        if KEY.fullmatch(destination):
+        if key.fullmatch(destination):
             # TCW-110 Design 3.1 and 3.2: key-shaped text names the item
             # carrying the key, as the item argument does, never a folder.
             destination = by_key(target.reporter, destination).folder
@@ -206,6 +207,11 @@ def _moved_to(target: Target, namespace: str, into: str | None, top: bool) -> st
         if is_reserved(part, namespace):
             raise UsageError(f"{part!r} in {into} is a reserved name")
         exists = (folder / part).is_dir() and exact_child(folder, part) is True
+        if not exists and key is not None and key.fullmatch(part):
+            # TCW-110 Design 3.1: no folder's whole name is a tracker key. One
+            # already there (made by hand or by 3.x) is left usable.
+            raise UsageError(f"{part!r} in {into} would be a new folder, and a "
+                             f"folder cannot be named like a tracker key")
         if not exists and in_object:
             raise UsageError(f"{into}: {rel} would be a folder inside an object's "
                              f"folder that is not an object")

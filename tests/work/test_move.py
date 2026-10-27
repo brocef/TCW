@@ -355,6 +355,47 @@ def test_into_a_key_in_a_files_project_is_not_found_as_the_item_argument_is(tcw,
         assert not (board / "docs/work/TCW-1").exists()
 
 
+@pytest.mark.parametrize("into,part", [
+    ("Q4-1/sub", "Q4-1"), ("demo.work/Q4-1/sub", "Q4-1"), ("2026/TCW-5", "TCW-5"),
+])
+def test_into_never_makes_a_folder_named_like_a_tracker_key(tcw, board, into, part):
+    """TCW-110 Design 3.1: no folder's whole name is a tracker key. Only a
+    destination that is wholly a key was looked up, so `--into Q4-1/sub`
+    made `Q4-1/`, after which `--into Q4-1` could not reach it (exit 4).
+    Every part the move would make is checked, upper ones and lower ones."""
+    before = snapshot(board)
+    result = tcw(["work", "move", B, "--into", into], board)
+    assert result.code == 2, (into, result.err)
+    assert f"{part!r} in {into} would be a new folder" in result.err
+    assert "a folder cannot be named like a tracker key" in result.err
+    assert snapshot(board) == before
+    assert not (board / "docs/work/Q4-1").exists()
+    assert not (board / "docs/work/2026").exists()
+
+
+def test_into_a_lower_case_key_shape_is_an_id_path(tcw, board):
+    """`tcw-1` does not match the key pattern, so it is an organising folder."""
+    result = tcw(["work", "move", B, "--into", "tcw-1/sub"], board)
+    assert result.code == 0, result.err
+    assert (board / "docs/work/tcw-1/sub" / B / ITEM_STATE).is_file()
+
+
+def test_into_an_existing_key_shaped_folder_is_a_path_segment(tcw, board):
+    """Only a folder the move would make is refused: one already there (made
+    by hand, or by 3.x) stays usable as a segment, while a new key-shaped
+    part below it is still refused."""
+    (board / "docs/work/Q4-1").mkdir()
+    before = snapshot(board)
+    refused = tcw(["work", "move", B, "--into", "Q4-1/TCW-7"], board)
+    assert refused.code == 2, refused.err
+    assert "'TCW-7' in Q4-1/TCW-7 would be a new folder" in refused.err
+    assert snapshot(board) == before
+    assert not (board / "docs/work/Q4-1/TCW-7").exists()
+    result = tcw(["work", "move", B, "--into", "Q4-1/sub"], board)
+    assert result.code == 0, result.err
+    assert (board / "docs/work/Q4-1/sub" / B / ITEM_STATE).is_file()
+
+
 def test_into_takes_an_object_address(tcw, board):
     """TCW-110 Design 2.6 and 3.1: every option naming an object takes the
     address as well as the full identifier."""

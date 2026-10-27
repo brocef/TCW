@@ -369,6 +369,35 @@ def test_into_a_key_is_the_folder_of_the_item_carrying_it(tcw, jira_project, for
     assert jira_project.fake.tickets[a_key].custom[ITEM] == wid(f"{epic}/{a}")
 
 
+@pytest.mark.parametrize("form", ["{key}/sub", "tcw.work/{key}/sub", "2026/{key}"])
+def test_into_never_makes_a_folder_named_like_a_key(tcw, jira_project, form):
+    """TCW-110 Design 3.1: `--into TCW-1/sub` made a folder `TCW-1/` beside
+    the epic's `TCW-1-e` and wrote `tcw.work/TCW-1/sub/...` to the ticket.
+    A part the move would make that is wholly a key is refused (exit 2)."""
+    epic_key, epic = jira_project.item("Epic", "e")
+    a_key, a = jira_project.item("A", "a")
+    into = form.format(key=epic_key)
+    result = tcw(["move", a_key, "--into", into], jira_project.root)
+    assert result.code == 2, result.err
+    assert f"{epic_key!r} in {into} would be a new folder" in result.err
+    assert "a folder cannot be named like a tracker key" in result.err
+    assert not (jira_project.work / epic_key).exists()
+    assert not (jira_project.work / "2026").exists()
+    assert (jira_project.work / a / ITEM_STATE).is_file()
+    assert jira_project.fake.tickets[a_key].custom[ITEM] == wid(a)
+    assert not [m for m, p, _ in jira_project.fake.log if m == "PUT"]
+
+
+def test_into_a_lower_case_key_shape_is_an_id_path_in_jira(tcw, jira_project):
+    epic_key, _ = jira_project.item("Epic", "e")
+    a_key, a = jira_project.item("A", "a")
+    into = f"{epic_key.lower()}/sub"
+    result = tcw(["move", a_key, "--into", into], jira_project.root)
+    assert result.code == 0, result.err
+    assert (jira_project.work / into / a / ITEM_STATE).is_file()
+    assert jira_project.fake.tickets[a_key].custom[ITEM] == wid(f"{into}/{a}")
+
+
 def test_into_a_key_no_item_carries_is_not_found(tcw, jira_project):
     a_key, a = jira_project.item("A", "a")
     result = tcw(["move", a_key, "--into", "TCW-99"], jira_project.root)
