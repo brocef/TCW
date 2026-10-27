@@ -9,8 +9,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from tcw.migrate import family
-from tests.test_manifest_worktree import _linked, _repository, _siblings, proj
-from tests.test_project_files_cli import tcw
+from tcw.migrate.family import read_family
+from tests.projectfiles import write_manifest
+from tests.test_manifest_worktree import _commit_all, _linked, _repository, _siblings, git, proj
+from tests.test_project_files_cli import personal_env, tcw
 
 
 def _agree(folder: Path, expected: Path | None) -> None:
@@ -70,3 +72,27 @@ def test_a_worktree_in_a_linked_worktrees_worktrees_folder(tmp_path):
     feat = _linked(ws, tmp_path / "ws-feat")
     r1, r2 = _siblings(tmp_path / "code")
     _agree(_linked(r1, feat / ".worktrees" / "r1-feat"), r2)
+
+
+def test_a_related_projects_search_reads_the_active_projects_worktree(tmp_path):
+    """A related project `r2` sits in a linked worktree away from its main
+    checkout and names a parent `r3` no manifest entry places, found only
+    beside `r2`'s main checkout. 4.0 searches from `r2` with the active
+    project's worktree information, and the active project is an ordinary
+    checkout, so it looks beside the worktree alone; the prediction, made
+    from `r1` as it migrates, must do the same."""
+    code = tmp_path / "code"
+    proj(code / "r3", "r3")
+    main = proj(code / "r2", "r2", parent=["r3"])
+    write_manifest(main, "tcw-version: 4.0.0\nprojects: {}\n")
+    git(main, "init", "-q", "-b", "main")
+    _commit_all(main)
+    r2 = _linked(main, tmp_path / "wt" / "r2")
+    r1 = proj(tmp_path / "active" / "r1", "r1", parent=["r2"])
+    write_manifest(r1, {"r2": str(r2)}, local=True)
+    ran = tcw(r1, "project", "info", env=personal_env(tmp_path))
+    assert ran.code == 0, ran
+    assert "load order incomplete: not on this machine: r3" in ran.out, ran
+    found = read_family(r1, "r1", {"id": "r1", "projects": {"parent": {"r2": str(r2)}}})
+    found._walk_to("\0")
+    assert found.place("r3").how == "absent", found.place("r3")

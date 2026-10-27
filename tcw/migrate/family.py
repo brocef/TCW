@@ -173,6 +173,8 @@ class Family:
         `parent` or `children` entry, every entry it holds; from one reached
         across an `upstream` entry, nothing. Each project the walk passes
         through is read."""
+        from tcw.store.project import worktree_anchors
+        anchors = worktree_anchors(self.active.folder)
         frontier = [p for p in self.placed.values() if p.relation.kind != "upstream"]
         seen = {self.active.id, *self.placed}
         while frontier:
@@ -183,7 +185,7 @@ class Family:
             if member is None:
                 continue
             self.read[step.id] = member
-            for relation, folder, how in _edges(member):
+            for relation, folder, how in _edges(member, anchors):
                 if relation.id in seen:
                     continue
                 seen.add(relation.id)
@@ -208,16 +210,24 @@ def declared_id(folder: Path) -> str | None:
     return None
 
 
-def search_4(folder: Path, project_id: str) -> list[Path]:
+def search_4(folder: Path, project_id: str,
+             anchors: "tuple[Path, Path] | None | bool" = True) -> list[Path]:
     """4.0's search for `project_id` from the project at `folder` (TCW-107
     Design 2.4, 2.5): the folders next to it, then those enclosing it, that
     declare the ID, in either form, since a related project may not be
     migrated yet. Every match of the first round that has one is kept; the
     rounds, read from the main checkout inside a linked worktree, are the
-    ones 4.0 searches (`search_rounds`)."""
+    ones 4.0 searches (`search_rounds`).
+
+    `anchors` is the linked worktree of the active project, the one 4.0
+    runs from, as `worktree_anchors` gives it (None for none), or True when
+    the project at `folder` is the active one, to probe `folder`: 4.0 reads
+    every project's search through the active project's worktree."""
     from tcw.store.project import search_rounds, worktree_anchors
     folder = Path(folder)
-    for holder, own, enclosing in search_rounds(folder, worktree_anchors(folder)):
+    if anchors is True:
+        anchors = worktree_anchors(folder)
+    for holder, own, enclosing in search_rounds(folder, anchors):
         try:
             beside = sorted(p for p in holder.iterdir()
                             if p.is_dir() and p != own and p.name != ".tcw")
@@ -255,12 +265,14 @@ def _normal(path: Path) -> str:
     return os.path.normpath(path)
 
 
-def _edges(member: Member) -> list[tuple[Relation3, Path, str]]:
+def _edges(member: Member, anchors: tuple[Path, Path] | None
+           ) -> list[tuple[Relation3, Path, str]]:
     """Each project `member` names, with where it is: a 3.x project's
     `projects:` entries placed as 3.x placed them; a 4.0 project's
     `parents:` and `children:` placed as 4.0 places them, by its manifests
     and then its search, reading each candidate in either form, a parent
-    standing for a `parent` entry. One neither places is absent, at the
+    standing for a `parent` entry, the search made through `anchors`, the
+    active project's linked worktree. One neither places is absent, at the
     folder next to `member` the search would have tried first."""
     if member.three_x:
         return [(r, *legacy.locate_3x(member.folder, r)) for r in member.relations()]
@@ -275,7 +287,7 @@ def _edges(member: Member) -> list[tuple[Relation3, Path, str]]:
         if project_id in entries and legacy.holds_project(entries[project_id][0]):
             folder, how = entries[project_id][0], "manifest"
         elif project_id not in entries:
-            found = search_4(member.folder, project_id)
+            found = search_4(member.folder, project_id, anchors)
             if len(found) == 1:
                 folder, how = found[0], "search"
         elif project_id in entries:

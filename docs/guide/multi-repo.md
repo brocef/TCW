@@ -606,7 +606,11 @@ this way:
   another, and the
   search looks only from the worktree: a project the copy does not have is
   not found, rather than read, and perhaps changed, in the folders the copy
-  was made from. `tcw migrate` predicts the search the same way.
+  was made from. Which worktree counts is the one the command runs from:
+  the search for a project a related project names, made from that related
+  project's folder, follows the rules above only when the command runs
+  inside a linked worktree, whatever the related project's own checkout is.
+  `tcw migrate` predicts the search the same way.
 
 ## Moving from 3.x
 

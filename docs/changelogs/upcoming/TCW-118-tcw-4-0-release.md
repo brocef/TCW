@@ -138,10 +138,12 @@
   nothing, except when the worktree is part of a copy: when the checkout
   holding it is a linked worktree, and the worktree's own main checkout lies
   inside that checkout's main checkout, a project the copy does not have is
-  not found rather than read from the folders it was copied from. Worktrees made one inside another, such as
-  a child repository's worktree placed inside its workspace's worktree, read
-  each other instead of the folders they were made from; `tcw migrate` reads
-  a 3.x store path the same way. (TCW-118)
+  not found rather than read from the folders it was copied from. Worktrees
+  made one inside another, such as a child repository's worktree placed
+  inside its workspace's worktree, read each other instead of the folders they were made from; `tcw migrate` reads
+  a 3.x store path the same way, and predicts the search for a project a
+  related project names from the worktree it runs in, as 4.0 searches,
+  rather than from the related project's own. (TCW-118)
 - `tcw migrate` refuses, with blocker B19 and nothing written, a run that
   would change files in another checkout of a repository the project sits
   in, such as a linked worktree's main checkout. (TCW-118)
