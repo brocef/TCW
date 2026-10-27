@@ -277,3 +277,38 @@ def test_a_workspace_changes_an_item_it_holds_through_minus_c(tcw, ws_app):
                  "a comment\n")
     assert result.code == 0, result.err
     assert len(set(comments.iterdir()) - before) == 1
+
+
+def test_an_address_from_a_3x_project_says_it_was_resolving_the_address(tcw, tmp_path):
+    """The 3.x refusal is about the folder the address is found from, not
+    the project the address names, so the message says which address it was
+    resolving and from where (an evaluator read it as the wrong project
+    targeted)."""
+    old = tmp_path / "old"
+    old.mkdir()
+    (old / "tcw-config.yaml").write_text("id: old\n")
+    result = tcw(["-C", "tcw://x.path/", "work", "new", "t"], old)
+    assert result.code == 1
+    assert (f"tcw work new: resolving tcw://x.path/ from {os.getcwd()}: "
+            f"{old} is a TCW 3.x project") in result.err
+    assert "run 'tcw migrate' in it to move it to TCW 4" in result.err
+
+
+def test_a_path_from_a_3x_project_is_not_resolved_from_it(tcw, demo, tmp_path):
+    """A folder path needs no project to resolve, so the 3.x folder it is
+    given from is never read."""
+    old = tmp_path / "old"
+    old.mkdir()
+    (old / "tcw-config.yaml").write_text("id: old\n")
+    result = tcw(["-C", str(demo), "work", "list"], old)
+    assert result.code == 0, result.err
+
+
+def test_each_configuration_problem_of_the_folder_says_it_was_resolving(tcw, tmp_path):
+    broken = project(tmp_path, "broken", work={"no-such-key": 1})
+    result = tcw(["-C", "tcw://x.path/", "work", "list"], broken)
+    assert result.code == 1
+    lines = result.err.splitlines()
+    assert lines and all(line.startswith(
+        f"tcw work list: resolving tcw://x.path/ from {os.getcwd()}: ")
+        for line in lines), result.err

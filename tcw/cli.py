@@ -545,7 +545,12 @@ def _enter(target: str, args: argparse.Namespace) -> None:
             raise UsageError(
                 f"{target} names an object, not a folder; tcw -C takes a folder "
                 f"address, tcw://<project>[.<namespace>].path/<folder>")
-        _check_here(args)
+        try:
+            _check_here(args)
+        except TcwError as error:
+            # The project refused here is the one the address is found from,
+            # not the one it names, so the message says so.
+            raise _resolving(error, f"resolving {target} from {os.getcwd()}: ")
         here = find_project_root()
         if here is None:
             raise TcwError(f"tcw -C {target} needs a TCW project here to find "
@@ -557,6 +562,17 @@ def _enter(target: str, args: argparse.Namespace) -> None:
     os.chdir(folder)
     if has_scheme(target):
         _runs_as(found, target, folder)
+
+
+def _resolving(error: TcwError, prefix: str) -> TcwError:
+    """`error` with `prefix` before each line it prints, keeping its class
+    and so its exit code."""
+    if isinstance(error, ConfigError):
+        error.problems = [prefix + str(p) for p in error.problems]
+        error.args = ("\n".join(error.problems),)
+    else:
+        error.args = (prefix + str(error),)
+    return error
 
 
 def _runs_as(address, target: str, folder: Path) -> None:
