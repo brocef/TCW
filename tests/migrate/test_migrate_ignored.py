@@ -302,6 +302,32 @@ def test_a_new_file_beside_a_tracked_state_file_is_still_refused(tcw, tmp_path):
         "  B18 docs/capabilities/x/description.md"], done.err
 
 
+def test_new_files_in_a_folder_of_only_subfolders_come_from_the_files_below(tcw, tmp_path):
+    """An object whose folder holds only subfolders: its new state file and
+    description come from the files below it, which git tracks, so both are
+    refused (evaluation review 3)."""
+    app = _committed(tmp_path / "app", {".gitignore": "description.md\n/docs/**/tcw-*.yaml\n",
+                                        "tcw-config.yaml": CONFIG,
+                                        "docs/taxonomy/t/u/notes.md": "U.\n"})
+    done = tcw(["migrate", "--dry-run"], app)
+    assert done.code == 3, done.err
+    named = {line.split(":")[0] for line in b18(done.err)}
+    assert {"  B18 docs/taxonomy/t/tcw-taxonomy.yaml",
+            "  B18 docs/taxonomy/t/description.md"} <= named, done.err
+
+
+def test_new_files_in_an_ignored_folder_of_only_subfolders_are_not_refused(tcw, tmp_path):
+    """The same layout with the stores kept out of git: the files below are
+    untracked, so nothing is refused."""
+    app = _committed(tmp_path / "app", {".gitignore": "/docs/\n", "tcw-config.yaml": CONFIG,
+                                        "docs/taxonomy/t/u/notes.md": "U.\n"})
+    assert _git(app, "ls-files").split() == [".gitignore", "tcw-config.yaml"]
+    done = tcw(["migrate", "--no-jira"], app)
+    assert done.code == 0, done.err
+    assert not b18(done.err)
+    assert (app / "docs/taxonomy/t/tcw-taxonomy.yaml").is_file()
+
+
 # ── The plan's notes are said in every mode (review 2) ───────────────────────
 
 GIT_NOTE = "were not checked against git's ignore rules"

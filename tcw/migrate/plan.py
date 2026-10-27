@@ -132,18 +132,25 @@ def _new_file_sources(root: Path, rel: str, moves: list[Move], config_rel: str
     """What a new file at `rel` comes from: in the project's own folder or
     its `.tcw/`, the shared configuration `config_rel`; anywhere else, such
     as a store object's folder, the files already in its folder before the
-    moves (the object's 3.x state file and its other files)."""
+    moves (the object's 3.x state file and its other files); for a folder
+    that holds only subfolders, the files anywhere below it; and for one
+    with no file below it at all, `config_rel`."""
     from tcw.migrate.model import resolve
     from tcw.project_files import TCW_FOLDER
     folder = rel.rpartition("/")[0]
     if folder in ("", TCW_FOLDER):
         return [config_rel]
     before = _before_moves(folder, moves)
+    here = resolve(root, before)
     try:
-        return sorted(f"{before}/{entry.name}" for entry in resolve(root, before).iterdir()
-                      if entry.is_file())
+        found = sorted(f"{before}/{entry.name}" for entry in here.iterdir()
+                       if entry.is_file())
+        if not found:
+            found = sorted(f"{before}/{path.relative_to(here).as_posix()}"
+                           for path in here.rglob("*") if path.is_file())
     except OSError:
-        return []
+        found = []
+    return found or [config_rel]
 
 
 def _planned_sources(root: Path, steps, config_rel: str) -> dict[str, list[str]]:
