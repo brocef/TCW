@@ -175,6 +175,9 @@ this order, each only when it applies:
 - `left in another repository: <folder>`, then each file the run changes
   there (item 4 of
   [Migrating related projects](#migrating-related-projects));
+- in a dry run, `the files written in <folder> were not checked against git's
+  ignore rules: <git's message>`, when git cannot answer about a repository
+  (see B18 below); a real run says it before its first step instead;
 - with `--no-jira` in a project whose work is kept in Jira,
   `tickets not converted (--no-jira): …`;
 - last, the lines about the check after the run. A dry run, which makes no
@@ -226,7 +229,9 @@ Some of the reports need a word more:
   `tcw-config.yaml`, or `.tcw/tcw-config.yaml` where the 3.x text is kept
   there); and for a new file anywhere else, such as the empty
   `description.md` written in a store object's folder, the files already in
-  that folder, among them the object's 3.x state file. The commonest cause is
+  that folder, among them the object's 3.x state file; where the folder holds
+  only subfolders, the files anywhere below it; and where there is no file
+  below it at all, the project's 3.x configuration file. The commonest cause is
   a root `.gitignore` that ignores everything and then re-includes, with `!`
   lines, only what is tracked: under it all of `.tcw/` would be ignored
   while the tracked `tcw-config.yaml` is deleted, so committing what git
@@ -252,10 +257,11 @@ Some of the reports need a word more:
   git while its configuration is tracked. The personal files
   `.tcw/.gitignore` ignores on purpose are never named, and a project
   outside git is not checked. When git cannot answer about a repository,
-  the run says so before it writes anything, naming the repository's folder
-  and giving git's message, and does so too when it is refused for another
-  reason or Jira fails while it is planned; nothing in that repository is
-  named.
+  the run says so, naming the repository's folder and giving git's message:
+  a real run before it writes anything, a dry run among the lines after the
+  count. A run refused for another reason, or one Jira fails while it is
+  planned, says so too, before the refusal or the error. Nothing in that
+  repository is named.
 - **B19** names a folder the run would change files in that is another
   checkout of a repository the project sits in, such as the main checkout a
   linked worktree was made from (see step 2 of

@@ -139,10 +139,18 @@ class Plan:
     owners: dict[str, str] = field(default_factory=dict)
     resolved: dict[str, str] = field(default_factory=dict)
     summary: list[str] = field(default_factory=list)
+    #: The lines of `summary` saying git could not check a work tree's
+    #: ignore rules; a real run says them before it writes anything.
+    git_notes: list[str] = field(default_factory=list)
     #: The Jira half (`jira.JiraHalf`), or None; and the error that stopped
     #: it while planning, or None (Design 2.3).
     half: object = None
     jira_failure: Exception | None = None
+
+    @property
+    def later(self) -> list[str]:
+        """The summary's lines a real run says after its count."""
+        return [line for line in self.summary if line not in self.git_notes]
 
     @property
     def empty(self) -> bool:

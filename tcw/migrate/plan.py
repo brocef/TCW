@@ -529,6 +529,7 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
         ignored, notes = ignored_blockers(read.root, plan.steps, read.shared[0])
         plan.blockers += ignored
         plan.summary += notes
+        plan.git_notes = notes
     plan.blockers += other_checkout_blockers(read.root, plan.steps)
     jira_backed = read.work_backend == "jira"
     if not plan.blockers:

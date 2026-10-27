@@ -333,34 +333,62 @@ def test_new_files_in_an_ignored_folder_of_only_subfolders_are_not_refused(tcw, 
 GIT_NOTE = "were not checked against git's ignore rules"
 
 
-def _broken_index(tmp_path: Path) -> Path:
-    app = _committed(tmp_path / "app", {".gitignore": ALLOWLIST, "tcw-config.yaml": CONFIG})
+#: A project whose work is kept in Jira, so `--no-jira` adds a summary line.
+JIRA_CONFIG = ("id: app\nwork:\n  backend: jira\n  jira:\n    site: https://x.invalid\n"
+               "    project: APP\n    fields:\n      project: TCW Project\n      item: TCW Item\n"
+               "  stages:\n" + "".join(
+                   f"    {stage}:\n      status: {stage.title()}\n" for stage in (
+                       "inbox", "request", "spec", "plan", "implement", "review", "qa",
+                       "completed", "discarded")))
+NO_JIRA_LINE = "tickets not converted (--no-jira)"
+
+
+def _broken_index(tmp_path: Path, config: str = CONFIG) -> Path:
+    app = _committed(tmp_path / "app", {".gitignore": ALLOWLIST, "tcw-config.yaml": config})
     (app / ".git/index").write_bytes(b"garbage")
     return app
 
 
+def _at(lines: list[str], text: str) -> list[int]:
+    return [at for at, line in enumerate(lines) if text in line]
+
+
 def test_a_real_run_says_the_note_before_it_writes(tcw, tmp_path):
-    app = _broken_index(tmp_path)
+    """Only the git note is said before the first write; the plan's other
+    notes stay after the count, as the guide says (evaluation review 3)."""
+    app = _broken_index(tmp_path, JIRA_CONFIG)
     done = tcw(["migrate", "--no-jira"], app)
     assert done.code == 0, done.err
     lines = done.err.splitlines()
-    note = [at for at, line in enumerate(lines) if GIT_NOTE in line]
+    note, other = _at(lines, GIT_NOTE), _at(lines, NO_JIRA_LINE)
     first = next(at for at, line in enumerate(lines) if line.startswith("write "))
+    count = next(at for at, line in enumerate(lines) if line.startswith("changed: "))
     assert len(note) == 1 and note[0] < first, done.err
+    assert len(other) == 1 and other[0] > count, done.err
+
+
+def test_a_dry_run_says_the_notes_after_the_count(tcw, tmp_path):
+    app = _broken_index(tmp_path, JIRA_CONFIG)
+    done = tcw(["migrate", "--dry-run", "--no-jira"], app)
+    assert done.code == 0, done.err
+    lines = done.err.splitlines()
+    note, other = _at(lines, GIT_NOTE), _at(lines, NO_JIRA_LINE)
+    count = next(at for at, line in enumerate(lines) if line.startswith("would change: "))
+    assert len(note) == 1 and len(other) == 1 and count < note[0] < other[0], done.err
 
 
 def test_a_run_another_blocker_refuses_still_says_the_note(tcw, tmp_path, monkeypatch):
     from tcw.migrate import plan
     from tcw.migrate.model import Blocker
-    app = _broken_index(tmp_path)
+    app = _broken_index(tmp_path, JIRA_CONFIG)
     monkeypatch.setattr(plan, "other_checkout_blockers",
                         lambda root, steps: [Blocker("B19", "x", "a reason", "a fix")])
-    for argv in (["migrate", "--dry-run"], ["migrate", "--no-jira"]):
+    for argv in (["migrate", "--dry-run", "--no-jira"], ["migrate", "--no-jira"]):
         done = tcw(argv, app)
         assert done.code == 3, done.err
         assert "  B19 x: a reason; a fix" in done.err
-        assert len([line for line in done.err.splitlines() if GIT_NOTE in line]) == 1, \
-            done.err
+        lines = done.err.splitlines()
+        assert len(_at(lines, GIT_NOTE)) == 1 and not _at(lines, NO_JIRA_LINE), done.err
 
 
 def test_a_jira_failure_while_planning_still_says_the_note(tcw, tmp_path, monkeypatch):

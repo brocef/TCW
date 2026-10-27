@@ -118,8 +118,9 @@
   folder too; it used to write the ignored files and delete the tracked `tcw-config.yaml`. A file that
   comes from one git does not track, such as a `.DS_Store` or a `.log` moved with its folder, a new file in
   a store object's folder whose files git does not track, or a project that keeps its TCW files out of git,
-  is not refused. When git cannot answer, the run says so with git's message before it writes anything, on
-  a refusal and when Jira fails while planning too, and nothing is refused for it.
+  is not refused; a new file in an object's folder that holds only subfolders comes from the files below it.
+  When git cannot answer, the run says so with git's message, a real run before it writes anything and a dry
+  run after the count, and on a refusal and when Jira fails while planning too; nothing is refused for it.
 - `tcw migrate` lists a parent before an earlier parent that inherits it, such as a project's upstream
   before its parent when that parent names the same upstream, so the converted project no longer gets a
   load-order warning in every `tcw validate`; it does so only when the new order loads the projects
