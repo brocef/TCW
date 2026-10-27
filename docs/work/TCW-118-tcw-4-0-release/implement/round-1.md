@@ -486,3 +486,30 @@ Run by the dispatching session as CI runs it, in its two halves, with every
 ```
 
 `pnpm test`, `tsc --noEmit`, `pnpm lint` and `pnpm check:build`: clean.
+
+### Step 6, round 2's report, as the reviewer gave it
+
+Added by the dispatching session (the report reached it as a message, not a
+file). Reviewed `d16c88ed..878dead0`; 315 named tests passed.
+
+- Q1, each fix re-run: S1-1 (validate exits 1 with the new error), S1-2, S3-1
+  to S3-3 (every `--into` form and `TCW://`, in files mode and with the Jira
+  stand-in), S5-2, S6-1 and S6-2 (a child-first dry run and real run print in
+  the guide's order), S6-3 hold.
+- Belongs to 4.0: (1) a hole in S3-1's fix (`tcw/move.py:180-186`): only a
+  destination that is wholly a key was looked up, so `--into TCW-1/sub`
+  still made a top-level folder named by a key, in Jira mode and files mode,
+  which 4.0 then refused as a destination; (2) low severity, in S1-1's fix: a
+  progress record left by a run that finished, after files were edited, makes
+  validate say to run `tcw migrate` again, which then refuses with B17 and
+  advice that would discard the later work, where deleting the record was
+  enough.
+- Q2: no defect for Steps 14-15 (`_finish` deletes the record before the
+  after-run check, with `--no-jira` too; a dry run writes none); every command
+  but validate behaved as before with the record present.
+- Q3, Q4, Q6: no defect. Q5: every case in which 3.0.2's bootstrap installs
+  an unpinned CLI is covered; two wording notes (the pin "once the first
+  session has started"; do nothing in a 3.x project in that first session).
+- Needs a separate change: (2) if preferred; the guides' "organising folder
+  … made when missing" sentences do not say a key-shaped name is never made.
+- NOT DONE.
