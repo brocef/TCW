@@ -343,6 +343,18 @@ def test_nested_worktrees_find_the_copys_sibling_before_the_real_one(tmp_path):
     assert found.out.strip() == str(copied)
 
 
+
+def test_nested_worktrees_lacking_a_sibling_do_not_find_the_real_one(tmp_path):
+    """The copy's outer checkout is itself a linked worktree, so the main
+    checkout's neighbours are never searched: they are the original's."""
+    ws = _repository(tmp_path / "real" / "ws")
+    r1, r2 = _siblings(ws)
+    copy = _linked(ws, tmp_path / "copy" / "ws")
+    _linked(r1, copy / "r1")
+    found = tcw(copy / "r1", "project", "path", "r2")
+    assert found.code != 0, found
+    assert str(r2) not in found.out + found.err
+
 # -- A store path whose store declares a repository -------------------------------------
 #
 # `<component>.path` sits beside `<component>.repository`, so a path read as

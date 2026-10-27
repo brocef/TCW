@@ -133,7 +133,10 @@
   declares, when it declares one), it is read there, and only otherwise
   beside the main checkout. The search for a project with no manifest entry
   starts from such a worktree too, and from the main checkout when that finds
-  nothing. Worktrees made one inside another, such as
+  nothing, but only when the checkout holding the worktree is a main
+  checkout: inside a linked worktree, the worktree is part of a copy, and a
+  project the copy does not have is not found rather than read from the
+  folders it was copied from. Worktrees made one inside another, such as
   a child repository's worktree placed inside its workspace's worktree, read
   each other instead of the folders they were made from; `tcw migrate` reads
   a 3.x store path the same way. (TCW-118)

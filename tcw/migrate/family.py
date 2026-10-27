@@ -212,18 +212,21 @@ def search_4(folder: Path, project_id: str) -> list[Path]:
     """4.0's search for `project_id` from the project at `folder` (TCW-107
     Design 2.4, 2.5): the folders next to it, then those enclosing it, that
     declare the ID, in either form, since a related project may not be
-    migrated yet. Every match is kept."""
+    migrated yet. Every match of the first round that has one is kept; the
+    rounds, read from the main checkout inside a linked worktree, are the
+    ones 4.0 searches (`search_rounds`)."""
+    from tcw.store.project import search_rounds, worktree_anchors
     folder = Path(folder)
-    found = []
-    try:
-        beside = sorted(p for p in folder.parent.iterdir()
-                        if p.is_dir() and p != folder and p.name != ".tcw")
-    except OSError:
-        beside = []
-    for candidate in (*beside, *folder.parents):
-        if declared_id(candidate) == project_id:
-            found.append(candidate)
-    return found
+    for holder, own, enclosing in search_rounds(folder, worktree_anchors(folder)):
+        try:
+            beside = sorted(p for p in holder.iterdir()
+                            if p.is_dir() and p != own and p.name != ".tcw")
+        except OSError:
+            beside = []
+        found = [c for c in (*beside, *enclosing) if declared_id(c) == project_id]
+        if found:
+            return found
+    return []
 
 
 def manifest_entries_4(folder: Path) -> dict[str, tuple[Path, Any]]:

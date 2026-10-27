@@ -17,7 +17,11 @@ behaves the same inside a worktree as outside it. The search for a project's
 folder works the same way: the folders outside the repository, next to it or
 enclosing it, are looked for from the main checkout, except from a worktree
 whose folder lies inside another repository's checkout, which is searched from
-where it is first, and from the main checkout only when that finds nothing. A
+where it is first, and from the main checkout only when that finds nothing,
+and only when the checkout holding the worktree is a main checkout. When that
+checkout is itself a linked worktree, the worktree is part of a copy, so the
+search looks only from where it is, and a project the copy does not have is
+not found rather than read from the folders the copy was made from. A
 project found in the
 main checkout whose copy is in the worktree is the worktree's copy, so it
 appears once rather than twice.

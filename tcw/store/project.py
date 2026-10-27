@@ -255,6 +255,47 @@ def read_as_written(target: Path, anchors: tuple[Path, Path],
     return url is None or normalized_url(url.split("#", 1)[0]) in found[1]
 
 
+def search_rounds(named_by: Path, anchors: tuple[Path, Path] | None
+                  ) -> list[tuple[Path, Path, list[Path]]]:
+    """The rounds of the search for a related project no manifest entry
+    places, named by the project at `named_by`, whose active project's
+    linked worktree is `anchors` (None outside one): each round's folder
+    whose other folders are next to the project, the project's own folder
+    there, and the folders enclosing it, tested in that order (Design 2.4,
+    2.5). There is one round but in the case below.
+
+    Inside the active project's linked worktree (Design 4.3), what lies
+    outside the repository is read from the main checkout: when `named_by`
+    is the worktree's top folder, the folders next to it are those next to
+    the main checkout; the enclosing folders are the worktree's own up to
+    its top, then those enclosing the main checkout, whose own root is not
+    tested again.
+
+    A worktree whose folder lies inside another repository's checkout
+    (`read_as_written`) is searched from where it is. When that checkout is
+    itself a linked worktree, the worktree is part of a copy made of linked
+    worktrees, one inside another, and that is the only round: the main
+    checkout's neighbours are the projects it was copied from, which the
+    copy must not read or write. When that checkout is a main checkout, a
+    second round, from the main checkout as above, follows when the first
+    finds nothing: a workspace repository's `.worktrees/` folder, or a home
+    folder kept in git, holds a worktree whose sibling projects are beside
+    the main checkout only."""
+    as_written = (named_by.parent, named_by, list(named_by.parents))
+    if anchors is None or _below(named_by, anchors[0]) is None:
+        return [as_written]
+    top, main = anchors
+    holder, own = (main.parent, main) if named_by == top else (named_by.parent, named_by)
+    enclosing = [p for p in named_by.parents if _below(p, top) is not None]
+    enclosing += list(main.parents)
+    from_main = (holder, own, enclosing)
+    if not read_as_written(top.parent, anchors):
+        return [from_main]
+    if worktree_anchors(top.parent) is not None:
+        return [as_written]
+    return [as_written, from_main]
+
+
 def _repository_of(folder: Path) -> tuple[Path, frozenset[str]] | None:
     """The git common dir of the checkout `folder` is in, and its remotes'
     URLs, normalized; None outside one. Cached as `worktree_anchors` is.
@@ -2104,42 +2145,10 @@ class FsProjectRegistry(ProjectRegistry):
         return f"{message}, from {entry.repository}; {fetch}"
 
     def _search_candidates(self, named_by: Path) -> list:
-        """The rounds of folders the search tests (`_search`), each in order:
-        each folder next to `named_by` (Design 2.4), then each folder
-        enclosing it (2.5). There is one round but in the case below.
-
-        Inside the active project's linked worktree (Design 4.3), what lies
-        outside the repository is read from the main checkout: when `named_by`
-        is the worktree's top folder, the folders next to it are those next to
-        the main checkout; the enclosing folders are the worktree's own up to
-        its top, then those enclosing the main checkout, whose own root is not
-        tested again.
-
-        A worktree whose folder lies inside another repository's checkout
-        (`read_as_written`) has two rounds: it is searched from where it is,
-        and only when that finds nothing, from the main checkout as above.
-        Its own neighbours come first so that a copy made of linked
-        worktrees, one inside another, finds the copy's projects, not the
-        ones it was copied from, which would otherwise be a second match
-        for each. The main checkout's still follow, because a worktree
-        placed in another repository's folder is not always such a copy: a
-        workspace repository's `.worktrees/` folder, or a home folder kept in
-        git, holds a worktree whose sibling projects are beside the main
-        checkout only."""
-        anchored = self._anchors is not None \
-            and _below(named_by, self._anchors[0]) is not None
-        as_written = self._candidates_from(named_by.parent, named_by,
-                                           list(named_by.parents))
-        if not anchored:
-            return [as_written]
-        top, main = self._anchors
-        holder, own = (main.parent, main) if named_by == top else (named_by.parent, named_by)
-        enclosing = [p for p in named_by.parents if _below(p, top) is not None]
-        enclosing += list(main.parents)
-        from_main = self._candidates_from(holder, own, enclosing)
-        if not read_as_written(top.parent, self._anchors):
-            return [from_main]
-        return [as_written, from_main]
+        """The rounds of folders the search tests (`_search`), as
+        `search_rounds` gives them for the active project's worktree."""
+        return [self._candidates_from(*spec)
+                for spec in search_rounds(named_by, self._anchors)]
 
     def _candidates_from(self, holder: Path, own: Path, enclosing: list[Path]):
         """Each folder in `holder` but `own`, then each of `enclosing`."""

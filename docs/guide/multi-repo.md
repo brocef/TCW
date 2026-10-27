@@ -600,6 +600,11 @@ this way:
   worktree itself first, and next to and above the main checkout only when
   that finds nothing, so a worktree kept in a workspace repository's
   `.worktrees/` folder still finds the projects beside its main checkout.
+  When the checkout holding the worktree is itself a linked worktree, the
+  worktree is part of a copy made of worktrees one inside another, and the
+  search looks only from the worktree: a project the copy does not have is
+  not found, rather than read, and perhaps changed, in the folders the copy
+  was made from. `tcw migrate` predicts the search the same way.
 
 ## Moving from 3.x
 
