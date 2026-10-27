@@ -186,3 +186,84 @@ def test_related_projects_come_first():
     first = body.split("\n\n", 1)[0]
     assert ("Migrating related projects" in first
             or "#migrating-related-projects" in first), first
+
+
+# -- the ready search for removed commands and flags (evaluator finding 8) ---------
+
+SCRIPTS_SECTION = "Scripts, hooks and agent instructions"
+
+
+def removed_search_pattern() -> str:
+    """The one regular expression of the guide's ready search, a
+    `grep -rnE --exclude-dir=.git '<pattern>' .` line in a fenced block."""
+    body = section(GUIDE, 2, SCRIPTS_SECTION)
+    found = re.findall(r"^ *grep -rnE --exclude-dir=\.git '([^']+)' \.$", body, re.M)
+    assert len(found) == 1, f"expected one ready search, found {found}"
+    return found[0]
+
+
+def removed_lines() -> list[str]:
+    """A command line for each row of the guide's 3.x command and flag
+    tables, its placeholders filled in."""
+    body = section(GUIDE, 2, "What each 3.x name becomes")
+    out = []
+    for table in tables(body):
+        if _plain(table[0][0]) not in ("3.x command", "3.x flag"):
+            continue
+        for row in table[1:]:
+            spans = re.findall(r"`([^`]+)`", row[0])
+            if " as in " in row[0]:
+                lines = [spans[-1]]                 # `--project`, as in `tcw work new …`
+            elif spans[0].startswith("--"):
+                lines = [f"{s} {spans[0]}" for s in spans[1:]]   # `--local` on `…`
+            else:
+                lines = [spans[0]]
+            out += [re.sub(r"<[^>]+>", "x1", line) for line in lines]
+    return out
+
+
+def _grep_matches(pattern: str, lines: list[str]) -> set[str]:
+    """The lines `grep -E` itself matches, so the test checks the search as
+    a reader runs it rather than Python's reading of the pattern."""
+    import subprocess
+    r = subprocess.run(["grep", "-E", pattern], input="\n".join(lines) + "\n",
+                       capture_output=True, text=True)
+    assert r.returncode in (0, 1), r.stderr
+    return set(r.stdout.splitlines())
+
+
+def test_the_ready_search_finds_every_removed_command_and_flag():
+    lines = removed_lines() + [
+        # as a script or an agent instruction might write them
+        'tcw work new --project core "Fix it"',
+        "tcw projects list --json",
+        "tcw init --id app",
+        "tcw provision",
+        "tcw work edit A-1 --blocks B-2",
+        "tcw capabilities list --local --json",
+        "`tcw config show`",
+    ]
+    assert len(removed_lines()) >= 11, removed_lines()
+    missed = [line for line in lines
+              if line not in _grep_matches(removed_search_pattern(), lines)]
+    assert not missed, missed
+
+
+def test_the_ready_search_finds_no_current_command():
+    current = _invocations(exempt_blanked()) + [
+        "tcw project new --id app",
+        "tcw project list",
+        "tcw project config --origin",
+        "tcw project provision",
+        "tcw project path core",
+        'tcw -C ../core work new "Fix it"',
+        "tcw -C tcw://core.path/ work new t",
+        "tcw work edit B-2 --blocked-by A-1",
+        "tcw taxonomy list --scope up",
+        "tcw capabilities list",
+        "tcw migrate --no-jira",
+        "cat .tcw/tcw-config.local.yaml",
+    ]
+    assert len(current) > 20
+    wrong = _grep_matches(removed_search_pattern(), current)
+    assert not wrong, sorted(wrong)

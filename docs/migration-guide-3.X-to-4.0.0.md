@@ -679,7 +679,18 @@ states the rules in full; in short:
    and automation: `CLAUDE.md`, `AGENTS.md`, agent memories, CI jobs, and the
    commands bound to stages, hooks and procedures in `.tcw/tcw-config.yaml`.
    `tcw migrate` names each binding that uses one (A13) and leaves it as
-   written. The tables above give each replacement.
+   written, but it reads only the configuration: instruction files and
+   scripts are left to you. This search, run from the project's folder,
+   lists every line that uses a command or flag of the
+   [Commands](#commands) and [Flags](#flags) tables, and no 4.0 command:
+
+   ```sh
+   grep -rnE --exclude-dir=.git 'tcw (init|projects|config|provision)([^a-z-]|$)|(taxonomy|capabilities) extends (add|rm)|tcw work new .*--project([^a-z-]|$)|--blocks([^a-z-]|$)|(taxonomy|capabilities) list .*--local([^a-z-]|$)' .
+   ```
+
+   Run it again with another folder in place of the final `.` for
+   instructions kept outside the project, such as an agent's memories. The
+   tables above give each replacement.
 2. **A script that reads `--json` output** reads `"schema": 2` and full
    identifiers (`full-id`, `owner`). One that reads `tcw project config --origin`
    comments reads their new shape.
