@@ -279,9 +279,14 @@ capture() {   # capture <file> <command…>: date, output and "exit <n>" into <f
   return "$rc"
 }
 no_private_names() {   # <text on stdin> | no_private_names
-  local names=$REL/private-names.txt rc=0
+  local names=$REL/private-names.txt allowed=$REL/private-names-allowed.txt rc=0
   [ -s "$names" ] || stop "$names is missing or empty; ask the user for the list"
-  grep -n -i -F -f "$names" || rc=$?
+  # The user allowed exact texts (2026-10-27): each is removed, in any case,
+  # before the search, so only another mention of a name stops the block.
+  if [ -s "$allowed" ]; then
+    perl -pe 'BEGIN { open my $f, "<", shift or die; @a = map { chomp; quotemeta } <$f> }
+              for my $a (@a) { s/$a//gi }' "$allowed"
+  else cat; fi | grep -n -i -F -f "$names" || rc=$?
   case $rc in
     1) return 0 ;;
     0) stop "a private project's name is in the text above" ;;
@@ -427,6 +432,14 @@ public). The search is `no_private_names` (`load.sh`), fed a diff or a log:
 it stops the block when a name is found, when the file is missing or empty,
 or when the search itself fails. If the file cannot be written because nobody
 has the list, the step stops and asks the user.
+
+**`private-names-allowed.txt`**: exact texts the user allowed to stay public
+(2026-10-27): this repository's own Jira site address, committed in its
+configuration and in every work item's ticket link since before 4.0, and the
+only place a private name appears in the repository. `no_private_names`
+removes each allowed text, in any letter case, before it searches, so the
+site address passes and any other mention of a name still stops the block.
+Never committed.
 
 **`way-back.py <project root> <project id> <folder of saved outputs>
 [--runs <pattern>] [--read]`**, the tickets' way back (Design 9; TCW-116's
