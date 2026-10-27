@@ -109,6 +109,11 @@ WRITER_CALLERS = {
                                                            "converter's sets of IDs"),
     "migrate/config.py:_parents_first": (NOT_A_STORE, "`left` is a list made in the "
                                                       "function"),
+    "migrate/config.py:_Converter._convert": (NOT_A_STORE, "`relations.parents` is the "
+                                                           "list of links being planned"),
+    "migrate/config.py:_Converter._below_graphs": (NOT_A_STORE, "`memo` is the converter's "
+                                                                "dict of links, put back "
+                                                                "as it was"),
     "migrate/plan.py:other_checkout_blockers": (NOT_A_STORE, "`found` is a dict of sets "
                                                              "made in the function"),
     "migrate/report.py:once": (NOT_A_STORE, "`union` is a dict of sets made in the "
