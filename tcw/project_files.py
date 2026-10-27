@@ -145,7 +145,7 @@ def version_problem(mapping: Any, *, state: bool = False) -> str | None:
     (read as a 3.x file), not a version written as text, older than 4, and
     newer than this TCW (major and minor compared as a pair; the patch number
     never changes a format). `state` is for an object's state file, whose
-    4.0 name 3.x never wrote (it wrote `meta.yaml` and `item.yaml`): a missing
+    4.0 name 3.x never wrote (its state files had other names): a missing
     version there is only the line to add, since `tcw migrate` converts
     nothing in it."""
     if not isinstance(mapping, dict) or VERSION_KEY not in mapping:
