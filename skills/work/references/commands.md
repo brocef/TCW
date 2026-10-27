@@ -119,8 +119,9 @@ comment instead, first line `Added <YYYY-MM-DD>`.
 
 `tcw work rename <slug> <new-name>` changes the words after the date, keeping
 the date. `tcw work move <slug> --into <id-path>` puts the item's folder inside
-another item's folder, or an organising folder it makes when missing, and
-`--top` puts it back at the top of the work folder; a move leaves the `parent`
+another item's folder, or an organising folder it makes when missing (never
+one named like a tracker key, such as `TCW-1`: that is refused with exit 2),
+and `--top` puts it back at the top of the work folder; a move leaves the `parent`
 field as it was, and a folder inside an item that is not its parent draws a
 warning. Either way the items nested in the folder move with it, and every
 reference to a moved item in this project's records and links is updated; it

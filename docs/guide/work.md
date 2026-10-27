@@ -405,7 +405,9 @@ tcw work edit demo.work/2026-10-15-refund-a-payment --assignee sam --effort medi
   instead, and `tcw work new` says so in a line starting `not nested:`.
 - **`tcw work move <item> --into <id-path>`** moves the item's folder into
   another item's folder, or into an organising folder, which is made when it
-  is missing; **`tcw work move <item> --top`** moves it back to the top of
+  is missing, except that a folder named like a tracker key (such as
+  `TCW-1`) is never made: the move is refused with exit code 2;
+  **`tcw work move <item> --top`** moves it back to the top of
   the work store, and removes an organising folder the move leaves empty. The
   items nested in it move with it. A move changes no `parent`: an item moved
   into another's folder without that parent gets a warning, from the move and
