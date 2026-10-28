@@ -18,7 +18,6 @@ import yaml
 from tcw import exit as codes
 from tcw.errors import BackendError, NotFound, Refused, StateFileProblem, TcwError, UsageError
 from tcw.ids import IdError
-from tcw.output import shown
 from tcw.work.advance import run_post
 from tcw.work.config import WorkConfig
 from tcw.work.jira import jql
@@ -171,13 +170,16 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
             raise Refused(f"{key} is already the item {named}")
         slug, resuming = named, True
     elif not tcw_fields and here is not None:
-        # Without the TCW fields the folder is made before the ticket moves
-        # and its state file after, so one without its state file, at a
-        # status nothing has moved it on from, is an adoption that stopped
-        # part way.
-        if status in moved_on or (backend.work_path / here / STATE_FILE).is_file():
-            raise Refused(f"a folder for {key} already exists here: {here}")
-        slug, resuming = Slug(backend.project, here), True
+        # Without the TCW fields the folder is the record: it is written
+        # before the ticket moves, so at the inbox status, or at request
+        # without its state file, it is an adoption that stopped part way.
+        slug = Slug(backend.project, here)
+        if status == request_status and (backend.work_path / here / STATE_FILE).is_file():
+            raise Refused(f"{key} is already the item {slug}")
+        if status not in (inbox_status, request_status):
+            raise Refused(f"a folder for {key} already exists here ({here}), and the "
+                          f"ticket is at {status!r}")
+        resuming = True
     else:
         if here is not None:
             raise Refused(f"a folder for {key} already exists here: {here}")
@@ -214,17 +216,10 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
         with _jira():
             backend.client.edit_issue(key, {ids["project"]: backend.project,
                                             ids["item"]: str(slug)})
-    # 4. Write the folder and its state file, or finish a folder left without
-    # one. Without the TCW fields only the folder is made here, and its state
-    # file once the ticket has moved, so a stop in between leaves what the
-    # resume above recognises.
-    unwritten = not (backend.work_path / slug.folder / STATE_FILE).is_file()
-    if unwritten:
+    # 4. Write the folder and its state file, or finish a folder left without one.
+    if not (backend.work_path / slug.folder / STATE_FILE).is_file():
         try:
-            if tcw_fields:
-                backend._item_file(slug.folder, key, resume=True)
-            else:
-                _bare_folder(backend, slug.folder)
+            backend._item_file(slug.folder, key, resume=True)
         except OSError as error:
             done = f"{key} now names {slug}" if tcw_fields else \
                 f"nothing changed in Jira for {key}"
@@ -255,14 +250,6 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
                     f"{slug} is made, but moving it to {start_stage()} did not "
                     f"complete: {mapped}; run `tcw work tickets adopt {key}` again"),
                     str(slug)) from None
-    if unwritten and not tcw_fields:
-        try:
-            backend._item_file(slug.folder, key, resume=True)
-        except OSError as error:
-            raise _named(BackendError(
-                f"{key} is at {start_stage()}, but the state file of {slug} could not "
-                f"be written: {error}; run `tcw work tickets adopt {key}` again"),
-                key) from None
     try:
         item = backend.read(slug.folder)
     except TcwError as error:
@@ -280,15 +267,6 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
         report(f"adopted {key} as {slug}, but {failure}")
         return str(slug), codes.MOVED_WITH_PROBLEM
     return str(slug), codes.OK
-
-
-def _bare_folder(backend: JiraBackend, folder: str) -> None:
-    """An adopted item's folder, without its state file yet."""
-    path = backend.work_path / folder
-    backend._forget_walk()
-    if not path.is_dir():
-        path.mkdir(parents=True)
-        backend.report(f"created {shown(path)}/")
 
 
 def _refuse_unreadable_state(path: Path) -> None:

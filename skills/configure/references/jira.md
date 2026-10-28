@@ -30,7 +30,7 @@ work:
             email-env: TCW_JIRA_EMAIL
             token-env: TCW_JIRA_TOKEN
         fields:
-            project: TCW Project
+            project: TCW Project    # optional, with item: both or neither
             item: TCW Item
             effort: Effort
             complexity: Complexity
@@ -153,9 +153,10 @@ With them, Jira itself records which TCW project and item each ticket is.
 Without them, for a site where new custom fields cannot be added, the item
 folders alone say which tickets are items and TCW never reads or writes
 either field; an adoption then reaches other copies of the repository only
-when its folder does, nothing in Jira names a ticket's item, and turning the fields on
-later leaves existing tickets to be filled in by hand, which `tcw validate
---remote` reports. The [Jira guide](../../../docs/guide/jira.md#running-without-the-tcw-fields)
+when its folder does, nothing in Jira names a ticket's item, a parent or
+blocker in another project is recorded rather than linked, and turning the
+fields on later is not supported yet (`tcw validate --remote` reports each
+ticket left to fill in by hand). The [Jira guide](../../../docs/guide/jira.md#running-without-the-tcw-fields)
 lists every difference.
 
 ### `work.jira.fields.project`

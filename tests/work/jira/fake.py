@@ -14,8 +14,8 @@ accounts.
 something): workflow definitions answer 403; a transition carrying a comment
 is refused; a transition's screen requires a field; the connection drops after
 the next write is applied; the connection drops before or after the next
-comment posted on its own; a whole `key IN` search naming a missing key is
-refused with 400; tickets written in the last N requests are left out of
+comment posted on its own; a whole `key IN` search naming a missing or hidden
+key, with further clauses or without, is refused with 400; tickets written in the last N requests are left out of
 searches; a field is left off an issue type's edit screen; every request is
 unreachable, 401, or 429 with `Retry-After`; every request answers 404 with
 an HTML page, as a host with no Jira site does; Priority is left off the
@@ -500,10 +500,10 @@ class FakeJira:
     def _search(self, body: dict, route: str) -> dict:
         query = body["jql"]
         try:
-            keys = re.fullmatch(r'key IN \((.*)\)', query)
+            keys = re.search(r'key IN \(([^)]*)\)', query)
             if keys and self.refuse_missing_key_search:
                 named = [k.strip().strip('"') for k in keys.group(1).split(",")]
-                if any(k not in self.tickets for k in named):
+                if any(k not in self.tickets or k in self.hidden for k in named):
                     raise self._error(400, route, "An issue with key does not exist")
             visible = [t for t in self.tickets.values() if t.key not in self.hidden
                        and (not self.search_lag or t.written is None

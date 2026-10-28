@@ -355,11 +355,13 @@ def _kept_search(backend: "JiraBackend", text: str, fields) -> list:
     return copy.deepcopy(kept[key])
 
 
-def _created_order(issue: Mapping) -> tuple[bool, datetime]:
-    """A ticket's place in `created ASC` order; one with no readable time
-    last (`_items` refuses it)."""
+def _created_order(issue: Mapping) -> tuple:
+    """A ticket's place in `created ASC` order, then by key; one with no
+    readable time last (`_items` refuses it)."""
     stamp = parse_stamp(_field(issue, "created"))
-    return stamp is None, stamp or datetime.min.replace(tzinfo=timezone.utc)
+    project, _, number = str(issue.get("key")).rpartition("-")
+    return (stamp is None, stamp or datetime.min.replace(tzinfo=timezone.utc), project,
+            int(number) if number.isdigit() else 0)
 
 
 def _field(issue: Mapping, field_id: str) -> Any:
@@ -776,26 +778,50 @@ class JiraBackend:
     def _listed_by_folder(self, narrowing: Mapping[str, Any]) -> list[Item]:
         """`list` without the TCW fields: the tickets this project's item
         folders name, searched by key in chunks, oldest first across them.
-        A folder whose ticket is not returned is not listed; `tcw validate
-        --remote` reports a ticket that is gone."""
+        Jira refuses a whole `key IN` search when one key is missing or
+        hidden, so each key of a refused chunk is read directly, and `list`
+        narrows what is read by `query.matches`. A ticket is matched to its
+        folder by the key asked for: one Jira answers under another key, as
+        for a ticket moved to another Jira project, and a folder whose
+        ticket is not found, are not listed; `tcw validate --remote` reports
+        both."""
         index = self._key_index()
         fields = read_fields(self.metadata().field_ids)
         found = []
+        seen: set[str] = set()
         for chunk in _chunks(sorted(index), jql.MAX_KEYS):
             text = jql.item_keys_query(self.jira.project, chunk, **narrowing)
             with _jira():
-                issues = _kept_search(self, text, fields)
+                try:
+                    issues = _kept_search(self, text, fields)
+                except TrackerRequestInvalid:
+                    issues = self._read_each(chunk, fields)
             for issue in issues:
                 # A key used by two folders is `tcw validate`'s to report;
-                # the item is listed under neither until one is renamed.
-                names = index.get(str(issue.get("key")), [])
-                if len(names) == 1:
+                # the item is listed under neither until one is renamed. A
+                # ticket asked for under its old key too is listed once.
+                key = str(issue.get("key"))
+                names = index.get(key, [])
+                if len(names) == 1 and key not in seen:
+                    seen.add(key)
                     found.append((Slug(self.project, names[0]), issue))
-        if len(index) > jql.MAX_KEYS:
-            # Each chunk comes oldest first; sorting by the creation time
-            # keeps that order across chunks, and is stable within one.
-            found.sort(key=lambda pair: _created_order(pair[1]))
+        # Each search answers oldest first; sorting by the creation time,
+        # then the key, keeps that order across chunks and direct reads.
+        found.sort(key=lambda pair: _created_order(pair[1]))
         return self._items(found)
+
+    def _read_each(self, keys: Iterable[str], fields: Iterable[str]) -> list[dict]:
+        """Each ticket of `keys` read on its own, leaving out one Jira does
+        not find or answers for under another key."""
+        issues = []
+        for key in keys:
+            try:
+                issue = self.client.issue(key, tuple(fields))
+            except TrackerNotFound:
+                continue
+            if str(issue.get("key")) == key:
+                issues.append(issue)
+        return issues
 
     def read_request(self, folder: str) -> str | None:
         key = self._key(folder)
@@ -892,8 +918,9 @@ class JiraBackend:
 
     def _place(self, value: Any, what: str) -> "Linked | Recorded":
         """Where a parent or blocker goes (TCW-114 Design 3.3): a ticket on
-        this site is a Jira link; anything else is recorded in the item's
-        state file. Decided without the network: the named item's project
+        this site is a Jira link, when it is in this project or both
+        projects have the TCW fields; anything else is recorded in the
+        item's state file. Decided without the network: the named item's project
         is located and its configuration read. A project that cannot be
         located stops the write with that outcome (exit 5 or 1), and one
         whose `work.jira` is undecided with exit 7, before anything is
@@ -908,16 +935,27 @@ class JiraBackend:
             raise Refused(f"{what} {slug} cannot be placed: this backend was opened "
                           f"with no project to find '{slug.project}' from")
         other = self._other(slug.project)
+        # A link to another project's ticket is read back through that
+        # ticket's TCW Item, so it is made only when both projects have the
+        # TCW fields.
         if isinstance(other, JiraBackend) and same_site(other.jira.site, self.jira.site) \
-                and folder_key(slug.folder) is not None:
+                and folder_key(slug.folder) is not None \
+                and self.tcw_fields and other.tcw_fields:
             return Linked(other._key(slug.folder))
         return Recorded(slug)
 
     def _recorded_note(self, item: Slug, what: str, value: Slug) -> str:
         noun = "parent" if what == "parent" else "blocker"
-        return (f"{item}'s {noun} {value} is not a ticket on {self.jira.site}, so it "
-                f"is recorded in {shown(self.work_path / item.folder / STATE_FILE)} "
-                f"and Jira shows no link for it")
+        other = self._other(value.project) if self.root is not None else None
+        why = (f"is a ticket on {self.jira.site}, but a link to another project's "
+               f"ticket needs the TCW fields in both projects"
+               if isinstance(other, JiraBackend) and same_site(other.jira.site,
+                                                               self.jira.site)
+               and folder_key(value.folder) is not None
+               else f"is not a ticket on {self.jira.site}")
+        return (f"{item}'s {noun} {value} {why}, so it is recorded in "
+                f"{shown(self.work_path / item.folder / STATE_FILE)} and Jira shows "
+                f"no link for it")
 
     def _type_of(self, issue: Mapping) -> tuple[int, str]:
         kind = issue.get("fields", {}).get("issuetype") if isinstance(
@@ -1145,8 +1183,8 @@ class JiraBackend:
         if self.tcw_fields:
             return f"finish with `tcw work tickets adopt {key}`"
         inbox = self.statuses.get(inbox_stage())
-        return (f"move it to {inbox!r} in Jira if it is not there, then finish with "
-                f"`tcw work tickets adopt {key}`")
+        return (f"move {key} to {inbox!r} in Jira, then run `tcw work tickets adopt "
+                f"{key}`")
 
     def _route(self, key: str, status: str) -> Transition | Refusal | None:
         """None when `key` is already at `status`; else the transition the
@@ -1313,8 +1351,8 @@ class JiraBackend:
         set, the item's first, each read again just before its edit; then
         the item's own `id`; then `before_folder`; the folder moves last.
         Nothing is set back: running the same command again finishes it.
-        Without the TCW fields no ticket is read or written: the folder's
-        move is the whole change."""
+        Without the TCW fields each moved ticket is only checked to exist,
+        and nothing is written: the folder's move is the whole change."""
         key = self._key(folder)
         self._forget_walk()
         new_last = new_folder.rpartition("/")[2]
@@ -1325,8 +1363,7 @@ class JiraBackend:
         pairs = [(Slug(self.project, p), Slug(self.project, new_folder + p[len(folder):]))
                  for p in moved]
         keys = [folder_key(p) for p in moved]
-        if self.tcw_fields:
-            self._set_moved_items(keys, pairs)
+        self._set_moved_items(keys, pairs)
         # 3. The item's own `id`, then the repository, then the folder.
         old_last = folder.rpartition("/")[2]
         if new_last != old_last:
@@ -1356,13 +1393,15 @@ class JiraBackend:
 
     def _set_moved_items(self, keys: list[str], pairs) -> None:
         """`move`'s steps 1 and 2: read every moved ticket, refusing before
-        any edit when one holds neither identifier, then set each `TCW Item`."""
-        item_field = self.metadata().field_ids["item"]
+        any edit when one is missing or holds neither identifier, then set
+        each `TCW Item`. Without the TCW fields only the first check runs."""
+        item_field = self.metadata().field_ids["item"] if self.tcw_fields else None
         # 1. Read every moved ticket, writing nothing.
         returned: dict[str, Mapping] = {}
         for chunk in _chunks(keys, jql.MAX_KEYS):
             with _jira():
-                for issue in self.client.search(jql.keys_query(chunk), [item_field]):
+                for issue in self.client.search(jql.keys_query(chunk),
+                                                [item_field or "summary"]):
                     returned[str(issue.get("key"))] = issue
         to_set: list[int] = []
         three_x: list[str] = []
@@ -1371,6 +1410,8 @@ class JiraBackend:
             if issue is None:
                 raise NotFound(f"{old}: Jira has no ticket {key_}, or this account "
                                f"cannot see it")
+            if item_field is None:
+                continue
             value = _field(issue, item_field)
             if value == str(old):
                 to_set.append(index)
@@ -1386,7 +1427,8 @@ class JiraBackend:
                           f"{'hold' if len(three_x) > 1 else 'holds'} a TCW 3.x TCW "
                           f"Item; run 'tcw migrate' in this project first")
         # 2. Set each, read again just before its edit.
-        self._set_items(keys, pairs, to_set, item_field)
+        if item_field is not None:
+            self._set_items(keys, pairs, to_set, item_field)
 
     def _set_items(self, keys: list[str], pairs, to_set: list[int],
                    item_field: str) -> None:

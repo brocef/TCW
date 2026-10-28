@@ -513,13 +513,14 @@ def _tcw_values(run: _Run, where: str, key: str, slug: Slug, fields: Mapping,
     tcw_project, value = fields.get(ids["project"]), fields.get(ids["item"])
     if tcw_project in (None, "") and value in (None, ""):
         # Made while the project ran without the TCW fields: `list` misses
-        # it until both are set (the guide's "Running without the TCW
-        # fields").
-        run.error(where, f"its ticket {key} has no TCW Project or TCW Item, as a "
-                         f"ticket made before the fields were configured has; set TCW "
-                         f"Project to {backend.project!r} and TCW Item to "
-                         f"{str(slug)!r} on {key} in Jira, or `tcw work list` leaves "
-                         f"it out")
+        # it until both are set. TCW does not fill them in (the guide's
+        # "Running without the TCW fields").
+        run.error(where, f"its ticket {key} has no TCW Project or TCW Item, as when "
+                         f"the project ran without the TCW fields; fill them in Jira "
+                         f"by hand (TCW Project {backend.project!r}, TCW Item "
+                         f"{str(slug)!r}), or leave the fields out of "
+                         f"work.jira.fields, since `tcw work list` leaves the ticket "
+                         f"out until then")
         return
     if tcw_project != backend.project:
         run.error(where, f"its ticket's TCW Project is {tcw_project!r}, not "

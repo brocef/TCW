@@ -101,3 +101,61 @@ repository alone can say which tickets are its items.
   operation above without the fields, and a configuration test for one field
   given alone. The fake's JQL parser must accept the new key search with the
   extra clauses (`tests/work/jira/fake_jql.py`).
+
+## Revision 1, after review
+
+The review found that item 6 was wrong and that several operations needed a
+firmer rule. These replace the items above where they differ.
+
+1. **References between repositories.** `resolve_keys` reads both fields,
+   and `_items` reaches it from read, list, update and validate; `_place`
+   made a parent or blocker in another project on the same site a Jira link,
+   which is read back through the other ticket's TCW Item. So a reference to
+   another project's item becomes a Jira link only when both projects have
+   the fields; otherwise it is recorded in the state file, and the note says
+   why. Without the fields `resolve_keys` answers None for a key with no
+   folder here and reads neither field. `tcw validate`'s advice to turn a
+   recorded reference into a link follows `_place`, so it is not given when
+   either project lacks the fields. A parent or blocker in the same project
+   still resolves through the folders here and stays a link.
+2. **A refused key search.** Jira refuses a whole `key IN` search, with 400,
+   when one key is missing or hidden. The list then reads each key of the
+   refused chunk directly and narrows what it read with `query.matches`
+   (stage, assignee, parent, labels). The fake refuses such a search also
+   when it has further clauses, and counts a hidden key as missing.
+3. **The `project = <key>` clause stays** in the list's key search. A
+   result is matched to its folder by the key asked for; one Jira answers
+   under another key (a ticket moved to another Jira project) is dropped,
+   and a ticket asked for under two keys is listed once. `validate --remote`
+   reports the stale folder.
+4. **Order:** by `created`, then by key, across chunks and direct reads.
+5. **The inbox** without the fields drops the `IS EMPTY` clause and the
+   request status, offering the inbox status and `inbox-query` results, and
+   still leaves out a ticket with a folder named for its key.
+6. **Adopt** (replaces item 3). With a folder for the key here, the slug is
+   that folder's; a ticket at the inbox status, or at the request status with
+   no state file, is resumed; one at request with its state file is refused
+   as already the item; one at any later status is refused. With no folder
+   here, only a ticket at the inbox status is accepted; at request it is
+   refused with the "may be an item of another repository; move it back"
+   message; at anything else as today. No reordering: the folder and its
+   state file are written before the ticket moves, as with the fields.
+7. **An interrupted `tcw work new`.** Adopt cannot recognize the ticket,
+   since `ours` needs TCW Project, so each "finish with `tcw work tickets
+   adopt KEY`" message says, without the fields: move KEY to the inbox status
+   in Jira, then run `tcw work tickets adopt KEY`.
+8. **Turning the fields on later is out of scope for 4.0.0.** `validate
+   --remote` reports each folder whose ticket has neither value, saying the
+   project ran without the fields and that the values must be filled in Jira
+   by hand, or the fields left out. The guide says it is not supported yet,
+   and `followups.md` records a way to fill them, with `set_item_values` as
+   the base.
+9. **With the fields, nothing changes**: listing still searches by the
+   fields, not by folder keys.
+10. **Migrate:** `plan_tickets` returns at once without the fields, so
+    neither `item_values` nor the B16 check runs, and Jira is not asked.
+11. **Move and rename** without the fields keep the first step's check that
+    every moved ticket exists, and skip only the field reads and writes.
+12. **Docs** include the configure skill's Jira reference, which described
+    both fields as required.
+

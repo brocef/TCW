@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 
+import yaml
+
 import pytest
 
 from tcw.cli import main
@@ -119,6 +121,45 @@ def test_list_searches_by_chunks_and_keeps_the_creation_order(bare):
     assert len(searches(bare.fake)) == 2
 
 
+def test_a_refused_key_search_reads_each_key_and_filters_locally(bare):
+    """Jira refuses a whole `key IN` search when one key is missing or
+    hidden, so each key of the chunk is read and `query.matches` narrows."""
+    _, open_ = item(bare, "Open", "open", status="In Progress", labels=["ui"])
+    _, other = item(bare, "Other label", "other", status="In Progress")
+    _, done = item(bare, "Done", "done", status="Done", labels=["ui"])
+    key, _ = item(bare, "Hidden", "hidden", labels=["ui"])
+    bare.fake.hide(key)
+    key_folder(bare.work, "TCW-99-gone")
+    bare.fake.refuse_missing_key_search = True
+    backend = bare.backend()
+    assert folders(backend.list(Query(tags=frozenset({"ui"})))) == [open_]
+    assert folders(backend.list(Query(all=True))) == [open_, other, done]
+    assert searches(bare.fake) and all("labels IN" in q or "key IN" in q
+                                       for q in searches(bare.fake))
+
+
+def test_a_ticket_answered_under_another_key_is_not_listed(bare):
+    """`TCW-9` now answers as `TCW-2`, which has its own folder: it is listed
+    once, under its own folder, and the stale `TCW-9` folder not at all."""
+    _, kept = item(bare, "Kept", "kept")
+    moved_key, moved = item(bare, "Moved", "moved")
+    key_folder(bare.work, "TCW-9-stale")
+    bare.fake.tickets["TCW-9"] = bare.fake.tickets[moved_key]
+    backend = bare.backend()
+    assert folders(backend.list(Query())) == [kept, moved]
+    bare.fake.refuse_missing_key_search = True
+    bare.fake.hide("TCW-77")
+    key_folder(bare.work, "TCW-77-hidden")
+    assert folders(backend.list(Query())) == [kept, moved]
+
+
+def test_tickets_created_at_once_are_ordered_by_key(bare):
+    names = [item(bare, f"Item {n}", f"i{n}")[1] for n in range(1, 4)]
+    for key in ("TCW-1", "TCW-2", "TCW-3"):
+        bare.fake.tickets[key].created = bare.fake.tickets["TCW-1"].created
+    assert folders(bare.backend().list(Query())) == names
+
+
 def test_a_parent_with_no_folder_here_is_untracked_without_a_search(bare):
     other = bare.fake.ticket("Someone else's epic")
     _, child = item(bare, "Child", "child", parent=other.key)
@@ -175,13 +216,6 @@ def test_adopting_at_the_request_status_with_no_folder_is_refused(bare, tcw):
     assert bare.fake.writes() == [] and list(bare.work.glob(f"{key}-*")) == []
 
 
-def test_an_item_already_here_is_refused(bare, tcw):
-    key, name = item(bare, "Done here", "here", status="To Do")
-    result = tcw(["tickets", "adopt", key], bare.root)
-    assert result.code == 3 and name in result.err
-    assert bare.fake.writes() == []
-
-
 def test_an_adoption_stopped_before_the_move_is_resumed(bare, tcw, monkeypatch):
     from tcw.work.jira import client as jira
     key = bare.fake.ticket("Fix the login", status="To Do").key
@@ -192,7 +226,7 @@ def test_an_adoption_stopped_before_the_move_is_resumed(bare, tcw, monkeypatch):
     monkeypatch.setattr(bare.fake, "_transition", down)
     result = tcw(["tickets", "adopt", key], bare.root)
     folder = bare.work / f"{key}-fix-the-login"
-    assert result.code == 5 and folder.is_dir() and not (folder / ITEM_STATE).exists()
+    assert result.code == 5 and (folder / ITEM_STATE).is_file()
     assert bare.fake.tickets[key].status == "To Do"
     # The folder is the record of the adoption: offered no more, and resumed.
     assert tcw(["tickets", "list"], bare.root).out == ""
@@ -212,6 +246,14 @@ def test_an_adoption_stopped_after_the_move_is_finished(bare, tcw):
     assert (result.code, result.out.strip()) == (0, f"tcw.work/{key}-fix-the-login"), \
         result.err
     assert (bare.work / f"{key}-fix-the-login" / ITEM_STATE).is_file()
+    assert bare.fake.writes() == []
+
+
+def test_an_item_at_request_with_its_state_file_is_refused(bare, tcw):
+    key, name = item(bare, "Adopted", "adopted", status="Triage")
+    result = tcw(["tickets", "adopt", key], bare.root)
+    assert result.code == 3
+    assert f"{key} is already the item tcw.work/{name}" in result.err
     assert bare.fake.writes() == []
 
 
@@ -243,8 +285,13 @@ def test_a_create_stopped_at_its_folder_says_how_to_finish(bare, tcw):
     (bare.work / "TCW-1-half").write_text("in the way")
     result = tcw(["new", "Half"], bare.root)
     assert result.code == 1
-    assert "move it to 'To Do' in Jira if it is not there, then finish with " \
-           "`tcw work tickets adopt TCW-1`" in result.err
+    assert "move TCW-1 to 'To Do' in Jira, then run `tcw work tickets adopt TCW-1`" \
+        in result.err
+    # Moved there, the ticket is adopted as any other.
+    (bare.work / "TCW-1-half").unlink()
+    bare.fake.tickets["TCW-1"].status = "To Do"
+    result = tcw(["tickets", "adopt", "TCW-1"], bare.root)
+    assert (result.code, result.out.strip()) == (0, "tcw.work/TCW-1-half"), result.err
 
 
 # -- 5. moving and renaming -------------------------------------------------------------------
@@ -256,7 +303,17 @@ def test_a_rename_is_the_folder_move_alone(bare, tcw):
     result = tcw(["rename", name, "new-words"], bare.root)
     assert result.code == 0, result.err
     assert (bare.work / f"{key}-new-words" / ITEM_STATE).is_file()
-    assert bare.fake.log == []
+    assert bare.fake.writes() == []
+    no_tcw_field_named(bare.fake)
+
+
+def test_a_move_whose_ticket_is_gone_is_refused(bare, tcw):
+    _, epic = item(bare, "Epic", "epic")
+    key, name = item(bare, "Child", "child")
+    bare.fake.hide(key)
+    result = tcw(["move", name, "--into", epic], bare.root)
+    assert result.code == 4 and f"Jira has no ticket {key}" in result.err
+    assert (bare.work / name).is_dir() and bare.fake.writes() == []
 
 
 def test_a_move_reads_and_writes_no_ticket(bare, tcw):
@@ -321,9 +378,10 @@ def test_validate_remote_says_how_to_fill_fields_turned_on_later(jira_project,
     code, lines, _ = remote(jira_project, monkeypatch, capsys)
     assert code == 1
     assert (f"error: tcw.work/{name}: its ticket {key} has no TCW Project or TCW Item, "
-            f"as a ticket made before the fields were configured has; set TCW Project "
-            f"to 'tcw' and TCW Item to 'tcw.work/{name}' on {key} in Jira, or `tcw work "
-            f"list` leaves it out") in lines
+            f"as when the project ran without the TCW fields; fill them in Jira by hand "
+            f"(TCW Project 'tcw', TCW Item 'tcw.work/{name}'), or leave the fields out "
+            f"of work.jira.fields, since `tcw work list` leaves the ticket out until "
+            f"then") in lines
 
 
 # -- 9. tcw migrate ---------------------------------------------------------------------------
@@ -336,7 +394,74 @@ def test_migrate_plans_no_ticket_edit_and_asks_jira_nothing(bare):
     assert bare.fake.log == []
 
 
+def test_migrate_plans_the_jira_half_of_a_4_0_project_without_the_fields(bare):
+    from tcw.migrate.jira import half
+    item(bare, "Item", "x")
+    bare.fake.log.clear()
+    planned = half(bare.root, "tcw")
+    assert (planned.tickets, planned.reports, planned.blockers) == ([], [], [])
+    assert bare.fake.log == []
+
+
 def test_setting_tcw_item_values_is_refused(bare):
     with pytest.raises(BackendError, match="names no TCW Item field"):
         bare.backend().set_item_values([("TCW-1", "a", "b")])
     assert bare.fake.log == []
+
+
+# -- references between repositories ---------------------------------------------------------
+
+
+@pytest.fixture
+def pair(tmp_path, fake):
+    """`app` with the TCW fields and `web` without, in one Jira project on one
+    site, each placed in the other's manifest."""
+    from tests.projectfiles import write_manifest
+    app = JiraProject(make_project(tmp_path, "app", config=jira_config("app")), "app", fake)
+    web = JiraProject(make_project(tmp_path, "web", config=bare_config()), "web", fake)
+    write_manifest(app.root, {"web": "../web"})
+    write_manifest(web.root, {"app": "../app"})
+    _, app_item = app.item("App one", "app-one")
+    _, web_item = item(web, "Web one", "web-one")
+    return app, web, f"app.work/{app_item}", f"web.work/{web_item}"
+
+
+@pytest.mark.parametrize("side", ["with", "without"])
+def test_a_reference_to_the_other_project_is_recorded(pair, tcw, side):
+    app, web, app_id, web_id = pair
+    here, there = (app, web_id) if side == "with" else (web, app_id)
+    result = tcw(["new", "x", "--blocked-by", there], here.root)
+    assert result.code == 0, result.err
+    assert not here.fake.links
+    folder = result.out.strip().split("/", 1)[1]
+    assert yaml.safe_load((here.work / folder / ITEM_STATE).read_text())[
+        "blocked-by"] == [there]
+    assert "a link to another project's ticket needs the TCW fields in both " \
+           "projects, so it is recorded" in result.err
+    # Offline validate does not advise making it a Jira link.
+    result = tcw_validate(here.root)
+    assert "to make it a Jira link" not in result
+
+
+def test_a_reference_within_the_project_is_still_a_link(bare, tcw):
+    _, blocker = item(bare, "Blocker", "blocker")
+    result = tcw(["new", "x", "--blocked-by", blocker], bare.root)
+    assert result.code == 0, result.err
+    assert len(bare.fake.links) == 1
+    found, = [i for i in bare.backend().list(Query()) if i.title == "x"]
+    assert found.blocked_by == (Slug("tcw", blocker),)
+
+
+def tcw_validate(root) -> str:
+    import io
+    import contextlib
+    import os
+    out = io.StringIO()
+    cwd = os.getcwd()
+    os.chdir(root)
+    try:
+        with contextlib.redirect_stdout(out):
+            main(["validate"])
+    finally:
+        os.chdir(cwd)
+    return out.getvalue()

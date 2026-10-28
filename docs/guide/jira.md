@@ -285,10 +285,9 @@ tcw work tickets adopt SHOP-42      # prints shop.work/SHOP-42-refund-a-payment
 ```
 
 It fills in the ticket's `TCW Project` and `TCW Item`, writes the item's
-folder, and moves the ticket to the request status. Without the TCW fields it
-writes the folder, moves the ticket, and then writes the folder's
-`tcw-work-item.yaml`, so an adoption that stopped part way is finished by
-running the same command again. A ticket further along
+folder, and moves the ticket to the request status. Without the TCW fields the
+folder is the whole record: an adoption that stopped before the ticket moved
+is finished by running the same command again. A ticket further along
 than the request status is refused: adopting it would skip stages with no
 trace. Adopting runs the `request` stage's `post`
 hooks, as a move into `request` would, and no `pre` hooks or gates; a
@@ -358,7 +357,8 @@ renaming).
 Jira links only tickets on one site. A parent or blocker given to
 `tcw work new` or `tcw work edit` becomes a Jira link when it is an item of
 this project, or an item of another Jira-mode project whose tickets are on the
-same site. Anything else, such as an item of a filesystem-mode project, or of
+same site, when both projects have the TCW fields (a link to another project's
+ticket is read back through that ticket's `TCW Item`). Anything else, such as an item of a filesystem-mode project, or of
 a project whose tickets are on another site, is **recorded** in the item's
 `tcw-work-item.yaml` instead, and the command says so:
 
@@ -432,16 +432,30 @@ are its items, and TCW then never reads or writes a `TCW Project` or
 
 - `tcw work list` searches Jira for the tickets this project's folders name,
   with the same status, parent, assignee and label filters, oldest first. A
-  folder whose ticket Jira does not return is not listed; `tcw validate
-  --remote` reports a ticket that is gone.
+  folder whose ticket Jira does not return, or returns under another key (a
+  ticket moved to another Jira project), is not listed; `tcw validate
+  --remote` reports both.
 - `tcw work tickets list` offers the tickets at the inbox status (or matched
   by `inbox-query`) with no folder named for their key here.
 - `tcw work tickets adopt` refuses a ticket at the request status with no
   folder here, since it is most likely an item of another repository that
   shares the Jira project; if it is not, move it back to the inbox status in
   Jira and adopt it then.
-- `tcw work new` sets neither field, and `move` and `rename` move the folder
-  only.
+- `tcw work tickets adopt` takes a ticket with a folder here from that
+  folder: one at the inbox status, or at the request status with no
+  `tcw-work-item.yaml`, is an adoption that stopped part way and is
+  finished; one at the request status with its `tcw-work-item.yaml` is
+  already the item.
+- `tcw work new` sets neither field. When it stops after creating the ticket,
+  adopt cannot tell the ticket is this project's, so the message says to move
+  it to the inbox status in Jira and then adopt it.
+- `tcw work move` and `rename` check that each moved ticket exists and change
+  nothing in Jira; the folder's move is the whole change.
+- A parent or blocker that is another project's item is recorded in the
+  item's `tcw-work-item.yaml`, not linked in Jira, whenever either project is
+  without the TCW fields (see
+  [Parents and blockers Jira cannot link](#parents-and-blockers-jira-cannot-link)).
+  One in the same project is still a Jira link.
 - `tcw validate --remote` does not look for the two fields on the create and
   edit screens and does not compare tickets' values with folders; it still
   checks the statuses, the moves, the other configured fields, and that each
@@ -460,12 +474,12 @@ What is lost:
   of them adopts disappears from the others' inboxes only because adopting
   moves it off the inbox status at once; while it waits at the inbox status
   every one of them offers it.
-- **Turning the fields on later** leaves every existing ticket with empty
-  values, and `tcw work list` searches by the fields once they are
-  configured, so it leaves those tickets out. `tcw validate --remote`
-  reports each such item folder and names the two values to set on its
-  ticket; set them in Jira (a bulk edit sets many at once), then run it
-  again.
+- **Turning the fields on later is not supported yet.** Existing tickets
+  keep empty values, and `tcw work list` searches by the fields once they
+  are configured, so it leaves those tickets out. `tcw validate --remote`
+  reports each such item folder and names the two values its ticket needs;
+  either fill them in Jira by hand (a bulk edit sets many at once), or leave
+  the fields out of the configuration.
 
 ## Tickets that still hold a TCW 3.x value
 

@@ -398,9 +398,11 @@ Each ticket's `TCW Project` field says which TCW project it belongs to, and
   fields are searched one by one.
 - Without the TCW fields, two copies of one repository can adopt the same
   ticket on different branches; `tcw validate` reports the two folders only
-  once the branches meet. Turning the fields on later leaves existing tickets
-  with empty values, which `tcw validate --remote` reports, naming the values
-  to set by hand in Jira; TCW does not fill them in.
+  once the branches meet. Turning the fields on later is not supported yet:
+  existing tickets keep empty values, which `tcw validate --remote` reports,
+  naming the values to set by hand in Jira. A parent or blocker in another
+  project is recorded in the state file, not linked, unless both projects
+  have the fields.
 
 ### UC-6 A related project that is not on this machine
 

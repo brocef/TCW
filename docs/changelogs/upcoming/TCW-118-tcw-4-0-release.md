@@ -6,12 +6,13 @@
   them the item folders alone say which tickets are the project's items:
   `tcw work list` searches by the keys the folders name, the inbox offers
   tickets at the inbox status with no folder here, `tickets adopt` refuses a
-  ticket at the request status with no folder here and writes the folder
-  before moving the ticket so a stopped adoption can be finished, `new`,
-  `move` and `rename` write no field, and `tcw validate --remote` checks
-  neither field. With the fields configured, `tcw validate --remote` reports
-  a folder whose ticket has neither filled in, as one made before the fields
-  were turned on, and names the two values to set. (TCW-118)
+  ticket at the request status with no folder here and finishes a stopped
+  adoption from its folder, `new`, `move` and `rename` write no field, a
+  parent or blocker in another project is recorded in the state file unless
+  both projects have the fields, and `tcw validate --remote` checks neither
+  field. With the fields configured, `tcw validate --remote` reports a folder
+  whose ticket has neither filled in, as when the project ran without them,
+  and names the two values to fill in by hand. (TCW-118)
 - The plugin's session-start install pins `tcw-cli` to the plugin's own
   version (`pipx install --force tcw-cli==<version>`), and the version warning
   for an older CLI advises the same pinned command in place of
