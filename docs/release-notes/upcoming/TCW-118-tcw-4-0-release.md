@@ -57,6 +57,15 @@ fetched during the run would place such a project somewhere else, the run
 stops with exit code 1, names the manifest, and says how to keep the project
 where it is.
 
+## Jira mode without the TCW Project and TCW Item fields
+
+A Jira site that does not allow new custom fields can now be used: leave
+`project` and `item` out of `work.jira.fields` (both, or neither). The item
+folders, each named with its ticket's key, then say which tickets are the
+project's items, and TCW never reads or writes either field. What that loses,
+chiefly that an adoption reaches other copies of the repository only through
+git, is in [the Jira guide](../guide/jira.md#running-without-the-tcw-fields).
+
 ## Fixes
 
 - When TCW refuses a `tcw://` address, the error now quotes the address you

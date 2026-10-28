@@ -436,8 +436,8 @@ demo.work/2026-10-01-payments/2026-10-24-partial-refunds -> demo.work/2026-10-01
 References in other projects are not rewritten: both commands end by saying
 `references in other projects are not rewritten; tcw validate there reports
 them: pass on the identifiers above`. In Jira mode they also edit each moved
-ticket's `TCW Item` ([the Jira guide](jira.md) says how, and what happens when
-Jira stops part way).
+ticket's `TCW Item`, when the project configures that field ([the Jira
+guide](jira.md) says how, and what happens when Jira stops part way).
 
 - **`tcw work comment <item>`** adds a comment, reading its text from
   standard input.

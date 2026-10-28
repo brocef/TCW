@@ -34,7 +34,13 @@ status it maps to, and whether that status exists yet.
 In `.tcw/tcw-config.yaml`, set `work.backend: jira`, the `work.jira` block (the site,
 the Jira project key, the names of the environment variables holding the
 credentials, and the Jira fields TCW writes), and a `status` for each enabled
-stage under `work.stages`. The credentials themselves never go in the file:
+stage under `work.stages`. The `TCW Project` and `TCW Item` fields
+(`work.jira.fields.project` and `.item`) are optional, both or neither: ask
+the user whether their site lets them add the two text fields. With them,
+Jira records which TCW item each ticket is; without them, the item folders
+alone do, so an adoption reaches other copies of the repository only through
+git and nothing in Jira names a ticket's item (the Jira guide's "Running
+without the TCW fields" lists every difference). The credentials themselves never go in the file:
 the configuration names the variables, and the user sets them in their own
 shell. Run `tcw validate`; it reports a missing key or a status mapped twice
 before anything contacts Jira.

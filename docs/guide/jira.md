@@ -148,12 +148,16 @@ work:
     tcw work list: Jira credentials are not set: TCW_JIRA_EMAIL, TCW_JIRA_TOKEN. Export them, or correct work.jira.credentials in .tcw/tcw-config.yaml.
     ```
 
-- **Two custom fields** tie a ticket to an item: a text field holding the TCW
-  project's ID (`TCW Project`) and one holding the item's full identifier
-  (`TCW Item`), nested id-path included, such as
+- **Two custom fields**, optional, tie a ticket to an item in Jira itself: a
+  text field holding the TCW project's ID (`TCW Project`) and one holding the
+  item's full identifier (`TCW Item`), nested id-path included, such as
   `shop.work/SHOP-40-payments/SHOP-42-refund-a-payment` for an item whose
-  folder is inside its parent's. They must be on both the issue type's create
-  screen and its edit screen.
+  folder is inside its parent's. When configured, they must be on both the
+  issue type's create screen and its edit screen. They are given together or
+  not at all: `fields` with only one of them is a configuration problem that
+  names the other. A site that does not allow new custom fields leaves both
+  out, and the item folders alone say which tickets are items; what that
+  loses is in [Running without the TCW fields](#running-without-the-tcw-fields).
 
 Every key, its default and its rules are in the configure skill's
 [`jira.md`](../../skills/configure/references/jira.md). The `setup` skill
@@ -240,7 +244,9 @@ findings only, one per line: a status that does not exist, a move between two
 stages that no transition offers, a transition screen that asks for a field
 other than the comment, a configured field missing from a create or edit
 screen, an item folder whose ticket is missing or whose `TCW Item` names
-another item, and each ticket that still holds a TCW 3.x `TCW Item` value
+another item (or whose ticket has neither TCW field filled in, as a ticket
+made before the fields were configured has: the finding names the two values
+to set), and each ticket that still holds a TCW 3.x `TCW Item` value
 (see [Tickets that still hold a TCW 3.x value](#tickets-that-still-hold-a-tcw-3x-value)).
 It then runs the work-item checks plain `tcw validate` runs in a
 filesystem-mode project: a `parent` or `blocked-by` naming an item that does
@@ -266,6 +272,10 @@ offer more with its own Jira query,
 [`work.jira.inbox-query`](../../skills/configure/references/jira.md#workjirainbox-query).
 Either way, the list holds only tickets that adopting would accept: in this
 Jira project, at the inbox or request status, and not already an item.
+Without the TCW fields, the default is every ticket at the inbox status, and
+the list leaves out each ticket with a folder named for its key here and
+every ticket at the request status (see
+[Running without the TCW fields](#running-without-the-tcw-fields)).
 
 `tcw work tickets adopt <KEY>` makes one an item:
 
@@ -275,7 +285,10 @@ tcw work tickets adopt SHOP-42      # prints shop.work/SHOP-42-refund-a-payment
 ```
 
 It fills in the ticket's `TCW Project` and `TCW Item`, writes the item's
-folder, and moves the ticket to the request status. A ticket further along
+folder, and moves the ticket to the request status. Without the TCW fields it
+writes the folder, moves the ticket, and then writes the folder's
+`tcw-work-item.yaml`, so an adoption that stopped part way is finished by
+running the same command again. A ticket further along
 than the request status is refused: adopting it would skip stages with no
 trace. Adopting runs the `request` stage's `post`
 hooks, as a move into `request` would, and no `pre` hooks or gates; a
@@ -301,7 +314,8 @@ A rejection's reason is the comment the implementation reads next.
 ## What each command changes on a ticket
 
 - **`tcw work new "<title>"`** creates the ticket, with its summary, request,
-  properties, `TCW Project` and `TCW Item`, then writes the item's folder.
+  properties, `TCW Project` and `TCW Item` (when configured), then writes the
+  item's folder.
   With `--parent <item> --nest`, the folder is made inside the parent's, and
   `TCW Item` holds the nested full identifier. Standard output is the new
   item's full identifier, or the ticket's key when TCW stopped after creating
@@ -311,11 +325,13 @@ A rejection's reason is the comment the implementation reads next.
 - **`tcw work advance <item>`** and **`tcw work discard <item>`** apply a
   transition, and post a comment when the move carries a reason.
 - **`tcw work comment <item>`** posts a comment.
-- **`tcw work tickets adopt <KEY>`** fills in `TCW Project` and `TCW Item` and
-  moves the ticket to the request status.
+- **`tcw work tickets adopt <KEY>`** fills in `TCW Project` and `TCW Item`
+  (when configured) and moves the ticket to the request status.
 - **`tcw work move <item>`** and **`tcw work rename <item> <new-name>`** edit the
   `TCW Item` of the item's ticket and of the ticket of every item nested in
-  it, then move or rename the folder. They change no other field.
+  it, then move or rename the folder. They change no other field. Without
+  the TCW fields they change nothing in Jira: moving the folder is the whole
+  change.
 
 ### Moving and renaming an item
 
@@ -403,6 +419,53 @@ stage) are read with one search, and each ticket is given to the project its
 search each. A search is kept only for the rest of that command, or, in the
 web viewer, for the rest of one request; a write to Jira in the same command
 or request makes the next search ask Jira again, so it sees the write.
+Projects without the TCW fields are always read with a search each, by the
+keys their folders name.
+
+## Running without the TCW fields
+
+`work.jira.fields` may leave out `project` and `item`, for a Jira site where
+new custom fields cannot be added. Every Jira-mode item already has a folder
+named with its ticket's key, so the repository alone can say which tickets
+are its items, and TCW then never reads or writes a `TCW Project` or
+`TCW Item` value:
+
+- `tcw work list` searches Jira for the tickets this project's folders name,
+  with the same status, parent, assignee and label filters, oldest first. A
+  folder whose ticket Jira does not return is not listed; `tcw validate
+  --remote` reports a ticket that no longer exists.
+- `tcw work tickets list` offers the tickets at the inbox status (or matched
+  by `inbox-query`) with no folder named for their key here.
+- `tcw work tickets adopt` refuses a ticket at the request status with no
+  folder here, since it is most likely an item of another repository that
+  shares the Jira project; if it is not, move it back to the inbox status in
+  Jira and adopt it then.
+- `tcw work new` sets neither field, and `move` and `rename` move the folder
+  only.
+- `tcw validate --remote` does not look for the two fields on the create and
+  edit screens and does not compare tickets' values with folders; it still
+  checks the statuses, the moves, the other configured fields, and that each
+  folder's ticket exists.
+
+What is lost:
+
+- **An adoption or a new item reaches other copies of the repository only
+  through git.** Until its folder arrives there, another copy sees the
+  ticket as not yet adopted. Two people can adopt the same ticket on
+  different branches; `tcw validate` reports the two folders for one key when
+  the branches meet, but nothing prevents it.
+- **Nothing in Jira says which repository or folder holds a ticket's item.**
+  Someone reading the ticket in Jira sees no TCW identifier.
+- **Several projects sharing one Jira project share an inbox.** A ticket one
+  of them adopts disappears from the others' inboxes only because adopting
+  moves it off the inbox status at once; while it waits at the inbox status
+  every one of them offers it.
+- **Turning the fields on later** leaves every existing ticket with empty
+  values, and `tcw work list` searches by the fields once they are
+  configured, so it leaves those tickets out. `tcw validate --remote`
+  reports each such item folder and names the two values to set on its
+  ticket; set them in Jira (a bulk edit sets many at once), then run it
+  again.
 
 ## Tickets that still hold a TCW 3.x value
 
@@ -460,7 +523,9 @@ person changes their name.
   supported.
 - **Two people adopting the same ticket at the same moment** are not kept
   apart: TCW takes no lock in Jira. Agree who sorts the inbox, and check the
-  ticket with `tcw work show` afterwards if you are unsure.
+  ticket with `tcw work show` afterwards if you are unsure. Without the TCW
+  fields, two people adopting it on different branches are not kept apart
+  either, until the branches meet.
 - **Team-managed Jira projects** may have no priority field. Items then have
   no priority, and `tcw work show` prints it empty.
 - **Transition screens.** TCW fills in only the comment on a transition's
@@ -476,5 +541,5 @@ person changes their name.
   filesystem-mode item take its request from a ticket or comment on it.
   A team whose workflows cannot change keeps its projects in filesystem
   mode, and records the ticket's key in the item's request (and copies what
-  the ticket needs back by hand). The two TCW fields are needed only in Jira
-  mode.
+  the ticket needs back by hand). The two TCW fields are used only in Jira
+  mode, and are optional there.
