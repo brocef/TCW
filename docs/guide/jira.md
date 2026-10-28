@@ -475,11 +475,17 @@ What is lost:
   moves it off the inbox status at once; while it waits at the inbox status
   every one of them offers it.
 - **Turning the fields on later is not supported yet.** Existing tickets
-  keep empty values, and `tcw work list` searches by the fields once they
-  are configured, so it leaves those tickets out. `tcw validate --remote`
-  reports each such item folder and names the two values its ticket needs;
-  either fill them in Jira by hand (a bulk edit sets many at once), or leave
-  the fields out of the configuration.
+  keep empty values, and once the fields are configured `tcw work list`
+  searches by them, so it leaves those tickets out, and `tcw work move` and
+  `rename` refuse to change a ticket whose TCW Item is empty.
+  `tcw validate --remote` reports each such item folder and names the two
+  values its ticket needs; either fill them in Jira by hand (TCW Project is
+  the same on every ticket, so a bulk edit can set it, but TCW Item differs
+  on each), or leave the fields out of the configuration.
+- **Projects that share one Jira project must make the same choice.** A
+  project with the fields reads an empty TCW Item at the request status as a
+  ticket no project has adopted, so it would adopt an item of a project
+  sharing the Jira project without them.
 
 ## Tickets that still hold a TCW 3.x value
 

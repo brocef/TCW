@@ -519,8 +519,8 @@ def _tcw_values(run: _Run, where: str, key: str, slug: Slug, fields: Mapping,
                          f"the project ran without the TCW fields; fill them in Jira "
                          f"by hand (TCW Project {backend.project!r}, TCW Item "
                          f"{str(slug)!r}), or leave the fields out of "
-                         f"work.jira.fields, since `tcw work list` leaves the ticket "
-                         f"out until then")
+                         f"work.jira.fields, since until then `tcw work list` leaves "
+                         f"the ticket out and `tcw work move` and `rename` refuse it")
         return
     if tcw_project != backend.project:
         run.error(where, f"its ticket's TCW Project is {tcw_project!r}, not "

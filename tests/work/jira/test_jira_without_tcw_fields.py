@@ -380,8 +380,8 @@ def test_validate_remote_says_how_to_fill_fields_turned_on_later(jira_project,
     assert (f"error: tcw.work/{name}: its ticket {key} has no TCW Project or TCW Item, "
             f"as when the project ran without the TCW fields; fill them in Jira by hand "
             f"(TCW Project 'tcw', TCW Item 'tcw.work/{name}'), or leave the fields out "
-            f"of work.jira.fields, since `tcw work list` leaves the ticket out until "
-            f"then") in lines
+            f"of work.jira.fields, since until then `tcw work list` leaves the ticket "
+            f"out and `tcw work move` and `rename` refuse it") in lines
 
 
 # -- 9. tcw migrate ---------------------------------------------------------------------------
