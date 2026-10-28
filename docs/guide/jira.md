@@ -433,7 +433,7 @@ are its items, and TCW then never reads or writes a `TCW Project` or
 - `tcw work list` searches Jira for the tickets this project's folders name,
   with the same status, parent, assignee and label filters, oldest first. A
   folder whose ticket Jira does not return is not listed; `tcw validate
-  --remote` reports a ticket that no longer exists.
+  --remote` reports a ticket that is gone.
 - `tcw work tickets list` offers the tickets at the inbox status (or matched
   by `inbox-query`) with no folder named for their key here.
 - `tcw work tickets adopt` refuses a ticket at the request status with no

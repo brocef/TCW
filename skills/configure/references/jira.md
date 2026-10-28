@@ -153,7 +153,7 @@ With them, Jira itself records which TCW project and item each ticket is.
 Without them, for a site where new custom fields cannot be added, the item
 folders alone say which tickets are items and TCW never reads or writes
 either field; an adoption then reaches other copies of the repository only
-through git, nothing in Jira names a ticket's item, and turning the fields on
+when its folder does, nothing in Jira names a ticket's item, and turning the fields on
 later leaves existing tickets to be filled in by hand, which `tcw validate
 --remote` reports. The [Jira guide](../../../docs/guide/jira.md#running-without-the-tcw-fields)
 lists every difference.

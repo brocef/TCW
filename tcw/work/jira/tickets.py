@@ -18,6 +18,7 @@ import yaml
 from tcw import exit as codes
 from tcw.errors import BackendError, NotFound, Refused, StateFileProblem, TcwError, UsageError
 from tcw.ids import IdError
+from tcw.output import shown
 from tcw.work.advance import run_post
 from tcw.work.config import WorkConfig
 from tcw.work.jira import jql
@@ -27,7 +28,6 @@ from tcw.work.jira.backend import (
 from tcw.work.jira.client import TrackerError, TrackerNotFound, TrackerRequestInvalid
 from tcw.work.jira.mapping import document_text
 from tcw.work.layout import Layout
-from tcw.output import shown
 from tcw.work.model import Slug, fitted_words, inbox_stage, start_stage
 
 
