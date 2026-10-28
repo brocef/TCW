@@ -55,7 +55,7 @@ from tcw.work.jira.mapping import (
 from tcw.work.layout import Layout
 from tcw.work.model import (
     FOLDER_LIMIT, PREFIX_ALLOWANCE, UNSET, Changes, Item, Slug, _as_slug, check_encodable,
-    completion_stage, fitted_words,
+    completion_stage, fitted_words, inbox_stage,
     discard_stage, stage as table_stage, start_stage, title_words as make_title_words,
     validate_changes,
 )
@@ -355,6 +355,13 @@ def _kept_search(backend: "JiraBackend", text: str, fields) -> list:
     return copy.deepcopy(kept[key])
 
 
+def _created_order(issue: Mapping) -> tuple[bool, datetime]:
+    """A ticket's place in `created ASC` order; one with no readable time
+    last (`_items` refuses it)."""
+    stamp = parse_stamp(_field(issue, "created"))
+    return stamp is None, stamp or datetime.min.replace(tzinfo=timezone.utc)
+
+
 def _field(issue: Mapping, field_id: str) -> Any:
     fields = issue.get("fields") if isinstance(issue, Mapping) else None
     return fields.get(field_id) if isinstance(fields, Mapping) else None
@@ -450,6 +457,13 @@ class JiraBackend:
     @property
     def enabled(self) -> frozenset[str]:
         return self.config.enabled
+
+    @property
+    def tcw_fields(self) -> bool:
+        """Whether the TCW Project and TCW Item fields are configured. Without
+        them the item folders alone say which tickets are this project's
+        items, and neither field is read or written."""
+        return self.jira.fields.tcw
 
     @property
     def statuses(self) -> dict[str, str]:
@@ -656,8 +670,10 @@ class JiraBackend:
                 out[key] = Slug(self.project, folder)
             else:
                 rest.append(key)
-        if not rest:
-            return out
+        if not rest or not self.tcw_fields:
+            # Without the TCW fields only a folder here makes a ticket an
+            # item, so the rest name none.
+            return out | {key: None for key in rest}
         meta = self.metadata()
         fields = [meta.field_ids["project"], meta.field_ids["item"]]
         returned: dict[str, Mapping] = {}
@@ -721,9 +737,12 @@ class JiraBackend:
             assignee = self.account(query.assignee)
             query = replace(query, assignee=assignee)
         meta = self.metadata()
-        text = jql.item_query(self.jira.project, meta.field_ids["item"],
-                              statuses=statuses, not_statuses=not_statuses,
-                              parent=parent, assignee=assignee, labels=labels)
+        narrowing = dict(statuses=statuses, not_statuses=not_statuses, parent=parent,
+                         assignee=assignee, labels=labels)
+        if not self.tcw_fields:
+            return [item for item in self._listed_by_folder(narrowing)
+                    if query.matches(item)]
+        text = jql.item_query(self.jira.project, meta.field_ids["item"], **narrowing)
         with _jira():
             issues = _kept_search(self, text, read_fields(meta.field_ids))
         found = []
@@ -753,6 +772,30 @@ class JiraBackend:
                   f"'tcw migrate' in this project to convert "
                   f"{'them' if many else 'it'}")
         return [item for item in self._items(found) if query.matches(item)]
+
+    def _listed_by_folder(self, narrowing: Mapping[str, Any]) -> list[Item]:
+        """`list` without the TCW fields: the tickets this project's item
+        folders name, searched by key in chunks, oldest first across them.
+        A folder whose ticket is not returned is not listed; `tcw validate
+        --remote` reports a ticket that is gone."""
+        index = self._key_index()
+        fields = read_fields(self.metadata().field_ids)
+        found = []
+        for chunk in _chunks(sorted(index), jql.MAX_KEYS):
+            text = jql.item_keys_query(self.jira.project, chunk, **narrowing)
+            with _jira():
+                issues = _kept_search(self, text, fields)
+            for issue in issues:
+                # A key used by two folders is `tcw validate`'s to report;
+                # the item is listed under neither until one is renamed.
+                names = index.get(str(issue.get("key")), [])
+                if len(names) == 1:
+                    found.append((Slug(self.project, names[0]), issue))
+        if len(index) > jql.MAX_KEYS:
+            # Each chunk comes oldest first; sorting by the creation time
+            # keeps that order across chunks, and is stable within one.
+            found.sort(key=lambda pair: _created_order(pair[1]))
+        return self._items(found)
 
     def read_request(self, folder: str) -> str | None:
         key = self._key(folder)
@@ -1036,7 +1079,7 @@ class JiraBackend:
             raise _named(BackendError(
                 f"created Jira ticket {key}, but the key leaves no room for title "
                 f"words under {Slug(self.project, under)}, since no full identifier is "
-                f"longer than 255; finish with `tcw work tickets adopt {key}`"), key)
+                f"longer than 255; {self.finish_with_adopt(key)}"), key)
         name = f"{key}-{words}"
         folder = f"{under}/{name}" if under else name
         slug = Slug(self.project, folder)
@@ -1050,14 +1093,16 @@ class JiraBackend:
         if isinstance(chosen, Refusal):
             raise Refused(f"created Jira ticket {key}, but {chosen.message}; it is left "
                           f"as an ordinary ticket with no item", name=key)
-        # 4. Set TCW Item.
-        try:
-            with _jira():
-                self.client.edit_issue(key, {meta.field_ids["item"]: str(slug)})
-        except TcwError as error:
-            raise _named(BackendError(
-                f"created Jira ticket {key}, but could not set its TCW Item: {error}; "
-                f"finish with `tcw work tickets adopt {key}`"), key) from None
+        # 4. Set TCW Item; without the TCW fields the folder alone makes it
+        # an item.
+        if self.tcw_fields:
+            try:
+                with _jira():
+                    self.client.edit_issue(key, {meta.field_ids["item"]: str(slug)})
+            except TcwError as error:
+                raise _named(BackendError(
+                    f"created Jira ticket {key}, but could not set its TCW Item: "
+                    f"{error}; finish with `tcw work tickets adopt {key}`"), key) from None
         # 5. Write the folder and its state file.
         try:
             self._item_file(folder, key, parent=noted_parent, blocked_by=noted_blockers)
@@ -1068,7 +1113,7 @@ class JiraBackend:
                     f"{slug}{again}`" if again else "")
             raise _named(BackendError(
                 f"created Jira ticket {key} naming {slug}, but could not write its "
-                f"folder: {error}; finish with `tcw work tickets adopt {key}`{then}"),
+                f"folder: {error}; {self.finish_with_adopt(key)}{then}"),
                 key) from None
         for what, values in (("parent", [noted_parent] if noted_parent else []),
                              ("blocked-by", noted_blockers)):
@@ -1092,6 +1137,16 @@ class JiraBackend:
             raise _named(type(error)(f"created {slug}, but could not read it back: "
                                      f"{error}; check it with `tcw work show {slug}`"),
                          str(slug)) from None
+
+    def finish_with_adopt(self, key: str) -> str:
+        """How to finish a ticket `create` made but could not make an item.
+        Without the TCW fields nothing on the ticket marks it as this
+        project's, so `adopt` takes it only from the inbox status."""
+        if self.tcw_fields:
+            return f"finish with `tcw work tickets adopt {key}`"
+        inbox = self.statuses.get(inbox_stage())
+        return (f"move it to {inbox!r} in Jira if it is not there, then finish with "
+                f"`tcw work tickets adopt {key}`")
 
     def _route(self, key: str, status: str) -> Transition | Refusal | None:
         """None when `key` is already at `status`; else the transition the
@@ -1257,7 +1312,9 @@ class JiraBackend:
         the old nor the new identifier; then each ticket's `TCW Item` is
         set, the item's first, each read again just before its edit; then
         the item's own `id`; then `before_folder`; the folder moves last.
-        Nothing is set back: running the same command again finishes it."""
+        Nothing is set back: running the same command again finishes it.
+        Without the TCW fields no ticket is read or written: the folder's
+        move is the whole change."""
         key = self._key(folder)
         self._forget_walk()
         new_last = new_folder.rpartition("/")[2]
@@ -1268,6 +1325,38 @@ class JiraBackend:
         pairs = [(Slug(self.project, p), Slug(self.project, new_folder + p[len(folder):]))
                  for p in moved]
         keys = [folder_key(p) for p in moved]
+        if self.tcw_fields:
+            self._set_moved_items(keys, pairs)
+        # 3. The item's own `id`, then the repository, then the folder.
+        old_last = folder.rpartition("/")[2]
+        if new_last != old_last:
+            document = self.work_path / folder / STATE_FILE
+            text = document.read_text(encoding="utf-8")
+            new_text, own = rewrite_own_id(text, old_last, new_last)
+            if own == "changed":
+                try:
+                    document.write_text(new_text, encoding="utf-8")
+                except OSError as error:
+                    raise BackendError(f"could not write {shown(document)}: "
+                                       f"{error}") from None
+                self.report(f"wrote {shown(document)}: id {old_last} -> {new_last}")
+        before_folder()
+        old_path, new_path = self.work_path / folder, self.work_path / new_folder
+        try:
+            created = move_object_folder(self.work_path, folder, new_folder)
+        except OSError as error:
+            raise BackendError(f"could not move {shown(old_path)} to "
+                               f"{shown(new_path)}: {error}") from None
+        finally:
+            self._forget_walk()
+        for rel in created:
+            self.report(f"created {shown(self.work_path / rel)}/")
+        self.report(f"moved {shown(old_path)} to {shown(new_path)}")
+        return pairs
+
+    def _set_moved_items(self, keys: list[str], pairs) -> None:
+        """`move`'s steps 1 and 2: read every moved ticket, refusing before
+        any edit when one holds neither identifier, then set each `TCW Item`."""
         item_field = self.metadata().field_ids["item"]
         # 1. Read every moved ticket, writing nothing.
         returned: dict[str, Mapping] = {}
@@ -1298,32 +1387,6 @@ class JiraBackend:
                           f"Item; run 'tcw migrate' in this project first")
         # 2. Set each, read again just before its edit.
         self._set_items(keys, pairs, to_set, item_field)
-        # 3. The item's own `id`, then the repository, then the folder.
-        old_last = folder.rpartition("/")[2]
-        if new_last != old_last:
-            document = self.work_path / folder / STATE_FILE
-            text = document.read_text(encoding="utf-8")
-            new_text, own = rewrite_own_id(text, old_last, new_last)
-            if own == "changed":
-                try:
-                    document.write_text(new_text, encoding="utf-8")
-                except OSError as error:
-                    raise BackendError(f"could not write {shown(document)}: "
-                                       f"{error}") from None
-                self.report(f"wrote {shown(document)}: id {old_last} -> {new_last}")
-        before_folder()
-        old_path, new_path = self.work_path / folder, self.work_path / new_folder
-        try:
-            created = move_object_folder(self.work_path, folder, new_folder)
-        except OSError as error:
-            raise BackendError(f"could not move {shown(old_path)} to "
-                               f"{shown(new_path)}: {error}") from None
-        finally:
-            self._forget_walk()
-        for rel in created:
-            self.report(f"created {shown(self.work_path / rel)}/")
-        self.report(f"moved {shown(old_path)} to {shown(new_path)}")
-        return pairs
 
     def _set_items(self, keys: list[str], pairs, to_set: list[int],
                    item_field: str) -> None:
@@ -1365,7 +1428,10 @@ class JiraBackend:
         of the twelve operations. Reads only `self.jira`, `self.client` and
         the field ids `metadata()` finds, never `self.config` or
         `self.layout`, so the work section the backend was built with does
-        not change what it finds."""
+        not change what it finds. Without the TCW fields no ticket carries
+        one, so there are none, and Jira is not asked."""
+        if not self.tcw_fields:
+            return []
         ids = self.metadata().field_ids
         text = jql.item_query(self.jira.project, ids["item"])
         with _jira():
@@ -1386,6 +1452,9 @@ class JiraBackend:
         pairs = list(pairs)
         if not pairs:
             return
+        if not self.tcw_fields:
+            raise BackendError("this project's work.jira.fields names no TCW Item "
+                               "field, so no ticket's TCW Item can be set")
         item_field = self.metadata().field_ids["item"]
         left: list[str] = []
         reasons: list[str] = []

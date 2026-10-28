@@ -31,20 +31,28 @@ DEFAULT_TIMEOUT = 15
 
 KEYS = ("site", "project", "credentials", "fields", "priorities", "issue-type",
         "inbox-query", "timeout")
-REQUIRED = ("site", "project", "credentials", "fields")
+REQUIRED = ("site", "project", "credentials")
 CREDENTIAL_KEYS = ("email-env", "token-env")
 FIELD_KEYS = ("project", "item", "effort", "complexity")
-REQUIRED_FIELDS = ("project", "item")
+#: The TCW Project and TCW Item fields, given together or not at all.
+TCW_FIELDS = ("project", "item")
 
 
 @dataclass(frozen=True)
 class JiraFields:
     """Jira field *display names*; they are resolved to field ids at run time
-    from the project's create metadata (Design 12)."""
-    project: str
-    item: str
+    from the project's create metadata (Design 12). `project` and `item` are
+    both None for a project without the TCW fields, whose item folders alone
+    say which tickets are its items."""
+    project: str | None = None
+    item: str | None = None
     effort: str | None = None
     complexity: str | None = None
+
+    @property
+    def tcw(self) -> bool:
+        """Whether the TCW Project and TCW Item fields are configured."""
+        return self.project is not None and self.item is not None
 
 
 @dataclass(frozen=True)
@@ -55,7 +63,7 @@ class JiraConfig:
     project: str
     email_env: str
     token_env: str
-    fields: JiraFields
+    fields: JiraFields = field(default_factory=JiraFields)
     priorities: Mapping[str, str] = field(
         default_factory=lambda: dict(zip(PRIORITIES, DEFAULT_PRIORITY_NAMES)))
     issue_type: str = DEFAULT_ISSUE_TYPE
@@ -176,15 +184,22 @@ def parse_jira_config(raw: Any) -> tuple[JiraConfig | None, list[ConfigProblem]]
     credentials = (_credentials(block, where, problems)
                    if "credentials" in block else None)
 
-    fields = None
+    fields = JiraFields()
     if "fields" in block:
         path = (*where, "fields")
         given = _mapping(block["fields"], path, problems)
         if given is not None:
             _unknown(given, FIELD_KEYS, path, problems)
-            _missing(given, REQUIRED_FIELDS, path, problems)
+            # TCW Project and TCW Item work only as a pair: one alone is
+            # reported at the one missing.
+            given_tcw = [k for k in TCW_FIELDS if k in given]
+            if len(given_tcw) == 1:
+                other, = set(TCW_FIELDS) - set(given_tcw)
+                problems.add((*path, other),
+                             f"required when work.jira.fields.{given_tcw[0]} is given: "
+                             f"the two TCW fields are given together or not at all")
             names = {k: _text(given, k, path, problems) for k in FIELD_KEYS if k in given}
-            fields = JiraFields(names.get("project") or "", names.get("item") or "",
+            fields = JiraFields(names.get("project"), names.get("item"),
                                 names.get("effort"), names.get("complexity"))
 
     priorities = dict(zip(PRIORITIES, DEFAULT_PRIORITY_NAMES))

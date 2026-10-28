@@ -39,14 +39,9 @@ def _values(values: Iterable[str]) -> str:
     return "(" + ", ".join(quote(v) for v in values) + ")"
 
 
-def item_query(project: str, item_field: str, *,
-               statuses: Iterable[str] | None = None,
-               not_statuses: Iterable[str] | None = None,
-               parent: str | None = None, assignee: str | None = None,
-               labels: Iterable[str] | None = None) -> str:
-    """The items of one Jira project (Design 6): tickets with a TCW Item,
-    narrowed by status, parent key, assignee account and labels."""
-    clauses = [f"project = {quote(project)}", f"{field(item_field)} IS NOT EMPTY"]
+def _narrowed(clauses: list[str], statuses: Iterable[str] | None,
+              not_statuses: Iterable[str] | None, parent: str | None,
+              assignee: str | None, labels: Iterable[str] | None) -> str:
     if statuses is not None:
         clauses.append(f"status IN {_values(statuses)}")
     if not_statuses is not None:
@@ -60,12 +55,39 @@ def item_query(project: str, item_field: str, *,
     return " AND ".join(clauses) + ORDER
 
 
-def inbox_query(project: str, item_field: str, inbox_status: str,
+def item_query(project: str, item_field: str, *,
+               statuses: Iterable[str] | None = None,
+               not_statuses: Iterable[str] | None = None,
+               parent: str | None = None, assignee: str | None = None,
+               labels: Iterable[str] | None = None) -> str:
+    """The items of one Jira project (Design 6): tickets with a TCW Item,
+    narrowed by status, parent key, assignee account and labels."""
+    return _narrowed([f"project = {quote(project)}", f"{field(item_field)} IS NOT EMPTY"],
+                     statuses, not_statuses, parent, assignee, labels)
+
+
+def item_keys_query(project: str, keys: Iterable[str], *,
+                    statuses: Iterable[str] | None = None,
+                    not_statuses: Iterable[str] | None = None,
+                    parent: str | None = None, assignee: str | None = None,
+                    labels: Iterable[str] | None = None) -> str:
+    """The items of a project without the TCW fields: the tickets its item
+    folders name, at most `MAX_KEYS`, narrowed as `item_query` narrows."""
+    keys = list(keys)
+    if not keys or len(keys) > MAX_KEYS:
+        raise ValueError(f"a key search takes 1 to {MAX_KEYS} keys, not {len(keys)}")
+    return _narrowed([f"project = {quote(project)}", f"key IN {_values(keys)}"],
+                     statuses, not_statuses, parent, assignee, labels)
+
+
+def inbox_query(project: str, item_field: str | None, inbox_status: str,
                 extra: str | None = None) -> str:
     """The Jira inbox (Design 7.1): tickets at the inbox status with no TCW
-    Item; with `inbox-query`, the union of the two."""
-    default = (f"project = {quote(project)} AND status = {quote(inbox_status)} "
-               f"AND {field(item_field)} IS EMPTY")
+    Item, or, without the TCW fields, every ticket at the inbox status; with
+    `inbox-query`, the union of the two."""
+    default = f"project = {quote(project)} AND status = {quote(inbox_status)}"
+    if item_field is not None:
+        default += f" AND {field(item_field)} IS EMPTY"
     if extra:
         return f"({default}) OR ({extra})" + ORDER
     return default + ORDER
