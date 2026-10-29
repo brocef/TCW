@@ -55,18 +55,22 @@ def _name(value: Any) -> str | None:
 
 def inbox(backend: JiraBackend) -> tuple[list[dict], str]:
     """The Jira inbox, and the JQL that found it: only tickets `adopt` would
-    accept without a further request (R19), oldest first."""
+    accept without a further request (R19), oldest first. Without the TCW
+    fields a ticket at the request status is not offered: nothing shows it
+    is no other repository's item."""
     backend = jira_backend(backend)
     meta = backend.metadata()
     ids = meta.field_ids
+    tcw_fields = backend.tcw_fields
     inbox_status = backend.statuses[inbox_stage()]
     request_status = backend.statuses[start_stage()]
-    query = jql.inbox_query(backend.jira.project, ids["item"], inbox_status,
-                            backend.jira.inbox_query)
+    offered = (inbox_status, request_status) if tcw_fields else (inbox_status,)
+    query = jql.inbox_query(backend.jira.project, ids["item"] if tcw_fields else None,
+                            inbox_status, backend.jira.inbox_query)
+    tcw_ids = [ids["project"], ids["item"]] if tcw_fields else []
     with _jira():
         issues = backend.client.search(query, ["summary", "status", "created", "reporter",
-                                               "description", "project", ids["project"],
-                                               ids["item"]])
+                                               "description", "project", *tcw_ids])
     found = []
     for issue in issues:
         fields = _fields(issue)
@@ -74,10 +78,10 @@ def inbox(backend: JiraBackend) -> tuple[list[dict], str]:
         project = fields.get("project")
         if not isinstance(project, dict) or project.get("key") != backend.jira.project:
             continue
-        if _name(fields.get("status")) not in (inbox_status, request_status):
+        if _name(fields.get("status")) not in offered:
             continue
-        if fields.get(ids["item"]) or fields.get(ids["project"]) not in (None, "",
-                                                                          backend.project):
+        if tcw_fields and (fields.get(ids["item"]) or fields.get(ids["project"]) not in (
+                None, "", backend.project)):
             continue
         # Any folder named for the key, with its state file or without one,
         # as adopt refuses beside either: the list offers only what adopt
@@ -111,13 +115,17 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
         raise UsageError(f"{key!r} is not a Jira key")
     meta = backend.metadata()
     ids = meta.field_ids
+    # Without the TCW fields the folder alone records the adoption, and
+    # neither field is read or written.
+    tcw_fields = backend.tcw_fields
     inbox_status = backend.statuses[inbox_stage()]
     request_status = backend.statuses[start_stage()]
     # 1. Read the ticket.
     try:
         with _jira():
             issue = backend.client.issue(key, ("summary", "status", "project",
-                                               ids["project"], ids["item"]))
+                                               *((ids["project"], ids["item"])
+                                                 if tcw_fields else ())))
     except NotFound:
         raise NotFound(f"Jira has no ticket {key}, or this account cannot see it") \
             from None
@@ -128,7 +136,7 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
     if not isinstance(project, dict) or project.get("key") != backend.jira.project:
         raise Refused(f"{key} is in Jira project {_key_of(project)}, not "
                       f"{backend.jira.project}")
-    tcw_project = fields.get(ids["project"])
+    tcw_project = fields.get(ids["project"]) if tcw_fields else None
     if tcw_project not in (None, "", backend.project):
         raise Refused(f"{key} belongs to TCW project {tcw_project!r}, not "
                       f"{backend.project!r}")
@@ -143,7 +151,7 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
     here = named_for_key[0] if named_for_key else None
     if here is not None:
         _refuse_unreadable_state(backend.work_path / here / STATE_FILE)
-    tcw_item = fields.get(ids["item"])
+    tcw_item = fields.get(ids["item"]) if tcw_fields else None
     # Statuses of stages past request: adopting from one would skip stages.
     moved_on = set(backend.statuses.values()) - {inbox_status, request_status}
     resuming = False
@@ -161,9 +169,25 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
         if here is not None and status != inbox_status and not unfinished:
             raise Refused(f"{key} is already the item {named}")
         slug, resuming = named, True
+    elif not tcw_fields and here is not None:
+        # Without the TCW fields the folder is the record: it is written
+        # before the ticket moves, so at the inbox status, or at request
+        # without its state file, it is an adoption that stopped part way.
+        slug = Slug(backend.project, here)
+        if status == request_status and (backend.work_path / here / STATE_FILE).is_file():
+            raise Refused(f"{key} is already the item {slug}")
+        if status not in (inbox_status, request_status):
+            raise Refused(f"a folder for {key} already exists here ({here}), and the "
+                          f"ticket is at {status!r}")
+        resuming = True
     else:
         if here is not None:
             raise Refused(f"a folder for {key} already exists here: {here}")
+        if not tcw_fields and status == request_status:
+            raise Refused(f"{key} is at {request_status!r} with no folder here, so it "
+                          f"may be an item of another repository sharing Jira project "
+                          f"{backend.jira.project}; if it is not, move it back to "
+                          f"{inbox_status!r} in Jira, then adopt it")
         # The key is known, so the room is too: refused before any edit
         # (TCW-111 Design 4.3, choice 2).
         words = fitted_words(str(fields.get('summary') or key), project=backend.project,
@@ -176,9 +200,11 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
     chosen = None
     if status != request_status:
         if not resuming and not ours and status != inbox_status:
-            raise Refused(f"{key} is at {status!r}; only a ticket at {inbox_status!r} "
-                          f"or {request_status!r} can be adopted, since adopting one "
-                          f"further along would skip stages with no trace")
+            either = (f"{inbox_status!r} or {request_status!r}" if tcw_fields
+                      else repr(inbox_status))
+            raise Refused(f"{key} is at {status!r}; only a ticket at {either} can be "
+                          f"adopted, since adopting one further along would skip "
+                          f"stages with no trace")
         with _jira():
             chosen = choose_transition(backend.client.transitions(key), request_status)
         if isinstance(chosen, Refusal):
@@ -186,7 +212,7 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
     if resuming:
         report(f"resuming the adoption of {key} as {slug}")
     # 3. Set TCW Project and TCW Item in one edit.
-    if not resuming or tcw_project != backend.project:
+    if tcw_fields and (not resuming or tcw_project != backend.project):
         with _jira():
             backend.client.edit_issue(key, {ids["project"]: backend.project,
                                             ids["item"]: str(slug)})
@@ -195,8 +221,10 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
         try:
             backend._item_file(slug.folder, key, resume=True)
         except OSError as error:
+            done = f"{key} now names {slug}" if tcw_fields else \
+                f"nothing changed in Jira for {key}"
             raise _named(BackendError(
-                f"{key} now names {slug}, but its folder could not be written: "
+                f"{done}, but its folder could not be written: "
                 f"{error}; run `tcw work tickets adopt {key}` again"), key) from None
     # TCW_FROM_STAGE is the stage step 5 moved the ticket from, and empty when
     # it was already at request (Design 7.2).

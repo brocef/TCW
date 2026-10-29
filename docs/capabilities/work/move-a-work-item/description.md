@@ -3,8 +3,8 @@ folder inside another item's folder or an organising folder, or
 `tcw work move <item> --top` to put it at the top of the work store. Every
 item nested in its folder moves with it, and every reference to a moved item
 in this project's records and documents is rewritten to its new full
-identifier; in a project that keeps its items in Jira, each moved ticket's
-`TCW Item` is set as well. The command prints one `<old> -> <new>` line per
+identifier; in a project that keeps its items in Jira with the TCW fields, each
+moved ticket's `TCW Item` is set as well. The command prints one `<old> -> <new>` line per
 identifier it changed, the item first, or `--json`.
 
 A destination that does not exist is made as organising folders. A

@@ -83,7 +83,11 @@ def backend_for(root: Path, project_id: str, jira: JiraConfig, client) -> JiraBa
 def plan_tickets(project_id: str, backend: JiraBackend
                  ) -> tuple[list[TicketEdit], list[Report], list[Blocker]]:
     """The ticket edits of phase F (Design 5.1, 5.2), the A10 reports, and
-    B16 when the first ticket to edit cannot have its `TCW Item` set."""
+    B16 when the first ticket to edit cannot have its `TCW Item` set. A
+    project without the TCW fields has no ticket value to convert, so
+    nothing is planned and Jira is not asked."""
+    if not backend.tcw_fields:
+        return [], [], []
     tickets, reports = [], []
     own = f"{project_id}.work/"
     for key, project, value in backend.item_values():
