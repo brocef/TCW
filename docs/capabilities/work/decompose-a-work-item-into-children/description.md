@@ -7,12 +7,13 @@ or, when the project keeps its items in Jira, its ticket key, bare or as
 the parent's full identifier, and `tcw work show` prints the parent and the
 children by full identifier.
 
-A child made with `--parent` stays at the top of the work store unless `--nest` is also given, or the web app's matching option is ticked; then, when the parent is an item of this project, the child is made inside its parent's folder. Nesting does not set the parent; `--parent` does.
+A child made with `--parent` is made inside its parent's folder when the parent is an item of this project. `--flat`, or the web app's matching option, keeps it at the top of the work store instead, and `--flat` without `--parent` is a usage error (exit 2). The folder does not set the parent; `--parent` does.
 
 A part that belongs to another project is made from that project, naming the
 parent by its full identifier: usually
-`tcw -C tcw://<id>.path/ work new "<title>" --parent <epic> --nest`, where
-`--nest` makes it at the top of that project's store and says so. When the
+`tcw -C tcw://<id>.path/ work new "<title>" --parent <epic>`, which makes it
+at the top of that project's store, since the parent's folder is not there,
+and says so. When the
 part's project keeps its items in Jira and the parent is not a ticket on the
 same Jira site, the parent is recorded in the part's folder, and Jira itself
 does not show it.

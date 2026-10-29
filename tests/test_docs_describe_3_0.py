@@ -304,7 +304,7 @@ def test_the_command_check_sees_a_command_that_does_not_exist(text):
 
 def test_the_command_check_skips_minus_c():
     assert not command_problems('Run `tcw -C tcw://<id>.path/ work new "<title>" '
-                                '--parent <slug> --nest`.')
+                                '--parent <slug> --flat`.')
     assert command_problems("Run `tcw -C <target> work new --no-such-flag`.")
 
 

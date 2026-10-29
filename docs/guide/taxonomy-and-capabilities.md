@@ -33,6 +33,7 @@ echo "A bill issued to a customer." | tcw taxonomy add Invoice   # vocabulary by
 tcw taxonomy add Admin < admin.md
 tcw taxonomy add Permission --parent admin                       # -> admin/permission
 tcw taxonomy add Note --parent invoice --slug memo               # -> invoice/memo
+tcw taxonomy add Receipt --parent invoice --flat                 # -> receipt
 tcw taxonomy add User < user.md
 tcw taxonomy add "User Authentication" --kind feature --vocab user
 
@@ -54,8 +55,11 @@ Anything else, a space, a capital letter or a `/` included, is a usage error
 `--parent` names the term the new one belongs under, by its full identifier or
 its path here, and records it in the new entry's `parent:` field. When the
 parent is one of this project's own terms, the new folder is made inside the
-parent's; when the parent is inherited, the new folder is made at the top of
-this project's store, with `parent:` naming the inherited term.
+parent's; when the parent is inherited or another project's, the new folder
+is made at the top of this project's store, with `parent:` naming that term,
+and a line
+starting `not nested:` says so. `--flat` makes the folder at the top of the
+store under any parent, and still records `parent:`.
 
 Feature entries can carry repeatable `--vocab <ref>` links to the vocabulary
 they involve. A ref is a full identifier, a path here (an inherited term's
@@ -98,7 +102,7 @@ through each item's `capabilities.yaml` (see
 
 ```sh
 tcw capabilities add billing/invoices "Download an invoice as PDF" --status Supported < invoices.md
-tcw capabilities add billing/invoices/bulk "Download many at once" --status Missing --parent billing/invoices
+tcw capabilities add bulk "Download many at once" --status Missing --parent billing/invoices  # -> billing/invoices/bulk
 
 tcw capabilities list                      # this project's own capabilities
 tcw capabilities list --status Missing     # filter by status
@@ -123,9 +127,17 @@ yet, recorded so that it is visible. It is never a plan.
 
 `--parent`, on `add` and on `set`, records the capability this one belongs
 under, by its full identifier or its path here; `set --parent ""` clears it.
-On capabilities it records the field only and never moves a folder, so a
-nested capability is made at its nested path and given `--parent` as well. One
-made inside another capability's folder without `--parent` is created with a
+On `add`, when the parent is one of this project's own capabilities, the path
+given is read inside the parent's folder: with parent `billing/invoices`,
+`bulk` makes `billing/invoices/bulk`, `extra/bulk` makes
+`billing/invoices/extra/bulk` (with `extra/` an organising folder), and a path
+that already starts with the parent's path and a `/`, such as
+`billing/invoices/bulk`, is used as given. `--flat` reads the path as without
+`--parent`, namespace folder first, and still records `parent:`. When the
+parent is inherited or another project's, the path is read as given, so it
+must name its namespace folder, and a line starting `not nested:` says so.
+`set --parent` records the field only and never moves a folder. One made
+inside another capability's folder without `--parent` is created with a
 warning that `parent:` is not set.
 
 `rm` deletes one local capability, and each folder above it that the removal

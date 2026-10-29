@@ -17,7 +17,8 @@ change the work lifecycle, or what Jira mode asks of a Jira project. The
 stages, what is checked at each move, and `tcw work advance` work as in 3.x;
 the stage prompts and the checks change only where they name 4.0's commands and
 identifiers (the plan prompt's step for splitting an item, for example, uses
-`--nest` and `tcw -C`). Jira mode still needs the TCW Project and TCW Item
+`--parent`, which now puts a part's folder inside its epic's, and `tcw -C`).
+Jira mode still needs the TCW Project and TCW Item
 fields, one configured issue type for the project's items (a part made under
 another item takes the child type Jira's hierarchy gives it, as in 3.x), and
 its own status for every stage that is turned on. Work items change where the
@@ -725,7 +726,8 @@ grammar.
 | `tcw work move`                                    | moves an item to another place in its store          | [The Work component](guide/work.md)                             |
 | `tcw taxonomy rename`, `tcw taxonomy move`         | renames or moves a taxonomy entry                    | [Taxonomy and Capabilities](guide/taxonomy-and-capabilities.md) |
 | `tcw capabilities rename`, `tcw capabilities move` | renames or moves a capability                        | [Taxonomy and Capabilities](guide/taxonomy-and-capabilities.md) |
-| `tcw work new --nest`                              | puts a new item's folder inside its parent's folder  | [The Work component](guide/work.md)                             |
+| `--parent` on `work new` and the two `add`s        | puts the new folder inside its parent's folder       | [The command line](guide/cli.md)                                |
+| `--flat` on `work new` and the two `add`s          | keeps the new folder out of its parent's folder      | [The command line](guide/cli.md)                                |
 
 ## The epic-parts flow, step by step
 
@@ -746,10 +748,10 @@ project, every option, that project's own stages and settings apply.
 | f   | `tcw work edit <a> --blocks <b>`                                                                                       | `tcw -C <b-folder> work edit <b> --blocked-by <a>`, run in the folder of `<b>`'s project                 |
 
 `tcw://<id>.path/` is the address of project `<id>`'s folder on this machine;
-`tcw project path <id>` prints the same folder. `--nest`, which puts a new
-item's folder inside its parent's, applies only when the parent is in the same
-project; across projects TCW makes the part at the top of its own project's
-work folder and says so.
+`tcw project path <id>` prints the same folder. `--parent` puts a new item's
+folder inside its parent's only when the parent is in the same project; across
+projects TCW makes the part at the top of its own project's work folder and
+says so. Within one project, `--flat` keeps a part at the top instead.
 
 ## Personal settings and environment variables
 

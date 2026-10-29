@@ -147,10 +147,11 @@ Everything below applies to the served project's own objects only.
   other item.
 - **New items**, always in the served project: the form has no choice of
   project. An item of another project is made in that project, with
-  `tcw -C tcw://<id>.path/ work new "<title>"`. With a parent given, **Put its
-  folder inside the parent's folder** makes the new item's folder inside its
-  parent's, as `tcw work new --nest` does; the box cannot be ticked while the
-  parent is empty.
+  `tcw -C tcw://<id>.path/ work new "<title>"`. With a parent given, the new
+  item's folder is made inside its parent's, as `tcw work new --parent` does;
+  **Keep its folder at the top of the work folder, not inside the parent's**
+  makes it at the top instead, as `tcw work new --flat` does. The box is
+  unticked to begin with, and cannot be ticked while the parent is empty.
 - **Taxonomy entries and capabilities**, created and edited. A capability's
   body edit changes only the capability's own description. Where the body the
   page shows also holds attached documents or an inherited description, the

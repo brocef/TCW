@@ -348,7 +348,7 @@ def test_the_command_check_sees_each_mistake(span, problem):
     "tcw work stage prompt review <slug>", "tcw work stage prompt <stage> <slug>",
     "tcw work path <slug> qa --next",
     "tcw capabilities add <path> \"<Name>\" --status Supported",
-    'tcw -C tcw://<id>.path/ work new "<title>" --parent <slug> --nest',
+    'tcw -C tcw://<id>.path/ work new "<title>" --parent <slug> --flat',
     "tcw -C <folder> -C <folder> work list",
 ])
 def test_the_command_check_accepts_real_commands(span):

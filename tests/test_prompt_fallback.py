@@ -30,6 +30,11 @@ new bytes showed nothing else moved.
 **Re-captured again by TCW-111**, for the plan prompt's step 6 only, which now
 makes each part with `--nest`: the recorded step was replaced by the new one,
 text for text, and nothing else in the file was touched.
+
+**Re-captured again by TCW-118**, for the same step only: `--nest` is gone,
+since `--parent` now puts a part's folder inside its parent's by default. The
+recorded step was replaced by the new one, text for text, and nothing else in
+the file was touched.
 """
 
 import json

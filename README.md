@@ -634,7 +634,7 @@ driving it to completion, processing the inbox) described in
 
 | Command            | What it does                                                                                                                                                                                           |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `tcw work new`     | creates an item and prints its full identifier; its request from standard input; `--parent <epic> --nest` puts it inside its parent's folder; `tcw -C <folder> work new` creates it in another project |
+| `tcw work new`     | creates an item and prints its full identifier; its request from standard input; `--parent <epic>` puts it inside its parent's folder, `--flat` keeps it at the top; `tcw -C <folder> work new` creates it in another project |
 | `tcw work list`    | prints the full identifiers of this project's unfinished items; `--all` adds finished ones, `--scope` adds related projects'                                                                           |
 | `tcw work show`    | prints an item's properties, its request and its comments                                                                                                                                              |
 | `tcw work path`    | prints the work store's folder, an item's folder, or where a stage's file goes                                                                                                                         |

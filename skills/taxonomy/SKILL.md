@@ -109,7 +109,9 @@ a `removed` one gone.
   records `parent:` (the parent's full identifier) in the new term's
   `tcw-taxonomy.yaml`, and makes the new term's folder inside the parent's
   when the parent is one of the project's own terms; under an inherited parent
-  the folder goes at the top of the store. `--slug` overrides the leaf slug,
+  the folder goes at the top of the store, and a `not nested:` line says so.
+  `--flat` puts it at the top of the store under any parent, recording
+  `parent:` all the same. `--slug` overrides the leaf slug,
   which must already be a slug: lowercase words joined by single hyphens,
   never a `/`, or it is refused with exit 2. The description is piped on
   stdin. Reading stdin is bounded: nothing piped adds the term with no
@@ -199,7 +201,7 @@ To seed a new taxonomy from an existing codebase, use the `setup` skill.
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | add vocabulary                  | `tcw taxonomy add "<Name>" [--parent <path>] [--slug <slug>]`                                                                                                                                                                                                                                                                                  |
 | add a feature                   | `tcw taxonomy add "<Name>" --kind feature --vocab <ref> [--vocab <ref>...]` — a full identifier, a path, or a leaf slug unique among the project's own terms; refused if it does not resolve                                                                                                                                                   |
-| nest under a parent             | `tcw taxonomy add "<Name>" --parent <path>` — records `parent:`                                                                                                                                                                                                                                                                                |
+| nest under a parent             | `tcw taxonomy add "<Name>" --parent <path> [--flat]` — records `parent:`; the folder goes inside the parent's unless `--flat`                                                                                                                                                                                                                                                                                |
 | rename or move a term           | `tcw taxonomy rename <path> <name>` · `tcw taxonomy move <path> --into <id-path>` (or `--top`) — the project's own terms only; prints each changed identifier                                                                                                                                                                                  |
 | link related terms              | edit `relatesTo` in the term's `tcw-taxonomy.yaml` (full identifiers), then `tcw validate`                                                                                                                                                                                                                                                     |
 | browse / read / find            | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>`                                                                                                                                                                                                                                                                   |
