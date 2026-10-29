@@ -169,27 +169,29 @@ def made(result):
     return result.out.strip()
 
 
-def test_new_with_a_parent_is_made_at_the_top_unless_nested(tcw, demo):
+def test_new_with_a_parent_is_made_inside_it_unless_flat(tcw, demo):
     from datetime import date
     today = date.today().isoformat()
     item(demo, OLD_EPIC, title="Epic")
-    flat = made(tcw(["work", "new", "Flat", "--parent", OLD_EPIC], demo))
-    assert flat == f"demo.work/{today}-flat"
-    part = made(tcw(["work", "new", "Part", "--parent", OLD_EPIC, "--nest"], demo))
+    part = made(tcw(["work", "new", "Part", "--parent", OLD_EPIC], demo))
     assert part == f"demo.work/{OLD_EPIC}/{today}-part"
     assert (store(demo, "work") / OLD_EPIC / f"{today}-part" / "tcw-work-item.yaml").is_file()
+    flat = made(tcw(["work", "new", "Flat", "--parent", OLD_EPIC, "--flat"], demo))
+    assert flat == f"demo.work/{today}-flat"
     assert listed(tcw, demo) == sorted([f"demo.work/{OLD_EPIC}", flat, part])
     children = listed(tcw, demo, "--parent", OLD_EPIC)
     assert children == sorted([flat, part])
-    shown = json.loads(tcw(["work", "show", part, "--json"], demo).out)["item"]
-    assert shown["created"] == today
+    for child in (part, flat):
+        shown = json.loads(tcw(["work", "show", child, "--json"], demo).out)["item"]
+        assert shown["created"] == today
+        assert shown["parent"] == f"demo.work/{OLD_EPIC}"
 
 
 def test_a_nested_part_under_a_parent_in_an_organising_folder(tcw, demo):
     from datetime import date
     today = date.today().isoformat()
     item(demo, f"2026/{OLD_EPIC}", title="Epic")
-    made_ = tcw(["work", "new", "Part", "--parent", f"2026/{OLD_EPIC}", "--nest"], demo)
+    made_ = tcw(["work", "new", "Part", "--parent", f"2026/{OLD_EPIC}"], demo)
     assert "Traceback" not in made_.err
     part = made(made_)
     assert part == f"demo.work/2026/{OLD_EPIC}/{today}-part"
@@ -197,22 +199,32 @@ def test_a_nested_part_under_a_parent_in_an_organising_folder(tcw, demo):
     assert shown["created"] == today
 
 
-def test_nest_without_a_parent_is_refused_making_nothing(tcw, demo):
-    refused = tcw(["work", "new", "Part", "--nest"], demo, stdin="asks\n")
+def test_flat_without_a_parent_is_refused_making_nothing(tcw, demo):
+    refused = tcw(["work", "new", "Part", "--flat"], demo, stdin="asks\n")
     assert refused.code == 2 and "--parent" in refused.err
     assert [p for p in store(demo, "work").iterdir() if not p.name.startswith(".")] == []
 
 
-def test_nest_with_a_parent_of_another_project_is_made_at_the_top(tcw, tmp_path):
+def test_nest_is_no_longer_an_option(tcw, demo):
+    item(demo, OLD_EPIC, title="Epic")
+    refused = tcw(["work", "new", "Part", "--parent", OLD_EPIC, "--nest"], demo)
+    assert refused.code == 2 and "--nest" in refused.err
+
+
+def test_a_parent_of_another_project_is_made_at_the_top_and_said(tcw, tmp_path):
     from datetime import date
     from tests.work.projects import connect, make_project, write_item
     here, other = make_project(tmp_path, "p"), make_project(tmp_path, "q")
     connect(here, other, "parent")
     write_item(other, OLD_EPIC, {"title": "Epic", "stage": "spec"})
-    result = tcw(["work", "new", "Part", "--parent", f"q.work/{OLD_EPIC}", "--nest"], here)
+    result = tcw(["work", "new", "Part", "--parent", f"q.work/{OLD_EPIC}"], here)
     assert made(result) == f"p.work/{date.today().isoformat()}-part"
     assert f"not nested: q.work/{OLD_EPIC} belongs to project 'q'" in result.err
     assert not (other / "docs" / "work" / OLD_EPIC / f"{date.today().isoformat()}-part").exists()
+    # Asked for, the top is where it goes anyway, and nothing needs saying.
+    flat = tcw(["work", "new", "Flat", "--parent", f"q.work/{OLD_EPIC}", "--flat"], here)
+    assert made(flat) == f"p.work/{date.today().isoformat()}-flat"
+    assert "not nested" not in flat.err
 
 
 # -- AC 16: renaming --------------------------------------------------------------

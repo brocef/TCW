@@ -124,7 +124,7 @@ def fitted_words(title: str, *, project: str, parent: str | None, prefix: int,
                 f"{FullId(project, 'work', parent)} leaves room for {max(room, 0)} "
                 f"characters of title words under it, and an item needs "
                 f"{MIN_TITLE_WORDS}, since no full identifier is longer than "
-                f"{ID_LIMIT}; nest the item higher, or not at all (leave out --nest)")
+                f"{ID_LIMIT}; nest the item higher, or not at all (pass --flat)")
         raise UsageError(
             f"the project ID {project!r} leaves room for {max(room, 0)} characters "
             f"of title words, and an item needs {MIN_TITLE_WORDS}, since no full "

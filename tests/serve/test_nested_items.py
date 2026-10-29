@@ -45,19 +45,18 @@ def _served_epic(tmp_path, serve_project):
     return root, serve_project(root)
 
 
-def test_a_create_with_a_parent_and_no_nest_is_made_at_the_top(tmp_path, personal_on,
-                                                                 serve_project):
+def test_a_create_with_flat_is_made_at_the_top(tmp_path, personal_on, serve_project):
     root, served = _served_epic(tmp_path, serve_project)
-    answer = served.post("/api/work", {"title": "Flat",
+    answer = served.post("/api/work", {"title": "Flat", "flat": True,
                                        "properties": {"parent": f"p.work/{EPIC}"}})
     assert answer.status == 201, answer.body
     assert answer.json["full-id"].count("/") == 1
 
 
-def test_a_create_with_nest_is_made_inside_the_parents_folder(tmp_path, personal_on,
-                                                               serve_project):
+def test_a_create_with_a_parent_is_made_inside_the_parents_folder(tmp_path, personal_on,
+                                                                  serve_project):
     root, served = _served_epic(tmp_path, serve_project)
-    answer = served.post("/api/work", {"title": "Part", "nest": True,
+    answer = served.post("/api/work", {"title": "Part",
                                        "properties": {"parent": f"p.work/{EPIC}"}})
     assert answer.status == 201, answer.body
     made = answer.json["full-id"]
@@ -65,10 +64,10 @@ def test_a_create_with_nest_is_made_inside_the_parents_folder(tmp_path, personal
     assert (root / "docs" / "work" / made.split("/", 1)[1]).is_dir()
 
 
-def test_nest_with_no_parent_is_refused_making_nothing(tmp_path, personal_on, serve_project):
+def test_flat_with_no_parent_is_refused_making_nothing(tmp_path, personal_on, serve_project):
     root, served = _served_epic(tmp_path, serve_project)
     before = sorted(p.name for p in (root / "docs" / "work").iterdir())
-    answer = served.post("/api/work", {"title": "Part", "nest": True})
+    answer = served.post("/api/work", {"title": "Part", "flat": True})
     assert answer.status == 400
     assert sorted(p.name for p in (root / "docs" / "work").iterdir()) == before
 
@@ -83,7 +82,7 @@ def test_a_create_under_a_200_character_parent_gets_a_shortened_folder(
     write_item(root, parent, {"title": "Parent", "stage": "request"})
     commit_all(root)
     served = serve_project(root)
-    answer = served.post("/api/work", {"title": "A very long title " * 8, "nest": True,
+    answer = served.post("/api/work", {"title": "A very long title " * 8,
                                        "properties": {"parent": f"p.work/{parent}"}})
     assert answer.status == 201, answer.body
     assert answer.json["full-id"].startswith(f"p.work/{parent}/")
