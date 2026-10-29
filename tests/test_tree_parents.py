@@ -48,17 +48,50 @@ def test_a_term_added_under_a_parent_records_it(tcw, demo):
     assert text[2] == "parent: demo.taxonomy/invoice"
 
 
-def test_a_capability_added_with_a_parent(tcw, demo):
-    added = tcw(["capabilities", "add", "cli/w", "--parent", "cli/x"], demo)
-    assert (added.code, added.err.count("warning")) == (0, 0), added
-    assert state(demo, "capabilities", "cli/w")["parent"] == "demo.capabilities/cli/x"
-    shown = json.loads(tcw(["capabilities", "show", "cli/w", "--json"], demo).out)
+def test_a_term_added_flat_under_a_parent_is_made_at_the_root(tcw, demo):
+    assert tcw(["taxonomy", "add", "Invoice"], demo).code == 0
+    added = tcw(["taxonomy", "add", "Refund", "--parent", "invoice", "--flat"], demo)
+    assert (added.code, added.out) == (0, "demo.taxonomy/refund\n"), added
+    assert "not nested" not in added.err
+    assert state(demo, "taxonomy", "refund")["parent"] == "demo.taxonomy/invoice"
+    assert not (store(demo, "taxonomy") / "invoice" / "refund").exists()
+
+
+@pytest.mark.parametrize("command", [["taxonomy", "add", "Refund"],
+                                     ["capabilities", "add", "cli/w"]])
+def test_flat_without_a_parent_is_refused_making_nothing(tcw, demo, command):
+    before = snapshot(demo)
+    refused = tcw([*command, "--flat"], demo)
+    assert refused.code == 2 and "--parent" in refused.err, refused
+    assert snapshot(demo) == before
+
+
+# TCW-118: the path is read inside the parent's folder, unless it already
+# starts there (the 4.0 form, which keeps working).
+@pytest.mark.parametrize("given, made", [
+    ("w", "cli/x/w"),
+    ("extra/w", "cli/x/extra/w"),
+    ("cli/x/w", "cli/x/w"),
+])
+def test_a_capability_added_with_a_parent_is_made_inside_it(tcw, demo, given, made):
+    added = tcw(["capabilities", "add", given, "--parent", "cli/x"], demo)
+    assert (added.code, added.out) == (0, f"demo.capabilities/{made}\n"), added
+    assert added.err.count("warning") == 0, added.err
+    assert state(demo, "capabilities", made)["parent"] == "demo.capabilities/cli/x"
+    shown = json.loads(tcw(["capabilities", "show", made, "--json"], demo).out)
     assert shown["capability"]["parent"] == "demo.capabilities/cli/x"
     assert "parent" not in shown["capability"]["fields"]
 
 
+def test_a_capability_added_flat_with_a_parent_is_made_at_its_path(tcw, demo):
+    added = tcw(["capabilities", "add", "cli/w", "--parent", "cli/x", "--flat"], demo)
+    assert (added.code, added.out) == (0, "demo.capabilities/cli/w\n"), added
+    assert added.err.count("warning") == 0 and "not nested" not in added.err, added.err
+    assert state(demo, "capabilities", "cli/w")["parent"] == "demo.capabilities/cli/x"
+
+
 def test_a_capability_whose_folder_and_parent_disagree_is_made_with_a_warning(tcw, demo):
-    added = tcw(["capabilities", "add", "cli/x/z", "--parent", "cli/y"], demo)
+    added = tcw(["capabilities", "add", "cli/x/z", "--parent", "cli/y", "--flat"], demo)
     assert added.code == 0, added.err
     assert state(demo, "capabilities", "cli/x/z")["parent"] == "demo.capabilities/cli/y"
     assert "sits in the folder of demo.capabilities/cli/x" in added.err
@@ -147,10 +180,55 @@ def test_a_term_whose_parent_is_another_projects_is_made_at_the_root(tcw, pair):
     added = tcw(["taxonomy", "add", "X", "--parent", "core.taxonomy/payment"], app)
     assert (added.code, added.out) == (0, "app.taxonomy/x\n"), added
     assert state(app, "taxonomy", "x")["parent"] == "core.taxonomy/payment"
+    assert [line for line in added.err.splitlines() if "not nested" in line] == [
+        "not nested: core.taxonomy/payment belongs to project 'core', so the "
+        "term's folder is made at the top of this project's taxonomy folder"]
+    flat = tcw(["taxonomy", "add", "Z", "--parent", "core.taxonomy/payment", "--flat"],
+               app)
+    assert (flat.code, flat.out) == (0, "app.taxonomy/z\n"), flat
+    assert "not nested" not in flat.err
     before = snapshot(app)
     missing = tcw(["taxonomy", "add", "Y", "--parent", "core.taxonomy/nope"], app)
     assert missing.code == 4
     assert snapshot(app) == before
+
+
+def test_a_capability_whose_parent_is_another_projects_is_made_at_its_path(tcw, pair):
+    app, core = pair
+    obj(core, "capabilities", "pay/card", name="Card", Status="Missing")
+    added = tcw(["capabilities", "add", "cli/w", "--parent", "core.capabilities/pay/card"],
+                app)
+    assert (added.code, added.out) == (0, "app.capabilities/cli/w\n"), added
+    assert state(app, "capabilities", "cli/w")["parent"] == "core.capabilities/pay/card"
+    assert [line for line in added.err.splitlines() if "not nested" in line] == [
+        "not nested: core.capabilities/pay/card belongs to project 'core', so the "
+        "capability's folder is made at cli/w, the path as given"]
+
+
+def test_an_inherited_parent_is_not_nested_and_says_so(tcw, tmp_path):
+    from tests.test_capabilities_rm import federated
+    base, child = federated(tmp_path)
+    before = snapshot(base)
+    added = tcw(["capabilities", "add", "cli/w", "--parent",
+                 "base.capabilities/auth/login"], child)
+    assert (added.code, added.out) == (0, "child.capabilities/cli/w\n"), added
+    assert state(child, "capabilities", "cli/w")["parent"] == \
+        "base.capabilities/auth/login"
+    assert "not nested: base.capabilities/auth/login belongs to project 'base'" \
+        in added.err
+    assert snapshot(base) == before
+
+
+def test_an_inherited_term_parent_is_not_nested_and_says_so(tcw, tmp_path):
+    child = project(tmp_path, "child", work={})
+    base = project(tmp_path, "base", work={})
+    connect_projects(child, "parent", "base", inherit=["taxonomy"])
+    write_manifest(child, {"base": "../base"})
+    obj(base, "taxonomy", "payment", name="Payment")
+    added = tcw(["taxonomy", "add", "Refund", "--parent", "payment"], child)
+    assert (added.code, added.out) == (0, "child.taxonomy/refund\n"), added
+    assert state(child, "taxonomy", "refund")["parent"] == "base.taxonomy/payment"
+    assert "not nested: base.taxonomy/payment belongs to project 'base'" in added.err
 
 
 # -- choice 3 ---------------------------------------------------------------------

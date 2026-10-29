@@ -88,11 +88,14 @@ def _path(args: argparse.Namespace) -> int:
 
 
 def _add(args: argparse.Namespace) -> int:
+    if args.flat and args.parent is None:
+        raise UsageError("--flat keeps a child's folder out of its parent's; "
+                         "give the parent with --parent")
     st = _store()
     try:
         term = st.add(args.name, slug=args.slug, parent=args.parent,
                       description=read_piped_stdin(), kind=args.kind,
-                      vocabulary=args.vocab)
+                      vocabulary=args.vocab, flat=args.flat, report=say)
     except NotASlug as error:
         raise UsageError(f"--slug {error}") from None
     changed(st.changed)
@@ -142,12 +145,16 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                  prints="the new entry's full identifier",
                  writes="the entry's files, each named on stderr",
                  examples=["taxonomy add Invoice", "taxonomy add Refund --parent invoice",
+                           "taxonomy add Refund --parent invoice --flat",
                            "taxonomy add 'Pay an invoice' --kind feature --vocab invoice"])
     pa.add_argument("name", help="display name of the entry (source of the default slug)")
     pa.add_argument("--slug", help="leaf slug (default: the name, slugified)")
     pa.add_argument("--parent", help="the term this one belongs under: its full "
                                      "identifier or its path here; the folder is made "
                                      "inside it when it is this project's own")
+    pa.add_argument("--flat", action="store_true",
+                    help="make the folder at the top of the taxonomy folder rather "
+                         "than inside the parent's; parent: is recorded all the same")
     pa.add_argument("--kind", choices=("vocabulary", "feature"),
                     help="taxonomy object kind (default: vocabulary, or for an entry "
                          "at a path this project inherits, the inherited entry's)")

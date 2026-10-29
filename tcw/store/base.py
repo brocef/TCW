@@ -1126,11 +1126,14 @@ class TaxonomyStore(ABC):
     @abstractmethod
     def add(self, name: str, slug: str | None = None, parent: str | None = None,
             description: str = "", kind: str = "Vocabulary",
-            vocabulary: list[str] | None = None) -> Term:
+            vocabulary: list[str] | None = None, *, flat: bool = False,
+            report=None) -> Term:
         """Create a local term with `parent` (TCW-111 Design 3.3): command
         input naming a term, written as its full identifier; the folder is
         made inside the parent's when it is a term of this project's own
-        store, else at the root. Refuse a collision."""
+        store and `flat` is false, else at the root, with a line to `report`
+        when the parent is not this project's own (TCW-118). A store that
+        keeps no folders ignores `flat`. Refuse a collision."""
 
     @writes
     @abstractmethod
@@ -1362,10 +1365,15 @@ class CapabilitiesStore(ABC):
     @abstractmethod
     def add(self, identifier: str, name: str | None = None, status: str = "Missing",
             body: str = "", fields: dict[str, Any] | None = None,
-            parent: str | None = None) -> Capability:
+            parent: str | None = None, *, flat: bool = False,
+            report=None) -> Capability:
         """Create a local capability folder at `identifier` (a path), with
         `parent` (command input naming a capability) written as its full
-        identifier when given. Refuse a collision. `fields` are validated as `set` validates them, before
+        identifier when given. With a parent of this project's own and `flat`
+        false, `identifier` is read inside the parent's folder unless it
+        already starts with the parent's path and `/`; with a parent that is
+        not, it is the whole path, and a line says so to `report` (TCW-118).
+        Refuse a collision. `fields` are validated as `set` validates them, before
         anything is written, so a create carrying a bad field writes nothing."""
 
     @writes

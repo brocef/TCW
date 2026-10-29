@@ -2395,7 +2395,8 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
 
     def add(self, name: str, slug: str | None = None, parent: str | None = None,
             description: str = "", kind: str | None = None,
-            vocabulary: list[str] | None = None) -> Term:
+            vocabulary: list[str] | None = None, *, flat: bool = False,
+            report=None) -> Term:
         leaf = _safe_store_id(slug or slugify(name), "slug")
         # After `_safe_store_id`, so a slug that would leave the store is still
         # "invalid slug"; nesting is `parent`'s job, so a `/` is refused here.
@@ -2403,12 +2404,13 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             raise NotASlug(f"{slug!r} is not a slug: use lowercase letters, "
                            f"digits and single hyphens")
         # The parent is any term TCW can find (TCW-111 Design 3.3): the
-        # folder goes inside it when it is this store's own, else at the root,
-        # and `parent:` is written either way. Not found is exit 4.
+        # folder goes inside it when it is this store's own and `flat` is
+        # false, else at the root, and `parent:` is written either way (TCW-118).
+        # Not found is exit 4.
         parent_term = self.find_parent(parent) if parent else None
-        inside = (parent_term.slug if parent_term is not None
+        inside = (parent_term.slug if parent_term is not None and not flat
                   and parent_term.owner == self.project_id else None)
-        if parent_term is not None and inside is None:
+        if parent_term is not None and inside is None and not flat:
             # A parent this project only sees through its view: when the path
             # inside it is inherited, the new term is that path's override,
             # and the folders between are made as organising folders (TCW-112
@@ -2418,6 +2420,10 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
                     and self.get_view(parent_term.slug).full_id == parent_term.full_id \
                     and self.inherited_at(nested) is not None:
                 inside = parent_term.slug
+            elif report is not None:
+                report(f"not nested: {parent_term.full_id} belongs to project "
+                       f"{parent_term.owner!r}, so the term's folder is made at the "
+                       f"top of this project's taxonomy folder")
         full = f"{inside}/{leaf}" if inside else leaf
         _check_id_path(full, "slug")
         _check_reserved(full, "taxonomy", "slug")
@@ -3010,14 +3016,25 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         return own
 
     def add(self, identifier, name=None, status="Missing", body="",
-            fields=None, parent=None) -> Capability:
+            fields=None, parent=None, *, flat=False, report=None) -> Capability:
         path = _safe_store_id(identifier, "path")
+        # Any capability TCW can find (TCW-111 Design 3.3). One of this
+        # store's own holds the folder, `identifier` read inside its folder
+        # unless it already starts there; with `flat`, or a parent this store
+        # does not own, `identifier` is the whole path (TCW-118).
+        parent_cap = self.find_parent(parent) if parent else None
+        parent_id = str(parent_cap.full_id) if parent_cap is not None else None
+        if parent_cap is not None and not flat:
+            if parent_cap.owner != self.project_id:
+                if report is not None:
+                    report(f"not nested: {parent_id} belongs to project "
+                           f"{parent_cap.owner!r}, so the capability's folder is "
+                           f"made at {path}, the path as given")
+            elif not path.startswith(f"{parent_cap.path}/"):
+                path = f"{parent_cap.path}/{path}"
         _check_id_path(path, "path")
         _check_reserved(path, "capabilities", "path")
         _check_length(self.project_id, "capabilities", path)
-        # Any capability TCW can find; the folder is made where `identifier`
-        # says, whatever the parent (TCW-111 Design 3.3).
-        parent_id = str(self.find_parent(parent).full_id) if parent else None
         if status not in CAP_STATUSES:
             raise UsageError(f"invalid Status '{status}' "
                              f"(choose: {', '.join(sorted(CAP_STATUSES))})")
