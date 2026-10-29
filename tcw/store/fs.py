@@ -3031,6 +3031,15 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                            f"{parent_cap.owner!r}, so the capability's folder is "
                            f"made at {path}, the path as given")
             elif not path.startswith(f"{parent_cap.path}/"):
+                # A folder between would sit in the parent's with no state
+                # file, which `tcw validate` rejects: refused before anything
+                # is written (TCW-118 decision 4, as revised at implement).
+                if "/" in path:
+                    raise UsageError(
+                        f"{path} is read inside {parent_cap.path}'s folder, where "
+                        f"only capabilities and resources/ may sit; give one part, "
+                        f"such as {path.rsplit('/', 1)[-1]}, or the whole path "
+                        f"starting {parent_cap.path}/")
                 path = f"{parent_cap.path}/{path}"
         _check_id_path(path, "path")
         _check_reserved(path, "capabilities", "path")

@@ -404,9 +404,10 @@ app.work/2026-10-24-app-epic/2026-10-24-a-part
 
 A capability's path is read inside the parent's folder, unless it already
 starts with the parent's path and a `/`, in which case it is used as given.
-With parent `billing/invoices`, `bulk` makes `billing/invoices/bulk`,
-`extra/bulk` makes `billing/invoices/extra/bulk` (with `extra/` an organising
-folder), and `billing/invoices/bulk` makes `billing/invoices/bulk`.
+With parent `billing/invoices`, `bulk` makes `billing/invoices/bulk`, and so
+does `billing/invoices/bulk`. A path of more than one part read inside the
+parent's folder, such as `extra/bulk`, is refused with exit code 2, since only
+capabilities and `resources/` may sit in a capability's folder.
 
 `--flat` keeps the folder where it would be without a parent: the top of the
 work or taxonomy store, or, for a capability, the path read as without

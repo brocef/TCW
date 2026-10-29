@@ -129,10 +129,11 @@ yet, recorded so that it is visible. It is never a plan.
 under, by its full identifier or its path here; `set --parent ""` clears it.
 On `add`, when the parent is one of this project's own capabilities, the path
 given is read inside the parent's folder: with parent `billing/invoices`,
-`bulk` makes `billing/invoices/bulk`, `extra/bulk` makes
-`billing/invoices/extra/bulk` (with `extra/` an organising folder), and a path
-that already starts with the parent's path and a `/`, such as
-`billing/invoices/bulk`, is used as given. `--flat` reads the path as without
+`bulk` makes `billing/invoices/bulk`. A path that already starts with the
+parent's path and a `/`, such as `billing/invoices/bulk`, is used as given.
+Read inside the parent's folder, the path must be one part: `extra/bulk` is
+refused with exit code 2, because only capabilities and `resources/` may sit
+in a capability's folder. `--flat` reads the path as without
 `--parent`, namespace folder first, and still records `parent:`. When the
 parent is inherited or another project's, the path is read as given, so it
 must name its namespace folder, and a line starting `not nested:` says so.

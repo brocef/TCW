@@ -1371,7 +1371,8 @@ class CapabilitiesStore(ABC):
         `parent` (command input naming a capability) written as its full
         identifier when given. With a parent of this project's own and `flat`
         false, `identifier` is read inside the parent's folder unless it
-        already starts with the parent's path and `/`; with a parent that is
+        already starts with the parent's path and `/`, and then must be one
+        part, else `UsageError`; with a parent that is
         not, it is the whole path, and a line says so to `report` (TCW-118).
         Refuse a collision. `fields` are validated as `set` validates them, before
         anything is written, so a create carrying a bad field writes nothing."""

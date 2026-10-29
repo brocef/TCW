@@ -70,7 +70,6 @@ def test_flat_without_a_parent_is_refused_making_nothing(tcw, demo, command):
 # starts there (the 4.0 form, which keeps working).
 @pytest.mark.parametrize("given, made", [
     ("w", "cli/x/w"),
-    ("extra/w", "cli/x/extra/w"),
     ("cli/x/w", "cli/x/w"),
 ])
 def test_a_capability_added_with_a_parent_is_made_inside_it(tcw, demo, given, made):
@@ -81,6 +80,19 @@ def test_a_capability_added_with_a_parent_is_made_inside_it(tcw, demo, given, ma
     shown = json.loads(tcw(["capabilities", "show", made, "--json"], demo).out)
     assert shown["capability"]["parent"] == "demo.capabilities/cli/x"
     assert "parent" not in shown["capability"]["fields"]
+
+
+def test_a_path_of_more_than_one_part_inside_the_parent_is_refused(tcw, demo):
+    """TCW-118 decision 4, as revised at implement: `extra/` inside the
+    parent's folder would be a folder with no state file inside a
+    capability's folder, which `tcw validate` rejects."""
+    before = snapshot(demo)
+    refused = tcw(["capabilities", "add", "extra/w", "--parent", "cli/x"], demo)
+    assert refused.code == 2, refused
+    assert "extra/w is read inside cli/x's folder" in refused.err
+    assert "only capabilities and resources/" in refused.err
+    assert "such as w" in refused.err
+    assert snapshot(demo) == before
 
 
 def test_a_capability_added_flat_with_a_parent_is_made_at_its_path(tcw, demo):

@@ -3,10 +3,12 @@
 - `--parent` on `tcw work new`, `tcw taxonomy add` and `tcw capabilities add`
   makes the new folder inside the parent's folder whenever the parent is one
   of this project's own objects; before, only `tcw taxonomy add` did, and
-  `tcw work new` needed `--nest`. A capability's path with `--parent` is read
+  `tcw work new` needed `--nest`, added earlier in 4.0 and now removed. A capability's path with `--parent` is read
   inside the parent's folder (`bulk` under `billing/invoices` makes
   `billing/invoices/bulk`), unless it already starts with the parent's path
-  and a `/`. A parent that is inherited or another project's cannot hold the
+  and a `/`; read that way, a path of more than one part is refused with exit
+  code 2, since only capabilities and `resources/` may sit in a capability's
+  folder. A parent that is inherited or another project's cannot hold the
   folder, and the command says so in a line starting `not nested:`; a
   capability's path is then read as given. (TCW-118)
 - The web app's new item form offers **Keep its folder at the top of the work
@@ -211,7 +213,8 @@
 
 ## Removed
 
-- `tcw work new --nest`, which `--parent` now does by default. (TCW-118)
+- `tcw work new --nest`, added earlier in 4.0, which `--parent` now does by
+  default. (TCW-118)
 - `tests/test_repo_config_pair.py`, which kept this repository's 3.x root
   `tcw-config.yaml` and its 4.0 `.tcw/tcw-config.yaml` in step until the
   repository was migrated, and the root `.gitignore` line

@@ -36,11 +36,20 @@ possible.
    relative to the parent's folder, unless it already starts with the
    parent's path followed by `/`, in which case it is used as given (so the
    form documented today keeps working). With parent `billing/invoices`:
-   `bulk` gives `billing/invoices/bulk`, `extra/bulk` gives
-   `billing/invoices/extra/bulk` (with `extra/` an organising folder), and
-   `billing/invoices/bulk` gives `billing/invoices/bulk`. Without
-   `--parent`, or with `--flat`, the path is read as today: namespace folder
-   first. The usage line and `--help` say this.
+   `bulk` gives `billing/invoices/bulk`, and `billing/invoices/bulk` gives
+   `billing/invoices/bulk`. A path read relative to the parent's folder must
+   be one part: `extra/bulk` is refused with exit 2 before anything is
+   written, with a message saying the path is read inside the parent's
+   folder, where only capabilities and `resources/` may sit, and suggesting
+   the one-part form. Without `--parent`, or with `--flat`, the path is read
+   as today: namespace folder first. The usage line and `--help` say this.
+
+   *Revised at implement (2026-10-29).* The first version of this decision
+   let `extra/bulk` make `billing/invoices/extra/bulk`, calling `extra/` an
+   organising folder. It is not one: an organising folder may sit only where
+   no object's folder is above it, and `tcw validate` reports a folder with
+   no state file inside a capability's folder as an error ("is not a child
+   object"). So that form is refused instead.
 5. **A parent that is not this project's own** (inherited, or another
    project's item) cannot hold the folder. The command behaves as `--flat`
    and says so in one line, as `tcw work new --nest` does today for a parent

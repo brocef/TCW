@@ -292,8 +292,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                            "capabilities add bulk --parent billing/invoices"])
     pa.add_argument("path",
                     help="path for the new capability: namespace folder first, or "
-                         "with --parent a path inside the parent's folder (one "
-                         "starting with the parent's path and / is used as given)")
+                         "with --parent one name inside the parent's folder (a "
+                         "path starting with the parent's path and / is used as "
+                         "given)")
     pa.add_argument("name", nargs="?",
                     help="display name (default: titled from the last path segment)")
     pa.add_argument("--status", default="Missing", choices=sorted(CAP_STATUSES),
