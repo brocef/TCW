@@ -12,14 +12,22 @@ setting and file that 3.x had and 4.0 does not.
 
 TCW 4.0 changes how projects are laid out and how they relate to each other:
 where configuration lives, how one project finds and inherits from another, how
-every object is named, and which project may change it. It does not change the
-work lifecycle, or what Jira mode asks of a Jira project. The stages, the
-checks bound to each move, `tcw work advance` and the stage prompts work as in
-3.x, and Jira mode still needs the TCW Project and TCW Item fields, one issue
-type, and its own status for every stage that is turned on. Work items change
-only where the new layout reaches them: their names (full identifiers, below),
-their state file, and folders nested inside a parent's. An overhaul of the work
-system is planned for TCW 5.0.
+every object is named, and which project may change an object. It does not
+change the work lifecycle, or what Jira mode asks of a Jira project. The
+stages, what is checked at each move, and `tcw work advance` work as in 3.x;
+the stage prompts and the checks change only where they name 4.0's commands and
+identifiers (the plan prompt's step for splitting an item, for example, uses
+`--nest` and `tcw -C`). Jira mode still needs the TCW Project and TCW Item
+fields, one configured issue type for the project's items (a part made under
+another item takes the child type Jira's hierarchy gives it, as in 3.x), and
+its own status for every stage that is turned on. Work items change where the
+new layout reaches them: their names (full identifiers, below), their state
+file, the entries of their `capabilities.yaml`, and folders nested inside a
+parent's. A parent or blocker that Jira cannot link, such as an epic kept in
+files or one on another Jira site, is recorded in the item's state file instead
+of being refused. The work commands that 4.0 removes or replaces are listed in
+"What each 3.x name becomes". An overhaul of the work system is planned for TCW
+5.0.
 
 A **migration**, in this guide and in TCW, means converting a project's files
 to a newer format. Every file TCW 4.0 writes starts with a `tcw-version` line

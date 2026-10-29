@@ -467,8 +467,9 @@ person changes their name.
   screen; a transition whose screen requires anything else cannot be used by
   TCW.
 - **One issue type and one status per stage.** A Jira-mode project creates
-  tickets of one issue type, and every enabled stage maps to its own status
-  of that type's workflow, so `tcw work advance` always moves the ticket.
+  its items' tickets of one configured issue type (a part made under another
+  item takes the child type Jira's hierarchy gives it), and every enabled
+  stage maps to its own status, shared by every type's workflow, so `tcw work advance` always moves the ticket.
   Only `spec`, `plan`, `review`, `qa` and `postmortem` can be turned off, and
   a turned-off stage is skipped, not kept in files. There is no way to keep
   some stages local while the ticket stays where people left it, to map

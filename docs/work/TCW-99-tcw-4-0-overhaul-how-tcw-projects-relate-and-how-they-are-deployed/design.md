@@ -868,10 +868,17 @@ removals or `inherit` lists to undo what flows down.
   well as in 5.0, without changing the lifecycle or how items are
   represented: `tcw -C`, `tcw work move`, `--nest`, and dropping
   `tcw work new --project` and `tcw work edit --blocks` pass it and stay.
+  So does recording in the item's state file a parent or blocker that Jira
+  cannot link (TCW-114, `f9cce299`), which 3.x refused: it is what lets
+  `tcw -C <folder> work new --parent <epic>` make a part of an epic in
+  another project, and it only adds to the state file, so an item stored
+  as 3.x stored it reads the same.
   Jira mode without the TCW Project and TCW Item fields, built during
   TCW-118, was reverted from `v4` and carried to the branch `v5`, with
   several stages sharing one Jira status and Jira flows spanning several
-  Jira projects. The 4.x-to-5.0 migration guide is sketched there.
+  Jira projects. The 4.x-to-5.0 migration guide is sketched there. `v5`
+  is merged with 4.0 once 4.0 is released, never rebased: two of its
+  commits edit TCW-118's upcoming entry files, which the 4.0 cut deletes.
 - **Related items, settled the same day:** TCW-22 absorbed into TCW-113,
   TCW-23 into TCW-115, TCW-27 into TCW-114; TCW-87 settled by TCW-114;
   TCW-85 answered by full identifiers (TCW-110); TCW-102 and TCW-103

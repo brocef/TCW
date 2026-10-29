@@ -6,9 +6,10 @@ will work in it; [the migration guide](../migration-guide-3.X-to-4.0.0.md)
 says how.
 
 The work lifecycle and what Jira mode asks of a Jira project stay as they
-were in 3.x: the same stages, checks and stage prompts, and the same TCW
-fields, issue type and status for each stage. Changes to the work system are
-planned for TCW 5.0.
+were in 3.x: the same stages, the same checks at each move, and the same TCW
+fields, issue type and status for each stage. The stage prompts and checks
+change only where they name 4.0's commands and identifiers. Changes to the
+work system are planned for TCW 5.0.
 
 ## Upgrading
 
