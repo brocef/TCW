@@ -61,8 +61,8 @@ work system are planned for TCW 5.0.
 `--parent` on `tcw work new`, `tcw taxonomy add` and `tcw capabilities add`
 now puts the new folder inside the parent's folder whenever the parent is one
 of your project's own, so `tcw work new 'Part' --parent 2026-10-01-epic` makes
-`2026-10-01-epic/<date>-part`. `tcw work new --nest` is gone, since this is
-what it did. A capability's path is read inside the parent's folder:
+`2026-10-01-epic/<date>-part`. A capability's path is read inside the
+parent's folder:
 `tcw capabilities add bulk --parent billing/invoices` makes
 `billing/invoices/bulk`, and `billing/invoices/bulk` still works as written;
 a deeper path, such as `extra/bulk`, is refused, naming the capability to give

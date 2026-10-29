@@ -20,10 +20,9 @@ folder.
 
 ## Nested work items
 
-`tcw work new 'Part' --parent 2026-10-01-epic --nest` makes the new item's
-folder inside its parent's folder, in either backend, so the folders read the
-way the items relate. Without `--nest` a child is made at the top, as before.
-The web app's new item form has the same choice, unticked by default. Work
+A work item's folder can sit inside its parent's folder, in either backend,
+so the folders read the way the items relate (see "A child's folder goes inside
+its parent's" for how a new one is placed). Work
 items are found, listed, shown, edited, moved and renamed wherever their folder
 sits.
 

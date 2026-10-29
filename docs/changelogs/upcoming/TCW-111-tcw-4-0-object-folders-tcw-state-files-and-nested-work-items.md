@@ -8,10 +8,10 @@
   `length_problems` (row n), `id_problem` (row k), `disagreement` (row m),
   `read_state`, `state_text`, `STATE_FILES`, `LEGACY_STATE_FILES`, reserved
   names per store. (TCW-111)
-- `tcw work new --nest`, and `nest` on `POST /api/work` and the web app's new
-  item form: the new item's folder inside its parent's when the parent is an
-  item of this project; a note on standard error when it is another project's.
-  `tcw/work/backend.py` `nesting_parent` and `folder_disagreement`. (TCW-111)
+- A new item's folder can sit inside its parent's folder; a note on standard
+  error when the parent is another project's, whose folder cannot hold it.
+  `tcw/work/backend.py` `nesting_parent` and `folder_disagreement`. (TCW-111;
+  the flags are TCW-118's.)
 - `tcw capabilities add --parent` and `tcw capabilities set --parent` (`''`
   clears it; refused on an inherited capability). `parent` on `Term` and
   `Capability`, after `owner` in every record, in `show`, and in the web app's
@@ -60,7 +60,7 @@
   delegation. The parsers refuse longer input. (TCW-111)
 - `docs/guide/examples/commit-item-after-move.sh` leaves items nested in the
   moved one out of its staging and commit. (TCW-111)
-- The plan stage prompt makes each part with `--parent <slug> --nest`;
+- The plan stage prompt nests each part inside its parent's folder;
   `docs/lifecycle/abstraction.md` bounds an object's folder by `resources/`
   and says the interface takes id-paths; the backend docstring counts twelve
   operations. (TCW-111)
