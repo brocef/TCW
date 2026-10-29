@@ -14,13 +14,12 @@ accounts.
 something): workflow definitions answer 403; a transition carrying a comment
 is refused; a transition's screen requires a field; the connection drops after
 the next write is applied; the connection drops before or after the next
-comment posted on its own; a whole `key IN` search naming a missing or hidden
-key, with further clauses or without, is refused with 400; tickets written in the last N requests are left out of
+comment posted on its own; a whole `key IN` search naming a missing key is
+refused with 400; tickets written in the last N requests are left out of
 searches; a field is left off an issue type's edit screen; every request is
 unreachable, 401, or 429 with `Retry-After`; every request answers 404 with
 an HTML page, as a host with no Jira site does; Priority is left off the
-create screen; the site has no TCW Project and TCW Item fields at all
-(`tcw_fields = False`), so a create or edit naming either is refused.
+create screen.
 
 Searches go through `fake_jql`, which parses exactly the shapes TCW builds.
 """
@@ -172,7 +171,6 @@ class FakeJira:
         self.search_lag = 0
         self.ignore_label_case = False
         self.off_edit_screen: set[tuple[str, str]] = set()   # (type name, field id)
-        self.tcw_fields = True
         self.down: Exception | None = None
         self.refuse_cross_project_parent = False
         self._drop_after_write = False
@@ -500,10 +498,10 @@ class FakeJira:
     def _search(self, body: dict, route: str) -> dict:
         query = body["jql"]
         try:
-            keys = re.search(r'key IN \(([^)]*)\)', query)
+            keys = re.fullmatch(r'key IN \((.*)\)', query)
             if keys and self.refuse_missing_key_search:
                 named = [k.strip().strip('"') for k in keys.group(1).split(",")]
-                if any(k not in self.tickets or k in self.hidden for k in named):
+                if any(k not in self.tickets for k in named):
                     raise self._error(400, route, "An issue with key does not exist")
             visible = [t for t in self.tickets.values() if t.key not in self.hidden
                        and (not self.search_lag or t.written is None
@@ -575,8 +573,6 @@ class FakeJira:
                            "allowedValues": [{"name": p, "id": str(i + 1)}
                                              for i, p in enumerate(PRIORITIES)]})
         for name, field_id in FIELDS.items():
-            if name in ("TCW Project", "TCW Item") and not self.tcw_fields:
-                continue
             if name in ("TCW Project", "TCW Item"):
                 fields.append({"fieldId": field_id, "name": name, "required": False,
                                "schema": {"type": "string", "custom": TEXT_FIELD}})

@@ -38,18 +38,9 @@ def every_item_query():
         yield jql.item_query("TCW", ITEM, **dict(zip(keys, values)))
 
 
-def every_item_keys_query():
-    keys = list(OPTIONS)
-    for values in itertools.product(*(OPTIONS[k] for k in keys)):
-        yield jql.item_keys_query("TCW", ["TCW-1", "TCW-2"], **dict(zip(keys, values)))
-
-
 def every_query():
     yield from every_item_query()
-    yield from every_item_keys_query()
     yield jql.inbox_query("TCW", ITEM, "To Do")
-    yield jql.inbox_query("TCW", None, "To Do")
-    yield jql.inbox_query("TCW", None, "To Do", 'labels IN ("triage")')
     yield jql.inbox_query("TCW", ITEM, "To Do", 'project = "TCW" AND labels IN ("triage")')
     yield jql.keys_query(["TCW-1"])
     yield jql.keys_query([f"TCW-{n}" for n in range(1, 101)])
@@ -61,7 +52,7 @@ QUERIES = list(every_query())
 
 
 def test_the_table_covers_every_clause():
-    assert len(QUERIES) == 2 * (3 * 2 * 2 * 2 * 3) + 8
+    assert len(QUERIES) == 3 * 2 * 2 * 2 * 3 + 6
     text = " ".join(QUERIES)
     for clause in ("status IN", "status NOT IN", "parent =", "assignee =", "labels IN",
                    "IS EMPTY", "IS NOT EMPTY", " OR ", "key IN", "issuetype ="):
@@ -86,11 +77,10 @@ def test_custom_fields_appear_as_cf():
 
 
 def test_the_key_search_takes_at_most_a_hundred_keys():
-    for build in (jql.keys_query, lambda keys: jql.item_keys_query("TCW", keys)):
-        with pytest.raises(ValueError):
-            build([f"TCW-{n}" for n in range(101)])
-        with pytest.raises(ValueError):
-            build([])
+    with pytest.raises(ValueError):
+        jql.keys_query([f"TCW-{n}" for n in range(101)])
+    with pytest.raises(ValueError):
+        jql.keys_query([])
 
 
 @pytest.mark.parametrize("query", [
@@ -128,17 +118,6 @@ def test_evaluation():
     assert keys(jql.inbox_query("TCW", ITEM, "To Do", 'project = "WEB"')) == [
         "TCW-3", "WEB-1"]
     assert keys(jql.keys_query(["WEB-1", "TCW-9"])) == ["WEB-1"]
-
-
-def test_evaluation_without_the_tcw_fields():
-    assert keys(jql.item_keys_query("TCW", ["TCW-1", "TCW-2", "WEB-1"])) == [
-        "TCW-2", "TCW-1"]
-    assert keys(jql.item_keys_query("TCW", ["TCW-1", "TCW-2"],
-                                    not_statuses=["Done"])) == ["TCW-1"]
-    assert keys(jql.item_keys_query("TCW", ["TCW-1", "TCW-2"], statuses=["Done"],
-                                    parent="TCW-1", labels=["api"])) == ["TCW-2"]
-    # Every ticket at the inbox status, with a TCW Item or without one.
-    assert keys(jql.inbox_query("TCW", None, "Triage")) == ["TCW-1"]
 
 
 def test_labels_compare_exactly_unless_told_otherwise():

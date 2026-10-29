@@ -1030,8 +1030,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                 prints="one `<old full id> -> <new full id>` line per identifier it "
                        "changed, the item first",
                 writes="the item's folder name, the references that name it in this "
-                       "project, and in Jira each moved ticket's TCW Item, when "
-                       "configured",
+                       "project, and in Jira each moved ticket's TCW Item",
                 examples=["rename 2026-10-01-refund-a-payment refund-an-order"])
     p.add_argument("slug", help=SLUG_HELP)
     p.add_argument("new_name", help="the new words after the date or key, lower case "
@@ -1045,8 +1044,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                 prints="one `<old full id> -> <new full id>` line per identifier it "
                        "changed, the item first",
                 writes="the item's folder place, the references that name it in this "
-                       "project, and in Jira each moved ticket's TCW Item, when "
-                       "configured",
+                       "project, and in Jira each moved ticket's TCW Item",
                 examples=["move 2026-10-01-refund-a-payment --into 2026-09-01-payments",
                           "move 2026-09-01-payments/2026-10-01-refund-a-payment --top"])
     p.add_argument("slug", help=SLUG_HELP)

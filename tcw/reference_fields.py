@@ -11,8 +11,7 @@ and rewritten everywhere at once.
 The table is TCW-110 Design 5.1's, with the `parent` of a term and a
 capability (TCW-111 Design 3.1) and the two references a Jira item's state
 file records (TCW-114 Design 3.3). `TCW Item` is the Jira ticket field that
-names the item a ticket is; only the Jira backend reads and writes it, and
-only in a project that configures it, since the field is optional.
+names the item a ticket is; only the Jira backend reads and writes it.
 
 Records:
 

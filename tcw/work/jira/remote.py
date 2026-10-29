@@ -143,10 +143,7 @@ def _checks(run: _Run, layout: Layout, reader: Any,
     folders = _folders(backend.work_path)
     tickets: dict[str, Mapping] = {}
     gone: set[str] = set()
-    # Without the TCW fields the folders alone name the items, so nothing
-    # the create screen lacks stops the tickets being compared with them.
-    found_tcw = not backend.tcw_fields or ("item" in ids and "project" in ids)
-    if found_tcw:
+    if "item" in ids and "project" in ids:
         tickets, gone = _read_tickets(run, list(folders), read_fields(ids))
     checked = [configured]
     for issue in tickets.values():
@@ -166,7 +163,7 @@ def _checks(run: _Run, layout: Layout, reader: Any,
     _moves(run, checked, str(project.get("id")), present)
 
     # 7. Items and tickets.
-    if found_tcw:
+    if "item" in ids and "project" in ids:
         _items_and_tickets(run, folders, tickets, gone, ids)
     else:
         run.say(f"{backend.project}: items and tickets were not checked, since the "
@@ -485,8 +482,15 @@ def _items_and_tickets(run: _Run, folders: Mapping[str, list[str]],
                 run.error(where, f"Jira answers for {key} with {answered}: the ticket was "
                                  f"moved, so the folder's key is stale")
             fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
-            if backend.tcw_fields:
-                _tcw_values(run, where, key, slug, fields, ids, reported)
+            if fields.get(ids["project"]) != backend.project:
+                run.error(where, f"its ticket's TCW Project is "
+                                 f"{fields.get(ids['project'])!r}, not {backend.project!r}")
+            value = fields.get(ids["item"])
+            if three_x_item(value):
+                reported.add(key)
+                run.error(where, f"its ticket's {three_x_item_message(value)}")
+            elif value != str(slug):
+                run.error(where, f"its ticket's TCW Item is {value!r}, not {str(slug)!r}")
             # A ticket with a Jira parent whose state file also records one
             # has two answers (TCW-114 Design 3.3).
             noted, _ = recorded_references(backend.work_path / name / STATE_FILE)
@@ -499,43 +503,6 @@ def _items_and_tickets(run: _Run, folders: Mapping[str, list[str]],
                 run.warning(where, f"its ticket is at the inbox status "
                                    f"{inbox_status!r}; move it on with `tcw work advance "
                                    f"{slug}`")
-    if backend.tcw_fields:
-        _named_elsewhere(run, ids, reported)
-    run.say(f"{backend.project}: {sum(len(n) for n in folders.values())} item folders "
-            f"checked against their tickets")
-
-
-def _tcw_values(run: _Run, where: str, key: str, slug: Slug, fields: Mapping,
-                ids: Mapping[str, str], reported: set[str]) -> None:
-    """A folder's ticket must carry this project and the folder's identifier
-    in TCW Project and TCW Item."""
-    backend = run.backend
-    tcw_project, value = fields.get(ids["project"]), fields.get(ids["item"])
-    if tcw_project in (None, "") and value in (None, ""):
-        # Made while the project ran without the TCW fields: `list` misses
-        # it until both are set. TCW does not fill them in (the guide's
-        # "Running without the TCW fields").
-        run.error(where, f"its ticket {key} has no TCW Project or TCW Item, as when "
-                         f"the project ran without the TCW fields; fill them in Jira "
-                         f"by hand (TCW Project {backend.project!r}, TCW Item "
-                         f"{str(slug)!r}), or leave the fields out of "
-                         f"work.jira.fields, since until then `tcw work list` leaves "
-                         f"the ticket out and `tcw work move` and `rename` refuse it")
-        return
-    if tcw_project != backend.project:
-        run.error(where, f"its ticket's TCW Project is {tcw_project!r}, not "
-                         f"{backend.project!r}")
-    if three_x_item(value):
-        reported.add(key)
-        run.error(where, f"its ticket's {three_x_item_message(value)}")
-    elif value != str(slug):
-        run.error(where, f"its ticket's TCW Item is {value!r}, not {str(slug)!r}")
-
-
-def _named_elsewhere(run: _Run, ids: Mapping[str, str], reported: set[str]) -> None:
-    """The other direction: a ticket whose TCW Item names an item of this
-    project with no folder here."""
-    backend = run.backend
     query = jql.item_query(backend.jira.project, ids["item"])
     with _jira():
         named = backend.client.search(query, [ids["project"], ids["item"]])
@@ -555,6 +522,8 @@ def _named_elsewhere(run: _Run, ids: Mapping[str, str], reported: set[str]) -> N
             run.warning(str(issue.get("key")), f"names {slug}, whose folder is not here; "
                                                f"the item may exist in another copy of "
                                                f"this repository")
+    run.say(f"{backend.project}: {sum(len(n) for n in folders.values())} item folders "
+            f"checked against their tickets")
 
 
 # -- 8. the model checks ---------------------------------------------------------------

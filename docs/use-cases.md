@@ -370,15 +370,6 @@ Each ticket's `TCW Project` field says which TCW project it belongs to, and
 - The inbox (Triage) is shared. A ticket with no `TCW Project` value yet
   belongs to no project, and every project sharing the inbox lists it. A
   person decides which project takes it.
-- The two TCW fields are optional (`work.jira.fields.project` and `.item`,
-  given together or not at all). A project without them knows its items by
-  its folders alone: `list` searches by the keys its folders name, so it
-  never fetches the other projects' tickets, and nothing in Jira says which
-  project holds a ticket. Its inbox is every ticket at the inbox status with
-  no folder here, so a ticket another project adopted leaves it only because
-  adoption moves the ticket off that status; `tcw work tickets adopt`
-  refuses a ticket at the request status with no folder here, since it is
-  most likely another project's item.
 - A Jira workflow change made for one project affects all of them.
   `tcw validate --remote` in any one of them must report a status that a stage
   needs and the shared workflow does not offer.
@@ -389,20 +380,11 @@ Each ticket's `TCW Project` field says which TCW project it belongs to, and
 **Known gaps**
 
 - A `tcw work list` fetches every ticket in the shared Jira project before
-  keeping its own, so its cost grows with the whole Jira project (with the
-  TCW fields; without them it asks only for its own folders' keys). A listing
+  keeping its own, so its cost grows with the whole Jira project. A listing
   with `--scope` sends that search once for all the projects it covers that
   share one Jira project, one account and one stage mapping
   (`_kept_search` in `tcw/work/jira/backend.py`), so its cost does not grow
-  with the number of projects listed (TCW-113). Projects without the TCW
-  fields are searched one by one.
-- Without the TCW fields, two copies of one repository can adopt the same
-  ticket on different branches; `tcw validate` reports the two folders only
-  once the branches meet. Turning the fields on later is not supported yet:
-  existing tickets keep empty values, which `tcw validate --remote` reports,
-  naming the values to set by hand in Jira. A parent or blocker in another
-  project is recorded in the state file, not linked, unless both projects
-  have the fields.
+  with the number of projects listed (TCW-113).
 
 ### UC-6 A related project that is not on this machine
 

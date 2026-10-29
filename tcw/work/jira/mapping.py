@@ -290,16 +290,13 @@ def create_fields(title: str, props: Changes, request: str | None, *,
                   parent: str | None = None,
                   options: Mapping[str, Mapping[str, str]] | None = None) -> dict:
     """The `fields` of the one create request (Design 4.1 step 2). TCW Item is
-    not set here; it is set once the ticket exists (step 4). TCW Project is
-    set only when `field_ids` has it: a project without the TCW fields sets
-    neither."""
+    not set here; it is set once the ticket exists (step 4)."""
     fields: dict = {
         "project": {"key": config.project},
         "issuetype": {"id": issue_type},
         "summary": title,
+        field_ids["project"]: project_id,
     }
-    if "project" in field_ids:
-        fields[field_ids["project"]] = project_id
     if request is not None:
         fields["description"] = text_document(request)
     if has_priority:

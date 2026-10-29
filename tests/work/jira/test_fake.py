@@ -303,18 +303,6 @@ def test_priority_off_the_create_screen(client, fake):
     assert client.issue(create(client))["fields"]["priority"] is None
 
 
-def test_a_site_without_the_tcw_fields(client, fake):
-    key = create(client)
-    fake.tcw_fields = False
-    names = [f["name"] for f in client.create_metadata("TCW", "10002")]
-    assert "TCW Item" not in names and "TCW Project" not in names
-    assert FIELDS["TCW Item"] not in client.edit_metadata(key)
-    with pytest.raises(jira.TrackerRequestInvalid, match="not on the appropriate screen"):
-        client.edit_issue(key, {FIELDS["TCW Item"]: "tcw.work/TCW-1-x"})
-    with pytest.raises(jira.TrackerRequestInvalid, match="not on the appropriate screen"):
-        create(client, **{FIELDS["TCW Project"]: "tcw"})
-
-
 @pytest.mark.parametrize("switch, error", [
     (lambda f: f.unreachable(), jira.TrackerUnavailable),
     (lambda f: f.unauthorized(), jira.TrackerAuthError),

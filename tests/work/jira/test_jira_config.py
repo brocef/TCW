@@ -78,27 +78,12 @@ def test_an_unknown_key_at_any_level_is_named(path, value, key):
     (("site",), "work.jira.site"),
     (("project",), "work.jira.project"),
     (("credentials",), "work.jira.credentials"),
+    (("fields",), "work.jira.fields"),
     (("credentials", "token-env"), "work.jira.credentials.token-env"),
+    (("fields", "item"), "work.jira.fields.item"),
 ])
 def test_a_missing_required_key_is_named(path, key):
     assert f"{key}: required" in problems_of(with_(path, DELETE))
-
-
-@pytest.mark.parametrize("given, missing", [("project", "item"), ("item", "project")])
-def test_one_tcw_field_alone_names_the_other(given, missing):
-    raw = with_(("fields", missing), DELETE)
-    assert problems_of(raw) == [
-        f"work.jira.fields.{missing}: required when work.jira.fields.{given} is "
-        f"given: the two TCW fields are given together or not at all"]
-
-
-def test_the_tcw_fields_are_optional_together():
-    config, problems = parse_jira_config(with_(("fields",), DELETE))
-    assert problems == [] and config.fields == JiraFields() and not config.fields.tcw
-    config, problems = parse_jira_config(with_(("fields",), {"effort": "Effort"}))
-    assert problems == [] and config.fields == JiraFields(effort="Effort")
-    assert not config.fields.tcw
-    assert parse_jira_config(MINIMAL)[0].fields.tcw
 
 
 @pytest.mark.parametrize("path, value, key", [

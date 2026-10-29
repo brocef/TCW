@@ -8,8 +8,8 @@ that is not in that form, or that carries a different date or key, is refused
 
 The item's folder is renamed in place, and every item nested in its folder
 moves with it. Every reference to a moved item in my project's records and
-documents is rewritten to its new full identifier, and in a Jira project with the TCW
-fields each moved ticket's `TCW Item` is set too. The command prints one `<old> -> <new>`
+documents is rewritten to its new full identifier, and in a Jira project each
+moved ticket's `TCW Item` is set too. The command prints one `<old> -> <new>`
 line per identifier it changed, the renamed item first, or `--json`. It lists,
 on stderr as `file:line`, every place that still mentions an old identifier,
 such as prose, and leaves it for me to edit. An item in another project that

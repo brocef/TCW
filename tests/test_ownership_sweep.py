@@ -125,7 +125,7 @@ WRITER_CALLERS = {
         "_parse_stages", "_parse_procedures", "_parse_tags", "parse_work_config")},
     **{f"work/jira/config.py:{name}": (NOT_A_STORE, _PROBLEMS) for name in (
         "_mapping", "_unknown", "_missing", "_text", "_site", "_project",
-        "_credentials", "_timeout", "parse_jira_config")},
+        "_credentials", "_timeout")},
 }
 
 #: Design 11's reads of the current folder, as `"<module>:<function>"`: each

@@ -30,7 +30,7 @@ work:
             email-env: TCW_JIRA_EMAIL
             token-env: TCW_JIRA_TOKEN
         fields:
-            project: TCW Project    # optional, with item: both or neither
+            project: TCW Project
             item: TCW Item
             effort: Effort
             complexity: Complexity
@@ -48,9 +48,9 @@ work:
         discarded: { status: Discarded }
 ```
 
-`site`, `project` and `credentials` are required, each set in this project's
-file or passed down by a parent; every other key has a default, and `fields`
-may be left out (see [Custom fields](#custom-fields)). An unknown key is reported. With
+`site`, `project`, `credentials` and `fields` (with its `project` and `item`)
+are required, each set in this project's file or passed down by a parent;
+every other key has a default. An unknown key is reported. With
 any problem in the block, every `tcw work` command refuses until it is fixed,
 and `tcw validate` names each problem by its key.
 
@@ -84,8 +84,7 @@ Shared: personal configuration cannot set it.
 
 Optional. A Jira query (JQL) for more tickets to offer for adoption. By
 default, `tcw work tickets list` offers the tickets of this Jira project that
-are at the inbox stage's status and have no TCW Item yet (without the TCW
-fields, those with no folder named for their key here). With
+are at the inbox stage's status and have no TCW Item yet. With
 `inbox-query`, it offers those and the tickets the query matches.
 
 ### `work.jira.timeout`
@@ -145,26 +144,15 @@ TCW finds its custom fields by their names on the create screen of the
 configured issue type. Each name must match exactly one field there, or every
 command refuses and names the field. The fields must be on the issue type's
 edit screen too, since TCW fills them in on tickets that already exist, and
-`tcw validate --remote` reports one missing from either screen.
-
-`project` and `item` are optional, but given together or not at all: one
-without the other is a configuration problem that names the missing one.
-With them, Jira itself records which TCW project and item each ticket is.
-Without them, for a site where new custom fields cannot be added, the item
-folders alone say which tickets are items and TCW never reads or writes
-either field; an adoption then reaches other copies of the repository only
-when its folder does, nothing in Jira names a ticket's item, a parent or
-blocker in another project is recorded rather than linked, and turning the
-fields on later is not supported yet (`tcw validate --remote` reports each
-ticket left to fill in by hand). The [Jira guide](../../../docs/guide/jira.md#running-without-the-tcw-fields)
-lists every difference.
+`tcw validate --remote` reports one missing from either screen. Two are
+required: they are how a ticket is known to be a TCW item.
 
 ### `work.jira.fields.project`
 
 Shared: personal configuration cannot set it.
 
 The name of a text field (for example `TCW Project`) that holds the TCW
-project ID a ticket belongs to. Optional, with `item`.
+project ID a ticket belongs to. Required.
 
 ### `work.jira.fields.item`
 
@@ -173,7 +161,7 @@ Shared: personal configuration cannot set it.
 The name of a text field (for example `TCW Item`) that holds the item's full
 identifier, such as `shop.work/SHOP-42-refund-a-payment`.
 A ticket with this field empty is not an item yet; adopting it fills the
-field. Optional, with `project`.
+field. Required.
 
 ### `work.jira.fields.effort`
 
