@@ -286,18 +286,21 @@ describe("the new item form", () => {
         })
     })
 
-    test("nesting inside the parent's folder is unticked by default and sent only when ticked", async () => {
+    test("keeping the folder at the top is unticked by default and sent only when ticked", async () => {
         const fetch = fakeFetch([
             [/^POST /, 201, { "full-id": "p.work/2026-10-15-new" }],
         ])
         globalThis.fetch = fetch as unknown as typeof globalThis.fetch
         const posts = () => fetch.calls.filter((c) => c.method === "POST")
         renderForm()
-        const nest = screen.getByRole("checkbox", {
-            name: /inside the parent's folder/,
+        expect(
+            screen.queryByRole("checkbox", { name: /^Put its folder inside/ })
+        ).toBeNull()
+        const flat = screen.getByRole("checkbox", {
+            name: /at the top of the work folder/,
         })
-        expect(nest).not.toBeChecked()
-        expect(nest).toBeDisabled()
+        expect(flat).not.toBeChecked()
+        expect(flat).toBeDisabled()
         fireEvent.change(screen.getByRole("textbox", { name: "Title" }), {
             target: { value: "New" },
         })
@@ -306,14 +309,15 @@ describe("the new item form", () => {
         fireEvent.keyDown(parent, { key: "Enter" })
         fireEvent.click(screen.getByRole("button", { name: "Save" }))
         await waitFor(() => expect(posts()).toHaveLength(1))
+        expect(posts()[0].body).not.toHaveProperty("flat")
         expect(posts()[0].body).not.toHaveProperty("nest")
-        expect(nest).toBeEnabled()
-        fireEvent.click(nest)
-        expect(nest).toBeChecked()
+        expect(flat).toBeEnabled()
+        fireEvent.click(flat)
+        expect(flat).toBeChecked()
         fireEvent.click(screen.getByRole("button", { name: "Save" }))
         await waitFor(() => expect(posts()).toHaveLength(2))
         expect(posts()[1].body).toMatchObject({
-            nest: true,
+            flat: true,
             properties: { parent: "p.work/a" },
         })
     })
