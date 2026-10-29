@@ -7,7 +7,8 @@
 > promise until 5.0.0 ships.
 
 TCW 4.0 changed how projects are laid out and how they relate to each other,
-and left the work system as 3.x had it. TCW 5.0 is the overhaul of the work
+and changed the work system only where the new layout reached it: names,
+state files, nesting, and the commands and prompts that use them. TCW 5.0 is the overhaul of the work
 system: how a work item moves through its stages, and how TCW works with Jira.
 Taxonomy, capabilities, and the project layout 4.0 introduced (the `.tcw/`
 folder, manifests, parent links, full identifiers and `tcw://` addresses) are
@@ -42,8 +43,11 @@ Each entry says whether it is built, and what a 4.x project does about it.
   says what that loses.
 
   A 4.x project that keeps the fields does nothing. A project that wants to
-  drop them removes both from `work.jira.fields`; the values already on its
-  tickets are left in place and no longer read. Every project sharing one
+  drop them removes both from `work.jira.fields`. A project that takes
+  `work.jira` from a parent cannot drop an inherited key by deleting it: it
+  writes `project: null` and `item: null` under `work.jira.fields` in its
+  own `.tcw/tcw-config.yaml`. The values already on its tickets are left in
+  place and no longer read. Every project sharing one
   Jira project must make the same choice: a project with the fields would
   adopt the request-stage items of one without them. Turning the fields on
   for a project that ran without them is not supported yet.
@@ -67,9 +71,11 @@ fixed and short. None is decided.
   a ticket and comments on it, but never moves it.
 - **Keeping some stages local** while the ticket stays where people left it.
 
-### Follow-ups from the work already built
+### Still to do on the work already built
 
-- `tcw validate --remote` warning when projects sharing one Jira project
+None of these exists yet.
+
+- A `tcw validate --remote` warning when projects sharing one Jira project
   made different choices about the TCW fields.
 - Without the fields, one deleted ticket makes every `tcw work list` cost a
   refused search plus up to 100 single reads; TCW does not retry when Jira
