@@ -95,7 +95,7 @@ def _path(args: argparse.Namespace) -> int:
 
 
 def _add(args: argparse.Namespace) -> int:
-    if args.flat and args.parent is None:
+    if args.flat and not args.parent:
         raise UsageError("--flat keeps a child's folder out of its parent's; "
                          "give the parent with --parent")
     st = _store()
@@ -292,9 +292,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                            "capabilities add bulk --parent billing/invoices"])
     pa.add_argument("path",
                     help="path for the new capability: namespace folder first, or "
-                         "with --parent one name inside the parent's folder (a "
-                         "path starting with the parent's path and / is used as "
-                         "given)")
+                         "with --parent a path inside the parent's folder, whose "
+                         "folders between must be capabilities (a path starting "
+                         "with the parent's path and / is used as given)")
     pa.add_argument("name", nargs="?",
                     help="display name (default: titled from the last path segment)")
     pa.add_argument("--status", default="Missing", choices=sorted(CAP_STATUSES),
@@ -304,9 +304,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                                      "inside it when it is this project's own, "
                                      "else the path is read as given")
     pa.add_argument("--flat", action="store_true",
-                    help="read the path as without --parent, namespace folder first, "
-                         "rather than inside the parent's folder; parent: is recorded "
-                         "all the same")
+                    help="with --parent: read the path as the whole path, namespace "
+                         "folder first, not inside the parent's folder; the parent "
+                         "is recorded all the same")
     pa.set_defaults(func=_add)
 
     pset = command(g, "set", help="change a capability's status or fields",

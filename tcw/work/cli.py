@@ -260,7 +260,7 @@ def _new(args) -> int:
         raise UsageError(f"--stage accepts only {inbox_stage()}")
     if args.assign_me:
         _alone(args, "--assign-me")
-    if args.flat and args.parent is None:
+    if args.flat and not args.parent:
         raise UsageError("--flat keeps a child's folder out of its parent's; "
                          "give the parent with --parent")
     if args.project:
@@ -931,10 +931,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                                    f"mode only)")
     _properties(p, editing=False)
     p.add_argument("--flat", action="store_true",
-                   help="make the new item's folder at the top of the work folder "
-                        "rather than inside its parent's; with --parent, whose "
-                        "folder holds the new one by default when the parent is "
-                        "an item of this project")
+                   help="with --parent: make the folder at the top of the work "
+                        "folder, not inside the parent's; the parent is recorded "
+                        "all the same")
     p.set_defaults(func=_new)
 
     p = command(cmds, "list", help="list items",

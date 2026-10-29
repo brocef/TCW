@@ -2410,6 +2410,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         parent_term = self.find_parent(parent) if parent else None
         inside = (parent_term.slug if parent_term is not None and not flat
                   and parent_term.owner == self.project_id else None)
+        unnested = None
         if parent_term is not None and inside is None and not flat:
             # A parent this project only sees through its view: when the path
             # inside it is inherited, the new term is that path's override,
@@ -2420,10 +2421,10 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
                     and self.get_view(parent_term.slug).full_id == parent_term.full_id \
                     and self.inherited_at(nested) is not None:
                 inside = parent_term.slug
-            elif report is not None:
-                report(f"not nested: {parent_term.full_id} belongs to project "
-                       f"{parent_term.owner!r}, so the term's folder is made at the "
-                       f"top of this project's taxonomy folder")
+            else:
+                unnested = (f"not nested: {parent_term.full_id} belongs to project "
+                            f"{parent_term.owner!r}, so the term's folder is made at "
+                            f"the top of this project's taxonomy folder")
         full = f"{inside}/{leaf}" if inside else leaf
         _check_id_path(full, "slug")
         _check_reserved(full, "taxonomy", "slug")
@@ -2442,8 +2443,11 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             raise Refused(f"term already exists: {full}")
         inherited = self.inherited_at(full)
         if inherited is not None:
-            return self._add_override(full, inherited, name, parent_term, description,
+            term = self._add_override(full, inherited, name, parent_term, description,
                                       given_kind, vocabulary)
+            if unnested and report is not None:
+                report(unnested)
+            return term
         kind = given_kind or "Vocabulary"
         # Fail closed on refs *before* the first mkdir: a rejected write must
         # leave no partial folder behind. The same rules `check` applies, so a
@@ -2455,6 +2459,10 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             meta["parent"] = str(parent_term.full_id)
         if vocabulary:
             meta["vocabulary"] = [self._resolve_vocab_ref(r) for r in vocabulary]
+        # Said once every refusal has passed, so it never names a folder that
+        # is not made (TCW-118).
+        if unnested and report is not None:
+            report(unnested)
         self._write_entry(d, meta, description)
         return self.get_local(full)
 
@@ -3019,28 +3027,15 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             fields=None, parent=None, *, flat=False, report=None) -> Capability:
         path = _safe_store_id(identifier, "path")
         # Any capability TCW can find (TCW-111 Design 3.3). One of this
-        # store's own holds the folder, `identifier` read inside its folder
-        # unless it already starts there; with `flat`, or a parent this store
-        # does not own, `identifier` is the whole path (TCW-118).
+        # store's own, or one this store overrides at its path, holds the
+        # folder: `identifier` is read inside its folder unless it already
+        # starts there. With `flat`, or a parent that cannot hold it,
+        # `identifier` is the whole path (TCW-118 decisions 4 and 5).
         parent_cap = self.find_parent(parent) if parent else None
         parent_id = str(parent_cap.full_id) if parent_cap is not None else None
-        if parent_cap is not None and not flat:
-            if parent_cap.owner != self.project_id:
-                if report is not None:
-                    report(f"not nested: {parent_id} belongs to project "
-                           f"{parent_cap.owner!r}, so the capability's folder is "
-                           f"made at {path}, the path as given")
-            elif not path.startswith(f"{parent_cap.path}/"):
-                # A folder between would sit in the parent's with no state
-                # file, which `tcw validate` rejects: refused before anything
-                # is written (TCW-118 decision 4, as revised at implement).
-                if "/" in path:
-                    raise UsageError(
-                        f"{path} is read inside {parent_cap.path}'s folder, where "
-                        f"only capabilities and resources/ may sit; give one part, "
-                        f"such as {path.rsplit('/', 1)[-1]}, or the whole path "
-                        f"starting {parent_cap.path}/")
-                path = f"{parent_cap.path}/{path}"
+        holder = None if parent_cap is None or flat else self._holder(parent_cap)
+        if holder is not None:
+            path = self._inside(holder, path)
         _check_id_path(path, "path")
         _check_reserved(path, "capabilities", "path")
         _check_length(self.project_id, "capabilities", path)
@@ -3077,8 +3072,53 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                 meta.pop(k, None)
             else:
                 meta[k] = v
+        # Said once every refusal has passed, so it never names a folder that
+        # is not made; a path inside the parent's is nested, whoever holds it.
+        if parent_cap is not None and not flat and report is not None \
+                and not path.startswith(f"{parent_cap.path}/"):
+            report(f"not nested: {parent_id} belongs to project "
+                   f"{parent_cap.owner!r}, so the capability's folder is made at "
+                   f"{path}, the path as given")
         self._write_entry(d, meta, body)
         return self.get_local(path)
+
+    def _holder(self, parent: Capability) -> str | None:
+        """The path of the folder that holds a new child of `parent`: its own
+        when it is this store's, or this store's override at its path, else
+        None (TCW-118 decision 5)."""
+        if parent.owner == self.project_id:
+            return parent.path
+        inherited = self.inherited_at(parent.path)
+        if self.has_own(parent.path) and inherited is not None \
+                and str(inherited) == str(parent.full_id):
+            return parent.path
+        return None
+
+    def _inside(self, holder: str, given: str) -> str:
+        """`given` read inside the folder at `holder` (TCW-118 decision 4):
+        used as given when it starts with `holder` and `/`, else added to it.
+        Refused unless every folder between `holder` and the new capability
+        is one of this store's capabilities, since nothing else but
+        `resources/` may sit in a capability's folder."""
+        long = given.startswith(f"{holder}/")
+        if given == holder:
+            raise UsageError(
+                f"{given} is the parent's own path; give the new capability's name, "
+                f"read inside the parent's folder, or its whole path, such as "
+                f"{holder}/<name>")
+        rest = given[len(holder) + 1:] if long else given
+        parts = rest.split("/")
+        for depth in range(1, len(parts)):
+            between = f"{holder}/{'/'.join(parts[:depth])}"
+            if not self.has_own(between):
+                hint = ("" if long else
+                        f", or pass --flat to use {given} as the whole path")
+                raise UsageError(
+                    f"{given} is read inside {holder}'s folder, and {between} is not "
+                    f"a capability: only capabilities and resources/ may sit in a "
+                    f"capability's folder; give one part, such as {parts[-1]}, or "
+                    f"add {between} first{hint}")
+        return f"{holder}/{rest}"
 
     def remove(self, identifier: "FullId | str") -> None:
         target = self.removal_target(identifier)

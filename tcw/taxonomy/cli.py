@@ -88,7 +88,7 @@ def _path(args: argparse.Namespace) -> int:
 
 
 def _add(args: argparse.Namespace) -> int:
-    if args.flat and args.parent is None:
+    if args.flat and not args.parent:
         raise UsageError("--flat keeps a child's folder out of its parent's; "
                          "give the parent with --parent")
     st = _store()
@@ -153,8 +153,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                                      "identifier or its path here; the folder is made "
                                      "inside it when it is this project's own")
     pa.add_argument("--flat", action="store_true",
-                    help="make the folder at the top of the taxonomy folder rather "
-                         "than inside the parent's; parent: is recorded all the same")
+                    help="with --parent: make the folder at the top of the taxonomy "
+                         "folder, not inside the parent's; the parent is recorded "
+                         "all the same")
     pa.add_argument("--kind", choices=("vocabulary", "feature"),
                     help="taxonomy object kind (default: vocabulary, or for an entry "
                          "at a path this project inherits, the inherited entry's)")

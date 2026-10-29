@@ -405,9 +405,12 @@ app.work/2026-10-24-app-epic/2026-10-24-a-part
 A capability's path is read inside the parent's folder, unless it already
 starts with the parent's path and a `/`, in which case it is used as given.
 With parent `billing/invoices`, `bulk` makes `billing/invoices/bulk`, and so
-does `billing/invoices/bulk`. A path of more than one part read inside the
-parent's folder, such as `extra/bulk`, is refused with exit code 2, since only
-capabilities and `resources/` may sit in a capability's folder.
+does `billing/invoices/bulk`. Either way, every folder between the parent and
+the new capability must already be a capability of this project, since only
+capabilities and `resources/` may sit in a capability's folder: `extra/bulk`
+is refused with exit code 2 unless `billing/invoices/extra` is a capability.
+An inherited parent holds the folder when this project has its own override
+at the parent's path.
 
 `--flat` keeps the folder where it would be without a parent: the top of the
 work or taxonomy store, or, for a capability, the path read as without
@@ -415,8 +418,9 @@ work or taxonomy store, or, for a capability, the path read as without
 same; it, not the folder, is what makes the object a child. `--flat` without
 `--parent` is a usage error (exit code 2).
 
-When the parent is not this project's own, because it is inherited or belongs
-to another project, its folder cannot hold the new one: the command behaves as
+When the parent is not this project's own, because it is inherited (with no
+override here) or belongs to another project, its folder cannot hold the new
+one: the command behaves as
 with `--flat` and a `not nested:` line on stderr says so. A capability's path
 is then read as given, so it must name its namespace folder. The
 [work guide](work.md) describes nested items.

@@ -154,6 +154,14 @@ def test_new_with_a_parent_makes_the_folder_inside_the_parents(jira_project, tcw
     assert flat.out.strip() == "tcw.work/TCW-3-flat"
 
 
+def test_a_parent_named_by_its_key_holds_the_folder(jira_project, tcw):
+    epic = made_epic(jira_project, tcw)
+    made = tcw(["new", "Part", "--parent", "TCW-1"], jira_project.root)
+    assert made.code == 0, made.err
+    assert made.out.strip() == f"tcw.work/{epic}/TCW-2-part"
+    assert "not nested" not in made.err
+
+
 def test_flat_without_a_parent_makes_no_request(jira_project, tcw):
     jira_project.fake.log.clear()
     refused = tcw(["new", "Part", "--flat"], jira_project.root)

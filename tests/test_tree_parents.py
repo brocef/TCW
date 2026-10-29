@@ -63,6 +63,8 @@ def test_flat_without_a_parent_is_refused_making_nothing(tcw, demo, command):
     before = snapshot(demo)
     refused = tcw([*command, "--flat"], demo)
     assert refused.code == 2 and "--parent" in refused.err, refused
+    empty = tcw([*command, "--parent", "", "--flat"], demo)
+    assert empty.code == 2 and "--parent" in empty.err, empty
     assert snapshot(demo) == before
 
 
@@ -82,7 +84,7 @@ def test_a_capability_added_with_a_parent_is_made_inside_it(tcw, demo, given, ma
     assert "parent" not in shown["capability"]["fields"]
 
 
-def test_a_path_of_more_than_one_part_inside_the_parent_is_refused(tcw, demo):
+def test_a_folder_between_that_is_no_capability_is_refused(tcw, demo):
     """TCW-118 decision 4, as revised at implement: `extra/` inside the
     parent's folder would be a folder with no state file inside a
     capability's folder, which `tcw validate` rejects."""
@@ -90,8 +92,30 @@ def test_a_path_of_more_than_one_part_inside_the_parent_is_refused(tcw, demo):
     refused = tcw(["capabilities", "add", "extra/w", "--parent", "cli/x"], demo)
     assert refused.code == 2, refused
     assert "extra/w is read inside cli/x's folder" in refused.err
+    assert "cli/x/extra is not a capability" in refused.err
     assert "only capabilities and resources/" in refused.err
-    assert "such as w" in refused.err
+    assert "such as w" in refused.err and "--flat" in refused.err
+    long = tcw(["capabilities", "add", "cli/x/extra/w", "--parent", "cli/x"], demo)
+    assert long.code == 2, long
+    assert "cli/x/extra is not a capability" in long.err
+    assert snapshot(demo) == before
+
+
+@pytest.mark.parametrize("given", ["sub/w", "cli/x/sub/w"])
+def test_a_folder_between_that_is_a_capability_is_allowed(tcw, demo, given):
+    obj(demo, "capabilities", "cli/x/sub", name="Sub", Status="Missing",
+        parent="demo.capabilities/cli/x")
+    added = tcw(["capabilities", "add", given, "--parent", "cli/x"], demo)
+    assert (added.code, added.out) == (0, "demo.capabilities/cli/x/sub/w\n"), added
+    assert state(demo, "capabilities", "cli/x/sub/w")["parent"] == "demo.capabilities/cli/x"
+
+
+def test_a_path_equal_to_the_parents_is_refused_without_a_wrong_suggestion(tcw, demo):
+    before = snapshot(demo)
+    refused = tcw(["capabilities", "add", "cli/x", "--parent", "cli/x"], demo)
+    assert refused.code == 2, refused
+    assert "cli/x is the parent's own path" in refused.err
+    assert "such as x" not in refused.err and "cli/x/<name>" in refused.err
     assert snapshot(demo) == before
 
 
@@ -232,15 +256,72 @@ def test_an_inherited_parent_is_not_nested_and_says_so(tcw, tmp_path):
 
 
 def test_an_inherited_term_parent_is_not_nested_and_says_so(tcw, tmp_path):
+    base, child = inheriting_pair(tmp_path)
+    added = tcw(["taxonomy", "add", "Refund", "--parent", "payment"], child)
+    assert (added.code, added.out) == (0, "child.taxonomy/refund\n"), added
+    assert state(child, "taxonomy", "refund")["parent"] == "base.taxonomy/payment"
+    assert "not nested: base.taxonomy/payment belongs to project 'base'" in added.err
+
+
+def test_an_inherited_parent_with_an_override_here_holds_the_folder(tcw, tmp_path):
+    """TCW-118 decision 5: this project's own override at the parent's path
+    is a capability of its own, so the folder goes inside it, as taxonomy
+    does."""
+    from tests.test_capabilities_rm import federated, write_cap
+    base, child = federated(tmp_path)
+    write_cap(child, "auth/login", complete=False, Status="Omitted")
+    for parent, leaf in (("base.capabilities/auth/login", "w"), ("auth/login", "v")):
+        added = tcw(["capabilities", "add", leaf, "--parent", parent], child)
+        assert (added.code, added.out) == (0, f"child.capabilities/auth/login/{leaf}\n"), \
+            added
+        assert "not nested" not in added.err
+        assert "warning" not in added.err, added.err
+
+
+def test_a_path_under_an_inherited_parent_is_not_called_unnested(tcw, tmp_path):
+    from tests.test_capabilities_rm import federated
+    base, child = federated(tmp_path)
+    added = tcw(["capabilities", "add", "auth/login/w", "--parent", "auth/login"], child)
+    assert (added.code, added.out) == (0, "child.capabilities/auth/login/w\n"), added
+    assert "not nested" not in added.err
+
+
+def test_a_refused_add_says_nothing_about_nesting(tcw, tmp_path):
+    from tests.test_capabilities_rm import federated, write_cap
+    base, child = federated(tmp_path)
+    write_cap(child, "cli/w", Status="Missing")
+    refused = tcw(["capabilities", "add", "cli/w", "--parent",
+                   "base.capabilities/auth/login"], child)
+    assert refused.code == 3, refused
+    assert "not nested" not in refused.err
+
+
+def inheriting_pair(tmp_path):
     child = project(tmp_path, "child", work={})
     base = project(tmp_path, "base", work={})
     connect_projects(child, "parent", "base", inherit=["taxonomy"])
     write_manifest(child, {"base": "../base"})
     obj(base, "taxonomy", "payment", name="Payment")
-    added = tcw(["taxonomy", "add", "Refund", "--parent", "payment"], child)
-    assert (added.code, added.out) == (0, "child.taxonomy/refund\n"), added
-    assert state(child, "taxonomy", "refund")["parent"] == "base.taxonomy/payment"
-    assert "not nested: base.taxonomy/payment belongs to project 'base'" in added.err
+    return base, child
+
+
+def test_a_term_override_inside_an_inherited_parent_says_nothing_about_nesting(
+        tcw, tmp_path):
+    base, child = inheriting_pair(tmp_path)
+    obj(base, "taxonomy", "payment/card", name="Card", parent="base.taxonomy/payment")
+    added = tcw(["taxonomy", "add", "Card", "--parent", "payment"], child,
+                stdin="Our own card.\n")
+    assert (added.code, added.out) == (0, "child.taxonomy/payment/card\n"), added
+    assert "overrides base.taxonomy/payment/card" in added.err
+    assert "not nested" not in added.err
+
+
+def test_a_refused_term_says_nothing_about_nesting(tcw, tmp_path):
+    base, child = inheriting_pair(tmp_path)
+    obj(child, "taxonomy", "refund", name="Refund")
+    refused = tcw(["taxonomy", "add", "Refund", "--parent", "payment"], child)
+    assert refused.code == 3, refused
+    assert "not nested" not in refused.err
 
 
 # -- choice 3 ---------------------------------------------------------------------

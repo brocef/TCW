@@ -6,10 +6,13 @@
   `tcw work new` needed `--nest`, added earlier in 4.0 and now removed. A capability's path with `--parent` is read
   inside the parent's folder (`bulk` under `billing/invoices` makes
   `billing/invoices/bulk`), unless it already starts with the parent's path
-  and a `/`; read that way, a path of more than one part is refused with exit
-  code 2, since only capabilities and `resources/` may sit in a capability's
-  folder. A parent that is inherited or another project's cannot hold the
-  folder, and the command says so in a line starting `not nested:`; a
+  and a `/`; either way, a folder between the parent and the new capability
+  that is not a capability of this project is refused with exit code 2, since
+  only capabilities and `resources/` may sit in a capability's folder. An
+  inherited parent holds the folder when this project has its own override at
+  its path. A parent that is inherited or another project's cannot hold the
+  folder, and the command, and the web app's term form, say so in a line
+  starting `not nested:`; a
   capability's path is then read as given. (TCW-118)
 - The web app's new item form offers **Keep its folder at the top of the work
   folder, not inside the parent's**, unticked by default, in place of the

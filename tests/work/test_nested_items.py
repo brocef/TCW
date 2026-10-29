@@ -199,6 +199,20 @@ def test_a_nested_part_under_a_parent_in_an_organising_folder(tcw, demo):
     assert shown["created"] == today
 
 
+def test_an_own_parent_named_by_its_full_identifier_holds_the_folder(tcw, demo):
+    from datetime import date
+    item(demo, OLD_EPIC, title="Epic")
+    made_ = tcw(["work", "new", "Part", "--parent", f"demo.work/{OLD_EPIC}"], demo)
+    assert made(made_) == f"demo.work/{OLD_EPIC}/{date.today().isoformat()}-part"
+    assert "not nested" not in made_.err
+
+
+def test_flat_with_an_empty_parent_is_refused_making_nothing(tcw, demo):
+    refused = tcw(["work", "new", "Part", "--parent", "", "--flat"], demo)
+    assert refused.code == 2 and "--parent" in refused.err
+    assert [p for p in store(demo, "work").iterdir() if not p.name.startswith(".")] == []
+
+
 def test_flat_without_a_parent_is_refused_making_nothing(tcw, demo):
     refused = tcw(["work", "new", "Part", "--flat"], demo, stdin="asks\n")
     assert refused.code == 2 and "--parent" in refused.err
