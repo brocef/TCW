@@ -469,7 +469,8 @@ person changes their name.
 - **One issue type and one status per stage.** A Jira-mode project creates
   its items' tickets of one configured issue type (a part made under another
   item takes the child type Jira's hierarchy gives it), and every enabled
-  stage maps to its own status, shared by every type's workflow, so `tcw work advance` always moves the ticket.
+  stage maps to its own status, shared by every type's workflow, so
+  `tcw work advance` always moves the ticket.
   Only `spec`, `plan`, `review`, `qa` and `postmortem` can be turned off, and
   a turned-off stage is skipped, not kept in files. There is no way to keep
   some stages local while the ticket stays where people left it, to map
