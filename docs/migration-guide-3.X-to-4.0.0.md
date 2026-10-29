@@ -10,6 +10,17 @@ Jira, converts its tickets. This guide says what to do before you run it, how
 to run it, how to read what it prints, and what replaces each command, flag,
 setting and file that 3.x had and 4.0 does not.
 
+TCW 4.0 changes how projects are laid out and how they relate to each other:
+where configuration lives, how one project finds and inherits from another, how
+every object is named, and which project may change it. It does not change the
+work lifecycle, or what Jira mode asks of a Jira project. The stages, the
+checks bound to each move, `tcw work advance` and the stage prompts work as in
+3.x, and Jira mode still needs the TCW Project and TCW Item fields, one issue
+type, and its own status for every stage that is turned on. Work items change
+only where the new layout reaches them: their names (full identifiers, below),
+their state file, and folders nested inside a parent's. An overhaul of the work
+system is planned for TCW 5.0.
+
 A **migration**, in this guide and in TCW, means converting a project's files
 to a newer format. Every file TCW 4.0 writes starts with a `tcw-version` line
 saying the version it was made or last migrated with; a file with no such line

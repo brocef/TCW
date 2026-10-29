@@ -477,4 +477,5 @@ person changes their name.
   A team whose workflows cannot change keeps its projects in filesystem
   mode, and records the ticket's key in the item's request (and copies what
   the ticket needs back by hand). The two TCW fields are needed only in Jira
-  mode.
+  mode. Loosening these limits belongs to the work-system overhaul planned
+  for TCW 5.0; 4.0 keeps the requirements 3.x had.

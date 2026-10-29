@@ -861,6 +861,17 @@ removals or `inherit` lists to undo what flows down.
 | TCW-117 | Guides, skills, use cases and the 3.x-to-4.0 migration guide                   | written alongside, finished last |
 | TCW-118 | Release                                                                        | all of the above                 |
 
+- **4.0 is the structural release; the work system waits for 5.0**
+  (decided by the user, 2026-10-29). Changes to the work lifecycle and to
+  what Jira mode asks of a Jira project are not part of 4.0. The test for a
+  change that touches work items is whether it is worth having in 4.0 as
+  well as in 5.0, without changing the lifecycle or how items are
+  represented: `tcw -C`, `tcw work move`, `--nest`, and dropping
+  `tcw work new --project` and `tcw work edit --blocks` pass it and stay.
+  Jira mode without the TCW Project and TCW Item fields, built during
+  TCW-118, was reverted from `v4` and carried to the branch `v5`, with
+  several stages sharing one Jira status and Jira flows spanning several
+  Jira projects. The 4.x-to-5.0 migration guide is sketched there.
 - **Related items, settled the same day:** TCW-22 absorbed into TCW-113,
   TCW-23 into TCW-115, TCW-27 into TCW-114; TCW-87 settled by TCW-114;
   TCW-85 answered by full identifiers (TCW-110); TCW-102 and TCW-103
