@@ -131,10 +131,10 @@ On `add`, when the parent is one of this project's own capabilities, the path
 given is read inside the parent's folder: with parent `billing/invoices`,
 `bulk` makes `billing/invoices/bulk`. A path that already starts with the
 parent's path and a `/`, such as `billing/invoices/bulk`, is used as given.
-Either way, every folder between the parent and the new capability must
-already be a capability of this project, because only capabilities and
-`resources/` may sit in a capability's folder: `extra/bulk` is refused with
-exit code 2 unless `billing/invoices/extra` is a capability. An inherited
+Either way the new folder must be directly inside the parent's: a deeper
+path, such as `extra/bulk`, is refused with exit code 2, because only
+capabilities and `resources/` may sit in a capability's folder; give the
+deeper capability as `--parent` instead. An inherited
 parent holds the folder when this project has its own override at its path. `--flat` reads the path as without
 `--parent`, namespace folder first, and still records `parent:`. When the
 parent is inherited with no override here, or another project's, the path is

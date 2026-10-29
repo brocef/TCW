@@ -405,10 +405,10 @@ app.work/2026-10-24-app-epic/2026-10-24-a-part
 A capability's path is read inside the parent's folder, unless it already
 starts with the parent's path and a `/`, in which case it is used as given.
 With parent `billing/invoices`, `bulk` makes `billing/invoices/bulk`, and so
-does `billing/invoices/bulk`. Either way, every folder between the parent and
-the new capability must already be a capability of this project, since only
-capabilities and `resources/` may sit in a capability's folder: `extra/bulk`
-is refused with exit code 2 unless `billing/invoices/extra` is a capability.
+does `billing/invoices/bulk`. Either way the new folder must be directly
+inside the parent's: a deeper path, such as `extra/bulk`, is refused with exit
+code 2, since only capabilities and `resources/` may sit in a capability's
+folder; give the deeper capability as `--parent` instead.
 An inherited parent holds the folder when this project has its own override
 at the parent's path.
 

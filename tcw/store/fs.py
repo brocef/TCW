@@ -1919,6 +1919,17 @@ class FsTreeStore:
         return [] if found is None else \
             [FullId(pid, self.COMPONENT, id_path) for pid in found.chain]
 
+    def _holds(self, parent) -> bool:
+        """Whether `parent`'s folder is this store's, so a new child's folder
+        can go inside it: it is this store's own object, or one this store
+        overrides at its path, however it was named (TCW-118 decision 5)."""
+        if parent.owner == self.project_id:
+            return True
+        id_path = parent.full_id.id_path
+        inherited = self.inherited_at(id_path)
+        return self.has_own(id_path) and inherited is not None \
+            and str(inherited) == str(parent.full_id)
+
     def inherited_at(self, id_path: str) -> FullId | None:
         """Design 2.7: the full identifier of the inherited object at
         `id_path`, the first member of the path's chain that is not this
@@ -2409,7 +2420,7 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
         # Not found is exit 4.
         parent_term = self.find_parent(parent) if parent else None
         inside = (parent_term.slug if parent_term is not None and not flat
-                  and parent_term.owner == self.project_id else None)
+                  and self._holds(parent_term) else None)
         unnested = None
         if parent_term is not None and inside is None and not flat:
             # A parent this project only sees through its view: when the path
@@ -3083,23 +3094,16 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         return self.get_local(path)
 
     def _holder(self, parent: Capability) -> str | None:
-        """The path of the folder that holds a new child of `parent`: its own
-        when it is this store's, or this store's override at its path, else
-        None (TCW-118 decision 5)."""
-        if parent.owner == self.project_id:
-            return parent.path
-        inherited = self.inherited_at(parent.path)
-        if self.has_own(parent.path) and inherited is not None \
-                and str(inherited) == str(parent.full_id):
-            return parent.path
-        return None
+        """The path of the folder that holds a new child of `parent`, or None
+        (TCW-118 decision 5)."""
+        return parent.path if self._holds(parent) else None
 
     def _inside(self, holder: str, given: str) -> str:
         """`given` read inside the folder at `holder` (TCW-118 decision 4):
-        used as given when it starts with `holder` and `/`, else added to it.
-        Refused unless every folder between `holder` and the new capability
-        is one of this store's capabilities, since nothing else but
-        `resources/` may sit in a capability's folder."""
+        one part, or `holder`, `/` and one part, used as given. Anything
+        deeper is refused: a folder between with no state file is one only
+        capabilities and `resources/` may be, and a capability between would
+        hold the new folder while `parent:` named `holder`."""
         long = given.startswith(f"{holder}/")
         if given == holder:
             raise UsageError(
@@ -3107,17 +3111,14 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                 f"read inside the parent's folder, or its whole path, such as "
                 f"{holder}/<name>")
         rest = given[len(holder) + 1:] if long else given
-        parts = rest.split("/")
-        for depth in range(1, len(parts)):
-            between = f"{holder}/{'/'.join(parts[:depth])}"
-            if not self.has_own(between):
-                hint = ("" if long else
-                        f", or pass --flat to use {given} as the whole path")
-                raise UsageError(
-                    f"{given} is read inside {holder}'s folder, and {between} is not "
-                    f"a capability: only capabilities and resources/ may sit in a "
-                    f"capability's folder; give one part, such as {parts[-1]}, or "
-                    f"add {between} first{hint}")
+        if "/" in rest:
+            deeper, leaf = rest.rsplit("/", 1)
+            hint = "" if long else f", or pass --flat to use {given} as the whole path"
+            raise UsageError(
+                f"{given} is read inside {holder}'s folder, where only capabilities "
+                f"and resources/ may sit, and the new folder must be directly inside "
+                f"it; give one part, such as {leaf}, pass the capability it belongs "
+                f"under as the parent, such as --parent {holder}/{deeper}{hint}")
         return f"{holder}/{rest}"
 
     def remove(self, identifier: "FullId | str") -> None:

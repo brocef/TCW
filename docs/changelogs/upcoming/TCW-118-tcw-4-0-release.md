@@ -3,17 +3,17 @@
 - `--parent` on `tcw work new`, `tcw taxonomy add` and `tcw capabilities add`
   makes the new folder inside the parent's folder whenever the parent is one
   of this project's own objects; before, only `tcw taxonomy add` did, and
-  `tcw work new` needed `--nest`, added earlier in 4.0 and now removed. A capability's path with `--parent` is read
-  inside the parent's folder (`bulk` under `billing/invoices` makes
-  `billing/invoices/bulk`), unless it already starts with the parent's path
-  and a `/`; either way, a folder between the parent and the new capability
-  that is not a capability of this project is refused with exit code 2, since
-  only capabilities and `resources/` may sit in a capability's folder. An
-  inherited parent holds the folder when this project has its own override at
-  its path. A parent that is inherited or another project's cannot hold the
-  folder, and the command, and the web app's term form, say so in a line
-  starting `not nested:`; a
-  capability's path is then read as given. (TCW-118)
+  `tcw work new` needed `--nest`, added earlier in 4.0 and now removed. A
+  capability's path with `--parent` is read inside the parent's folder
+  (`bulk` under `billing/invoices` makes `billing/invoices/bulk`), unless it
+  already starts with the parent's path and a `/`; either way the new folder
+  must be directly inside the parent's, so a deeper path is refused with exit
+  code 2, naming the deeper capability to give as `--parent`. An inherited
+  parent holds the folder when this project has its own override at its
+  path. A parent that is inherited with no override here, or another
+  project's, cannot hold the folder, and the command, and the web app's term
+  form, say so in a line starting `not nested:`; a capability's path is then
+  read as given. (TCW-118)
 - The web app's new item form offers **Keep its folder at the top of the work
   folder, not inside the parent's**, unticked by default, in place of the
   option to put it inside the parent's folder, and `POST /api/work` takes
