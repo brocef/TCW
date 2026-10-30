@@ -202,6 +202,12 @@ def create_term(request: Request):
     if not name:
         raise usage("name is required")
     parent = request.field("parent", required=False)
+    # A parent that cannot hold the folder is said as a warning on the parent,
+    # as a work item's create says it (TCW-118 decision 5).
+    notes: list[dict] = []
+
+    def note(line: str) -> None:
+        notes.append({"severity": "warning", "where": "parent", "message": line})
     with request.lock:
         if parent:
             # A parent naming nothing is a bad field in the request, not a
@@ -215,12 +221,15 @@ def create_term(request: Request):
                          description=request.field("description", required=False,
                                                    default=""),
                          kind=request.field("kind", required=False),
-                         vocabulary=request.field("vocabulary", list, required=False))
+                         vocabulary=request.field("vocabulary", list, required=False),
+                         report=note)
         detail = store.get_term_detail(term.slug)
     response = {"term": jsonable(term),
                 "coreRevision": detail.core_revision if detail else ""}
-    return HTTPStatus.CREATED, checked(response, request,
-                                       ValidationTarget("taxonomy", term.slug))
+    response = checked(response, request, ValidationTarget("taxonomy", term.slug))
+    if notes:
+        response["warnings"] = notes + response.get("warnings", [])
+    return HTTPStatus.CREATED, response
 
 
 TERM_FIELDS = {"name": "name", "description": "description", "kind": "kind",

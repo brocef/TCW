@@ -1,5 +1,25 @@
 ## Changed
 
+- `--parent` on `tcw work new`, `tcw taxonomy add` and `tcw capabilities add`
+  makes the new folder inside the parent's folder whenever the parent is one
+  of this project's own objects. A
+  capability's path with `--parent` is read inside the parent's folder
+  (`bulk` under `billing/invoices` makes `billing/invoices/bulk`), unless it
+  already starts with the parent's path and a `/`; either way the new folder
+  must be directly inside the parent's, so a deeper path is refused with exit
+  code 2, naming the deeper capability to give as `--parent`. An inherited
+  parent holds the folder when this project has its own override at its
+  path. A parent that is inherited with no override here, or another
+  project's, cannot hold the folder, and the command, and the web app's term
+  form, say so in a line starting `not nested:`; a capability's path is then
+  read as given. (TCW-118)
+- The web app's new item form offers **Keep its folder at the top of the work
+  folder, not inside the parent's**, unticked by default, in place of the
+  option to put it inside the parent's folder, and `POST /api/work` takes
+  `flat` in place of `nest`. (TCW-118)
+- The plan stage prompt makes each part with `--parent <slug>` alone.
+  (TCW-118)
+
 - The plugin's session-start install pins `tcw-cli` to the plugin's own
   version (`pipx install --force tcw-cli==<version>`), and the version warning
   for an older CLI advises the same pinned command in place of
@@ -185,6 +205,13 @@
   a relative path climbing towards `/`. (TCW-118)
 - The Jira guide's limits say that a Jira-mode project uses one issue type and moves its ticket at every
   stage, and what a team whose Jira workflows cannot change does instead.
+
+## Added
+
+- `--flat` on `tcw work new`, `tcw taxonomy add` and `tcw capabilities add`
+  keeps the new folder where it would be without a parent, recording
+  `parent:` all the same; without `--parent` it is refused with exit code 2.
+  (TCW-118)
 
 ## Removed
 

@@ -95,9 +95,12 @@ def _path(args: argparse.Namespace) -> int:
 
 
 def _add(args: argparse.Namespace) -> int:
+    if args.flat and not args.parent:
+        raise UsageError("--flat keeps a child's folder out of its parent's; "
+                         "give the parent with --parent")
     st = _store()
     cap = st.add(args.path, name=args.name, status=args.status, body=read_piped_stdin(),
-                 parent=args.parent)
+                 parent=args.parent, flat=args.flat, report=say)
     changed(st.changed)
     _warn_folder(st, cap)
     print(cap.full_id)
@@ -285,15 +288,25 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                  writes="the capability's files, each named on stderr",
                  examples=["capabilities add billing/refund",
                            "capabilities add billing/refund 'Refund a payment' "
-                           "--status Supported"])
-    pa.add_argument("path", metavar="namespace/path",
-                    help="path for the new capability, namespace folder first")
+                           "--status Supported",
+                           "capabilities add bulk --parent billing/invoices"])
+    pa.add_argument("path",
+                    help="path for the new capability: namespace folder first, or "
+                         "with --parent one name inside the parent's folder (the "
+                         "parent's path, / and one name is used as given)")
     pa.add_argument("name", nargs="?",
                     help="display name (default: titled from the last path segment)")
     pa.add_argument("--status", default="Missing", choices=sorted(CAP_STATUSES),
                     help="initial status (default: Missing)")
     pa.add_argument("--parent", help="the capability this one belongs under; its full "
-                                     "identifier or its path here")
+                                     "identifier or its path here; the folder is made "
+                                     "inside it when it is this project's own or "
+                                     "this project overrides it, else the path is "
+                                     "read as given")
+    pa.add_argument("--flat", action="store_true",
+                    help="with --parent: read the path as the whole path, namespace "
+                         "folder first, not inside the parent's folder; the parent "
+                         "is recorded all the same")
     pa.set_defaults(func=_add)
 
     pset = command(g, "set", help="change a capability's status or fields",

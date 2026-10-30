@@ -1919,6 +1919,17 @@ class FsTreeStore:
         return [] if found is None else \
             [FullId(pid, self.COMPONENT, id_path) for pid in found.chain]
 
+    def _holds(self, parent) -> bool:
+        """Whether `parent`'s folder is this store's, so a new child's folder
+        can go inside it: it is this store's own object, or one this store
+        overrides at its path, however it was named (TCW-118 decision 5)."""
+        if parent.owner == self.project_id:
+            return True
+        id_path = parent.full_id.id_path
+        inherited = self.inherited_at(id_path)
+        return self.has_own(id_path) and inherited is not None \
+            and str(inherited) == str(parent.full_id)
+
     def inherited_at(self, id_path: str) -> FullId | None:
         """Design 2.7: the full identifier of the inherited object at
         `id_path`, the first member of the path's chain that is not this
@@ -2395,7 +2406,8 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
 
     def add(self, name: str, slug: str | None = None, parent: str | None = None,
             description: str = "", kind: str | None = None,
-            vocabulary: list[str] | None = None) -> Term:
+            vocabulary: list[str] | None = None, *, flat: bool = False,
+            report=None) -> Term:
         leaf = _safe_store_id(slug or slugify(name), "slug")
         # After `_safe_store_id`, so a slug that would leave the store is still
         # "invalid slug"; nesting is `parent`'s job, so a `/` is refused here.
@@ -2403,12 +2415,14 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             raise NotASlug(f"{slug!r} is not a slug: use lowercase letters, "
                            f"digits and single hyphens")
         # The parent is any term TCW can find (TCW-111 Design 3.3): the
-        # folder goes inside it when it is this store's own, else at the root,
-        # and `parent:` is written either way. Not found is exit 4.
+        # folder goes inside it when it is this store's own and `flat` is
+        # false, else at the root, and `parent:` is written either way (TCW-118).
+        # Not found is exit 4.
         parent_term = self.find_parent(parent) if parent else None
-        inside = (parent_term.slug if parent_term is not None
-                  and parent_term.owner == self.project_id else None)
-        if parent_term is not None and inside is None:
+        inside = (parent_term.slug if parent_term is not None and not flat
+                  and self._holds(parent_term) else None)
+        unnested = None
+        if parent_term is not None and inside is None and not flat:
             # A parent this project only sees through its view: when the path
             # inside it is inherited, the new term is that path's override,
             # and the folders between are made as organising folders (TCW-112
@@ -2418,6 +2432,10 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
                     and self.get_view(parent_term.slug).full_id == parent_term.full_id \
                     and self.inherited_at(nested) is not None:
                 inside = parent_term.slug
+            else:
+                unnested = (f"not nested: {parent_term.full_id} belongs to project "
+                            f"{parent_term.owner!r}, so the term's folder is made at "
+                            f"the top of this project's taxonomy folder")
         full = f"{inside}/{leaf}" if inside else leaf
         _check_id_path(full, "slug")
         _check_reserved(full, "taxonomy", "slug")
@@ -2436,8 +2454,11 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             raise Refused(f"term already exists: {full}")
         inherited = self.inherited_at(full)
         if inherited is not None:
-            return self._add_override(full, inherited, name, parent_term, description,
+            term = self._add_override(full, inherited, name, parent_term, description,
                                       given_kind, vocabulary)
+            if unnested and report is not None:
+                report(unnested)
+            return term
         kind = given_kind or "Vocabulary"
         # Fail closed on refs *before* the first mkdir: a rejected write must
         # leave no partial folder behind. The same rules `check` applies, so a
@@ -2449,6 +2470,10 @@ class FsTaxonomyStore(FsTreeStore, TaxonomyStore):
             meta["parent"] = str(parent_term.full_id)
         if vocabulary:
             meta["vocabulary"] = [self._resolve_vocab_ref(r) for r in vocabulary]
+        # Said once every refusal has passed, so it never names a folder that
+        # is not made (TCW-118).
+        if unnested and report is not None:
+            report(unnested)
         self._write_entry(d, meta, description)
         return self.get_local(full)
 
@@ -3010,14 +3035,21 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         return own
 
     def add(self, identifier, name=None, status="Missing", body="",
-            fields=None, parent=None) -> Capability:
+            fields=None, parent=None, *, flat=False, report=None) -> Capability:
         path = _safe_store_id(identifier, "path")
+        # Any capability TCW can find (TCW-111 Design 3.3). One of this
+        # store's own, or one this store overrides at its path, holds the
+        # folder: `identifier` is read inside its folder unless it already
+        # starts there. With `flat`, or a parent that cannot hold it,
+        # `identifier` is the whole path (TCW-118 decisions 4 and 5).
+        parent_cap = self.find_parent(parent) if parent else None
+        parent_id = str(parent_cap.full_id) if parent_cap is not None else None
+        holder = None if parent_cap is None or flat else self._holder(parent_cap)
+        if holder is not None:
+            path = self._inside(holder, path)
         _check_id_path(path, "path")
         _check_reserved(path, "capabilities", "path")
         _check_length(self.project_id, "capabilities", path)
-        # Any capability TCW can find; the folder is made where `identifier`
-        # says, whatever the parent (TCW-111 Design 3.3).
-        parent_id = str(self.find_parent(parent).full_id) if parent else None
         if status not in CAP_STATUSES:
             raise UsageError(f"invalid Status '{status}' "
                              f"(choose: {', '.join(sorted(CAP_STATUSES))})")
@@ -3051,8 +3083,43 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
                 meta.pop(k, None)
             else:
                 meta[k] = v
+        # Said once every refusal has passed, so it never names a folder that
+        # is not made; a path inside the parent's is nested, whoever holds it.
+        if parent_cap is not None and not flat and report is not None \
+                and not path.startswith(f"{parent_cap.path}/"):
+            report(f"not nested: {parent_id} belongs to project "
+                   f"{parent_cap.owner!r}, so the capability's folder is made at "
+                   f"{path}, the path as given")
         self._write_entry(d, meta, body)
         return self.get_local(path)
+
+    def _holder(self, parent: Capability) -> str | None:
+        """The path of the folder that holds a new child of `parent`, or None
+        (TCW-118 decision 5)."""
+        return parent.path if self._holds(parent) else None
+
+    def _inside(self, holder: str, given: str) -> str:
+        """`given` read inside the folder at `holder` (TCW-118 decision 4):
+        one part, or `holder`, `/` and one part, used as given. Anything
+        deeper is refused: a folder between with no state file is one only
+        capabilities and `resources/` may be, and a capability between would
+        hold the new folder while `parent:` named `holder`."""
+        long = given.startswith(f"{holder}/")
+        if given == holder:
+            raise UsageError(
+                f"{given} is the parent's own path; give the new capability's name, "
+                f"read inside the parent's folder, or its whole path, such as "
+                f"{holder}/<name>")
+        rest = given[len(holder) + 1:] if long else given
+        if "/" in rest:
+            deeper, leaf = rest.rsplit("/", 1)
+            hint = "" if long else f", or pass --flat to use {given} as the whole path"
+            raise UsageError(
+                f"{given} is read inside {holder}'s folder, where only capabilities "
+                f"and resources/ may sit, and the new folder must be directly inside "
+                f"it; give one part, such as {leaf}, or pass the capability it belongs "
+                f"under as the parent, such as --parent {holder}/{deeper}{hint}")
+        return f"{holder}/{rest}"
 
     def remove(self, identifier: "FullId | str") -> None:
         target = self.removal_target(identifier)

@@ -75,7 +75,7 @@ def test_a_term_slug_that_makes_256_characters_is_refused(tcw, demo):
 
 def test_a_long_title_under_a_200_character_parent_is_shortened(tcw, demo):
     parent = made_parent(demo, 200)
-    made = tcw(["work", "new", "A very long title " * 8, "--parent", parent, "--nest"], demo)
+    made = tcw(["work", "new", "A very long title " * 8, "--parent", parent], demo)
     assert made.code == 0, made.err
     full = made.out.strip()
     assert full.startswith(f"demo.work/{parent}/") and len(full) <= ID_LIMIT
@@ -83,7 +83,7 @@ def test_a_long_title_under_a_200_character_parent_is_shortened(tcw, demo):
 
 def test_under_a_235_character_parent_eight_characters_fit(tcw, demo):
     parent = made_parent(demo, 235)
-    made = tcw(["work", "new", "Eight is enough", "--parent", parent, "--nest"], demo)
+    made = tcw(["work", "new", "Eight is enough", "--parent", parent], demo)
     assert made.code == 0, made.err
     assert len(made.out.strip()) == ID_LIMIT
 
@@ -91,9 +91,9 @@ def test_under_a_235_character_parent_eight_characters_fit(tcw, demo):
 def test_under_a_240_character_parent_nothing_fits(tcw, demo):
     parent = made_parent(demo, 240)
     before = snapshot(demo)
-    refused = tcw(["work", "new", "Part", "--parent", parent, "--nest"], demo)
+    refused = tcw(["work", "new", "Part", "--parent", parent], demo)
     assert refused.code == 2 and f"demo.work/{parent}" in refused.err
-    assert "--nest" in refused.err
+    assert "--flat" in refused.err
     assert snapshot(demo) == before
 
 

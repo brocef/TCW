@@ -1067,7 +1067,7 @@ class JiraBackend:
         meta = self.metadata()
         # 1. Resolve, reading only.
         self._check_priority(props)
-        issue_type, parent_key, under = meta.issue_type, None, None
+        issue_type, parent_key, under, note = meta.issue_type, None, None, None
         noted_parent: Slug | None = None
         if props.parent not in (UNSET, None):
             placed = self._place(props.parent, "parent")
@@ -1081,8 +1081,6 @@ class JiraBackend:
                 noted_parent = placed.full_id
             under, note = nesting_parent(
                 self, _as_slug(props.parent, self.project, "parent"), nest)
-            if note:
-                self.report(note)
         # Before the ticket exists, at the longest key allowed for: refused
         # here, nothing has been made (TCW-111 Design 4.3).
         fitted_words(title, project=self.project, parent=under, prefix=PREFIX_ALLOWANCE)
@@ -1153,6 +1151,9 @@ class JiraBackend:
                 f"created Jira ticket {key} naming {slug}, but could not write its "
                 f"folder: {error}; {self.finish_with_adopt(key)}{then}"),
                 key) from None
+        if note:
+            # Once the folder is made, so it never names one that is not.
+            self.report(note)
         for what, values in (("parent", [noted_parent] if noted_parent else []),
                              ("blocked-by", noted_blockers)):
             for value in values:

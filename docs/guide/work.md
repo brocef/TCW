@@ -367,7 +367,7 @@ written by anyone, and it becomes an item when it is adopted:
 
 ```sh
 tcw work new "Refund a payment" --priority high --tag billing < request.md
-tcw work new "Partial refunds" --parent 2026-10-01-payments --nest
+tcw work new "Partial refunds" --parent 2026-10-01-payments
 tcw work list --stage implement --tag billing
 tcw work show demo.work/2026-10-15-refund-a-payment
 tcw work edit demo.work/2026-10-15-refund-a-payment --assignee sam --effort medium
@@ -376,8 +376,8 @@ tcw work edit demo.work/2026-10-15-refund-a-payment --assignee sam --effort medi
 - **`tcw work new "<title>"`** creates an item at `request` (or at `inbox` with
   `--stage inbox`, filesystem mode only) and prints its full identifier. Text
   piped on standard input becomes its request. Properties can be set as it is
-  created. The new folder is made at the top of the work store, unless
-  `--nest` asks for it inside its parent's folder (see "Parents" below).
+  created. The new folder is made at the top of the work store, or inside its
+  parent's folder when it has one (see "Parents" below).
 - **`tcw work list`** prints the full identifiers of unfinished items, and of
   items with no stage the model knows. `--all` adds finished items. `--stage`
   limits it to the stages named, `--parent` to one item's children,
@@ -399,13 +399,14 @@ tcw work edit demo.work/2026-10-15-refund-a-payment --assignee sam --effort medi
 - **Parents.** `--parent <item>` puts an item under another. An item with
   children is an **epic**; `tcw work show` lists its children, and
   `tcw work list --parent <item>` prints them. The `parent` property is what
-  makes an item a child, wherever its folder is. On `tcw work new`, `--nest`
+  makes an item a child, wherever its folder is. On `tcw work new`, `--parent`
   also makes the new folder inside the parent's folder, so the child's full
   identifier is the parent's with its own folder name added:
-  `demo.work/2026-10-01-payments/2026-10-24-partial-refunds`. `--nest`
+  `demo.work/2026-10-01-payments/2026-10-24-partial-refunds`. `--flat` makes
+  it at the top of the work store instead, still recording `parent`; `--flat`
   without `--parent` is refused with exit code 2. When the parent belongs to
-  another project, the folder is made at the top of this project's work store
-  instead, and `tcw work new` says so in a line starting `not nested:`.
+  another project, the folder is made at the top of this project's work store,
+  and `tcw work new` says so in a line starting `not nested:`.
 - **`tcw work move <item> --into <id-path>`** moves the item's folder into
   another item's folder, or into an organising folder, which is made when it
   is missing, except that a folder named like a tracker key (such as

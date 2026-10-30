@@ -327,7 +327,7 @@ def test_remove_refuses_a_target_another_capability_names_as_its_parent(tmp_path
     sibling names as its parent would leave that `parent` dangling."""
     root = repo(tmp_path, "solo")
     store(root).add("billing/a")
-    store(root).add("billing/b", parent="billing/a")
+    store(root).add("billing/b", parent="billing/a", flat=True)
     before = tree_hash(root)
     with pytest.raises(TcwError) as e:
         store(root).remove("billing/a")

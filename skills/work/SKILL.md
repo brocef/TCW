@@ -108,9 +108,9 @@ every arrival it names.
   written to run in the project that owns it, starting
   `tcw -C tcw://<id>.path/`.
 - **Epics are parents.** An item with children is an epic; add a part with
-  `tcw work new "<title>" --parent <slug> --nest`, passing `--nest` every
-  time: it puts the part's folder inside the epic's folder. `--parent`, not
-  the folder, is what makes it a part. `tcw work list --parent <slug>` lists
+  `tcw work new "<title>" --parent <slug>`, which puts the part's folder
+  inside the epic's folder (`--flat` keeps it at the top of the work folder
+  instead). `--parent`, not the folder, is what makes it a part. `tcw work list --parent <slug>` lists
   this project's parts, and `--scope down` adds the parts in projects below.
 - **Moving and renaming keep nested items together.**
   `tcw work move <slug> --into <id-path>` puts an item's folder inside
@@ -125,8 +125,8 @@ every arrival it names.
 - **A part for another project is made in that project**, with
   `tcw -C <folder> work new "<title>" --parent <full id>`. `<folder>` is the
   folder `tcw project path <id>` prints, or the address `tcw://<id>.path/`.
-  `--nest` has no effect there: the part's folder is made at the top of that
-  project's work folder, and a `not nested:` line says so. A blocker in
+  The part's folder is made at the top of that project's work folder, since
+  the epic's folder is not there, and a `not nested:` line says so. A blocker in
   another project is recorded on the blocked item, in the blocked item's own
   project: `tcw work edit <slug> --blocked-by <full id>`. `tcw project list`
   names this project and the projects it is connected to, its parents and

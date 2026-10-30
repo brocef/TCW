@@ -141,22 +141,30 @@ def made_epic(jira_project, tcw):
     return epic.out.strip().split("/", 1)[1]
 
 
-def test_new_with_nest_makes_the_folder_inside_the_parents(jira_project, tcw):
+def test_new_with_a_parent_makes_the_folder_inside_the_parents(jira_project, tcw):
     epic = made_epic(jira_project, tcw)
-    made = tcw(["new", "Part", "--parent", epic, "--nest"], jira_project.root)
+    made = tcw(["new", "Part", "--parent", epic], jira_project.root)
     assert made.code == 0, made.err
     assert made.out.strip() == f"tcw.work/{epic}/TCW-2-part"
     assert (jira_project.work / epic / "TCW-2-part" / ITEM_STATE).is_file()
     assert jira_project.fake.tickets["TCW-2"].custom[ITEM] == f"tcw.work/{epic}/TCW-2-part"
     shown = tcw(["show", "TCW-2", "--json"], jira_project.root)
     assert json.loads(shown.out)["item"]["full-id"] == f"tcw.work/{epic}/TCW-2-part"
-    flat = tcw(["new", "Flat", "--parent", epic], jira_project.root)
+    flat = tcw(["new", "Flat", "--parent", epic, "--flat"], jira_project.root)
     assert flat.out.strip() == "tcw.work/TCW-3-flat"
 
 
-def test_nest_without_a_parent_makes_no_request(jira_project, tcw):
+def test_a_parent_named_by_its_key_holds_the_folder(jira_project, tcw):
+    epic = made_epic(jira_project, tcw)
+    made = tcw(["new", "Part", "--parent", "TCW-1"], jira_project.root)
+    assert made.code == 0, made.err
+    assert made.out.strip() == f"tcw.work/{epic}/TCW-2-part"
+    assert "not nested" not in made.err
+
+
+def test_flat_without_a_parent_makes_no_request(jira_project, tcw):
     jira_project.fake.log.clear()
-    refused = tcw(["new", "Part", "--nest"], jira_project.root)
+    refused = tcw(["new", "Part", "--flat"], jira_project.root)
     assert refused.code == 2 and "--parent" in refused.err
     assert jira_project.fake.log == []
 
@@ -165,7 +173,7 @@ def test_a_failed_folder_write_is_finished_by_adopt_inside_the_parent(jira_proje
     epic = made_epic(jira_project, tcw)
     in_the_way = jira_project.work / epic / "TCW-2-part"
     in_the_way.write_text("in the way")
-    made = tcw(["new", "Part", "--parent", epic, "--nest"], jira_project.root)
+    made = tcw(["new", "Part", "--parent", epic], jira_project.root)
     assert (made.code, made.out.strip()) == (1, "TCW-2")
     assert "tcw work tickets adopt TCW-2" in made.err
     in_the_way.unlink()
@@ -183,7 +191,7 @@ def test_a_failed_item_edit_is_adopted_at_the_top(jira_project, monkeypatch, tcw
     def refused(*args, **kwargs):
         raise jira._for_status(400, {}, "refused by the test", "/x")
     monkeypatch.setattr(fake, "_edit", refused)
-    made = tcw(["new", "Part", "--parent", epic, "--nest"], jira_project.root)
+    made = tcw(["new", "Part", "--parent", epic], jira_project.root)
     assert (made.code, made.out.strip()) == (1, "TCW-2")
     monkeypatch.setattr(fake, "_edit", original)
     adopted = tcw(["tickets", "adopt", "TCW-2"], jira_project.root)
@@ -215,14 +223,14 @@ def creates(fake):
 def test_under_a_227_character_parent_no_ticket_is_made(jira_project, tcw):
     parent = jira_parent(jira_project, 227)
     jira_project.fake.log.clear()
-    refused = tcw(["new", "Part", "--parent", parent, "--nest"], jira_project.root)
+    refused = tcw(["new", "Part", "--parent", parent], jira_project.root)
     assert refused.code == 2 and f"tcw.work/{parent}" in refused.err, refused
     assert creates(jira_project.fake) == []
 
 
 def test_a_long_title_under_a_200_character_parent_is_shortened(jira_project, tcw):
     parent = jira_parent(jira_project, 200)
-    made = tcw(["new", "A very long title " * 8, "--parent", parent, "--nest"],
+    made = tcw(["new", "A very long title " * 8, "--parent", parent],
                jira_project.root)
     assert made.code == 0, made.err
     assert made.out.strip().startswith(f"tcw.work/{parent}/TCW-3-")
@@ -246,7 +254,7 @@ def test_after_the_ticket_exists_the_words_are_cut_to_the_room(jira_project, mon
                                                                 tcw):
     parent = jira_parent(jira_project, 226)
     rekey(jira_project.fake, monkeypatch, "ABCDEFGHIJKLMNOPQRSTU-12")
-    made = tcw(["new", "Part of it", "--parent", parent, "--nest"], jira_project.root)
+    made = tcw(["new", "Part of it", "--parent", parent], jira_project.root)
     assert made.code == 0, made.err
     full = f"tcw.work/{parent}/ABCDEFGHIJKLMNOPQRSTU-12-par"
     assert made.out.strip() == full and len(full) <= 255
@@ -257,7 +265,7 @@ def test_a_key_that_leaves_no_room_stops_before_the_item_edit(jira_project, monk
                                                                tcw):
     parent = jira_parent(jira_project, 226)
     rekey(jira_project.fake, monkeypatch, "ABCDEFGHIJKLMNOPQRSTUVWXY-12")
-    made = tcw(["new", "Part", "--parent", parent, "--nest"], jira_project.root)
+    made = tcw(["new", "Part", "--parent", parent], jira_project.root)
     assert made.code == 1, made
     assert "tcw work tickets adopt ABCDEFGHIJKLMNOPQRSTUVWXY-12" in made.err
     assert ITEM not in jira_project.fake.tickets["ABCDEFGHIJKLMNOPQRSTUVWXY-12"].custom

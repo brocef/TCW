@@ -36,16 +36,39 @@ possible.
    relative to the parent's folder, unless it already starts with the
    parent's path followed by `/`, in which case it is used as given (so the
    form documented today keeps working). With parent `billing/invoices`:
-   `bulk` gives `billing/invoices/bulk`, `extra/bulk` gives
-   `billing/invoices/extra/bulk` (with `extra/` an organising folder), and
-   `billing/invoices/bulk` gives `billing/invoices/bulk`. Without
-   `--parent`, or with `--flat`, the path is read as today: namespace folder
-   first. The usage line and `--help` say this.
+   `bulk` gives `billing/invoices/bulk`, and `billing/invoices/bulk` gives
+   `billing/invoices/bulk`. The path is exactly one segment (relative), or
+   the parent's path plus one segment (long form); anything deeper, such as
+   `extra/bulk`, is refused with exit 2 before anything is written, with a
+   message saying the path is read inside the parent's folder, where only
+   capabilities and `resources/` may sit, and naming the form to use: the
+   one-segment form, the deeper capability as `--parent`, or, for the
+   relative form, `--flat` to use the path as given. A path equal to the
+   parent's is refused too. Without `--parent`, or with `--flat`, the path is read
+   as today: namespace folder first. The usage line and `--help` say this.
+
+   *Revised at implement (2026-10-29).* The first version of this decision
+   let `extra/bulk` make `billing/invoices/extra/bulk`, calling `extra/` an
+   organising folder. It is not one: an organising folder may sit only where
+   no object's folder is above it, and `tcw validate` reports a folder with
+   no state file inside a capability's folder as an error ("is not a child
+   object"). So that form is refused instead. Review round 1 extended the
+   refusal to the long form (`billing/invoices/extra/bulk`), which made the
+   same folder, and allowed a folder between that is already a capability.
+   Review round 2 replaced that allowance with the one-segment rule above: a
+   capability between would hold the new folder while `parent:` named the
+   parent given, a disagreement `tcw validate` warns about.
 5. **A parent that is not this project's own** (inherited, or another
    project's item) cannot hold the folder. The command behaves as `--flat`
    and says so in one line, as `tcw work new --nest` does today for a parent
    in another project. For a capability, the path is then read as given, so
-   it must name its namespace folder.
+   it must name its namespace folder. *Added at implement:* an inherited
+   capability or term holds the folder when this project has its own
+   override at its path, however the parent is named (its full identifier
+   included), since that override is this project's own and so is its
+   folder; `tcw taxonomy add` and `tcw capabilities add` share the rule. The
+   `not nested:` line is said only when the folder is not inside the
+   parent's path, and only once every refusal has passed.
 6. **The web app's create form** loses the "nest" option and gains the
    matching "keep it at the top" option, unticked by default. Principle 4
    holds: every control has a matching flag.

@@ -389,23 +389,41 @@ seconds, or the number of seconds in the environment variable
 that starts and then stops before it ends is refused, rather than stored half
 written.
 
-## Putting a new item inside its parent's folder: `--nest`
+## Where a child's folder goes: `--parent` and `--flat`
 
-`tcw work new --parent <epic> --nest` makes the new item part of `<epic>` and
-puts its folder inside the epic's folder, so its id-path (its folder's path in
-the work store) becomes `<epic folder>/<new folder>`:
+`--parent` on `tcw work new`, `tcw taxonomy add` and `tcw capabilities add`
+records the new object's parent and, when the parent is one of this project's
+own objects, puts the new folder inside the parent's folder. A new work item's
+id-path (its folder's path in the work store) then becomes
+`<epic folder>/<new folder>`:
 
 ```text
-$ tcw work new 'A part' --parent 2026-10-24-app-epic --nest < request.md
+$ tcw work new 'A part' --parent 2026-10-24-app-epic < request.md
 app.work/2026-10-24-app-epic/2026-10-24-a-part
 ```
 
-Without `--nest`, the folder is made at the top of the work store and the item
-is linked to its parent only by its `parent` field. `--nest` without
-`--parent` is a usage error (exit code 2). When the parent belongs to another
-project, the item is made at the top of this project's work folder, with a
-`not nested:` line on stderr saying why. The [work guide](work.md) describes
-nested items.
+A capability's path is read inside the parent's folder, unless it already
+starts with the parent's path and a `/`, in which case it is used as given.
+With parent `billing/invoices`, `bulk` makes `billing/invoices/bulk`, and so
+does `billing/invoices/bulk`. Either way the new folder must be directly
+inside the parent's: a deeper path, such as `extra/bulk`, is refused with exit
+code 2, since only capabilities and `resources/` may sit in a capability's
+folder; give the deeper capability as `--parent` instead.
+An inherited parent holds the folder when this project has its own override
+at the parent's path.
+
+`--flat` keeps the folder where it would be without a parent: the top of the
+work or taxonomy store, or, for a capability, the path read as without
+`--parent`, namespace folder first. The `parent` field is recorded all the
+same; it, not the folder, is what makes the object a child. `--flat` without
+`--parent` is a usage error (exit code 2).
+
+When the parent is not this project's own, because it is inherited (with no
+override here) or belongs to another project, its folder cannot hold the new
+one: the command behaves as
+with `--flat` and a `not nested:` line on stderr says so. A capability's path
+is then read as given, so it must name its namespace folder. The
+[work guide](work.md) describes nested items.
 
 ## Naming an object
 

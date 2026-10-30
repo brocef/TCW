@@ -56,6 +56,22 @@ work system are planned for TCW 5.0.
   patch is ever needed, it is cut on that branch and published by pushing its
   tag.
 
+## A child's folder goes inside its parent's
+
+`--parent` on `tcw work new`, `tcw taxonomy add` and `tcw capabilities add`
+now puts the new folder inside the parent's folder whenever the parent is one
+of your project's own, so `tcw work new 'Part' --parent 2026-10-01-epic` makes
+`2026-10-01-epic/<date>-part`. A capability's path is read inside the
+parent's folder:
+`tcw capabilities add bulk --parent billing/invoices` makes
+`billing/invoices/bulk`, and `billing/invoices/bulk` still works as written;
+a deeper path, such as `extra/bulk`, is refused, naming the capability to give
+as `--parent` instead.
+To keep the folder where it would be without a parent, add `--flat`, or in
+the web app tick **Keep its folder at the top of the work folder**. A parent
+that is inherited, or belongs to another project, cannot hold the folder: the
+command says so, and makes it as `--flat` would.
+
 ## `tcw project provision` fetches connected projects
 
 A project already on this machine is never fetched again. If a manifest

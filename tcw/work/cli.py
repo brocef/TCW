@@ -178,10 +178,10 @@ def creation_stage(backend: WorkBackend, stage: str | None) -> str:
 
 
 def new_item(backend: WorkBackend, title: str, changes: Changes, *,
-             stage: str | None, request: str | None, nest: bool = False):
+             stage: str | None, request: str | None, nest: bool = True):
     """Create an item in this project, where `creation_stage` says, and inside
-    its parent's folder when `nest` is true and the parent is an item of this
-    project. What `new` and the web viewer both call."""
+    its parent's folder unless `nest` is false (`--flat`) or the parent is not
+    an item of this project. What `new` and the web viewer both call."""
     return backend.create(title, changes, stage=creation_stage(backend, stage),
                           request=request, nest=nest)
 
@@ -260,8 +260,8 @@ def _new(args) -> int:
         raise UsageError(f"--stage accepts only {inbox_stage()}")
     if args.assign_me:
         _alone(args, "--assign-me")
-    if args.nest and args.parent is None:
-        raise UsageError("--nest puts the item's folder inside its parent's; "
+    if args.flat and not args.parent:
+        raise UsageError("--flat keeps a child's folder out of its parent's; "
                          "give the parent with --parent")
     if args.project:
         # Before the read of piped input and before anything is opened, so
@@ -284,7 +284,7 @@ def _new(args) -> int:
     changes = _references(changes, backend, root)
     # A failure after creation carries the name; `tcw.cli.main` prints it.
     item = new_item(backend, args.title, changes, stage=args.stage, request=request,
-                    nest=args.nest)
+                    nest=not args.flat)
     print(item.slug)
     return codes.OK
 
@@ -923,16 +923,17 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                 examples=["new 'Refund a payment' --priority high < ask.md",
                           "new 'Support SSO' --parent planning.work/2026-10-01-sso "
                           "--tag auth",
-                          "new 'Part' --parent 2026-10-01-epic --nest"])
+                          "new 'Part' --parent 2026-10-01-epic --flat"])
     p.add_argument("title", help="the item's title; the folder name is made from it")
     # Removed in TCW 4; kept only to say so (TCW-114 Design 2.1).
     p.add_argument("--project", help=argparse.SUPPRESS)
     p.add_argument("--stage", help=f"{inbox_stage()}, to start it there (filesystem "
                                    f"mode only)")
     _properties(p, editing=False)
-    p.add_argument("--nest", action="store_true",
-                   help="put the new item's folder inside its parent's folder, when "
-                        "the parent is an item of this project")
+    p.add_argument("--flat", action="store_true",
+                   help="with --parent: make the folder at the top of the work "
+                        "folder, not inside the parent's; the parent is recorded "
+                        "all the same")
     p.set_defaults(func=_new)
 
     p = command(cmds, "list", help="list items",

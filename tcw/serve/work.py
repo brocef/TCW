@@ -668,11 +668,12 @@ def create(request: Request):
     unknown = sorted(set(props) - set(CREATE_PROPERTIES))
     if unknown:
         raise usage(f"properties has unknown entries: {', '.join(unknown)}")
-    # Inside the parent's folder (TCW-111 Design 5), refused with no parent
-    # before anything is made, as `tcw work new --nest` is.
-    nest = request.field("nest", bool, required=False, default=False)
-    if nest and not props.get("parent"):
-        raise usage("nest puts the item's folder inside its parent's; give the parent")
+    # Inside the parent's folder (TCW-111 Design 5) unless `flat`, which is
+    # refused with no parent before anything is made, as `tcw work new
+    # --flat` is.
+    flat = request.field("flat", bool, required=False, default=False)
+    if flat and not props.get("parent"):
+        raise usage("flat keeps a child's folder out of its parent's; give the parent")
     changes = parse_changes({
         **{k: props[k] for k in ("priority", "effort", "complexity", "assignee",
                                  "parent") if props.get(k)},
@@ -690,7 +691,7 @@ def create(request: Request):
     with request.lock, reported(ctx.backend) as lines:
         item = new_item(ctx.backend, title, changes,
                         stage=request.field("stage", required=False), request=text,
-                        nest=nest)
+                        nest=not flat)
     notes += lines
     answer: dict[str, Any] = {"full-id": str(item.slug)}
     if notes:

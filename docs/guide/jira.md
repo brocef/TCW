@@ -315,8 +315,9 @@ A rejection's reason is the comment the implementation reads next.
 - **`tcw work new "<title>"`** creates the ticket, with its summary, request,
   properties, `TCW Project` and `TCW Item` (when configured), then writes the
   item's folder.
-  With `--parent <item> --nest`, the folder is made inside the parent's, and
-  `TCW Item` holds the nested full identifier. Standard output is the new
+  With `--parent <item>`, the folder is made inside the parent's, and
+  `TCW Item` holds the nested full identifier; `--flat` makes it at the top
+  of the work folder instead. Standard output is the new
   item's full identifier, or the ticket's key when TCW stopped after creating
   the ticket.
 - **`tcw work edit <item>`** changes the ticket's summary, priority, effort,

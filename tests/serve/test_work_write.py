@@ -475,11 +475,11 @@ def test_a_jira_create_answers_a_recorded_blocker_and_not_what_it_wrote(jira, mo
     assert said == ["wrote docs/work/TCW-3-t/tcw-work-item.yaml"]
 
 
-def test_nest_under_another_projects_parent_answers_why_it_is_not_nested(fs):
+def test_another_projects_parent_answers_why_it_is_not_nested(fs):
     """The note that the folder is made at the top, not inside the parent's,
-    names the parent and answers the `nest` the person asked for, so it is a
-    warning on the parent; what was created is not."""
-    answer = fs.post("/api/work", {"title": "Part", "nest": True, "properties": {
+    names the parent, whose folder would otherwise hold the new one, so it is
+    a warning on the parent; what was created is not."""
+    answer = fs.post("/api/work", {"title": "Part", "properties": {
         "parent": "other.work/2026-01-01-x"}})
     assert answer.status == 201, answer.body
     messages = [(w["where"], w["message"]) for w in answer.json["warnings"]]
