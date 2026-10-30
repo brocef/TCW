@@ -119,6 +119,7 @@ def test_an_insteadof_rule_rewrites_the_declared_url(tcw, tmp_path, where):
 @pytest.mark.parametrize("remote", ["git@github-work:org/other.git",
                                     "https://gitlab.example.com/org/planning.git",
                                     "git@evilgithub.com:org/planning.git",
+                                    "git@github.com-evil.example:org/planning.git",
                                     None])
 def test_a_checkout_of_another_repository_is_passed_over_and_said(tcw, tmp_path, remote):
     """Another owner or name, the same owner and name on another real host,

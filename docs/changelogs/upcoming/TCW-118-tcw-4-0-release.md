@@ -41,7 +41,8 @@
 - Looking a project up by ID reads, when neither the manifests of the naming
   project, its ancestors and the projects below it nor the search find it, the
   manifests of the projects those manifests place, going down nearest first.
-  Read last, they never overrule an entry or the search. Before, a
+  Read last, they never overrule an entry or the search, and an entry there
+  naming a wrong folder is passed over rather than stopping the lookup. Before, a
   project could not reach a child of a sibling that only the sibling's
   manifest lists: `tcw project path`, `tcw work show` and `--blocked-by` said
   `no project with ID '<id>' is known or found near this one`. (TCW-118)

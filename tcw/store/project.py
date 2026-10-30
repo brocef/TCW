@@ -333,9 +333,10 @@ def _alias_of(alias: str, host: str) -> bool:
     after a `-` or before a `.`, such as `github.com-work` or
     `work.github.com`, the forms used to keep one SSH key per account."""
     alias, host = alias.lower(), host.lower()
+    part = r"[a-z0-9_-]+"
     return bool(re.fullmatch(r"[a-z0-9][a-z0-9_-]*", alias)
-                or re.fullmatch(re.escape(host) + r"-[a-z0-9_.-]+", alias)
-                or re.fullmatch(r"[a-z0-9_.-]+\." + re.escape(host), alias))
+                or re.fullmatch(re.escape(host) + "-" + part, alias)
+                or re.fullmatch(rf"{part}(\.{part})*\." + re.escape(host), alias))
 
 
 def search_rounds(named_by: Path, anchors: tuple[Path, Path] | None
@@ -1955,10 +1956,11 @@ class FsProjectRegistry(ProjectRegistry):
         first and in the order the entries are written, each project once.
         So a child of a sibling, listed only in that sibling's manifest, is
         found. These manifests are read only when the family's manifests
-        place no entry and the search finds nothing (`_answer`), so they
-        never overrule either. A manifest read only here that has a problem
-        is passed over and not recorded: it names nothing this lookup can
-        use, and it is reported where it is part of the family."""
+        have no entry and the search finds no folder declaring the ID
+        (`_answer`), so they never overrule either. A manifest read only
+        here that has a problem, or an entry in one that names a wrong
+        folder, is passed over and not recorded: it names nothing this
+        lookup can use, and it is reported where it is part of the family."""
         seen = {self._identity(root) for root in roots}
         frontier = list(roots)
         while frontier:
@@ -2027,17 +2029,30 @@ class FsProjectRegistry(ProjectRegistry):
                     return answer if conflict is None else _Answer(
                         problem=conflict, named=True)
         matches, problems = _search(self, project_id, named_by)
-        if not matches:
+        if not matches and not problems:
             # The manifests reached only in passing are read after the
-            # search, and only when it finds nothing: they add a project the
-            # family's manifests and the search cannot reach, and never
-            # overrule either, so a stale entry in an unrelated project's
-            # manifest cannot stop this one (TCW-118, combined review).
+            # search, and only when it finds no folder declaring the ID, not
+            # even one it cannot read: they add a project the family's
+            # manifests and the search cannot reach, and never overrule
+            # either. An entry there that names a wrong folder is passed
+            # over, unrecorded, as a problem in the whole manifest is, so a
+            # stale entry in an unrelated project's manifest cannot stop this
+            # one (TCW-118, combined review). The first entry that finds the
+            # folder decides; failing that, the first that names a folder not
+            # on this machine, which provisioning can fill.
+            not_here = None
             for root in self._located_by(roots):
                 for _, base, entries in self._manifests_of(root, record=False) or []:
-                    if project_id in entries:
-                        return replace(self._entry_answer(entries[project_id], base),
-                                       owner=base)
+                    if project_id not in entries:
+                        continue
+                    answer = replace(self._entry_answer(entries[project_id], base,
+                                                        record=False), owner=base)
+                    if answer.folder is not None:
+                        return answer
+                    if answer.problem is None and not_here is None:
+                        not_here = answer
+            if not_here is not None:
+                return not_here
         if problems and not matches and all(path.name == Path(SENTINEL).name
                                             for path, _ in problems):
             # A version this TCW cannot read: a gap in an ancestor (TCW-109

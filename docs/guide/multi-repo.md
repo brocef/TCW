@@ -238,12 +238,17 @@ first answer of these:
    the top project needs a manifest entry for each package it lists as a
    child. On macOS, the search does not test the Desktop, Documents and
    Downloads folders of the home folder as folders next to a project.
-4. **When the search finds nothing,** the manifests of every project the
-   manifests above place, then of those the next manifests place, going
-   down, nearest first. So a project can reach a child of a sibling that only
-   the sibling's manifest lists; a project found this way is not added to any
-   view. These manifests come last so that an entry in a project the naming
-   project is not related to never overrules what the steps above find.
+4. **When the search finds no folder declaring the ID**, not even one it
+   cannot read, the manifests of every project the manifests above place,
+   then of those the next manifests place, going down, nearest first. So a
+   project can reach a child of a sibling that only the sibling's manifest
+   lists; a project found this way is not added to any view. The first entry
+   whose folder holds the project decides. An entry naming a folder that
+   holds something else is passed over, and one naming a folder not on this
+   machine is used only if no later entry finds the project. These manifests
+   come last, and their wrong entries are passed over, so that a project the
+   naming project is not related to never overrules what the steps above
+   find, or stops the lookup.
 
 When the search finds two folders declaring the same ID, the lookup is an
 error naming both, and an entry decides between them:

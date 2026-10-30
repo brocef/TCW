@@ -16,8 +16,8 @@ from pathlib import Path
 
 import pytest
 
-from tcw.errors import UnknownProject
-from tcw.store.project import FsProjectRegistry
+from tcw.errors import ProjectGraphError, UnknownProject
+from tcw.store.project import LEGACY_SENTINEL, FsProjectRegistry
 from tests.families import Family, _project, build_family, item_folder
 from tests.projectfiles import write_manifest
 from tests.test_project_lookup import lookup, proj, reads  # noqa: F401  (a fixture)
@@ -110,11 +110,12 @@ def test_the_nearest_manifest_decides(tmp_path):
     near = proj(tmp_path / "near", "near")
     one = proj(tmp_path / "x" / "lib", "lib")
     proj(tmp_path / "y" / "lib", "lib")
+    deeper = proj(tmp_path / "deeper", "deeper")
     write_manifest(ws, {"deep": "../deep", "near": "../near"})
     write_manifest(app, {"ws": "../ws"})
-    write_manifest(deep, {"deeper": "../near"})
+    write_manifest(deep, {"deeper": "../deeper"})
+    write_manifest(deeper, {"lib": "../y/lib"})
     write_manifest(near, {"lib": "../x/lib"})
-    proj(tmp_path / "deeper", "deeper")
     assert lookup(app, "lib") == one
 
 
@@ -151,6 +152,57 @@ def test_the_search_decides_over_an_entry_reached_in_passing(tmp_path):
     write_manifest(app, {"ws": "../ws"})
     write_manifest(srv, {"ws": "../ws", "lib": "../far/lib"})
     assert lookup(app, "lib") == beside
+
+
+def test_a_wrong_entry_reached_in_passing_is_passed_over_for_a_right_one(tmp_path):
+    """The search finds nothing. `srv`'s manifest places `lib` at a folder
+    that declares another project, and `tools`'s, read after it, places it
+    where it is: the wrong entry is passed over, unrecorded, and the right
+    one decides."""
+    ws = proj(tmp_path / "ws", "ws")
+    app = proj(tmp_path / "app", "app", parent=["ws"])
+    srv = proj(tmp_path / "srv", "srv", parent=["ws"])
+    tools = proj(tmp_path / "tools", "tools", parent=["ws"])
+    real = proj(tmp_path / "real" / "lib", "lib")
+    write_manifest(ws, {"app": "../app", "srv": "../srv", "tools": "../tools"})
+    write_manifest(app, {"ws": "../ws"})
+    write_manifest(srv, {"lib": "../tools"})
+    write_manifest(tools, {"lib": "../real/lib"})
+    registry = FsProjectRegistry.open(app)
+    assert registry.project_folder("lib", app) == real
+    assert registry.check() == []
+
+
+def test_an_entry_reached_in_passing_for_a_folder_not_here_gives_way(tmp_path):
+    """A first entry naming a folder not on this machine gives way to a
+    later one that finds the project."""
+    ws = proj(tmp_path / "ws", "ws")
+    app = proj(tmp_path / "app", "app", parent=["ws"])
+    srv = proj(tmp_path / "srv", "srv", parent=["ws"])
+    tools = proj(tmp_path / "tools", "tools", parent=["ws"])
+    real = proj(tmp_path / "real" / "lib", "lib")
+    write_manifest(ws, {"app": "../app", "srv": "../srv", "tools": "../tools"})
+    write_manifest(app, {"ws": "../ws"})
+    write_manifest(srv, {"lib": "../gone/lib"})
+    write_manifest(tools, {"lib": "../real/lib"})
+    assert lookup(app, "lib") == real
+
+
+def test_a_3x_copy_the_search_finds_is_not_overruled_in_passing(tmp_path):
+    """The search finds a 3.x `lib` beside `app`; a sibling's manifest
+    places a 4.0 `lib` elsewhere. The search's answer stands: the lookup
+    says to migrate the copy beside `app`, as it does with no such entry."""
+    ws = proj(tmp_path / "ws", "ws")
+    app = proj(tmp_path / "app", "app", parent=["ws"])
+    srv = proj(tmp_path / "srv", "srv", parent=["ws"])
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / LEGACY_SENTINEL).write_text("id: lib\n")
+    proj(tmp_path / "far" / "lib", "lib")
+    write_manifest(ws, {"app": "../app", "srv": "../srv"})
+    write_manifest(app, {"ws": "../ws"})
+    write_manifest(srv, {"ws": "../ws", "lib": "../far/lib"})
+    with pytest.raises(ProjectGraphError, match="tcw migrate"):
+        FsProjectRegistry.open(app).project_folder("lib", app)
 
 
 def test_a_cycle_of_manifests_ends_and_an_id_nowhere_is_unknown(tmp_path):
