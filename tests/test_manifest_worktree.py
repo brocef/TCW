@@ -383,6 +383,26 @@ def test_a_3x_copy_where_a_worktrees_path_lands_is_reported_not_the_mains(tmp_pa
     assert (found.code, found.out.strip()) == (0, str(k_e)), found
 
 
+def test_a_3x_copy_in_the_worktree_stands_for_the_mains_path(tmp_path):
+    """The same, inside one repository: `r` holds `a` and `b`, and `a`'s
+    personal manifest places `b` by its path in the main checkout. In the
+    linked worktree `b` is still 3.x while the main checkout's `b` is 4.0:
+    the worktree's 3.x copy is the one reported, never the main checkout's."""
+    main = tmp_path / "m" / "r"
+    proj(main / "a", "a")
+    main_b = proj(main / "b", "b")
+    git(main, "init", "-q", "-b", "main")
+    _commit_all(main)
+    worktree = _linked(main, tmp_path / "k" / "r")
+    write_manifest(worktree / "a", {"b": str(main_b)}, local=True)
+    (worktree / "b" / ".tcw" / "tcw-config.yaml").unlink()
+    (worktree / "b" / "tcw-config.yaml").write_text("id: b\n")
+    found = tcw(worktree / "a", "project", "path", "b", env=personal_env(tmp_path))
+    assert found.code != 0, found
+    assert str(worktree / "b") in found.err and "tcw migrate" in found.err, found.err
+    assert str(main_b.resolve()) not in found.out + found.err
+
+
 # -- A store path whose store declares a repository -------------------------------------
 #
 # `<component>.path` sits beside `<component>.repository`, so a path read as

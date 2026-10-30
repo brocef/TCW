@@ -604,13 +604,13 @@ this way:
   manifest entry or a store location that leads out of the repository is
   read where it is written when it lands on a project or folder inside a
   checkout, main or linked, of another repository, and of the repository the
-  entry or the store's `repository` names when it names one. A project
-  there counts whatever its version: a 3.x copy there is the one reported
-  as needing `tcw migrate`, never the main checkout's copy on another
-  branch. So worktrees
+  entry or the store's `repository` names when it names one. So worktrees
   made one inside another, such as a child repository's worktree placed
   inside its workspace's worktree, read each other, not the folders they
-  were made from. The search does the same: from a worktree whose folder
+  were made from. A project counts there whatever its version, as does one
+  in the worktree itself that a path into the main checkout stands for: a
+  3.x copy on the worktree's side is the one reported as needing
+  `tcw migrate`, never the main checkout's copy on another branch. The search does the same: from a worktree whose folder
   lies inside another repository's checkout, it looks next to and above the
   worktree itself first, and next to and above the main checkout only when
   that finds nothing, so a worktree kept in a workspace repository's
