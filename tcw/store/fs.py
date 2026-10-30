@@ -3117,7 +3117,7 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
             raise UsageError(
                 f"{given} is read inside {holder}'s folder, where only capabilities "
                 f"and resources/ may sit, and the new folder must be directly inside "
-                f"it; give one part, such as {leaf}, pass the capability it belongs "
+                f"it; give one part, such as {leaf}, or pass the capability it belongs "
                 f"under as the parent, such as --parent {holder}/{deeper}{hint}")
         return f"{holder}/{rest}"
 
