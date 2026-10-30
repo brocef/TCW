@@ -85,6 +85,8 @@ def _insteadof(config: Path) -> None:
     "git@github.com:org/planning.git",
     "git@github-work:org/planning.git",       # an SSH host alias
     "git@github-work:Org/Planning",           # its owner and name in another case
+    "git@github.com-work:org/planning.git",   # an alias that adds to the real host
+    "git@work.github.com:org/planning.git",
 ])
 def test_a_checkout_of_the_declared_repository_is_read_as_written(tcw, tmp_path, remote):
     planning, child = _repositories(tmp_path / "real", remote)
@@ -116,6 +118,7 @@ def test_an_insteadof_rule_rewrites_the_declared_url(tcw, tmp_path, where):
 
 @pytest.mark.parametrize("remote", ["git@github-work:org/other.git",
                                     "https://gitlab.example.com/org/planning.git",
+                                    "git@evilgithub.com:org/planning.git",
                                     None])
 def test_a_checkout_of_another_repository_is_passed_over_and_said(tcw, tmp_path, remote):
     """Another owner or name, the same owner and name on another real host,

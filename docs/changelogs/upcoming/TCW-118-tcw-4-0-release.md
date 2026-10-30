@@ -38,9 +38,10 @@
 - `tcw migrate`'s D1 no longer says a project now inherits terms that 3.x
   already passed it through a chain of `taxonomy.extends`, and no longer
   names a project with no terms, or no capabilities, to pass. (TCW-118)
-- Looking a project up by ID reads, after the manifests of the naming project,
-  its ancestors and the projects below it, the manifests of the projects those
-  manifests place, going down nearest first, as the design says. Before, a
+- Looking a project up by ID reads, when neither the manifests of the naming
+  project, its ancestors and the projects below it nor the search find it, the
+  manifests of the projects those manifests place, going down nearest first.
+  Read last, they never overrule an entry or the search. Before, a
   project could not reach a child of a sibling that only the sibling's
   manifest lists: `tcw project path`, `tcw work show` and `--blocked-by` said
   `no project with ID '<id>' is known or found near this one`. (TCW-118)
@@ -192,7 +193,9 @@
 - A checkout counts as one of the repository a store or manifest entry
   declares when one of its remotes names it in another form: the same
   owner and name through an SSH host alias (`git@<alias>:<owner>/<name>.git`
-  for `https://github.com/<owner>/<name>.git`), or a URL that a
+  for `https://github.com/<owner>/<name>.git`, where the alias is a name
+  with no dot, such as `github-work`, or the real host with a part added,
+  such as `github.com-work` or `work.github.com`), or a URL that a
   `url.<base>.insteadOf` rule in the checkout's git config, `~/.gitconfig` or
   `$XDG_CONFIG_HOME/git/config` rewrites to it. A store path leaving a linked
   worktree that lands on a checkout of another repository, one with no

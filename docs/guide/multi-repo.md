@@ -225,10 +225,7 @@ first answer of these:
    project is refused. A relative value is read from the current folder.
 2. **A manifest entry**: the naming project's personal manifest, then its
    shared one, then the manifests of its ancestors that TCW has read, in the
-   reverse of its load order, then those of the projects below it, and then,
-   going down, those of every project these manifests place, nearest first.
-   So a project can reach a child of a sibling that only the sibling's
-   manifest lists; a project found this way is not added to any view.
+   reverse of its load order, and then those of the projects below it.
    **The entry decides**, whatever is on disk: when the folder it gives is empty,
    or holds only `.git` (what a clone that stopped leaves behind), the
    project counts as not on this machine, and TCW does not go on looking
@@ -241,6 +238,12 @@ first answer of these:
    the top project needs a manifest entry for each package it lists as a
    child. On macOS, the search does not test the Desktop, Documents and
    Downloads folders of the home folder as folders next to a project.
+4. **When the search finds nothing,** the manifests of every project the
+   manifests above place, then of those the next manifests place, going
+   down, nearest first. So a project can reach a child of a sibling that only
+   the sibling's manifest lists; a project found this way is not added to any
+   view. These manifests come last so that an entry in a project the naming
+   project is not related to never overrules what the steps above find.
 
 When the search finds two folders declaring the same ID, the lookup is an
 error naming both, and an entry decides between them:

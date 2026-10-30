@@ -118,6 +118,41 @@ def test_the_nearest_manifest_decides(tmp_path):
     assert lookup(app, "lib") == one
 
 
+def test_a_stale_entry_in_an_unrelated_manifest_never_overrules_the_search(tmp_path):
+    """The combined review of TCW-118: `srv`, a sibling of `app`, has an
+    entry for `lib` naming a folder that is not on this machine, and the
+    search from `app` finds `lib` beside it. The manifests reached only in
+    passing are read after the search, so the search's answer stands and
+    every command of `app` works, as it does with no such entry."""
+    family = workspace(tmp_path)
+    family.roots["lib"] = _project(tmp_path, "lib")
+    family.write_config("lib", {**family.config("lib"), "children": ["app"]})
+    family.write_config("app", {**family.config("app"), "parents": ["ws", "lib"]})
+    write_manifest(family["srv"], {"ws": "../ws", "plug": "plug",
+                                   "lib": "../elsewhere/lib"})
+    family.item("lib", item_folder("lib"))
+    path = family.run("app", "project", "path", "lib")
+    assert (path.code, path.out.strip()) == (0, str(family["lib"].resolve())), path.err
+    for args in (("work", "list"), ("validate",)):
+        result = family.run("app", *args)
+        assert result.code == 0, (args, result.out + result.err)
+
+
+def test_the_search_decides_over_an_entry_reached_in_passing(tmp_path):
+    """Two folders declare `lib`: one beside `app`, which the search finds,
+    and one that only a sibling's manifest places. The search's answer is
+    used, with no problem recorded."""
+    ws = proj(tmp_path / "ws", "ws")
+    app = proj(tmp_path / "app", "app", parent=["ws"])
+    srv = proj(tmp_path / "srv", "srv", parent=["ws"])
+    beside = proj(tmp_path / "lib", "lib")
+    proj(tmp_path / "far" / "lib", "lib")
+    write_manifest(ws, {"app": "../app", "srv": "../srv"})
+    write_manifest(app, {"ws": "../ws"})
+    write_manifest(srv, {"ws": "../ws", "lib": "../far/lib"})
+    assert lookup(app, "lib") == beside
+
+
 def test_a_cycle_of_manifests_ends_and_an_id_nowhere_is_unknown(tmp_path):
     ws = proj(tmp_path / "ws", "ws")
     app = proj(tmp_path / "app", "app", parent=["ws"])

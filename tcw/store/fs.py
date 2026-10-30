@@ -3113,12 +3113,18 @@ class FsCapabilitiesStore(FsTreeStore, CapabilitiesStore):
         rest = given[len(holder) + 1:] if long else given
         if "/" in rest:
             deeper, leaf = rest.rsplit("/", 1)
-            hint = "" if long else f", or pass --flat to use {given} as the whole path"
+            ways = [f"give one part, such as {leaf}"]
+            # Named only when it exists, so a path meant whole, such as
+            # billing/invoices/x under billing/inv, gets no made-up parent.
+            if self._is_capability(self.root / holder / deeper):
+                ways.append(f"pass the capability it belongs under as the parent, "
+                            f"such as --parent {holder}/{deeper}")
+            if not long:
+                ways.append(f"pass --flat to use {given} as the whole path")
             raise UsageError(
                 f"{given} is read inside {holder}'s folder, where only capabilities "
                 f"and resources/ may sit, and the new folder must be directly inside "
-                f"it; give one part, such as {leaf}, or pass the capability it belongs "
-                f"under as the parent, such as --parent {holder}/{deeper}{hint}")
+                f"it; {', or '.join(ways)}")
         return f"{holder}/{rest}"
 
     def remove(self, identifier: "FullId | str") -> None:
