@@ -346,7 +346,11 @@ root or in a folder that only groups objects, as a 3.x ledger may keep, is no
 finding; any other file there is a warning. Read every changed file
 (`git status` and `git diff` inside git), then commit the project, CI's
 version limit raised in the same change (step 6 of
-[Before you start](#before-you-start)).
+[Before you start](#before-you-start)). TCW writes its files in its own
+YAML style, two spaces to an indent, so a formatter or linter that checks
+the project's YAML, such as `prettier --check`, may now fail on the new
+`.tcw/tcw-manifest.yaml` and `.tcw/tcw-migration.yaml`: leave `.tcw/` out of
+its checks, as a 3.x project left out its root `tcw-config.yaml`.
 
 `tcw migrate` does not check git and commits nothing. It runs whether or not
 the working tree has changes, and leaves committing to you.
@@ -847,12 +851,16 @@ states the rules in full; in short:
    another project's item as `<project>/<folder>`":
 
    ```sh
-   grep -rnE --exclude-dir=.git '(^|[^/]|(^|[^w])/|(^|[^c])w/|(^|[^t])cw/|(^|[^.])tcw/)tcw-config(\.local)?\.yaml|(^|[^-])item\.yaml|meta\.yaml|cap-[0-9a-f]{6}|tcw://([a-z0-9-]+/)?[CWT]/|(^|[^a-zA-Z0-9./_-])[a-z0-9-]+/([0-9]{4}-[0-9]{2}-[0-9]{2}|[A-Z][A-Z0-9_]*-[0-9]+)-|>/<folder>' .
+   grep -rnE --exclude-dir=.git --exclude=tcw-migration.yaml '(^|[^/]|(^|[^w])/|(^|[^c])w/|(^|[^t])cw/|(^|[^.])tcw/)tcw-config(\.local)?\.yaml|(^|[^-])item\.yaml|meta\.yaml|cap-[0-9a-f]{6}|tcw://([a-z0-9-]+/)?[CWT]/|(^|[^a-zA-Z0-9./_-])[a-z0-9-]+/([0-9]{4}-[0-9]{2}-[0-9]{2}|[A-Z][A-Z0-9_]*-[0-9]+)-|>/<folder>' .
    ```
 
    It leaves out the 4.0 forms, such as `.tcw/tcw-config.yaml`,
-   `tcw-work-item.yaml` and `app.work/2026-10-24-add-export`, but each hit
-   still needs reading: text that names a 3.x form on purpose, such as a
+   `tcw-work-item.yaml` and `app.work/2026-10-24-add-export`, and
+   `.tcw/tcw-migration.yaml`, whose lines name the 3.x capability IDs on
+   purpose. One hit in every migrated project is 4.0's own: the line
+   `/tcw-config.local.yaml` in `.tcw/.gitignore`, which names the personal
+   file beside `.tcw/tcw-config.yaml`. Each other hit still needs reading:
+   text that names a 3.x form on purpose, such as a
    changelog, an old work item's documents or this guide, matches too, as
    can a path that only looks like an item's slug, and a `meta.yaml` some
    other tool uses.

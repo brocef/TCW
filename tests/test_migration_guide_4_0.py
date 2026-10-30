@@ -197,9 +197,11 @@ def ready_searches() -> list[str]:
     """The regular expressions of the guide's two ready searches, each a
     `grep -rnE --exclude-dir=.git '<pattern>' .` line in a fenced block: the
     first for removed commands and flags, the second for 3.x file names and
-    name forms."""
+    name forms, which also leaves out `tcw-migration.yaml`, the file whose
+    lines name 3.x capability IDs on purpose."""
     body = section(GUIDE, 2, SCRIPTS_SECTION)
-    found = re.findall(r"^ *grep -rnE --exclude-dir=\.git '([^']+)' \.$", body, re.M)
+    found = re.findall(r"^ *grep -rnE --exclude-dir=\.git"
+                       r"(?: --exclude=tcw-migration\.yaml)? '([^']+)' \.$", body, re.M)
     assert len(found) == 2, f"expected two ready searches, found {found}"
     return found
 

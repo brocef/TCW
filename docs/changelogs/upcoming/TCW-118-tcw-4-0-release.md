@@ -143,7 +143,10 @@
 - The 3.x to 4.0 migration guide gives a second `grep` command that finds 3.x file names
   (`tcw-config.yaml` at a project's root, `item.yaml`, `meta.yaml`) and name forms (`<project>/<folder>`,
   `tcw://C/…`, a capability's `cap-` id) in agent-instruction files and scripts, leaving out the 4.0
-  forms, and says its hits need reading.
+  forms and `.tcw/tcw-migration.yaml`, and says its hits need reading and that the `.tcw/.gitignore`
+  line `/tcw-config.local.yaml` is 4.0's own.
+- The migration guide says a formatter or linter that checks a project's YAML may fail on the new
+  `.tcw/tcw-manifest.yaml` and `.tcw/tcw-migration.yaml`, and to leave `.tcw/` out of its checks.
 - The migration guide says that `TCW_SLUG` holds the full identifier in 4.0, that a `generate:` script's
   input is `"schema": 2`, and that converting tickets from any copy affects every 3.x user of that Jira
   project.
