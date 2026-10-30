@@ -38,9 +38,11 @@
 - `tcw migrate`'s D1 no longer says a project now inherits terms that 3.x
   already passed it through a chain of `taxonomy.extends`, and no longer
   names a project with no terms, or no capabilities, to pass. (TCW-118)
-- Looking a project up by ID reads, after the manifests of the naming project,
-  its ancestors and the projects below it, the manifests of the projects those
-  manifests place, going down nearest first, as the design says. Before, a
+- Looking a project up by ID reads, when neither the manifests of the naming
+  project, its ancestors and the projects below it nor the search find it, the
+  manifests of the projects those manifests place, going down nearest first.
+  Read last, they never overrule an entry or the search, and an entry there
+  naming a wrong folder is passed over rather than stopping the lookup. Before, a
   project could not reach a child of a sibling that only the sibling's
   manifest lists: `tcw project path`, `tcw work show` and `--blocked-by` said
   `no project with ID '<id>' is known or found near this one`. (TCW-118)
@@ -141,7 +143,10 @@
 - The 3.x to 4.0 migration guide gives a second `grep` command that finds 3.x file names
   (`tcw-config.yaml` at a project's root, `item.yaml`, `meta.yaml`) and name forms (`<project>/<folder>`,
   `tcw://C/…`, a capability's `cap-` id) in agent-instruction files and scripts, leaving out the 4.0
-  forms, and says its hits need reading.
+  forms and `.tcw/tcw-migration.yaml`, and says its hits need reading and that the `.tcw/.gitignore`
+  line `/tcw-config.local.yaml` is 4.0's own.
+- The migration guide says a formatter or linter that checks a project's YAML may fail on the new
+  `.tcw/tcw-manifest.yaml` and `.tcw/tcw-migration.yaml`, and to leave `.tcw/` out of its checks.
 - The migration guide says that `TCW_SLUG` holds the full identifier in 4.0, that a `generate:` script's
   input is `"schema": 2`, and that converting tickets from any copy affects every 3.x user of that Jira
   project.
@@ -192,7 +197,9 @@
 - A checkout counts as one of the repository a store or manifest entry
   declares when one of its remotes names it in another form: the same
   owner and name through an SSH host alias (`git@<alias>:<owner>/<name>.git`
-  for `https://github.com/<owner>/<name>.git`), or a URL that a
+  for `https://github.com/<owner>/<name>.git`, where the alias is a name
+  with no dot, such as `github-work`, or the real host with a part added,
+  such as `github.com-work` or `work.github.com`), or a URL that a
   `url.<base>.insteadOf` rule in the checkout's git config, `~/.gitconfig` or
   `$XDG_CONFIG_HOME/git/config` rewrites to it. A store path leaving a linked
   worktree that lands on a checkout of another repository, one with no

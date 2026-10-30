@@ -97,6 +97,8 @@ def test_a_folder_between_is_refused(tcw, demo):
     long = tcw(["capabilities", "add", "cli/x/extra/w", "--parent", "cli/x"], demo)
     assert long.code == 2, long
     assert "such as w" in long.err and "--flat" not in long.err
+    # No capability is at cli/x/extra, so none is suggested as the parent.
+    assert "--parent" not in long.err
     assert snapshot(demo) == before
 
 

@@ -8,7 +8,6 @@ import subprocess
 import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
-from itertools import chain
 from typing import Any, Iterator
 
 import yaml
@@ -297,8 +296,8 @@ def _names_repository(url: str, found) -> bool:
     repository when their normalized forms are equal, before or after the
     `url.<base>.insteadOf` rules of the checkout's git config and of the
     user's own git config files rewrite either; or when one of them names
-    its host by an SSH alias, a name with no dot in it that the user's SSH
-    configuration maps to a real host, and their last two path parts, the
+    its host by an SSH alias that the user's SSH configuration maps to a
+    real host (`_alias_of`), and their last two path parts, the
     owner and the repository's name, are equal, ignoring case. A checkout
     with no remote names nothing."""
     rules = (*found[2], *_insteadof_rules_of_user())
@@ -324,9 +323,20 @@ def _same(a: str, b: str) -> bool:
         return True
     (host_a, _, path_a), (host_b, _, path_b) = a.partition("/"), b.partition("/")
     owner_a, owner_b = path_a.lower().split("/")[-2:], path_b.lower().split("/")[-2:]
-    alias = re.compile(r"[a-z0-9][a-z0-9_-]*")
     return (len(owner_a) == 2 and owner_a == owner_b and bool(host_a) and bool(host_b)
-            and bool(alias.fullmatch(host_a) or alias.fullmatch(host_b)))
+            and (_alias_of(host_a, host_b) or _alias_of(host_b, host_a)))
+
+
+def _alias_of(alias: str, host: str) -> bool:
+    """Whether `alias` reads as an SSH alias for `host` (`_names_repository`):
+    a name with no dot, such as `github-work`, or `host` with a part added
+    after a `-` or before a `.`, such as `github.com-work` or
+    `work.github.com`, the forms used to keep one SSH key per account."""
+    alias, host = alias.lower(), host.lower()
+    part = r"[a-z0-9_-]+"
+    return bool(re.fullmatch(r"[a-z0-9][a-z0-9_-]*", alias)
+                or re.fullmatch(re.escape(host) + "-" + part, alias)
+                or re.fullmatch(rf"{part}(\.{part})*\." + re.escape(host), alias))
 
 
 def search_rounds(named_by: Path, anchors: tuple[Path, Path] | None
@@ -1945,9 +1955,12 @@ class FsProjectRegistry(ProjectRegistry):
         their entries place, then of those the next manifests place, breadth
         first and in the order the entries are written, each project once.
         So a child of a sibling, listed only in that sibling's manifest, is
-        found. A manifest read only here that has a problem is passed over
-        and not recorded: it names nothing this lookup can use, and it is
-        reported where it is part of the family."""
+        found. These manifests are read only when the family's manifests
+        have no entry and the search finds no folder declaring the ID
+        (`_answer`), so they never overrule either. A manifest read only
+        here that has a problem, or an entry in one that names a wrong
+        folder, is passed over and not recorded: it names nothing this
+        lookup can use, and it is reported where it is part of the family."""
         seen = {self._identity(root) for root in roots}
         frontier = list(roots)
         while frontier:
@@ -1999,10 +2012,8 @@ class FsProjectRegistry(ProjectRegistry):
                                             if o.id == project_id and o.problem))
             return _Answer(folder=root_of(override), by="variable")
         roots, named = self._family(named_by, project_id)
-        for index, root in enumerate(chain(roots, self._located_by(roots))):
-            manifests = self._manifests_of(root, record=index < len(roots))
-            if manifests is None and index >= len(roots):
-                continue
+        for index, root in enumerate(roots):
+            manifests = self._manifests_of(root)
             if manifests is None:
                 return _Answer(problem=self._manifest_problem[self._root_key(root)])
             for _, base, entries in manifests:
@@ -2018,6 +2029,30 @@ class FsProjectRegistry(ProjectRegistry):
                     return answer if conflict is None else _Answer(
                         problem=conflict, named=True)
         matches, problems = _search(self, project_id, named_by)
+        if not matches and not problems:
+            # The manifests reached only in passing are read after the
+            # search, and only when it finds no folder declaring the ID, not
+            # even one it cannot read: they add a project the family's
+            # manifests and the search cannot reach, and never overrule
+            # either. An entry there that names a wrong folder is passed
+            # over, unrecorded, as a problem in the whole manifest is, so a
+            # stale entry in an unrelated project's manifest cannot stop this
+            # one (TCW-118, combined review). The first entry that finds the
+            # folder decides; failing that, the first that names a folder not
+            # on this machine, which provisioning can fill.
+            not_here = None
+            for root in self._located_by(roots):
+                for _, base, entries in self._manifests_of(root, record=False) or []:
+                    if project_id not in entries:
+                        continue
+                    answer = replace(self._entry_answer(entries[project_id], base,
+                                                        record=False), owner=base)
+                    if answer.folder is not None:
+                        return answer
+                    if answer.problem is None and not_here is None:
+                        not_here = answer
+            if not_here is not None:
+                return not_here
         if problems and not matches and all(path.name == Path(SENTINEL).name
                                             for path, _ in problems):
             # A version this TCW cannot read: a gap in an ancestor (TCW-109

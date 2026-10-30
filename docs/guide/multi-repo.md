@@ -225,10 +225,7 @@ first answer of these:
    project is refused. A relative value is read from the current folder.
 2. **A manifest entry**: the naming project's personal manifest, then its
    shared one, then the manifests of its ancestors that TCW has read, in the
-   reverse of its load order, then those of the projects below it, and then,
-   going down, those of every project these manifests place, nearest first.
-   So a project can reach a child of a sibling that only the sibling's
-   manifest lists; a project found this way is not added to any view.
+   reverse of its load order, and then those of the projects below it.
    **The entry decides**, whatever is on disk: when the folder it gives is empty,
    or holds only `.git` (what a clone that stopped leaves behind), the
    project counts as not on this machine, and TCW does not go on looking
@@ -241,6 +238,18 @@ first answer of these:
    the top project needs a manifest entry for each package it lists as a
    child. On macOS, the search does not test the Desktop, Documents and
    Downloads folders of the home folder as folders next to a project.
+4. **When the search finds no folder declaring the ID**, not even one it
+   cannot read, the manifests of every project the manifests above place,
+   then of those the next manifests place, going down, nearest first. So a
+   project can reach a child of a sibling that only the sibling's manifest
+   lists; a project found this way is not added to any view. The first entry
+   whose folder holds the project decides. An entry whose folder does not
+   hold a 4.0 copy of the project, including a 3.x copy or one a newer TCW
+   wrote, is passed over, and one naming a folder not on this machine is
+   used only if no later entry finds the project. These manifests
+   come last, and their wrong entries are passed over, so that a project the
+   naming project is not related to never overrules what the steps above
+   find, or stops the lookup.
 
 When the search finds two folders declaring the same ID, the lookup is an
 error naming both, and an entry decides between them:
