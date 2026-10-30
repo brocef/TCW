@@ -355,6 +355,34 @@ def test_nested_worktrees_lacking_a_sibling_do_not_find_the_real_one(tmp_path):
     assert found.code != 0, found
     assert str(r2) not in found.out + found.err
 
+def test_a_3x_copy_where_a_worktrees_path_lands_is_reported_not_the_mains(tmp_path):
+    """The evaluation of candidate 6: two repositories side by side, `p`
+    placing `e` with `../e`, each with a linked worktree side by side in
+    another folder. The worktree of `e` is still 3.x while the main checkout
+    of `e` is 4.0. From the worktree of `p`, the path lands on the 3.x copy
+    in the worktree, which is the project to migrate; the main checkout's
+    copy, on another branch, is never read in its place."""
+    main_p = proj(tmp_path / "m" / "p", "p")
+    main_e = proj(tmp_path / "m" / "e", "e")
+    write_manifest(main_p, {"e": "../e"})
+    for repo in (main_p, main_e):
+        git(repo, "init", "-q", "-b", "main")
+        _commit_all(repo)
+    k_p = _linked(main_p, tmp_path / "k" / "p")
+    k_e = _linked(main_e, tmp_path / "k" / "e")
+    (k_e / ".tcw" / "tcw-config.yaml").unlink()
+    (k_e / "tcw-config.yaml").write_text("id: e\n")
+    found = tcw(k_p, "project", "path", "e")
+    assert found.code != 0, found
+    assert str(k_e) in found.err and "tcw migrate" in found.err, found.err
+    assert str(main_e.resolve()) not in found.out + found.err
+    # Once the worktree's copy is migrated too, it is the one read.
+    (k_e / "tcw-config.yaml").unlink()
+    proj(k_e, "e")
+    found = tcw(k_p, "project", "path", "e")
+    assert (found.code, found.out.strip()) == (0, str(k_e)), found
+
+
 # -- A store path whose store declares a repository -------------------------------------
 #
 # `<component>.path` sits beside `<component>.repository`, so a path read as
