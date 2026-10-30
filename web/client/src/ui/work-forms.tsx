@@ -447,7 +447,7 @@ export function NewItemForm({
     const [requestText, setRequestText] = useState("")
     const [props, setProps] = useState<JsonRecord>({})
     const [atStart, setAtStart] = useState(true)
-    const [nest, setNest] = useState(false)
+    const [flat, setFlat] = useState(false)
     const [saving, setSaving] = useState(false)
     const [errors, setErrors] = useState<string[]>([])
     const refusals = useRefusals()
@@ -484,7 +484,7 @@ export function NewItemForm({
             const body: JsonRecord = { title: title.trim(), properties }
             if (requestText.trim()) body.requestText = requestText
             if (project.inboxItems && !atStart) body.stage = project.inboxStage
-            if (nest && properties.parent) body.nest = true
+            if (flat && properties.parent) body.flat = true
             const result = await requestJson<{
                 "full-id"?: string
                 warnings?: unknown
@@ -601,14 +601,15 @@ export function NewItemForm({
                     <Text as="label" size="2">
                         <Flex align="center" gap="2">
                             <Checkbox
-                                checked={nest}
+                                checked={flat}
                                 disabled={!String(props.parent ?? "").trim()}
                                 onCheckedChange={(checked) => {
-                                    setNest(checked === true)
+                                    setFlat(checked === true)
                                     onDirty(true)
                                 }}
                             />
-                            Put its folder inside the parent&apos;s folder
+                            Keep its folder at the top of the work folder, not
+                            inside the parent&apos;s
                         </Flex>
                     </Text>
                     <ReferenceInput

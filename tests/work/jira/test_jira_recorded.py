@@ -350,3 +350,17 @@ def test_the_web_routes_give_the_recorded_sentence_as_a_warning(three, with_item
     answer = served.patch(f"/api/work/{task}", {"changes": {"parent": far_id},
                                                 "expected": {"parent": f"app.work/{epic}"}})
     assert answer.status == 403, answer.body
+
+
+def test_the_not_nested_note_waits_for_the_folder(tcw, three):
+    """TCW-118: the line saying the folder is made at the top comes once the
+    folder is made, so a create that stops before then never says it."""
+    app, far, files, far_id = three
+    refused = tcw(["new", "x", "--parent", f"files.work/{F}", "--assignee", "nobody"],
+                  app.root)
+    assert refused.code != 0, refused
+    assert creates(app.fake) == []
+    assert "not nested" not in refused.err
+    made = tcw(["new", "y", "--parent", f"files.work/{F}"], app.root)
+    assert made.code == 0, made.err
+    assert f"not nested: files.work/{F} belongs to project 'files'" in made.err

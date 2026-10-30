@@ -506,3 +506,23 @@ def test_an_inherited_terms_refusal_names_no_command_the_cli_lacks(inheriting):
     assert "override" not in answer.json["error"]
     for argv in _named_commands(answer.json["error"]):
         build_parser().parse_args(argv)
+
+
+def test_a_term_whose_parent_cannot_hold_it_says_so_as_a_warning(tmp_path, personal_on,
+                                                                 serve_project):
+    """TCW-118 decision 5, on the page: the line saying the folder is made at
+    the top reaches the person, as a warning on the parent."""
+    from tests.objectcli import obj, project
+    from tests.projectfiles import connect_projects, write_manifest
+    app = project(tmp_path, "app", work={})
+    core = project(tmp_path, "core", work={})
+    connect_projects(app, "parent", "core", inherit="none")
+    write_manifest(app, {"core": "../core"})
+    obj(core, "taxonomy", "payment", name="Payment")
+    answer = serve_project(app).post("/api/taxonomy", {
+        "name": "Refund", "parent": "core.taxonomy/payment"})
+    assert answer.status == 201, answer.body
+    assert answer.json["term"]["full-id"] == "app.taxonomy/refund"
+    notes = [w for w in answer.json.get("warnings", [])
+             if w["message"].startswith("not nested: ")]
+    assert [(w["severity"], w["where"]) for w in notes] == [("warning", "parent")], answer.json

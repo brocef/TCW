@@ -47,11 +47,11 @@ def test_a_part_is_made_in_its_own_project_naming_its_epic(tcw, planning_app):
     assert snapshot(planning) == before
 
 
-def test_nest_with_an_epic_elsewhere_makes_the_folder_at_the_top(tcw, planning_app):
+def test_a_part_of_an_epic_elsewhere_makes_the_folder_at_the_top(tcw, planning_app):
     planning, app = planning_app
     before = snapshot(planning)
     result = tcw(["-C", "../app", "work", "new", "Second part", "--parent",
-                  f"planning.work/{E}", "--nest"], planning)
+                  f"planning.work/{E}"], planning)
     assert result.code == 0, result.err
     assert "not nested:" in result.err
     folder = result.out.strip().split("/", 1)[1]

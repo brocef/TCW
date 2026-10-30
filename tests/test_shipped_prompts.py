@@ -338,8 +338,9 @@ def test_plan_says_how_to_file_a_part_into_another_project():
     paragraph = _paragraph_with(prompt("plan", "filesystem"), "Too large for one item")
     flat = " ".join(paragraph.split())
     order = [flat.index(s) for s in (
-        "--parent <slug> --nest` per part",
-        'tcw -C tcw://<id>.path/ work new "<title>" --parent <slug> --nest',
+        "--parent <slug>` per part",
+        'tcw -C tcw://<id>.path/ work new "<title>" --parent <slug>`',
+        "made at the top of that project's store, and the command says so",
         "set `--blocked-by` the same way",
         "TCW records it in the part's folder")]
     assert order == sorted(order)
@@ -355,11 +356,13 @@ def test_no_shipped_procedure_or_prompt_names_project_filing():
 
 
 def test_plan_nests_each_part_in_its_parent():
-    """TCW-111 AC 19: each part is made with --nest, which puts its folder
-    inside the parent's; --parent is what makes it a part."""
+    """TCW-111 AC 19, as TCW-118 changed it: each part is made with --parent,
+    which puts its folder inside the parent's by default, and is what makes
+    it a part; --nest is gone."""
     for backend in ("filesystem", "jira"):
         paragraph = _paragraph_with(prompt("plan", backend), "Too large for one item")
         flat = " ".join(paragraph.split())
-        assert "--parent <slug> --nest" in flat, paragraph
+        assert "--parent <slug>` per part" in flat, paragraph
+        assert "--nest" not in flat and "--flat" not in flat, paragraph
         assert "puts the part's folder inside the parent's folder" in flat
         assert "`--parent`, not the folder, is what makes it a part" in flat

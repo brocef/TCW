@@ -46,7 +46,7 @@ def test_a_parent_of_227_at_the_allowance_leaves_seven_and_refuses_naming_it():
     with pytest.raises(UsageError) as refused:
         fitted_words("x", project="demo", parent=parent, prefix=PREFIX_ALLOWANCE)
     assert f"demo.work/{parent}" in str(refused.value)
-    assert "--nest" in str(refused.value)
+    assert "--flat" in str(refused.value)
 
 
 def test_a_project_id_of_231_leaves_no_room_for_any_item():

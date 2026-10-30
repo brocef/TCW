@@ -340,8 +340,6 @@ class FsWorkBackend:
         parent = (None if props.parent in (UNSET, None)
                   else _as_slug(props.parent, self.project, "parent"))
         under, note = nesting_parent(self, parent, nest)
-        if note:
-            self.report(note)
         # Fitted under the 255-character limit (TCW-111 Design 4.3): a date
         # and its `-` lead the name.
         words = fitted_words(title, project=self.project, parent=under, prefix=11)
@@ -353,6 +351,9 @@ class FsWorkBackend:
                           f"title")
         self.work_path.mkdir(parents=True, exist_ok=True)
         path.mkdir()
+        if note:
+            # Once the folder is made, so it never names one that is not.
+            self.report(note)
         self.report(f"created {shown(path)}/")
         try:
             # The date of the last part: `folder` is the whole id-path.
