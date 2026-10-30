@@ -238,6 +238,18 @@ def _probe_worktree(directory: Path) -> tuple[Path, Path] | None:
     return worktree_anchors(Path(outer[0])) if outer else None
 
 
+def _declares_a_project(config: Path) -> bool:
+    """Whether the folder of the config path `config` declares a project of
+    any version: its `.tcw/tcw-config.yaml`, or a 3.x root
+    `tcw-config.yaml`. A path leaving a linked worktree that lands on a 3.x
+    copy in a checkout of another repository is read as written, and a path
+    into the main checkout whose counterpart in the worktree is a 3.x copy
+    is read in the worktree (`_worktree_copy`), as for a 4.0 copy: the copy
+    on the worktree's side is the one reported as 3.x, never the main
+    checkout's on another branch (TCW-118, evaluation of candidate 6)."""
+    return config.is_file() or (root_of(config) / LEGACY_SENTINEL).is_file()
+
+
 def read_as_written(target: Path, anchors: tuple[Path, Path],
                     url: str | None = None) -> bool:
     """Whether a relative path that leads out of the linked worktree whose
@@ -1357,7 +1369,7 @@ class FsProjectRegistry(ProjectRegistry):
             not target.is_absolute()
             and inside is not None
             and _below(root_of(resolved), top) is None
-            and not (resolved.is_file()
+            and not (_declares_a_project(resolved)
                      and read_as_written(root_of(resolved), self._anchors, url))
         ):
             counterpart = main / inside
@@ -1387,7 +1399,7 @@ class FsProjectRegistry(ProjectRegistry):
         if under_main is None or _below(resolved, top) is not None:
             return resolved
         copy = top / under_main
-        if not copy.is_file():
+        if not _declares_a_project(copy):        # a 3.x copy here is the branch's
             return resolved
         between = root_of(copy)
         while between != top and between.is_relative_to(top):
@@ -1733,7 +1745,7 @@ class FsProjectRegistry(ProjectRegistry):
             return source
         leads_to = _config_file(source.resolve() / written / SENTINEL)
         if _below(root_of(leads_to), top) is not None or (
-                leads_to.is_file()
+                _declares_a_project(leads_to)
                 and read_as_written(root_of(leads_to), self._anchors, url)):
             return source
         return main / inside

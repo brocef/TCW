@@ -194,6 +194,12 @@
 - `tcw migrate` refuses, with blocker B19 and nothing written, a run that
   would change files in another checkout of a repository the project sits
   in, such as a linked worktree's main checkout. (TCW-118)
+- In a linked worktree, a 3.x copy of a project on the worktree's side counts as the project, as
+  a 4.0 copy does: one where a manifest entry's relative path lands in a checkout of another
+  repository (the one the entry's `repository` names, when it names one), and one in the worktree
+  that a path into the main checkout stands for. It is reported as 3.x with its own folder named.
+  Before, the main checkout's copy, on another branch, was read in its place: the error named the
+  main checkout's folder, and once that copy was migrated the worktree read it silently. (TCW-118)
 - A checkout counts as one of the repository a store or manifest entry
   declares when one of its remotes names it in another form: the same
   owner and name through an SSH host alias (`git@<alias>:<owner>/<name>.git`

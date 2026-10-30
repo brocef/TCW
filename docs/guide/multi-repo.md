@@ -607,7 +607,10 @@ this way:
   entry or the store's `repository` names when it names one. So worktrees
   made one inside another, such as a child repository's worktree placed
   inside its workspace's worktree, read each other, not the folders they
-  were made from. The search does the same: from a worktree whose folder
+  were made from. A project counts there whatever its version, as does one
+  in the worktree itself that a path into the main checkout stands for: a
+  3.x copy on the worktree's side is the one reported as needing
+  `tcw migrate`, never the main checkout's copy on another branch. The search does the same: from a worktree whose folder
   lies inside another repository's checkout, it looks next to and above the
   worktree itself first, and next to and above the main checkout only when
   that finds nothing, so a worktree kept in a workspace repository's
