@@ -243,9 +243,10 @@ first answer of these:
    then of those the next manifests place, going down, nearest first. So a
    project can reach a child of a sibling that only the sibling's manifest
    lists; a project found this way is not added to any view. The first entry
-   whose folder holds the project decides. An entry naming a folder that
-   holds something else is passed over, and one naming a folder not on this
-   machine is used only if no later entry finds the project. These manifests
+   whose folder holds the project decides. An entry whose folder does not
+   hold a 4.0 copy of the project, including a 3.x copy or one a newer TCW
+   wrote, is passed over, and one naming a folder not on this machine is
+   used only if no later entry finds the project. These manifests
    come last, and their wrong entries are passed over, so that a project the
    naming project is not related to never overrules what the steps above
    find, or stops the lookup.
