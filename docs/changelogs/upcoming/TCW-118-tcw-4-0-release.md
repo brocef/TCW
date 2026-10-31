@@ -198,6 +198,10 @@
   a 4.0 copy does: one where a manifest entry's relative path lands in a checkout of another
   repository (the one the entry's `repository` names, when it names one), and one in the worktree
   that a path into the main checkout stands for. It is reported as 3.x with its own folder named.
+- From a linked worktree, a sibling repository's project that an ancestor's manifest places in that
+  repository's own linked worktree is read there, with no error, although the search finds the
+  main checkout's copy: two checkouts of one repository, with the project at the same place in
+  each, no longer count as a disagreement between the manifest and the search.
   Before, the main checkout's copy, on another branch, was read in its place: the error named the
   main checkout's folder, and once that copy was migrated the worktree read it silently. (TCW-118)
 - A checkout counts as one of the repository a store or manifest entry

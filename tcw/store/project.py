@@ -394,6 +394,27 @@ def search_rounds(named_by: Path, anchors: tuple[Path, Path] | None
     return [as_written, from_main]
 
 
+def _same_place_in_two_checkouts(a: Path, b: Path) -> bool:
+    """Whether folders `a` and `b` are the same place in two checkouts, main
+    or linked, of one repository: the same project on two branches, not two
+    projects. The search from a linked worktree reads the folders next to
+    the project beside the main checkout, so it finds the main checkout's
+    copy of a sibling repository where a manifest, read as written, places
+    the copy in the worktree set (TCW-118, the evaluation of candidate 7)."""
+    places = []
+    for folder in (a, b):
+        found = _git_lines(folder, "rev-parse", "--path-format=absolute",
+                           "--show-toplevel", "--git-common-dir")
+        if not found or len(found) != 2:
+            return False
+        top, common = Path(found[0]).resolve(), Path(found[1]).resolve()
+        inside = _below(Path(folder).resolve(), top)
+        if inside is None:
+            return False
+        places.append((common, inside))
+    return places[0] == places[1]
+
+
 def _repository_of(folder: Path):
     """The git common dir of the checkout `folder` is in, its remotes' URLs,
     and the `url.<base>.insteadOf` rules of its config, as (prefix, base);
@@ -1491,7 +1512,8 @@ class FsProjectRegistry(ProjectRegistry):
         if decided.entry is None or placed is None:
             return None
         for match in matches:
-            if self._identity(match) != self._identity(placed):
+            if (self._identity(match) != self._identity(placed)
+                    and not _same_place_in_two_checkouts(match, placed)):
                 return self._recorded(
                     decided.entry.file,
                     f"'{project_id}' is found at {match} by the search from {asker}, "

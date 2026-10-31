@@ -403,6 +403,49 @@ def test_a_3x_copy_in_the_worktree_stands_for_the_mains_path(tmp_path):
     assert str(main_b.resolve()) not in found.out + found.err
 
 
+def test_a_worktree_finds_a_sibling_repositorys_project_in_the_worktree_set(tmp_path):
+    """The evaluation of candidate 7: a top project `top` and two code
+    repositories `a` and `b` side by side, `top`'s manifest placing both, and
+    each with a linked worktree side by side in another folder, all on 4.0.
+    From the worktree of `a`, the search finds `b` beside the main checkout,
+    while `top`'s manifest, read as written, places it in the worktree of the
+    same repository. That is one project in two checkouts, not a
+    disagreement: the manifest's checkout is the one read."""
+    main_top = proj(tmp_path / "m" / "top", "top")
+    main_a = proj(tmp_path / "m" / "a", "a", parent=["top"])
+    main_b = proj(tmp_path / "m" / "b", "b")
+    write_manifest(main_top, {"a": "../a", "b": "../b"})
+    write_manifest(main_a, {"top": "../top"})
+    for repo in (main_top, main_a, main_b):
+        git(repo, "init", "-q", "-b", "main")
+        _commit_all(repo)
+    _linked(main_top, tmp_path / "k" / "top")
+    k_a = _linked(main_a, tmp_path / "k" / "a")
+    k_b = _linked(main_b, tmp_path / "k" / "b")
+    found = tcw(k_a, "project", "path", "b")
+    assert (found.code, found.out.strip()) == (0, str(k_b)), found
+    assert str(main_b.resolve()) not in found.out + found.err
+
+
+def test_a_worktree_still_reports_a_sibling_found_in_another_repository(tmp_path):
+    """The same shape, but the search finds `b` in a folder that is not a
+    checkout of the repository the manifest's folder is in: that is still
+    a disagreement, and still reported."""
+    main_top = proj(tmp_path / "m" / "top", "top")
+    main_a = proj(tmp_path / "m" / "a", "a", parent=["top"])
+    proj(tmp_path / "m" / "b", "b")
+    write_manifest(main_top, {"a": "../a", "b": "../b"})
+    write_manifest(main_a, {"top": "../top"})
+    for repo in (main_top, main_a):
+        git(repo, "init", "-q", "-b", "main")
+        _commit_all(repo)
+    _linked(main_top, tmp_path / "k" / "top")
+    k_a = _linked(main_a, tmp_path / "k" / "a")
+    proj(tmp_path / "k" / "b", "b")
+    found = tcw(k_a, "project", "path", "b")
+    assert found.code != 0 and "is found at" in found.err, found
+
+
 # -- A store path whose store declares a repository -------------------------------------
 #
 # `<component>.path` sits beside `<component>.repository`, so a path read as
