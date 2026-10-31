@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Owning project
+kind: Vocabulary
+relatesTo:
+    - tcw.taxonomy/project
+    - tcw.taxonomy/full-identifier
+    - tcw.taxonomy/reference

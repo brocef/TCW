@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Configure the capabilities-store location
+Status: Supported
+Feature: tcw.taxonomy/configurable-component-store-location
+Subject:
+- tcw.taxonomy/store
+- tcw.taxonomy/project

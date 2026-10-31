@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Name a project's parents
+Status: Supported
+Subject:
+    - tcw.taxonomy/project
+    - tcw.taxonomy/parent-link
+Feature: tcw.taxonomy/project-registry

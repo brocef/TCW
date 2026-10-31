@@ -3,7 +3,7 @@ holds project `<id>`. It prints that folder's absolute path and nothing else,
 so I can use it in a script: `cd "$(tcw project path core)"`. With no ID it
 prints the current project's own folder. It finds the folder the same way every
 other command run here does (see [Find a project's folder from its
-ID](tcw://C/cli/find-a-projects-folder-from-its-id)): a manifest entry, a
+ID](tcw://tcw.capabilities/cli/find-a-projects-folder-from-its-id)): a manifest entry, a
 `TCW_PROJECT_<ID>` variable, or the search. Run in a linked git worktree, it
 answers for that worktree. It writes nothing.
 

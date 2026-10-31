@@ -1,0 +1,8 @@
+tcw-version: 4.0.0
+name: List a project's children
+Status: Supported
+Subject:
+    - tcw.taxonomy/project
+    - tcw.taxonomy/parent-link
+    - tcw.taxonomy/personal-configuration
+Feature: tcw.taxonomy/project-registry

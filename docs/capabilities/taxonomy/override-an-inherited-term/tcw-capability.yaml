@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Override an inherited term
+Status: Supported
+Subject:
+    - tcw.taxonomy/override
+    - tcw.taxonomy/term
+Feature: tcw.taxonomy/taxonomy-feature-registry

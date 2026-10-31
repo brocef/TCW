@@ -30,7 +30,7 @@ There are three severities, and only one fails the run:
   an error; a TCW 3.x `tcw-config.yaml` left at
   the root of a TCW 4 project, which is not read; a load order that no order
   can keep (see [Read a project's ancestors in one load
-  order](tcw://C/cli/read-ancestors-in-one-load-order)); a problem in a tag
+  order](tcw://tcw.capabilities/cli/read-ancestors-in-one-load-order)); a problem in a tag
   list or Jira setting a parent passes down, or a value a parent's
   `.tcw/tcw-config.local.yaml` may not set, at that parent's file, since it is
   that project's error and fails only its own run; two parents that do not
@@ -54,7 +54,7 @@ not here, or is empty, is `unresolved`, and one whose folder is wrong is an
 error. A project not on this machine is reported with where its manifest entry
 places it and, when the entry gives a repository, the command that fetches it,
 `tcw project provision <id>` (see [Fetch a project that is not on this
-machine](tcw://C/cli/fetch-a-project-that-is-not-on-this-machine)).
+machine](tcw://tcw.capabilities/cli/fetch-a-project-that-is-not-on-this-machine)).
 
 A parent, a project further up, or a listed child that is not on this machine
 is one `unresolved` finding saying what could not be checked: what it passes

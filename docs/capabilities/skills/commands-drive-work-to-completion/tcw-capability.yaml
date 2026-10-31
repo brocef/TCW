@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Offer a skill dedicated to instructing agents how to drive a work item to completion
+Status: Supported
+Feature: tcw.taxonomy/commands-drive-work-to-completion-skill
+Subject:
+- tcw.taxonomy/skill

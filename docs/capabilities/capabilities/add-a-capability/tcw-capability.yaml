@@ -1,0 +1,5 @@
+tcw-version: 4.0.0
+name: Add a capability
+Status: Supported
+Subject:
+    - tcw.taxonomy/capability

@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Offer a skill dedicated to instructing agents how to report a bug or suggestion
+  to the TCW project
+Status: Supported
+Feature: tcw.taxonomy/extras-report-skill
+Subject:
+- tcw.taxonomy/skill

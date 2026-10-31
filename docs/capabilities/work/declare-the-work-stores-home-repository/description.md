@@ -19,7 +19,7 @@ With no argument, `tcw project provision` obtains every declared store that is
 missing and then fetches the projects of the family that are not here;
 `tcw project provision --component work` obtains this store alone and fetches no
 project (see [Provision declared
-stores](tcw://C/cli/provision-declared-stores)). The declaration's `ref` may
+stores](tcw://tcw.capabilities/cli/provision-declared-stores)). The declaration's `ref` may
 name a branch, a tag or a commit; one that names none of these fails, with
 git's reason.
 

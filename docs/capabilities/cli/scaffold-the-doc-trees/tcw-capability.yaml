@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Scaffold the doc trees
+Status: Supported
+Subject:
+    - tcw.taxonomy/project
+Feature: tcw.taxonomy/project-registry

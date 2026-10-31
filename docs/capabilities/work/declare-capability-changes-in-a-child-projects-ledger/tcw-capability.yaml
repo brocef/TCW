@@ -1,0 +1,8 @@
+tcw-version: 4.0.0
+name: Declare capability changes in a child project's ledger
+Status: Supported
+Subject:
+- tcw.taxonomy/work-item
+- tcw.taxonomy/project
+- tcw.taxonomy/capability
+Feature: tcw.taxonomy/project-registry

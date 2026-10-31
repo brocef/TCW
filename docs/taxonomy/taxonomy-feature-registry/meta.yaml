@@ -1,9 +1,0 @@
-name: Taxonomy feature registry
-kind: Feature
-relatesTo:
-    - feature
-    - vocabulary
-vocabulary:
-    - feature
-    - vocabulary
-    - term

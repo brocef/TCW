@@ -1,29 +1,29 @@
 new:
-    - taxonomy/override-an-inherited-term
+    - tcw.capabilities/taxonomy/override-an-inherited-term
 changed:
-    - taxonomy/federate-shared-vocabulary
-    - capabilities/federate
-    - capabilities/override-inherited
-    - capabilities/set-a-capabilitys-status
-    - capabilities/reset-an-override
-    - capabilities/remove-a-capability
-    - taxonomy/remove-a-local-term
-    - capabilities/add-a-capability
-    - taxonomy/add-a-term
-    - capabilities/read-a-capability
-    - taxonomy/read-a-term
-    - capabilities/browse-capabilities-by-status
-    - taxonomy/browse-the-term-forest
-    - capabilities/search-capabilities
-    - taxonomy/search-terms
-    - capabilities/validate-capabilities
-    - taxonomy/validate-the-taxonomy
-    - cli/validate-a-project
-    - capabilities/detect-capability-drift
-    - capabilities/configure-the-capabilities-store-location
-    - cli/reference-a-tcw-object
-    - work/declare-capability-changes-in-a-child-projects-ledger
-    - web/editing
+    - tcw.capabilities/taxonomy/federate-shared-vocabulary
+    - tcw.capabilities/capabilities/federate
+    - tcw.capabilities/capabilities/override-inherited
+    - tcw.capabilities/capabilities/set-a-capabilitys-status
+    - tcw.capabilities/capabilities/reset-an-override
+    - tcw.capabilities/capabilities/remove-a-capability
+    - tcw.capabilities/taxonomy/remove-a-local-term
+    - tcw.capabilities/capabilities/add-a-capability
+    - tcw.capabilities/taxonomy/add-a-term
+    - tcw.capabilities/capabilities/read-a-capability
+    - tcw.capabilities/taxonomy/read-a-term
+    - tcw.capabilities/capabilities/browse-capabilities-by-status
+    - tcw.capabilities/taxonomy/browse-the-term-forest
+    - tcw.capabilities/capabilities/search-capabilities
+    - tcw.capabilities/taxonomy/search-terms
+    - tcw.capabilities/capabilities/validate-capabilities
+    - tcw.capabilities/taxonomy/validate-the-taxonomy
+    - tcw.capabilities/cli/validate-a-project
+    - tcw.capabilities/capabilities/detect-capability-drift
+    - tcw.capabilities/capabilities/configure-the-capabilities-store-location
+    - tcw.capabilities/cli/reference-a-tcw-object
+    - tcw.capabilities/work/declare-capability-changes-in-a-child-projects-ledger
+    - tcw.capabilities/web/editing
 taxonomy:
     new:
-        - override
+        - tcw.taxonomy/override

@@ -1206,7 +1206,7 @@ project config`); `:41-44` names the functions that walk projects as they
 ### Step 17 — the TCW-99 design's amendments
 
 Spec Design 8.1 to 8.7; criterion 30. In
-`docs/work/TCW-99-tcw-4-0-overhaul-how-tcw-projects-relate-and-how-they-are-deployed/design.md`,
+`docs/work/TCW-99-tcw-4-0-overhaul-how-tcw-projects-relate-and-how-they-are-deployed/resources/design.md`,
 each passage re-found by its words (lines at `2adac9c9`):
 
 - 8.1 `:466-470` ("Listings, `show` and `tcw project info` mark each

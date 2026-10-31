@@ -1,0 +1,5 @@
+tcw-version: 4.0.0
+name: Detect capability drift
+Status: Supported
+Subject:
+    - tcw.taxonomy/capability

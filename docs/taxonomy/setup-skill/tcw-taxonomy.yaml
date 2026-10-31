@@ -1,0 +1,10 @@
+tcw-version: 4.0.0
+name: TCW Initialization Skill
+kind: Feature
+relatesTo:
+- tcw.taxonomy/provisioned-component-stores
+vocabulary:
+- tcw.taxonomy/skill
+- tcw.taxonomy/cli
+- tcw.taxonomy/project
+- tcw.taxonomy/store

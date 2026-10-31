@@ -1,0 +1,8 @@
+tcw-version: 4.0.0
+name: Declare the work store's home repository
+Status: Supported
+Feature: tcw.taxonomy/provisioned-component-stores
+Subject:
+- tcw.taxonomy/store
+- tcw.taxonomy/store/home-repository
+- tcw.taxonomy/project

@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Check a Jira project against the stage mapping
+Status: Supported
+Subject:
+    - tcw.taxonomy/work-item
+Feature: tcw.taxonomy/jira-work-backend

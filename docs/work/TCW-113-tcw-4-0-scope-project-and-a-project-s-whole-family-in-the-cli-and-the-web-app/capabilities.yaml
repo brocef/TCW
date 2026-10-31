@@ -1,24 +1,24 @@
 new:
-    - cli/choose-which-projects-a-list-or-show-command-covers
-    - capabilities/see-each-projects-status-for-a-capability
+    - tcw.capabilities/cli/choose-which-projects-a-list-or-show-command-covers
+    - tcw.capabilities/capabilities/see-each-projects-status-for-a-capability
 changed:
-    - work/view-the-board
-    - work/read-a-work-item
-    - work/keep-work-items-in-jira
-    - work/run-a-procedure
-    - taxonomy/browse-the-term-forest
-    - taxonomy/read-a-term
-    - taxonomy/search-terms
-    - capabilities/browse-capabilities-by-status
-    - capabilities/read-a-capability
-    - capabilities/search-capabilities
-    - cli/rely-on-one-output-contract
-    - web
-    - web/editing
-    - cli/reference-a-tcw-object
-    - web/see-jira-owned-work-read-only
+    - tcw.capabilities/work/view-the-board
+    - tcw.capabilities/work/read-a-work-item
+    - tcw.capabilities/work/keep-work-items-in-jira
+    - tcw.capabilities/work/run-a-procedure
+    - tcw.capabilities/taxonomy/browse-the-term-forest
+    - tcw.capabilities/taxonomy/read-a-term
+    - tcw.capabilities/taxonomy/search-terms
+    - tcw.capabilities/capabilities/browse-capabilities-by-status
+    - tcw.capabilities/capabilities/read-a-capability
+    - tcw.capabilities/capabilities/search-capabilities
+    - tcw.capabilities/cli/rely-on-one-output-contract
+    - tcw.capabilities/web
+    - tcw.capabilities/web/editing
+    - tcw.capabilities/cli/reference-a-tcw-object
+    - tcw.capabilities/web/see-jira-owned-work-read-only
 taxonomy:
     new:
-        - scope
+        - tcw.taxonomy/scope
     changed:
-        - local-web-app
+        - tcw.taxonomy/local-web-app

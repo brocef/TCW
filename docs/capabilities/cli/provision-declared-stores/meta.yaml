@@ -1,8 +1,0 @@
-id: cap-28abaf
-name: Provision the declared work store
-Status: Supported
-Feature: provisioned-component-stores
-Subject:
-- store
-- store/home-repository
-- cli

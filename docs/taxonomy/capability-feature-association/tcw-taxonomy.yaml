@@ -1,0 +1,9 @@
+tcw-version: 4.0.0
+name: Capability feature association
+kind: Feature
+relatesTo:
+    - tcw.taxonomy/capability
+    - tcw.taxonomy/feature
+vocabulary:
+    - tcw.taxonomy/capability
+    - tcw.taxonomy/feature

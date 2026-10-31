@@ -1,0 +1,10 @@
+tcw-version: 4.0.0
+name: Local web app
+kind: Feature
+relatesTo: []
+vocabulary:
+    - tcw.taxonomy/work-item
+    - tcw.taxonomy/term
+    - tcw.taxonomy/capability
+    - tcw.taxonomy/project
+    - tcw.taxonomy/scope

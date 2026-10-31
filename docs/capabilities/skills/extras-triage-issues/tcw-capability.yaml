@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Offer a skill dedicated to instructing agents how to triage a project's GitHub
+  issues into work items
+Status: Supported
+Feature: tcw.taxonomy/extras-triage-issues-skill
+Subject:
+- tcw.taxonomy/skill

@@ -24,12 +24,12 @@ Each project has its ID, its relation to this one (`current`, `parent` or
 `found`, which says how TCW found it: `{"by": "manifest", "file": <the
 manifest>}`, `{"by": "variable", "name": "TCW_PROJECT_<ID>"}` or
 `{"by": "search"}` (see [Find a project's folder from its
-ID](tcw://C/cli/find-a-projects-folder-from-its-id)); it is `null` for this
+ID](tcw://tcw.capabilities/cli/find-a-projects-folder-from-its-id)); it is `null` for this
 project and for one not on this machine. A parent adds `inherit`, the axes it
 passes down (`[]` when it passes none); a child adds `personal`, true when only
 my personal file lists it. `load-order` is the order this project's ancestors are read in (see
 [Read a project's ancestors in one load
-order](tcw://C/cli/read-ancestors-in-one-load-order)), `load-order-complete` is
+order](tcw://tcw.capabilities/cli/read-ancestors-in-one-load-order)), `load-order-complete` is
 false when one of them is not on this machine or its parents could not be read,
 and `load-order-warning` is the warning given when no order keeps every
 project's own order of parents, or `null`.
@@ -40,9 +40,9 @@ full identifiers and `tcw -C` can reach. If a project I expected is missing, the
 problem is its declaration or its manifest entry, not the command I was trying
 to run. Two other verbs of the same group go further: `tcw project path <id>`
 prints the folder one project is in (see [Find where a project is on this
-machine](tcw://C/cli/find-where-a-project-is-on-this-machine)), and
+machine](tcw://tcw.capabilities/cli/find-where-a-project-is-on-this-machine)), and
 `tcw project info` shows how this project is assembled, where its settings come
 from and where its stores are included (see [See how a project is
-assembled](tcw://C/cli/see-how-a-project-is-assembled)). A listed project that
+assembled](tcw://tcw.capabilities/cli/see-how-a-project-is-assembled)). A listed project that
 is not on this machine is fetched with `tcw project provision` (see [Fetch a
-project that is not on this machine](tcw://C/cli/fetch-a-project-that-is-not-on-this-machine)).
+project that is not on this machine](tcw://tcw.capabilities/cli/fetch-a-project-that-is-not-on-this-machine)).

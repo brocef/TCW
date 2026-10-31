@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Migrate a TCW 3.x project to TCW 4
+Status: Supported
+Subject:
+    - tcw.taxonomy/project
+    - tcw.taxonomy/migration
+Feature: tcw.taxonomy/project-registry

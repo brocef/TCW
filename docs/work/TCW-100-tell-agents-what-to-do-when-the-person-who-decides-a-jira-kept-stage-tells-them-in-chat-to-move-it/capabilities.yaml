@@ -1,4 +1,4 @@
 changed:
-    - work/run-a-lifecycle-stage
-    - skills/commands-plan-work
-    - skills/commands-drive-work-to-completion
+    - tcw.capabilities/work/run-a-lifecycle-stage
+    - tcw.capabilities/skills/commands-plan-work
+    - tcw.capabilities/skills/commands-drive-work-to-completion

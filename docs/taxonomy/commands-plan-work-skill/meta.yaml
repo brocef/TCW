@@ -1,7 +1,0 @@
-name: TCW Plan Work Command Skill
-kind: Feature
-relatesTo: []
-vocabulary:
-- skill
-- work-item
-- work-item/lifecycle-stage

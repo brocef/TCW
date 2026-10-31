@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Offer a skill dedicated to instructing agents how to plan a work item
+Status: Supported
+Feature: tcw.taxonomy/commands-plan-work-skill
+Subject:
+- tcw.taxonomy/skill

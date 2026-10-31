@@ -1,6 +1,0 @@
-name: TCW Process Inbox Command Skill
-kind: Feature
-relatesTo:
-- work-inbox
-vocabulary:
-- skill

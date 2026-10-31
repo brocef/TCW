@@ -5,11 +5,11 @@ actually sits here, without editing any file that another machine reads. I set
 underscores — to the folder holding that project's `.tcw/` folder. For a
 lasting answer on one machine, the personal manifest
 `.tcw/tcw-manifest.local.yaml` does the same in a file (see [Record where other
-projects are in a manifest](tcw://C/cli/record-where-other-projects-are-in-a-manifest)).
+projects are in a manifest](tcw://tcw.capabilities/cli/record-where-other-projects-are-in-a-manifest)).
 
 The variable decides over every manifest and over the search for the folder
 (see [Find a project's folder from its
-ID](tcw://C/cli/find-a-projects-folder-from-its-id)). That ordering is what
+ID](tcw://tcw.capabilities/cli/find-a-projects-folder-from-its-id)). That ordering is what
 makes it useful: the case I need it for is an entry that places the project in
 the wrong folder, and a variable consulted only after the entry failed could
 never correct it.
@@ -29,13 +29,13 @@ Every command that resolves connected projects honours the same variable,
 because it is read when the connections are loaded rather than by any one
 command. `tcw project path <id>` prints the folder the lookup chose, so I can
 see that the variable took effect (see [Find where a project is on this
-machine](tcw://C/cli/find-where-a-project-is-on-this-machine)), and
+machine](tcw://tcw.capabilities/cli/find-where-a-project-is-on-this-machine)), and
 `tcw project list --json` says, for each project, that a variable found it.
 `tcw project provision` never fetches a project the variable places here. When
 the variable names a folder this machine does not have, the lookup skips it, so
 a project fetched for want of it goes into the folder its manifest entry gives,
 not the variable's (see [Fetch a project that is not on this
-machine](tcw://C/cli/fetch-a-project-that-is-not-on-this-machine)). `tcw validate` notes on standard error each variable in effect and
+machine](tcw://tcw.capabilities/cli/fetch-a-project-that-is-not-on-this-machine)). `tcw validate` notes on standard error each variable in effect and
 where it points, so a connection that resolves only because of a variable is
 never a mystery to the next person reading it. A committed manifest entry that
 the variable or my personal manifest overrides is still checked, since it is
@@ -54,7 +54,7 @@ second copy. So a workspace whose repositories are normally nested, and which
 I have cloned side by side instead, reads the right board from these variables
 alone — without a symlink, without editing a file another machine reads, and
 without a machine-specific absolute path in
-[`work.path`](tcw://C/work/configure-the-work-store-location).
+[`work.path`](tcw://tcw.capabilities/work/configure-the-work-store-location).
 
 On a disk that ignores letter case, the path I give may spell the folder in any
 case: it is the same folder, from the primary checkout or from a linked git

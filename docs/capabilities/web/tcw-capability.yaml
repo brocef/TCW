@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Browse TCW content in a local web app
+Status: Supported
+Subject:
+    - tcw.taxonomy/cli
+Feature: tcw.taxonomy/local-web-app

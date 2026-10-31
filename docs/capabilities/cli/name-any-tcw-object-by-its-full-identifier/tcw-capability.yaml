@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Name any TCW object by its full identifier
+Status: Supported
+Subject:
+    - tcw.taxonomy/full-identifier
+    - tcw.taxonomy/tcw-address
+Feature: tcw.taxonomy/project-registry

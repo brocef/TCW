@@ -1,0 +1,4 @@
+tcw-version: 4.0.0
+name: Manage the work inbox
+Status: Supported
+Feature: tcw.taxonomy/work-inbox

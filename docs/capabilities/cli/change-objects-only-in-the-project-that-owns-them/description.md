@@ -11,8 +11,8 @@ to the record that holds it: an item of mine may name a parent or a blocker in
 any project TCW can locate, and a document of mine may link to anything.
 Overriding an inherited capability is allowed too, since the override is my
 project's own capability at the same path
-([Override an inherited capability](tcw://C/capabilities/override-inherited)).
+([Override an inherited capability](tcw://tcw.capabilities/capabilities/override-inherited)).
 
 A new object is always made in the active project's own store. To make one in
 another project I run the command there, usually with
-[`tcw -C`](tcw://C/cli/run-a-command-as-if-started-in-another-folder).
+[`tcw -C`](tcw://tcw.capabilities/cli/run-a-command-as-if-started-in-another-folder).

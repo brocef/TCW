@@ -16,7 +16,7 @@ inherited from is never modified. `tcw capabilities add` at an inherited path
 is refused and names `tcw capabilities set`, since it would write a full copy.
 An override is not moved or renamed away from its original's path, and a move
 or rename that would make one is refused
-([Rename or move a capability](tcw://C/capabilities/rename-or-move-a-capability)).
+([Rename or move a capability](tcw://tcw.capabilities/capabilities/rename-or-move-a-capability)).
 
 The override is files and nothing else: each file written is named on standard
 error, and nothing is staged or committed. A write that fails part-way removes

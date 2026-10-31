@@ -1,8 +1,0 @@
-id: cap-72508e
-name: Declare the capabilities store's home repository
-Status: Supported
-Feature: provisioned-component-stores
-Subject:
-- store
-- store/home-repository
-- project

@@ -1,0 +1,9 @@
+tcw-version: 4.0.0
+name: See how a project is assembled
+Status: Supported
+Subject:
+- tcw.taxonomy/project
+- tcw.taxonomy/parent-link
+- tcw.taxonomy/load-order
+- tcw.taxonomy/override
+Feature: tcw.taxonomy/project-registry

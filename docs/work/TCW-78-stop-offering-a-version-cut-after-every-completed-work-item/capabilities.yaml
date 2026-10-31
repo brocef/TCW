@@ -1,4 +1,4 @@
 changed:
-    - work/read-the-documentation-gate-for-a-change
-    - skills/documentation-sync
-    - skills/extras-autonomous-work
+    - tcw.capabilities/work/read-the-documentation-gate-for-a-change
+    - tcw.capabilities/skills/documentation-sync
+    - tcw.capabilities/skills/extras-autonomous-work

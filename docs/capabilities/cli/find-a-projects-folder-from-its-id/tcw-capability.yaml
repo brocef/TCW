@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Find a project's folder from its ID
+Status: Supported
+Subject:
+- tcw.taxonomy/project
+- tcw.taxonomy/manifest
+Feature: tcw.taxonomy/project-registry

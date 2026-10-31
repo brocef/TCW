@@ -1,0 +1,5 @@
+tcw-version: 4.0.0
+name: Adapter
+parent: tcw.taxonomy/store
+relatesTo:
+    - tcw.taxonomy/store

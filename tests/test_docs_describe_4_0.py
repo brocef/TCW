@@ -16,9 +16,6 @@ project looks like where it says how to move one over. A hit on a line of a
 fenced block never passes: a fenced line is a block of its own, and a 3.x
 example in a fenced block belongs in the migration guide, which is archival
 (spec Design 1.6 (b)).
-
-This repository's own ledgers are left out until TCW-118 migrates them; see
-`UNMIGRATED_RECORDS`.
 """
 import re
 
@@ -26,11 +23,6 @@ import pytest
 
 from tests.doc_vocabulary import THREE_X_PATTERNS, blocks, scan
 from tests.test_documented_cli_surface import DOC_FILES, REPO
-
-# This repository's taxonomy and capability records stay in 3.x form, with
-# their 3.x tcw:// links, until TCW-118 migrates the repository at the merge
-# (TCW-116 Design 9.3). TCW-118 deletes this tuple after that migration.
-UNMIGRATED_RECORDS = ("docs/taxonomy/", "docs/capabilities/")
 
 # A block naming either of these is about moving from 3.x, so it may name a
 # 3.x form (spec Design 1.6).
@@ -55,9 +47,7 @@ def _fenced_lines(text: str) -> set[int]:
 def three_x_problems(rel: str, text: str) -> list[str]:
     """Each 3.x form in `text` outside the allowance, as
     `<rel>:<line>: <what matched> — <reason>`. `rel` is the file's path from
-    the repository root; a file under `UNMIGRATED_RECORDS` gives none."""
-    if rel.startswith(UNMIGRATED_RECORDS):
-        return []
+    the repository root."""
     fenced = _fenced_lines(text)
     allowed: set[int] = set()
     for block in blocks(text):
@@ -133,13 +123,6 @@ def test_the_table_is_p1_to_p12():
         assert why.endswith("(scan: TCW-117)"), why
 
 
-def test_unmigrated_records_are_the_two_ledgers():
-    assert UNMIGRATED_RECORDS == ("docs/taxonomy/", "docs/capabilities/")
-    source = open(__file__, encoding="utf-8").read()
-    assert ("# (TCW-116 Design 9.3). TCW-118 deletes this tuple after that "
-            "migration.") in source
-
-
 @pytest.mark.parametrize("index", range(len(SAMPLES)),
                          ids=[f"{label}-{n}" for n, (label, _) in
                               enumerate(EXPECTED)])
@@ -176,14 +159,6 @@ def test_the_same_hit_beside_tcw_migrate_passes(index, beside):
 def test_a_fenced_line_cannot_borrow_the_allowance(text):
     problems = three_x_problems(SCRATCH, text)
     assert len(problems) == 1 and "— P7:" in problems[0], problems
-
-
-@pytest.mark.parametrize("rel", (
-    "docs/capabilities/x/description.md",
-    "docs/taxonomy/x/description.md",
-))
-def test_the_ledgers_are_left_out_while_unmigrated(rel):
-    assert three_x_problems(rel, "Each item has an item.yaml.\n") == []
 
 
 @pytest.mark.parametrize("text", (

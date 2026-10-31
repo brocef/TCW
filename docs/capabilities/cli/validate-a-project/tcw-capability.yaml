@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Validate a TCW project
+Status: Supported
+Subject:
+    - tcw.taxonomy/project
+    - tcw.taxonomy/reference
+Feature: tcw.taxonomy/project-registry

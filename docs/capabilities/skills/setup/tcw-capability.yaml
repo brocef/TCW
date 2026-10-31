@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Offer a skill dedicated to instructing agents how to set up TCW where it does
+  not work yet
+Status: Supported
+Feature: tcw.taxonomy/setup-skill
+Subject:
+- tcw.taxonomy/skill

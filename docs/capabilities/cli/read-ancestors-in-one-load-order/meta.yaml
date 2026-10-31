@@ -1,8 +1,0 @@
-id: cap-32d49a
-name: Read a project's ancestors in one load order
-Status: Supported
-Subject:
-    - project
-    - load-order
-    - parent-link
-Feature: project-registry

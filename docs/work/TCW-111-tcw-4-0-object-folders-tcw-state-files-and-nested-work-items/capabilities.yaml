@@ -1,32 +1,32 @@
 new:
-    - cli/keep-an-objects-other-files-in-its-resources-folder
-    - cli/group-objects-in-organising-folders
+    - tcw.capabilities/cli/keep-an-objects-other-files-in-its-resources-folder
+    - tcw.capabilities/cli/group-objects-in-organising-folders
 changed:
-    - cli/validate-a-project
-    - cli/read-a-file-by-the-format-version-it-records
-    - cli/rely-on-one-output-contract
-    - work/decompose-a-work-item-into-children
-    - work/read-a-work-item
-    - work/view-the-board
-    - work/rename-a-work-item
-    - work/keep-work-items-in-jira
-    - work/adopt-a-jira-ticket
-    - work/delegate-a-work-item-to-another-project
-    - web/editing
-    - taxonomy/add-a-term
-    - taxonomy/browse-the-term-forest
-    - taxonomy/read-a-term
-    - taxonomy/remove-a-local-term
-    - capabilities/add-a-capability
-    - capabilities/set-a-capabilitys-status
-    - capabilities/read-a-capability
-    - capabilities/remove-a-capability
+    - tcw.capabilities/cli/validate-a-project
+    - tcw.capabilities/cli/read-a-file-by-the-format-version-it-records
+    - tcw.capabilities/cli/rely-on-one-output-contract
+    - tcw.capabilities/work/decompose-a-work-item-into-children
+    - tcw.capabilities/work/read-a-work-item
+    - tcw.capabilities/work/view-the-board
+    - tcw.capabilities/work/rename-a-work-item
+    - tcw.capabilities/work/keep-work-items-in-jira
+    - tcw.capabilities/work/adopt-a-jira-ticket
+    - tcw.capabilities/work/delegate-a-work-item-to-another-project
+    - tcw.capabilities/web/editing
+    - tcw.capabilities/taxonomy/add-a-term
+    - tcw.capabilities/taxonomy/browse-the-term-forest
+    - tcw.capabilities/taxonomy/read-a-term
+    - tcw.capabilities/taxonomy/remove-a-local-term
+    - tcw.capabilities/capabilities/add-a-capability
+    - tcw.capabilities/capabilities/set-a-capabilitys-status
+    - tcw.capabilities/capabilities/read-a-capability
+    - tcw.capabilities/capabilities/remove-a-capability
 taxonomy:
     new:
-        - state-file
-        - object-folder
-        - organising-folder
+        - tcw.taxonomy/state-file
+        - tcw.taxonomy/object-folder
+        - tcw.taxonomy/organising-folder
     changed:
-        - work-item
-        - term
-        - capability
+        - tcw.taxonomy/work-item
+        - tcw.taxonomy/term
+        - tcw.taxonomy/capability

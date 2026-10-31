@@ -1,7 +1,0 @@
-id: cap-682c6b
-name: Validate a TCW project
-Status: Supported
-Subject:
-    - project
-    - reference
-Feature: project-registry

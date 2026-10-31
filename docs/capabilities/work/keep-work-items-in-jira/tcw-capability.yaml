@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Keep work items in Jira
+Status: Supported
+Subject:
+    - tcw.taxonomy/work-item
+Feature: tcw.taxonomy/jira-work-backend

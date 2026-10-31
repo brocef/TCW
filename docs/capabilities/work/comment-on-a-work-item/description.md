@@ -2,4 +2,4 @@ As a user, I add a dated remark to a work item with `echo "text" | tcw work comm
 
 In a filesystem project each comment is its own file under the item's `comments/` folder, named by the time it was written (`comments/20261002T101500Z.md`), so two comments never overwrite each other and the folder reads in order. TCW never commits them; they are files in my working tree like any other.
 
-TCW writes comments too: a forced move (`tcw://C/work/advance-a-work-item`) and a discard (`tcw://C/work/discard-a-work-item`) leave their reason the same way, so the item's comments are the record of why it moved.
+TCW writes comments too: a forced move (`tcw://tcw.capabilities/work/advance-a-work-item`) and a discard (`tcw://tcw.capabilities/work/discard-a-work-item`) leave their reason the same way, so the item's comments are the record of why it moved.

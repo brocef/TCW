@@ -1,7 +1,0 @@
-id: cap-947226
-name: Offer a skill dedicated to instructing agents how to triage a project's GitHub
-  issues into work items
-Status: Supported
-Feature: extras-triage-issues-skill
-Subject:
-- skill

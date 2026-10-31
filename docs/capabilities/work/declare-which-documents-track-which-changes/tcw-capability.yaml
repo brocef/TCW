@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Declare which documents track which changes
+Status: Supported
+Subject:
+- tcw.taxonomy/project
+- tcw.taxonomy/work-item/lifecycle-stage

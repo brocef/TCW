@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Offer a skill dedicated to instructing agents how to pause work in progress
+  and hand it off for resumption
+Status: Supported
+Feature: tcw.taxonomy/commands-pause-work-skill
+Subject:
+- tcw.taxonomy/skill

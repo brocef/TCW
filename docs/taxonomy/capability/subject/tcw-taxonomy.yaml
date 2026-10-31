@@ -1,0 +1,5 @@
+tcw-version: 4.0.0
+name: Subject
+parent: tcw.taxonomy/capability
+relatesTo:
+    - tcw.taxonomy/term

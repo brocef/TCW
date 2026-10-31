@@ -6,7 +6,7 @@ parsing prose.
 `tcw work stage prompt implement` render them into the stage's instructions, so
 planning names a documentation task for every trigger expected to fire and
 implementation answers each fired trigger over the finished diff — see
-[Run a lifecycle stage](tcw://C/work/run-a-lifecycle-stage). Where a project has
+[Run a lifecycle stage](tcw://tcw.capabilities/work/run-a-lifecycle-stage). Where a project has
 declared nothing, the same span falls back to its own text unchanged, so a
 project that configured nothing gets the instructions it always did rather
 than a blank where its entries would have been.
@@ -27,4 +27,4 @@ be one.
 A file declared under two triggers comes back as two entries — two rows in the
 table, two objects in `entries` — each printed beside the trigger that
 distinguishes it. Declaring them is
-[Declare which documents track which changes](tcw://C/work/declare-which-documents-track-which-changes).
+[Declare which documents track which changes](tcw://tcw.capabilities/work/declare-which-documents-track-which-changes).

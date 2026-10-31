@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Browse the term forest
+Status: Supported
+Subject:
+    - tcw.taxonomy/term
+Feature: tcw.taxonomy/taxonomy-feature-registry

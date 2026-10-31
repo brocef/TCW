@@ -1,0 +1,9 @@
+tcw-version: 4.0.0
+name: TCW Work Skill
+kind: Feature
+relatesTo:
+- tcw.taxonomy/work-inbox
+vocabulary:
+- tcw.taxonomy/skill
+- tcw.taxonomy/work-item
+- tcw.taxonomy/work-item/transition

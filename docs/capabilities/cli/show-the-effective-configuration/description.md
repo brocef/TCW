@@ -6,7 +6,7 @@ As a user, I run `tcw project config` to see the configuration a command in this
 - `<project>, environment <NAME>` for a value from an override variable.
 - `built-in` for TCW's own default; for an entry that stands for TCW's own text, the packaged file follows after a comma.
 
-The output ends with a comment line for each value my personal files set that was not used: `# refused:` for a key that belongs to the team, `# skipped:` for a Jira credential name in a project that does not use Jira. In that closing block every value under a key ending in `-env` is shown as `(value not shown)`, in case a token was pasted there by mistake. The same label, without the `# `, is what `tcw project info` shows beside each setting it lists (see [See how a project is assembled](tcw://C/cli/see-how-a-project-is-assembled)).
+The output ends with a comment line for each value my personal files set that was not used: `# refused:` for a key that belongs to the team, `# skipped:` for a Jira credential name in a project that does not use Jira. In that closing block every value under a key ending in `-env` is shown as `(value not shown)`, in case a token was pasted there by mistake. The same label, without the `# `, is what `tcw project info` shows beside each setting it lists (see [See how a project is assembled](tcw://tcw.capabilities/cli/see-how-a-project-is-assembled)).
 
 With a problem in the configuration, plain `tcw project config` stops with exit 1 like every other command. `--origin` still prints everything it could merge, so I can find the line that is stopping the others, then exits 1 with the problems on standard error. A `tcw-config.yaml` that cannot be read leaves it nothing to print.
 

@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: TCW Extras Issue Triage Skill
+kind: Feature
+relatesTo:
+- tcw.taxonomy/work-inbox
+vocabulary:
+- tcw.taxonomy/skill

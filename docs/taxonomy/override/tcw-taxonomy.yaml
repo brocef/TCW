@@ -1,0 +1,8 @@
+tcw-version: 4.0.0
+name: Override
+kind: Vocabulary
+relatesTo:
+    - tcw.taxonomy/term
+    - tcw.taxonomy/capability
+    - tcw.taxonomy/load-order
+    - tcw.taxonomy/full-identifier

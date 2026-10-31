@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Keep an object's other files in its resources folder
+Status: Supported
+Subject:
+    - tcw.taxonomy/object-folder
+    - tcw.taxonomy/state-file

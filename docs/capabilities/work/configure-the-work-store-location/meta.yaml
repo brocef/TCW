@@ -1,8 +1,0 @@
-id: cap-46e036
-name: Configure the work-store location
-Status: Supported
-Feature: configurable-component-store-location
-Subject:
-- store
-- project
-- namespace

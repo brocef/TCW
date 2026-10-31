@@ -1,8 +1,0 @@
-id: cap-8b206f
-name: Declare the work store's home repository
-Status: Supported
-Feature: provisioned-component-stores
-Subject:
-- store
-- store/home-repository
-- project

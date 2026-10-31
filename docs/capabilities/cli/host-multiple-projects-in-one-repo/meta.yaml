@@ -1,6 +1,0 @@
-id: cap-0fe6cc
-name: Host multiple projects in one repo
-Status: Supported
-Subject:
-    - project
-Feature: project-registry

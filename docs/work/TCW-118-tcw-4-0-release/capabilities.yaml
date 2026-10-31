@@ -1,6 +1,6 @@
 changed:
-    - plugin/bootstrap-the-cli
-    - cli/install-from-pypi
-    - capabilities/remove-a-capability
-    - capabilities/reset-an-override
-    - taxonomy/remove-a-local-term
+    - tcw.capabilities/plugin/bootstrap-the-cli
+    - tcw.capabilities/cli/install-from-pypi
+    - tcw.capabilities/capabilities/remove-a-capability
+    - tcw.capabilities/capabilities/reset-an-override
+    - tcw.capabilities/taxonomy/remove-a-local-term

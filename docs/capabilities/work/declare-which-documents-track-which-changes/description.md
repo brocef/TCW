@@ -30,4 +30,4 @@ in its `CLAUDE.md` or `AGENTS.md` — and nothing about its stage instructions
 changes. The configuration form is the recommended one because a heading someone
 renames is not a contract, but it is not required.
 
-Reading them back is [Read the documentation gate for a change](tcw://C/work/read-the-documentation-gate-for-a-change).
+Reading them back is [Read the documentation gate for a change](tcw://tcw.capabilities/work/read-the-documentation-gate-for-a-change).

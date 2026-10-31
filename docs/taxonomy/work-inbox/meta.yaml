@@ -1,6 +1,0 @@
-name: Work inbox
-kind: Feature
-relatesTo: []
-vocabulary:
-    - work-item
-    - cli

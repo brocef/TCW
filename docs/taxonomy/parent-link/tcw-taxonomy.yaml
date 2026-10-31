@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Parent link
+kind: Vocabulary
+relatesTo:
+    - tcw.taxonomy/project
+    - tcw.taxonomy/load-order

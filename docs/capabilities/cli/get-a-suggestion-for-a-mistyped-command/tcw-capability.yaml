@@ -1,0 +1,5 @@
+tcw-version: 4.0.0
+name: Get a suggestion for a mistyped command
+Status: Supported
+Subject:
+    - tcw.taxonomy/cli

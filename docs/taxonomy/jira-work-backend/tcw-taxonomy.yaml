@@ -1,0 +1,8 @@
+tcw-version: 4.0.0
+name: Jira work backend
+kind: Feature
+relatesTo:
+    - tcw.taxonomy/work-inbox
+vocabulary:
+    - tcw.taxonomy/work-item
+    - tcw.taxonomy/cli
