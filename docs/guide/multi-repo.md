@@ -261,7 +261,14 @@ project 'core' is declared by more than one folder near this one: /home/me/src/c
 An entry in an ancestor's manifest must also agree with what the search from
 the naming project finds; when the two disagree, the lookup is an error
 saying which folder each gives, and an entry in the naming project's own
-personal manifest settles it.
+personal manifest settles it. A main checkout and a linked worktree of one
+repository (or two of its linked worktrees), with the project at the same
+place in each, do not disagree (two separate clones still do): from a linked worktree
+the search finds a sibling repository's project beside the main checkout,
+while a manifest, read as written, may place it in that repository's own
+worktree beside this one, and then the manifest's folder is the one read.
+When the search found the project first, because the naming project lists
+it before the project whose manifest places it, the two are still reported.
 
 `tcw project path <id>` prints the folder TCW found for a project, and
 `tcw project list --json` says, for each related project, whether it was

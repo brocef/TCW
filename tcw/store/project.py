@@ -394,6 +394,27 @@ def search_rounds(named_by: Path, anchors: tuple[Path, Path] | None
     return [as_written, from_main]
 
 
+def _same_place_in_two_checkouts(a: Path, b: Path) -> bool:
+    """Whether folders `a` and `b` are the same place in two checkouts, main
+    or linked, of one repository: the same project on two branches, not two
+    projects. The search from a linked worktree reads the folders next to
+    the project beside the main checkout, so it finds the main checkout's
+    copy of a sibling repository where a manifest, read as written, places
+    the copy in the worktree set (TCW-118, the evaluation of candidate 7)."""
+    places = []
+    for folder in (a, b):
+        found = _git_lines(folder, "rev-parse", "--path-format=absolute",
+                           "--show-toplevel", "--git-common-dir")
+        if not found or len(found) != 2:
+            return False
+        top, common = Path(found[0]).resolve(), Path(found[1]).resolve()
+        inside = _below(Path(folder).resolve(), top)
+        if inside is None:
+            return False
+        places.append((common, inside))
+    return places[0] == places[1]
+
+
 def _repository_of(folder: Path):
     """The git common dir of the checkout `folder` is in, its remotes' URLs,
     and the `url.<base>.insteadOf` rules of its config, as (prefix, base);
@@ -1483,15 +1504,21 @@ class FsProjectRegistry(ProjectRegistry):
         return None
 
     def _search_conflict(self, project_id: str, asker: Path, decided: _Answer,
-                         matches: list[Path]) -> str | None:
+                         matches: list[Path], manifest_read: bool = False) -> str | None:
         """The recorded problem when the search from `asker` finds
         `project_id` in another folder than the manifest entry that decided
-        `decided` places it, or None (Design 3.4, decided 2026-10-23)."""
+        `decided` places it, or None (Design 3.4, decided 2026-10-23).
+        `manifest_read`: the lookup reads the entry's folder, so a match at
+        the same place in another checkout of the same repository agrees
+        with it; where the search's folder is the one read, it never does,
+        or the main checkout's copy would be read with no error."""
         placed = decided.folder or decided.entry_folder
         if decided.entry is None or placed is None:
             return None
         for match in matches:
-            if self._identity(match) != self._identity(placed):
+            if (self._identity(match) != self._identity(placed)
+                    and not (manifest_read
+                             and _same_place_in_two_checkouts(match, placed))):
                 return self._recorded(
                     decided.entry.file,
                     f"'{project_id}' is found at {match} by the search from {asker}, "
@@ -2037,7 +2064,8 @@ class FsProjectRegistry(ProjectRegistry):
                     # Another project's manifest decided: the search from the
                     # asking project must not disagree (Design 3.4).
                     conflict = self._search_conflict(
-                        project_id, named_by, answer, self._searched(project_id, named_by))
+                        project_id, named_by, answer, self._searched(project_id, named_by),
+                        manifest_read=True)
                     return answer if conflict is None else _Answer(
                         problem=conflict, named=True)
         matches, problems = _search(self, project_id, named_by)

@@ -403,6 +403,88 @@ def test_a_3x_copy_in_the_worktree_stands_for_the_mains_path(tmp_path):
     assert str(main_b.resolve()) not in found.out + found.err
 
 
+def test_a_worktree_finds_a_sibling_repositorys_project_in_the_worktree_set(tmp_path):
+    """The evaluation of candidate 7: a top project `top` and two code
+    repositories `a` and `b` side by side, `top`'s manifest placing both, and
+    each with a linked worktree side by side in another folder, all on 4.0.
+    From the worktree of `a`, the search finds `b` beside the main checkout,
+    while `top`'s manifest, read as written, places it in the worktree of the
+    same repository. That is one project in two checkouts, not a
+    disagreement: the manifest's checkout is the one read."""
+    main_top = proj(tmp_path / "m" / "top", "top")
+    main_a = proj(tmp_path / "m" / "a", "a", parent=["top"])
+    main_b = proj(tmp_path / "m" / "b", "b")
+    write_manifest(main_top, {"a": "../a", "b": "../b"})
+    write_manifest(main_a, {"top": "../top"})
+    for repo in (main_top, main_a, main_b):
+        git(repo, "init", "-q", "-b", "main")
+        _commit_all(repo)
+    _linked(main_top, tmp_path / "k" / "top")
+    k_a = _linked(main_a, tmp_path / "k" / "a")
+    k_b = _linked(main_b, tmp_path / "k" / "b")
+    found = tcw(k_a, "project", "path", "b")
+    assert (found.code, found.out.strip()) == (0, str(k_b)), found
+    assert str(main_b.resolve()) not in found.out + found.err
+
+
+def test_a_worktree_still_reports_a_sibling_found_in_another_repository(tmp_path):
+    """The same shape, but the search finds `b` in a folder that is not a
+    checkout of the repository the manifest's folder is in: that is still
+    a disagreement, and still reported."""
+    main_top = proj(tmp_path / "m" / "top", "top")
+    main_a = proj(tmp_path / "m" / "a", "a", parent=["top"])
+    proj(tmp_path / "m" / "b", "b")
+    write_manifest(main_top, {"a": "../a", "b": "../b"})
+    write_manifest(main_a, {"top": "../top"})
+    for repo in (main_top, main_a):
+        git(repo, "init", "-q", "-b", "main")
+        _commit_all(repo)
+    _linked(main_top, tmp_path / "k" / "top")
+    k_a = _linked(main_a, tmp_path / "k" / "a")
+    proj(tmp_path / "k" / "b", "b")
+    found = tcw(k_a, "project", "path", "b")
+    assert found.code != 0 and "is found at" in found.err, found
+
+
+def _worktree_set(base: Path, parents: list[str]) -> tuple[Path, Path, Path]:
+    """`top` placing `a` and `b`, `a` naming `parents` and placing `top`, each
+    a repository in `base/m` with a linked worktree in `base/k`, all on 4.0:
+    the worktree of `a`, and `b`'s main checkout and worktree."""
+    main_top = proj(base / "m" / "top", "top")
+    main_a = proj(base / "m" / "a", "a", parent=parents)
+    main_b = proj(base / "m" / "b", "b")
+    write_manifest(main_top, {"a": "../a", "b": "../b"})
+    write_manifest(main_a, {"top": "../top"})
+    for repo in (main_top, main_a, main_b):
+        git(repo, "init", "-q", "-b", "main")
+        _commit_all(repo)
+    _linked(main_top, base / "k" / "top")
+    return _linked(main_a, base / "k" / "a"), main_b, _linked(main_b, base / "k" / "b")
+
+
+def test_a_sibling_the_search_finds_first_is_still_reported_from_a_worktree(tmp_path):
+    """The same set, with `a` naming `b` before `top`: `b` is found by the
+    search beside the main checkout before `top`'s manifest is read, and
+    the folder in use is the search's. That is still reported, never the
+    main checkout's copy read with no error (review of the fix)."""
+    k_a, main_b, _ = _worktree_set(tmp_path, ["b", "top"])
+    found = tcw(k_a, "project", "path", "b")
+    assert found.code != 0 and "is found at" in found.err, found
+    checked = tcw(k_a, "validate")
+    assert checked.code != 0 and "is found at" in checked.out + checked.err, checked
+
+
+def test_a_separate_clone_beside_the_worktree_still_disagrees(tmp_path):
+    """The same set, with a separate clone of `b` in place of its linked
+    worktree: two clones are two repositories, and still reported."""
+    k_a, main_b, k_b = _worktree_set(tmp_path, ["top"])
+    git(main_b, "worktree", "remove", "--force", str(k_b))
+    subprocess.run(["git", "clone", "-q", str(main_b), str(k_b)], check=True,
+                   capture_output=True, stdin=subprocess.DEVNULL)
+    found = tcw(k_a, "project", "path", "b")
+    assert found.code != 0 and "is found at" in found.err, found
+
+
 # -- A store path whose store declares a repository -------------------------------------
 #
 # `<component>.path` sits beside `<component>.repository`, so a path read as
