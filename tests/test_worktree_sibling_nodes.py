@@ -7,6 +7,9 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
+
+from tests.projectfiles import config_file, write_config, write_config_file, write_manifest
 
 
 def git(path: Path, *args: str) -> None:
@@ -23,14 +26,26 @@ def repo(path: Path) -> Path:
 
 def config(path: Path, pid: str, *, parent: dict | None = None,
            children: dict | None = None) -> None:
+    """Write `pid`'s configuration naming its parent and children by ID, and
+    put where each of them is (a path relative to `path`) in its manifest."""
     path.mkdir(parents=True, exist_ok=True)
     text = f"id: {pid}\n"
+    for key, links in (("parents", parent), ("children", children)):
+        if links:
+            text += f"{key}:\n" + "".join(f"- {k}\n" for k in links)
+    write_config(path, text)
     if parent or children:
-        text += "projects:\n"
-        for key, links in (("parent", parent), ("children", children)):
-            if links:
-                text += f"  {key}:\n" + "".join(f"    {k}: {v}\n" for k, v in links.items())
-    (path / "tcw-config.yaml").write_text(text)
+        write_manifest(path, {**(parent or {}), **(children or {})})
+
+
+def add_child(root: Path, child_id: str, location: str) -> None:
+    """Add `child_id` to the end of `root`'s children, and put it at
+    `location` (relative to `root`) in `root`'s manifest."""
+    path = config_file(root)
+    document = yaml.safe_load(path.read_text())
+    document.setdefault("children", []).append(child_id)
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    write_manifest(root, {child_id: location})
 
 
 def validate(cwd: Path) -> subprocess.CompletedProcess:
@@ -74,27 +89,20 @@ def test_a_node_only_the_primary_checkout_has_still_resolves_there(workspace):
     git(app, "worktree", "add", "-q", "../app-wt", "-b", "feature")
     # Added on the primary checkout's branch after the worktree was made.
     config(app / "pkg-c", "pkg-c", parent={"app-repo": ".."})
-    wt_cfg = workspace / "app-wt" / "tcw-config.yaml"
+    wt_cfg = config_file(workspace / "app-wt")
     wt_cfg.write_text(wt_cfg.read_text().replace(
-        "    pkg-b: pkg-b\n", "    pkg-b: pkg-b\n    pkg-c: ../app/pkg-c\n"))
+        "- pkg-b\n", "- pkg-b\n- pkg-c\n"))
+    write_manifest(workspace / "app-wt", {"pkg-c": "../app/pkg-c"})
     done = validate(workspace / "app-wt" / "pkg-a")
     assert done.returncode == 0, done.stdout + done.stderr
     from tcw.store.project import FsProjectRegistry
-    registry = FsProjectRegistry.open(workspace / "app-wt" / "pkg-a")
+    # From their parent: a sibling is not in `pkg-a`'s family (TCW-108
+    # Design 3.3).
+    registry = FsProjectRegistry.open(workspace / "app-wt")
     where = {p.id: Path(p.locator).resolve() for p in registry.projects()}
     assert where["pkg-c"] == (app / "pkg-c").resolve()          # only main has it
     assert where["pkg-b"] == (workspace / "app-wt" / "pkg-b").resolve()
     assert registry.unreachable() == []
-
-
-def test_a_child_declared_only_by_repository_resolves_to_the_worktree(workspace):
-    ws_cfg = workspace / "tcw-config.yaml"
-    ws_cfg.write_text("id: workspace\nprojects:\n  children:\n    app-repo:\n"
-                      "      repository:\n        url: https://example.com/app.git\n"
-                      "        checkout: app\n")
-    git(workspace / "app", "worktree", "add", "-q", "../app-wt", "-b", "feature")
-    done = validate(workspace / "app-wt" / "pkg-a")
-    assert done.returncode == 0, done.stdout + done.stderr
 
 
 def test_a_nested_repository_is_not_taken_for_the_worktree_copy(workspace):
@@ -105,16 +113,17 @@ def test_a_nested_repository_is_not_taken_for_the_worktree_copy(workspace):
     git(app, "add", ".gitignore")
     git(app, "commit", "-qm", "ignore vendor")
     config(repo(app / "vendor"), "vendor", parent={"workspace": "../.."})
-    ws_cfg = workspace / "tcw-config.yaml"
-    ws_cfg.write_text(ws_cfg.read_text() + "    vendor: app/vendor\n")
+    add_child(workspace, "vendor", "app/vendor")
     git(app, "worktree", "add", "-q", "../app-wt", "-b", "feature")
     config(repo(workspace / "app-wt" / "vendor"), "vendor-fork", parent={"workspace": "../.."})
     done = validate(workspace / "app-wt" / "pkg-a")
     assert done.returncode == 0, done.stdout + done.stderr
     from tcw.store.project import FsProjectRegistry
-    where = {p.id: Path(p.locator).resolve()
-             for p in FsProjectRegistry.open(workspace / "app-wt" / "pkg-a").projects()}
-    assert where["vendor"] == (app / "vendor").resolve()
+    # `vendor` is a sibling of `app-repo`, outside `pkg-a`'s family (TCW-108
+    # Design 3.3), so it is looked up as a full identifier naming it would be.
+    registry = FsProjectRegistry.open(workspace / "app-wt" / "pkg-a")
+    assert registry.project_folder("vendor", workspace).resolve() == \
+        (app / "vendor").resolve()
 
 
 def with_submodule(workspace: Path, tmp_path: Path, *, named_by_workspace: bool) -> Path:
@@ -127,13 +136,11 @@ def with_submodule(workspace: Path, tmp_path: Path, *, named_by_workspace: bool)
     git(lib, "commit", "-qm", "lib")
     app = workspace / "app"
     git(app, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(lib), "lib")
-    app_cfg = app / "tcw-config.yaml"
-    app_cfg.write_text(app_cfg.read_text() + "    lib: lib\n")
+    add_child(app, "lib", "lib")
     git(app, "add", "-A")
     git(app, "commit", "-qm", "lib submodule")
     if named_by_workspace:
-        ws_cfg = workspace / "tcw-config.yaml"
-        ws_cfg.write_text(ws_cfg.read_text() + "    lib-too: app/lib\n")
+        add_child(workspace, "lib-too", "app/lib")
     git(app, "worktree", "add", "-q", "../app-wt", "-b", "feature")
     git(workspace / "app-wt", "-c", "protocol.file.allow=always", "submodule", "update",
         "--init", "-q")
@@ -151,11 +158,17 @@ def test_a_submodule_of_the_repository_is_its_worktree_copy(workspace, tmp_path)
 
 
 def test_one_id_in_two_repositories_is_still_a_duplicate(workspace):
+    """Since TCW-107 an entry cannot place a project under another ID, so the
+    workspace's manifest places `pkg-b` itself in a second repository, and the
+    two lookups find it in two folders (Design 2.9)."""
     other = repo(workspace / "other")
     config(other, "pkg-b", parent={"workspace": ".."})
-    ws_cfg = workspace / "tcw-config.yaml"
-    ws_cfg.write_text(ws_cfg.read_text() + "    pkg-b-again: other\n")
+    add_child(workspace, "pkg-b", "other")
     git(workspace / "app", "worktree", "add", "-q", "../app-wt", "-b", "feature")
-    done = validate(workspace / "app-wt" / "pkg-a")
-    assert done.returncode == 1 and "duplicate project id 'pkg-b'" in done.stdout + done.stderr, \
-        done.stdout + done.stderr
+    from tcw.errors import ProjectGraphError
+    from tcw.store.project import FsProjectRegistry
+    # The workspace's children are not followed from below (TCW-108 Design
+    # 3.1), so the second lookup is the one a full identifier makes.
+    registry = FsProjectRegistry.open(workspace / "app-wt")
+    with pytest.raises(ProjectGraphError, match="duplicate project id 'pkg-b'"):
+        registry.project_folder("pkg-b", workspace)

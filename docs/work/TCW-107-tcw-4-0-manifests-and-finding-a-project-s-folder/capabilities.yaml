@@ -1,0 +1,22 @@
+new:
+    - cli/record-where-other-projects-are-in-a-manifest
+    - cli/find-a-projects-folder-from-its-id
+changed:
+    - cli/host-multiple-projects-in-one-repo
+    - cli/declare-a-connected-projects-home-repository
+    - cli/point-tcw-at-a-project-i-already-have
+    - cli/run-from-a-git-worktree
+    - cli/list-connected-projects
+    - cli/validate-a-project
+    - cli/provision-declared-stores
+    - cli/read-from-an-upstream-project
+    - cli/scaffold-the-doc-trees
+    - cli/override-the-team-configuration-for-myself
+    - cli/read-a-file-by-the-format-version-it-records
+taxonomy:
+    new:
+        - manifest
+    changed:
+        - project
+        - project-registry
+        - personal-configuration

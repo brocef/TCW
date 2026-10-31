@@ -2,7 +2,7 @@
 11, 12, 20, 26, 28).
 
 Filesystem cases run `python -m tcw.cli` as a subprocess, in a project made by
-`tcw init --id fx` itself, so what is checked is what a shell sees: the two
+`tcw project new --id fx` itself, so what is checked is what a shell sees: the two
 streams and the exit code. Jira cases run in-process (plan choice 1): TCW-71's
 fake replaces the client inside the running interpreter, which a subprocess
 cannot receive.
@@ -35,30 +35,35 @@ from tcw.cli import build_parser, main
 from tcw.errors import BackendError, Refused
 from tcw.work.jira.backend import JiraBackend
 from tcw.work.model import Item, Slug
-from tests.work.jira.conftest import EMAIL_ENV, ME, TOKEN_ENV, fake, jira_config  # noqa: F401
-from tests.work.jira.fake import SITE
+from tests.work.jira.conftest import ME, fake, jira_config  # noqa: F401
+from tests.projectfiles import config_file, write_config, write_config_file, write_local_config
+from tests.projectfiles import write_manifest
+from tests.statefiles import write_state, ITEM_STATE, TAXONOMY_STATE
 
 TODAY = date.today().isoformat()
 SOURCE = str(Path(tcw.__file__).resolve().parent.parent)
 
 # Every leaf command, with arguments that parse, and the exit code outside a
-# project. `init` is left out of the outside run: making a project is what it
+# project. `project new` is left out of the outside run: making a project is what it
 # does there. `procedure` reads TCW's own text and works anywhere (plan choice 3).
 ROWS: dict[str, tuple[list[str], int]] = {
-    "init": (["init", "--id", "fx"], 0),
-    "provision": (["provision", "--dry-run"], 1),
     "validate": (["validate"], 1),
     "serve": (["serve", "--no-open", "--port", "1"], 1),
-    "projects list": (["projects", "list"], 1),
-    "config show": (["config", "show"], 1),
+    "migrate": (["migrate", "--dry-run"], 1),
+    "project new": (["project", "new", "--id", "fx"], 0),
+    "project list": (["project", "list"], 1),
+    "project config": (["project", "config"], 1),
+    "project provision": (["project", "provision", "--dry-run"], 1),
+    "project path": (["project", "path"], 1),
+    "project info": (["project", "info"], 1),
     "taxonomy list": (["taxonomy", "list"], 1),
     "taxonomy add": (["taxonomy", "add", "Widget"], 1),
     "taxonomy show": (["taxonomy", "show", "widget"], 1),
     "taxonomy path": (["taxonomy", "path"], 1),
     "taxonomy rm": (["taxonomy", "rm", "widget"], 1),
     "taxonomy search": (["taxonomy", "search", "w"], 1),
-    "taxonomy extends add": (["taxonomy", "extends", "add", "up"], 1),
-    "taxonomy extends rm": (["taxonomy", "extends", "rm", "up"], 1),
+    "taxonomy rename": (["taxonomy", "rename", "widget", "gadget"], 1),
+    "taxonomy move": (["taxonomy", "move", "widget", "--top"], 1),
     "capabilities list": (["capabilities", "list"], 1),
     "capabilities show": (["capabilities", "show", "ns/a"], 1),
     "capabilities path": (["capabilities", "path"], 1),
@@ -67,22 +72,23 @@ ROWS: dict[str, tuple[list[str], int]] = {
     "capabilities reset": (["capabilities", "reset", "ns/a"], 1),
     "capabilities rm": (["capabilities", "rm", "ns/a"], 1),
     "capabilities search": (["capabilities", "search", "a"], 1),
-    "capabilities extends add": (["capabilities", "extends", "add", "up"], 1),
-    "capabilities extends rm": (["capabilities", "extends", "rm", "up"], 1),
     "capabilities drift": (["capabilities", "drift"], 1),
+    "capabilities rename": (["capabilities", "rename", "ns/a", "b"], 1),
+    "capabilities move": (["capabilities", "move", "ns/a", "--top"], 1),
     "work new": (["work", "new", "A b"], 1),
     "work list": (["work", "list"], 1),
     # Flags that need an identity get rows of their own (TCW-72).
     "work list --mine": (["work", "list", "--mine"], 1),
     "work new --assign-me": (["work", "new", "A b", "--assign-me"], 1),
-    "work edit --assign-me": (["work", "edit", "fx/2026-10-01-a", "--assign-me"], 1),
-    "work show": (["work", "show", "fx/2026-10-01-a"], 1),
+    "work edit --assign-me": (["work", "edit", "fx.work/2026-10-01-a", "--assign-me"], 1),
+    "work show": (["work", "show", "fx.work/2026-10-01-a"], 1),
     "work path": (["work", "path"], 1),
-    "work edit": (["work", "edit", "fx/2026-10-01-a", "--priority", "high"], 1),
-    "work advance": (["work", "advance", "fx/2026-10-01-a"], 1),
-    "work discard": (["work", "discard", "fx/2026-10-01-a", "--reason", "r"], 1),
-    "work comment": (["work", "comment", "fx/2026-10-01-a"], 1),
-    "work rename": (["work", "rename", "fx/2026-10-01-a", "b"], 1),
+    "work edit": (["work", "edit", "fx.work/2026-10-01-a", "--priority", "high"], 1),
+    "work advance": (["work", "advance", "fx.work/2026-10-01-a"], 1),
+    "work discard": (["work", "discard", "fx.work/2026-10-01-a", "--reason", "r"], 1),
+    "work comment": (["work", "comment", "fx.work/2026-10-01-a"], 1),
+    "work rename": (["work", "rename", "fx.work/2026-10-01-a", "b"], 1),
+    "work move": (["work", "move", "fx.work/2026-10-01-a", "--top"], 1),
     "work stage prompt": (["work", "stage", "prompt", "spec"], 1),
     "work procedure": (["work", "procedure", "audit-backlog"], 0),
     "work lifecycle": (["work", "lifecycle"], 1),
@@ -191,15 +197,15 @@ def unnamed(before: dict, after: dict, err: str) -> tuple[set[str], set[str]]:
 def fx(tmp_path):
     root = tmp_path / "fx"
     root.mkdir()
-    ok(root, "init", "--id", "fx")
+    ok(root, "project", "new", "--id", "fx")
     return root
 
 
 def configure(root: Path, **work) -> None:
-    path = root / "tcw-config.yaml"
+    path = config_file(root)
     document = yaml.safe_load(path.read_text())
     document.setdefault("work", {}).update(work)
-    path.write_text(yaml.safe_dump(document, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
 
 
 def new(root: Path, title: str = "A b", *flags: str, stdin: str = "") -> str:
@@ -225,7 +231,7 @@ def test_a_command_without_a_row_is_caught():
 # -- AC 10: outside a project ------------------------------------------------------
 
 
-@pytest.mark.parametrize("command", sorted(set(ROWS) - {"init"}))
+@pytest.mark.parametrize("command", sorted(set(ROWS) - {"project new"}))
 def test_every_command_outside_a_project(tmp_path, command):
     argv, expected = ROWS[command]
     result = run(tmp_path, *argv)
@@ -257,13 +263,13 @@ def written(root: Path, *argv: str, stdin: str = "", code: int = 0) -> Result:
 
 
 def test_init_prints_nothing_and_names_everything(tmp_path):
-    result = written(tmp_path, "init", "--id", "fx")
+    result = written(tmp_path, "project", "new", "--id", "fx")
     assert result.out == "" and named(result.err)
 
 
 def test_the_work_commands(fx):
     made = written(fx, "work", "new", "A b", stdin="Need X\n")
-    assert re.fullmatch(r"fx/[0-9]{4}-[0-9]{2}-[0-9]{2}-a-b\n", made.out), made.out
+    assert re.fullmatch(r"fx\.work/[0-9]{4}-[0-9]{2}-[0-9]{2}-a-b\n", made.out), made.out
     slug = made.out.strip()
 
     assert ok(fx, "work", "advance", slug, "--dry-run").out == "spec\n"
@@ -280,7 +286,7 @@ def test_the_work_commands(fx):
     assert tail.index("two") < tail.index("one")
 
     data = json.loads(ok(fx, "work", "show", slug, "--json").out)
-    assert data["schema"] == 1 and "Need X" in data["request"]
+    assert data["schema"] == 2 and "Need X" in data["request"]
     assert [c["text"].strip() for c in data["comments"]] == ["two", "one"]
     assert data["item"]["untracked"] == []
 
@@ -319,8 +325,9 @@ def test_list_by_tag(fx):
 
 
 def test_the_tree_commands(fx):
-    assert written(fx, "taxonomy", "add", "Widget").out == "widget\n"
-    assert written(fx, "capabilities", "add", "ns/do-a-thing").out == "ns/do-a-thing\n"
+    assert written(fx, "taxonomy", "add", "Widget").out == "fx.taxonomy/widget\n"
+    assert written(fx, "capabilities", "add", "ns/do-a-thing").out == \
+        "fx.capabilities/ns/do-a-thing\n"
     assert written(fx, "capabilities", "set", "ns/do-a-thing",
                    "--status", "Supported").out == ""
     removed = written(fx, "taxonomy", "rm", "widget")
@@ -328,28 +335,18 @@ def test_the_tree_commands(fx):
     assert len([l for l in removed.err.splitlines() if l.startswith("removed ")]) == 2
 
 
-def test_extends_add_prints_nothing(tmp_path, fx):
-    up = tmp_path / "up"
-    up.mkdir()
-    ok(up, "init", "--id", "up")
-    document = yaml.safe_load((fx / "tcw-config.yaml").read_text())
-    document["projects"] = {"upstream": {"up": "../up"}}
-    (fx / "tcw-config.yaml").write_text(yaml.safe_dump(document))
-    assert written(fx, "taxonomy", "extends", "add", "up").out == ""
-
-
 def test_a_clean_validate_prints_nothing(fx):
     assert ok(fx, "validate").out == ""
 
 
-def test_every_json_output_is_one_object_with_schema_1(fx):
+def test_every_json_output_is_one_object_with_schema_2(fx):
     configure(fx, tags=["a"])
     slug = new(fx)
     ok(fx, "taxonomy", "add", "Widget")
     ok(fx, "capabilities", "add", "ns/do-a-thing")
     for argv in (["work", "list", "--json"], ["work", "show", slug, "--json"],
                  ["work", "lifecycle", "--json"], ["work", "docs", "--json"],
-                 ["projects", "list", "--json"], ["taxonomy", "list", "--json"],
+                 ["project", "list", "--json"], ["taxonomy", "list", "--json"],
                  ["taxonomy", "show", "widget", "--json"],
                  ["taxonomy", "search", "w", "--json"],
                  ["capabilities", "list", "--json"],
@@ -357,7 +354,7 @@ def test_every_json_output_is_one_object_with_schema_1(fx):
                  ["capabilities", "search", "thing", "--json"]):
         data = json.loads(ok(fx, *argv).out)
         assert isinstance(data, dict) and next(iter(data)) == "schema", argv
-        assert data["schema"] == 1, argv
+        assert data["schema"] == 2, argv
 
 
 # -- AC 10: exit codes ------------------------------------------------------------
@@ -367,11 +364,14 @@ def test_naming_an_item(fx):
     slug = new(fx)
     folder = slug.split("/", 1)[1]
     assert run(fx, "work", "show", "fx/no-such").code == 4
-    assert run(fx, "work", "show", "a/b/c").code == 2
+    # An id-path of several parts names no work item (TCW-110 Design 3.4).
+    assert run(fx, "work", "show", "a/b/c").code == 4
+    assert run(fx, "work", "show", "a/b c").code == 2
     assert run(fx, "work", "show", folder[:10]).code == 4
     assert run(fx, "work", "advance", slug, "--to", "nonsense").code == 2
+    # One `<old> -> <new>` line per changed identifier (TCW-114 Design 5.6).
     renamed = ok(fx, "work", "rename", slug, "other").out.strip()
-    assert renamed == f"fx/{TODAY}-other"
+    assert renamed == f"{slug} -> fx.work/{TODAY}-other"
     assert run(fx, "work", "show", slug).code == 4
 
 
@@ -403,8 +403,8 @@ def test_tree_exit_codes(fx):
     assert run(fx, "taxonomy", "show", "nosuch").code == 4
     assert run(fx, "capabilities", "show", "nosuch").code == 4
     ok(fx, "taxonomy", "add", "Gadget")
-    meta = fx / "docs" / "taxonomy" / "gadget" / "meta.yaml"
-    meta.write_text(meta.read_text().replace("relatesTo: []", "relatesTo: [widget]"))
+    meta = fx / "docs" / "taxonomy" / "gadget" / TAXONOMY_STATE
+    write_state(meta, meta.read_text().replace("relatesTo: []", "relatesTo: [fx.taxonomy/widget]"))
     assert run(fx, "taxonomy", "rm", "widget").code == 3
 
     ok(fx, "capabilities", "add", "ns/do-a-thing")
@@ -414,7 +414,8 @@ def test_tree_exit_codes(fx):
     ok(fx, "taxonomy", "add", "A")
     ok(fx, "taxonomy", "add", "B")
     ok(fx, *thing, "--field", "Subject=a,b")
-    assert "Subject: a, b" in ok(fx, "capabilities", "show", "ns/do-a-thing").out
+    assert "Subject: fx.taxonomy/a, fx.taxonomy/b" in \
+        ok(fx, "capabilities", "show", "ns/do-a-thing").out
     for fields in (["--field", "Status=Supported", "--field", "Status=Missing"],
                    ["--field", "Status"], ["--field", "Planning doc=x"],
                    ["--field", "Tracker=x"]):
@@ -431,18 +432,25 @@ def test_filesystem_mode_usage_errors(fx):
 # -- AC 26: a late failure still names what it made -------------------------------
 
 
-def test_a_rename_that_fails_after_moving_prints_the_new_slug(fx):
+def test_a_rename_that_stops_prints_nothing_and_says_how_to_finish(fx):
+    # The folder moves last (TCW-114 Design 5.8), so a stop leaves the item
+    # where it was: nothing is printed on stdout, and the message says to run
+    # the same command again.
     slug = new(fx, "Target")
     child = new(fx, "Child", "--parent", slug)
     folder = fx / "docs" / "work" / child.split("/", 1)[1]
     folder.chmod(0o555)
-    (folder / "item.yaml").chmod(0o444)
+    (folder / ITEM_STATE).chmod(0o444)
     try:
         result = run(fx, "work", "rename", slug, "moved")
     finally:
         folder.chmod(0o755)
-        (folder / "item.yaml").chmod(0o644)
-    assert (result.code, result.out) == (1, f"fx/{TODAY}-moved\n"), result
+        (folder / ITEM_STATE).chmod(0o644)
+    assert (result.code, result.out) == (1, ""), result
+    assert "the folder is still at" in result.err, result.err
+    assert "run the same command again to finish the move: tcw work rename" in \
+        result.err, result.err
+    assert (fx / "docs" / "work" / slug.split("/", 1)[1]).is_dir()
 
 
 # -- Jira mode, in-process (plan choice 1) ------------------------------------------
@@ -483,8 +491,8 @@ def test_a_key_names_an_item(jira_fx, monkeypatch):
     monkeypatch.setattr(JiraBackend, "read_comments", lambda self, folder, limit=None: [])
     shown = jira_fx("work", "show", "TCW-9")
     assert shown.code == 0, shown
-    slugs = re.findall(r"(?<![\w/])\w+/TCW-9-a-thing\b", shown.out)
-    assert slugs and set(slugs) == {"fx/TCW-9-a-thing"}
+    slugs = re.findall(r"(?<![\w/.])[\w.]+/TCW-9-a-thing\b", shown.out)
+    assert slugs and set(slugs) == {"fx.work/TCW-9-a-thing"}
     data = json.loads(jira_fx("work", "show", "TCW-9", "--json").out)
     assert data["item"]["priority"] is None and data["item"]["untracked"] == ["EXT-4"]
     assert jira_fx("work", "show", "TCW-10").code == 4
@@ -500,10 +508,10 @@ def test_a_refused_create_prints_the_key_it_left(jira_fx, monkeypatch):
 
 def test_a_late_backend_error_prints_the_slug(jira_fx, monkeypatch):
     def create(self, *args, **kwargs):
-        raise BackendError("made the folder, then failed", name="fx/2026-10-02-x")
+        raise BackendError("made the folder, then failed", name="fx.work/2026-10-02-x")
     monkeypatch.setattr(JiraBackend, "create", create)
     result = jira_fx("work", "new", "x")
-    assert (result.code, result.out) == (1, "fx/2026-10-02-x\n")
+    assert (result.code, result.out) == (1, "fx.work/2026-10-02-x\n")
 
 
 def test_an_early_failure_prints_nothing(jira_fx, monkeypatch):
@@ -536,28 +544,26 @@ def test_tickets_list_prints_keys_only(jira_fx, fake):  # noqa: F811
 
 @pytest.fixture
 def graph(tmp_path, fake):  # noqa: F811
-    """`fx` with a present child `other`, an upstream `up`, a declared child
-    `absent` not here, and `absentj`, not here but reachable through Jira."""
+    """`fx` with a present child `other`, a parent `up` that passes no axis,
+    and a declared child `absent` not here."""
     roots = {}
     for name in ("fx", "other", "up"):
         roots[name] = tmp_path / name
         roots[name].mkdir()
-        ok(roots[name], "init", "--id", name)
-    block = {"site": SITE, "project": "TCW", "inbox-status": "To Do",
-             "credentials": {"email-env": EMAIL_ENV, "token-env": TOKEN_ENV},
-             "fields": {"project": "TCW Project"}}
-    document = yaml.safe_load((roots["fx"] / "tcw-config.yaml").read_text())
-    document["projects"] = {
-        "children": {"other": "../other", "absent": "../absent",
-                     "absentj": {"path": "../absentj", "jira": block}},
-        "upstream": {"up": "../up"}}
-    (roots["fx"] / "tcw-config.yaml").write_text(yaml.safe_dump(document))
+        ok(roots[name], "project", "new", "--id", name)
+    document = yaml.safe_load((roots["fx"] / ".tcw/tcw-config.yaml").read_text())
+    document["parents"] = [{"id": "up", "inherit": "none"}]
+    document["children"] = ["other", "absent"]
+    write_config(roots["fx"], yaml.safe_dump(document))
+    write_manifest(roots["fx"], {"other": "../other", "absent": "../absent", "up": "../up"})
     for name in ("other", "up"):
-        path = roots[name] / "tcw-config.yaml"
+        path = config_file(roots[name])
         child = yaml.safe_load(path.read_text())
         if name == "other":
-            child["projects"] = {"parent": {"fx": "../fx"}}
-        path.write_text(yaml.safe_dump(child))
+            child["parents"] = ["fx"]
+        write_config_file(path, yaml.safe_dump(child))
+        if name == "other":
+            write_manifest(roots[name], {"fx": "../fx"})
     return roots
 
 
@@ -570,31 +576,11 @@ def test_another_projects_item_reads_but_does_not_write(graph):
 
 def test_naming_projects_that_are_not_here(graph):
     assert run(graph["fx"], "work", "show", "ghost/x").code == 4
-    absent = run(graph["fx"], "work", "show", "absent/x")
-    assert absent.code == 5 and "tcw provision" in absent.err
-
-
-@pytest.mark.parametrize("target, says", [("ghost", None), ("absent", None),
-                                          ("up", "read-only")])
-def test_delegation_that_is_refused_writes_nothing(graph, target, says):
-    before = {name: snapshot(root) for name, root in graph.items()}
-    result = run(graph["fx"], "work", "new", "x", "--project", target)
-    assert result.code == 3, result
-    if says:
-        assert says in result.err
-    assert {name: snapshot(root) for name, root in graph.items()} == before
-
-
-def test_delegation_through_jira_and_blocks(graph, fake, monkeypatch, capsys):  # noqa: F811
-    monkeypatch.chdir(graph["fx"])
-    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
-    assert main(["work", "new", "x", "--project", "absentj"]) == 0
-    key = capsys.readouterr().out.strip()
-    assert re.fullmatch(r"TCW-\d+", key) and fake.tickets[key].status == "To Do"
-
-    mine = new(graph["fx"], "Mine")
-    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
-    assert main(["work", "edit", mine, "--blocks", "absentj/x"]) == 3
+    absent = run(graph["fx"], "work", "show", "absent.work/x")
+    # TCW-107 Design 6.2: where its manifest entry places it.
+    assert absent.code == 5 and "project 'absent' is not on this machine" in absent.err
+    # TCW-108 AC 36: the folder the entry was resolved to, not its text.
+    assert f"places it at {(graph['fx'].parent / 'absent').resolve()}" in absent.err
 
 
 # -- AC 28: people in Jira mode ---------------------------------------------------
@@ -657,7 +643,8 @@ def test_the_reading_commands_in_a_project(fx):
 
     checked(fx, "work", "list", out=slug + "\n")
     checked(fx, "work", "show", slug,
-            out=lambda o: o.startswith(f"slug: {slug}\ntitle: A b\n") and "Need X" in o)
+            out=lambda o: o.startswith(f"full-id: {slug}\nowner: fx\ntitle: A b\n")
+            and "Need X" in o)
     checked(fx, "work", "path", out=is_path(work))
     checked(fx, "work", "path", slug, out=is_path(work / folder))
     checked(fx, "work", "lifecycle", out=lambda o: o.startswith("inbox"))
@@ -666,16 +653,17 @@ def test_the_reading_commands_in_a_project(fx):
     checked(fx, "work", "tags", "list", out="a\nb\n")
     docs = checked(fx, "work", "docs", out="")
     assert "agent guide" in docs.err
-    checked(fx, "projects", "list", out="fx\n")
-    checked(fx, "taxonomy", "list", out="widget\n")
+    checked(fx, "project", "list", out="fx\n")
+    checked(fx, "taxonomy", "list", out="fx.taxonomy/widget\n")
     checked(fx, "taxonomy", "show", "widget",
-            out=lambda o: o.startswith("path: widget\nname: Widget\n") and "small" in o)
-    checked(fx, "taxonomy", "search", "small", out="widget\n")
+            out=lambda o: o.startswith("full-id: fx.taxonomy/widget\nowner: fx\nname: Widget\n")
+            and "small" in o)
+    checked(fx, "taxonomy", "search", "small", out="fx.taxonomy/widget\n")
     checked(fx, "taxonomy", "path", out=is_path(fx / "docs" / "taxonomy"))
-    checked(fx, "capabilities", "list", out="ns/do-a-thing\n")
+    checked(fx, "capabilities", "list", out="fx.capabilities/ns/do-a-thing\n")
     checked(fx, "capabilities", "show", "ns/do-a-thing",
-            out=lambda o: "ns/do-a-thing" in o)
-    checked(fx, "capabilities", "search", "thing", out="ns/do-a-thing\n")
+            out=lambda o: "fx.capabilities/ns/do-a-thing" in o)
+    checked(fx, "capabilities", "search", "thing", out="fx.capabilities/ns/do-a-thing\n")
     checked(fx, "capabilities", "path", out=is_path(fx / "docs" / "capabilities"))
     checked(fx, "capabilities", "drift", out="")
     checked(fx, "validate", out="")
@@ -684,24 +672,25 @@ def test_the_reading_commands_in_a_project(fx):
 def test_the_writing_work_commands_in_a_project(fx):
     configure(fx, tags=["a"])
     slug = new(fx, "A b")
-    renamed = checked(fx, "work", "rename", slug, "other", out=f"fx/{TODAY}-other\n")
+    renamed = checked(fx, "work", "rename", slug, "other",
+                      out=f"{slug} -> fx.work/{TODAY}-other\n")
     assert any(MOVED.match(l) for l in renamed.err.splitlines()), renamed.err
-    slug = f"fx/{TODAY}-other"
+    slug = f"fx.work/{TODAY}-other"
     checked(fx, "work", "discard", slug, "--reason", "r", out="discarded\n")
 
     added = checked(fx, "work", "tags", "add", "c", out="")
-    assert added.err == "wrote tcw-config.yaml\n", added.err
+    assert added.err == "wrote .tcw/tcw-config.yaml\n", added.err
     assert checked(fx, "work", "tags", "add", "c", out="").err == ""
     removed = checked(fx, "work", "tags", "rm", "c", out="")
-    assert removed.err == "wrote tcw-config.yaml\n", removed.err
+    assert removed.err == "wrote .tcw/tcw-config.yaml\n", removed.err
 
 
 def test_the_identity_flags_in_a_project(fx, monkeypatch):
     """`--mine` and `--assign-me` with `user.name` in the local file (TCW-72)."""
     monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
-    (fx / "tcw-config.local.yaml").write_text("user:\n  name: Brian\n")
+    write_local_config(fx, "user:\n  name: Brian\n")
     mine = checked(fx, "work", "new", "Mine", "--assign-me",
-                   out=lambda o: re.fullmatch(rf"fx/{TODAY}-mine\n", o)).out.strip()
+                   out=lambda o: re.fullmatch(rf"fx.work/{TODAY}-mine\n", o)).out.strip()
     new(fx, "Theirs", "--assignee", "brian")
     later = new(fx, "Later")
     checked(fx, "work", "list", "--mine", out=mine + "\n")
@@ -718,8 +707,8 @@ def test_config_show_in_a_project(fx):
     loader's values; it writes nothing (TCW-72 Design 8)."""
     from tcw.config import load_config
     expected = load_config(fx).values
-    checked(fx, "config", "show", out=lambda o: yaml.safe_load(o) == expected)
-    checked(fx, "config", "show", "--origin",
+    checked(fx, "project", "config", out=lambda o: yaml.safe_load(o) == expected)
+    checked(fx, "project", "config", "--origin",
             out=lambda o: yaml.safe_load(o) == expected)
 
 
@@ -736,24 +725,19 @@ def test_tags_rm_of_an_unregistered_tag_is_not_found(fx):
 def test_the_writing_tree_commands_in_a_project(tmp_path, fx):
     up = tmp_path / "up"
     up.mkdir()
-    ok(up, "init", "--id", "up")
+    ok(up, "project", "new", "--id", "up")
     ok(up, "taxonomy", "add", "Gear")
     ok(up, "capabilities", "add", "auth/login")
-    document = yaml.safe_load((fx / "tcw-config.yaml").read_text())
-    document["projects"] = {"upstream": {"up": "../up"}}
-    (fx / "tcw-config.yaml").write_text(yaml.safe_dump(document))
+    document = yaml.safe_load((fx / ".tcw/tcw-config.yaml").read_text())
+    document["parents"] = [{"id": "up", "inherit": ["taxonomy", "capabilities"]}]
+    write_config(fx, yaml.safe_dump(document))
+    write_manifest(fx, {"up": "../up"})
 
-    assert checked(fx, "taxonomy", "extends", "add", "up", out="").err == \
-        "wrote tcw-config.yaml\n"
-    assert checked(fx, "taxonomy", "extends", "rm", "up", out="").err == \
-        "wrote tcw-config.yaml\n"
-    checked(fx, "capabilities", "extends", "add", "up", out="")
     checked(fx, "capabilities", "set", "auth/login", "--status", "Missing", out="")
     reset = checked(fx, "capabilities", "reset", "auth/login", out="")
     assert any(l.startswith("removed ") for l in reset.err.splitlines()), reset.err
-    checked(fx, "capabilities", "extends", "rm", "up", out="")
 
-    checked(fx, "capabilities", "add", "ns/gone", out="ns/gone\n")
+    checked(fx, "capabilities", "add", "ns/gone", out="fx.capabilities/ns/gone\n")
     rm = checked(fx, "capabilities", "rm", "ns/gone", out="")
     assert any(l.startswith("removed ") for l in rm.err.splitlines()), rm.err
 
@@ -775,20 +759,20 @@ def jira_written(jira_fx, *argv: str, stdin: str = "") -> Result:
 def test_jira_edit_comment_and_rename(jira_fx, fake):  # noqa: F811
     made = jira_written(jira_fx, "work", "new", "Jira thing")
     slug = made.out.strip()
-    assert re.fullmatch(r"fx/TCW-\d+-jira-thing", slug), made
+    assert re.fullmatch(r"fx.work/TCW-\d+-jira-thing", slug), made
     key = slug.split("/", 1)[1].rsplit("-jira-thing", 1)[0]
     assert jira_written(jira_fx, "work", "edit", slug, "--tag", "ui").out == ""
     assert fake.tickets[key].labels == ["ui"]
     assert jira_written(jira_fx, "work", "comment", slug, stdin="hello\n").out == ""
     renamed = jira_written(jira_fx, "work", "rename", slug, "other")
-    assert renamed.out == f"fx/{key}-other\n", renamed
+    assert renamed.out == f"{slug} -> fx.work/{key}-other\n", renamed
     assert any(MOVED.match(l) for l in renamed.err.splitlines()), renamed.err
 
 
 def test_jira_tickets_adopt(jira_fx, fake):  # noqa: F811
     key = fake.ticket("Fix the login").key
     adopted = jira_written(jira_fx, "work", "tickets", "adopt", key)
-    assert adopted.out == f"fx/{key}-fix-the-login\n", adopted
+    assert adopted.out == f"fx.work/{key}-fix-the-login\n", adopted
 
 
 def test_jira_identity_flags(jira_fx, fake):  # noqa: F811

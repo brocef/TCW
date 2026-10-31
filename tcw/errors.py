@@ -10,7 +10,7 @@ from __future__ import annotations
 from tcw import exit as codes
 
 
-NO_PROJECT = "no TCW project here — run `tcw init --id <id>` in the project folder"
+NO_PROJECT = "no TCW project here — run `tcw project new --id <id>` in the project folder"
 
 
 class TcwError(Exception):
@@ -32,6 +32,16 @@ class BackendError(TcwError):
     """The backend failed in a way none of the other classes describes."""
 
     code = codes.ERROR
+
+
+class StateFileProblem(BackendError):
+    """An object's state file whose `tcw-version` this TCW cannot read
+    (TCW-111 Design 1.5): the object is never interpreted or rewritten.
+    `path` is the file, `problem` the version check's message."""
+
+    def __init__(self, path, problem: str, *, name: str | None = None):
+        super().__init__(f"{path}: {problem}", name=name)
+        self.path, self.problem = path, problem
 
 
 class ConfigError(BackendError):
@@ -74,7 +84,61 @@ class NotFound(TcwError):
 
 
 class Unreachable(TcwError):
+    """A project something names is not on this machine.
+
+    `project` is its ID and `repository` the one its deciding manifest entry
+    gives, when the failure is about a project and that entry gives one
+    (TCW-107 Design 6.2), so a caller can name it without parsing the
+    message."""
+
     code = codes.UNREACHABLE
+
+    def __init__(self, message: str = "", *, name: str | None = None,
+                 project: str | None = None, repository: str | None = None):
+        super().__init__(message, name=name)
+        self.project = project
+        self.repository = repository
+
+
+class ProjectGraphError(TcwError):
+    """Finding a project's folder met a problem in the project graph: two
+    folders for one ID, a manifest entry pointing at a folder that is not that
+    project, a manifest TCW cannot read (TCW-107 Design 2.12)."""
+
+    code = codes.ERROR
+
+
+class UnknownProject(ProjectGraphError):
+    """No manifest, no `projects:` entry and no folder nearby knows the
+    project ID: probably a misspelling. A subclass of `ProjectGraphError`, so
+    a caller handling both catches this one first."""
+
+    code = codes.ERROR
+
+
+class InheritedUnavailable(TcwError):
+    """Something the project inherits is not available here (TCW-108 Design
+    6.2): a project it inherits an axis from is not on this machine, or that
+    project's own parent links could not be read, so what reaches it from
+    above is unknown.
+
+    `project` is the ID of the project that is not available, `axis` the axis
+    the command needed, and `reason` `"missing"`, `"unreadable"` or
+    `"store"` (the project is here but its store for the axis cannot be
+    opened, TCW-112 Design 1.3), so `tcw validate` can report it as "could
+    not check" without parsing the message. `detail` is the store's own
+    message for `"store"`, and None otherwise."""
+
+    code = codes.INHERITED_UNAVAILABLE
+
+    def __init__(self, message: str = "", *, project: str | None = None,
+                 axis: str | None = None, reason: str | None = None,
+                 detail: str | None = None):
+        super().__init__(message)
+        self.project = project
+        self.axis = axis
+        self.reason = reason
+        self.detail = detail
 
 
 class MovedWithoutNote(TcwError):

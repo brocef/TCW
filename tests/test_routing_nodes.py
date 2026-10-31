@@ -9,6 +9,7 @@ import pytest
 
 from tcw.cli import main
 from tcw.store.fs import init
+from tests.projectfiles import write_config, write_manifest
 
 
 def node(path: Path, pid: str, *, board: bool, parent: str | None = None,
@@ -21,17 +22,19 @@ def node(path: Path, pid: str, *, board: bool, parent: str | None = None,
     if board:
         init(["work"], path, pid)
     else:
-        (path / "tcw-config.yaml").write_text(f"id: {pid}\n")
+        write_config(path, f"id: {pid}\n")
     import yaml
-    cfg = yaml.safe_load((path / "tcw-config.yaml").read_text()) or {}
-    links = {}
+    cfg = yaml.safe_load((path / ".tcw/tcw-config.yaml").read_text()) or {}
+    locations = {}
     if parent:
-        links["parent"] = {parent: ".."}
+        cfg["parents"] = [parent]
+        locations[parent] = ".."
     if children:
-        links["children"] = children
-    if links:
-        cfg["projects"] = links
-    (path / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+        cfg["children"] = list(children)
+        locations.update(children)
+    write_config(path, yaml.safe_dump(cfg, sort_keys=False))
+    if locations:
+        write_manifest(path, locations)
     return path
 
 
@@ -67,7 +70,7 @@ def stacked(tmp_path) -> Path:
 def test_projects_list_prints_the_direct_topology(routed, monkeypatch, capsys):
     import json
     monkeypatch.chdir(routed)
-    assert main(["projects", "list", "--json"]) == 0
+    assert main(["project", "list", "--json"]) == 0
     rows = json.loads(capsys.readouterr().out)["projects"]
     assert [p["id"] for p in rows if p["relation"] == "child"] == ["mid"]
 

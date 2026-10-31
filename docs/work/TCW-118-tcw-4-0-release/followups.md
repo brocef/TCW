@@ -1,0 +1,98 @@
+- tcw:// address quoted without its prefix in a refused-address error (from TCW-110 review 3)
+- browser back/forward does not clear fileStage (TCW-110 review 4); link picker caret moves a frame late (TCW-77); TCW:// in config read as a folder (by the lowercase grammar)
+- (TCW-108 qa) validate's extends/inherit mismatch error names the file twice ("taxonomy: <path>/.tcw/tcw-config.yaml: taxonomy.extends: ...").
+- (TCW-108 qa) the same extends/inherit mismatch exits 1 from `taxonomy list` but 2 from `taxonomy extends add`; decide whether that is intended.
+- (TCW-111 review) `tcw capabilities set … --parent` accepts a self-parent or a loop; only validate reports it.
+- (TCW-111 review) the work store's reserved-name finding lost the 2.x pointer to the migration guide (TCW-116 or TCW-117).
+- (TCW-111 review) the release note says items are renamed wherever their folder sits; an item with nested items cannot be renamed until TCW-114.
+- (TCW-111 qa) broken YAML directly in an object folder hides the "move it into resources/" finding until the YAML is fixed.
+- (TCW-111 qa) the web board shows a date-only created value as the evening before (local-time display).
+- (TCW-109 review 3) _merge in tcw/config.py keeps work.tags entry positions when a later layer writes work.tags as a non-list; no visible effect today.
+- (TCW-109 qa) when both TCW_WORK_STAGES_SPEC__APP and …_SPEC_PROMPT__APP are set, the note names both though only the second's prompt is used.
+- (TCW-109 qa) `work new --blocked-by app.work/<item>` from lib exits 7 while app's work.jira is undecided; validate handles the same reference without stopping (Design 5.2 allows it).
+- (TCW-109 review 4) the e2e specs' readiness check accepts any server already on the spec's port (all three specs).
+- (TCW-112 review) rm's referrer message names bare id-paths while reset's names full identifiers (TCW-114 rewords refusals).
+- (TCW-112 review) capability rm does not check `parent` among referrers; removing a capability named as another's parent leaves a dangling reference (predates TCW-112).
+- (TCW-112 qa) `reset` and `rm` leave empty folders behind.
+- (TCW-112 qa) a message template gives `'cc''s` with a doubled quote.
+- (TCW-112 qa) the removed-`extends` validate finding prints the config file twice (relative and absolute); same shape as TCW-108's observation.
+- (TCW-112 qa) `show` of an orphaned override prints a name made from its folder though it declares none.
+- (TCW-112 qa) a complete own object settling a two-parent clash still takes unset fields (e.g. Gaps) from the winning parent; spec records it as a known risk.
+- (TCW-114 review) the web create form ignores the answer's warnings, so AC 7's "Jira shows no link for it" never reaches the person.
+- (TCW-114 review) skills/work/SKILL.md:3 says "filing work into another project" and its delegation passage says projects are declared under `projects:` (TCW-117).
+- (TCW-114 review) `tcw taxonomy rename bill PAY` reports `docs/taxonomy/PAY already exists` when the existing folder is `pay`.
+- (TCW-114 review 2) a recorded-reference warning can show an absolute state-file path when the file is outside the server's current folder (shown() helper).
+- (TCW-114 qa) with two copies of a project, tree-store writes naming another project exit 1 (graph problem) rather than 3; even `work list` exits 1.
+- (TCW-114 qa) a ticket edit whose answer was lost is reported as "still to be set".
+- (TCW-114 qa) for a one-part id-path the rename mention list matches ordinary words ("An invoice.").
+- (TCW-114 qa) rename mention lines print absolute paths while other lines are relative.
+- (TCW-114 qa) `tcw validate` never checks capabilities.yaml entries (older).
+- (TCW-115 review 2) provision.py:212-213: with two fetched projects each bad, the advice names only the first one's folder.
+- (TCW-115 review 2) a fetched parent's manifest with an unknown top-level key and no parents: key was accepted (unchecked; older).
+- (TCW-115 impl) an interrupted command (Ctrl-C) prints a Python traceback, TCW-wide.
+- (TCW-113 review 1) stale docstrings describing list --local: tests/test_tree_parent_missing.py:58-59,98,193; tests/test_overrides_by_path.py:417 (TCW-117).
+- (TCW-115 qa) placement bound's first refusal says "outside <folder>" also for hidden folders and folders nested inside it (follows Design 7.8 wording; misleading).
+- (TCW-115 qa) the personal-manifest way out doesn't say the entry needs `repository:`; a path alone gives exit 5.
+- (TCW-115 qa) `tcw project info core` prints the top-level usage text (exit 2 correct).
+- (TCW-113 qa) a created date shows a day early in time zones west of UTC (older, on main).
+- (TCW-113 review 4) the served project's own capability detail is fetched twice on first load (older).
+- (TCW-113 review 4) the served project's own capability detail is fetched twice on first load (older).
+- (TCW-113 qa 2) the board says "its objects are not listed" where the CLI says "its work items are not listed".
+- (TCW-113 qa 2) a project whose own capability sets no Status shows the inherited status on its page without saying it is inherited.
+- (TCW-113 round 5) Design 2.2's message template in TCW-113's spec lists two endings; the code has three (for TCW-117's documentation).
+- (TCW-117 helpers, possible code bugs found while writing the guides; unverified)
+  - `tcw taxonomy`/`capabilities reset` leaves an empty folder behind.
+  - the drift message still says "upstream default".
+  - `taxonomy rename` prints a false "not rewritten" notice.
+  - `taxonomy move --top` on an override already at the top prints the wrong message.
+  - `tcw project config --origin` prints nothing when a parent's setting is missing or broken, though its help says it prints even when something is wrong.
+  - `tcw migrate` prints "write .tcw/.gitignore" twice (sent to TCW-116 review 2).
+  - `tcw migrate` exits 0 on a work store still in the 2.x layout (S-9 kept open; sent to TCW-116 review 2).
+  - a `capabilities.yaml` entry whose project is not on this machine is an error, not "could not check" (unresolved).
+  - a filesystem-mode parent holding `work.jira` is an error in the parent, though the child inherits.
+- (TCW-116 review 2) no test covers A14's other source name (tcw/migrate/config.py:664-665).
+- (TCW-116 review 2) the two `write .tcw/.gitignore` lines could be shown as one (spec-required two writes).
+- (TCW-116 review 2) A12 for a 2.x work store could name the 2.8-to-3.0 migration guide.
+- (TCW-116 review 2, for TCW-118) the way-back snippet reads error.pending, absent on an error raised before the loop; use getattr.
+- (TCW-116 qa) a package migrated before its related projects: the after-run check lists no A12 and the summary does not say the check was cut short (findings of the package's own go unreported). Worth fixing at TCW-118 prep.
+- (TCW-116 qa) A8 in a workspace's run lists descendants before a parent (wording).
+- (TCW-116 qa) "1 tickets edited" (plural).
+- (TCW-116 qa) a refused run's planned lines for the kept override describe C12/D7.
+- (TCW-116 qa) 4.0 accepts an unknown top-level config key silently.
+- (TCW-117 skills) `tcw taxonomy move --top` keeps the moved term's old `parent:` value in its record.
+- (TCW-117 configure skill) the refusal for `tcw project new --work-path tcw://…` says "init takes a path"; `init` is the 3.x command name.
+- (TCW-117 configure skill) when an override variable sets a Jira credential name in a project that does not use Jira, `tcw project config --origin`'s `# skipped:` line ends with an empty file name.
+- (TCW-117 setup skill) `tcw validate` in a parent does not report a child project's broken entry; the old skill said validate checks every project below it.
+- (TCW-117 setup skill) the hint `run tcw project new <axis> --id <id>` names an `--id` that adding a store to an existing project does not need.
+- (TCW-117 qa) the migration guide's section 1 shows only `--dry-run`, which exits 1 without Jira credentials; it could tell such readers to add `--no-jira`.
+- (TCW-117 qa) the migration guide's "prints `nothing to migrate`" leaves out the exit-1 case after a `--no-jira` run.
+- (TCW-117 qa) docs/guide/taxonomy-and-capabilities.md does not mention the `parent: decides` warning after `move --into`.
+- (TCW-117 qa) docs/guide/linking-and-validation.md:274 gives the message as "its parent is <full identifier>"; with no parent set the command prints "is not set".
+- (TCW-117 qa) provisioning prints "home repository", a phrase no guide uses.
+- (TCW-117 qa) skills/work's GitHub link to the migration guide resolves only after the merge to main (check at Step 39).
+- (TCW-117 review, guides) an unknown project id exits 1 in a full identifier and in `-C tcw://nosuch.path/`, but 2 under `--project`; cli.md's exit-1 meaning column contradicts its own example.
+- (TCW-117 review, guides) a capabilities.yaml entry for a project not on this machine is an error while the same item's parent link is unresolved, so validate fails on any machine (CI included) lacking a sibling — likely a defect.
+- (TCW-117 review, guides) `project provision` prints "Nothing to provision: no component declares…" and then provisions.
+- (TCW-117 review, guides) the Jira credentials error names `.tcw/tcw-config.yaml` in a project still in 3.x form.
+- (TCW-117 review, guides) migrate summary "1 files written" (plural; see also "1 tickets").
+- (TCW-117 review, skills) the user-wide file refuses a `tcw-version` line (exit 1) though TCW-109 spec:805 calls it information about a file; decide whether to accept it.
+- (evaluation, 2026-10-27; moved to 5.0 on 2026-10-29, not an item after 4.0) Jira mode for a team whose workflows cannot change: a mode that reads a ticket's request and posts comments (the qa plan) without owning its status, and keeps some or all stages in files only; and stage-to-status mappings that differ by issue type. Shape: several issue types in one Jira project, each with its own fixed workflow, every transition global with no screen.
+- (evaluation, 2026-10-27; moved to 5.0 on 2026-10-29 and built on branch `v5`, not an item after 4.0) Make `work.jira.fields.project` and `work.jira.fields.item` optional: fall back to the key-named folder for "is this ticket an item" and "which project owns it" (search by `key in (...)`), keep nothing on the ticket for move and rename, or keep the two values in Jira issue properties (no field, no screen, no admin change; not searchable by JQL without an app). Costs to state: an unpulled item is invisible elsewhere; two adoptions on different branches both succeed; some `validate --remote` checks are skipped.
+- (evaluation, 2026-10-27) `tcw work show <epic>` with the default scope prints `children:` empty when every part is in another project; a hint such as "2 more in other projects: --scope down" would stop a reader concluding it has none.
+- (evaluation, 2026-10-27) D1 may over-report: once a source is migrated, a parent link that came from an `extends` naming its own parent looks like a plain parent link, and D1 does not follow it as 3.x reach.
+- (evaluation, 2026-10-27) B18's advice repeats once per file; one line naming every file would read better.
+- (evaluation, 2026-10-27) Comments on 3.x `projects:` entries are dropped by migrate; ones that are now false survive (e.g. "3.0 inherits nothing between projects" above a block now inherited). Carry the first above the new `parents:` or manifest entries; report the second.
+- (evaluation review) A parent with `inherit: none` still takes part in the load-order check though it passes nothing; leave it out of the ordering but still place it.
+- (evaluation review 2) Migrate's `_below_graphs` leaves out a project mid-conversion, so predicting a related 3.x parent's reorder does not check the active project itself.
+- (evaluation review 2) `_edges` in tcw/migrate/family.py probes each member's own worktree rather than the active project's in one more place than the round 3 fix covered, if any remains; check.
+- (combined review, 2026-10-30) Migrate's prediction of an already-migrated member (`_edges` in tcw/migrate/family.py) reads only the member's own manifests, read as written, then the search; 4.0's lookup also reads the ancestors' and the lower projects' manifests, re-anchors a relative entry leaving a linked worktree, and checks a remote through `read_as_written`. Also M6 (tcw/migrate/config.py) leaves out an entry whenever the search finds the project, without modelling the manifests 4.0 reads first. Likely result: a wrong "absent" (B5), or a different folder from the one 4.0 then uses.
+- (combined review, 2026-10-30) When the search finds nothing and two manifests reached only in passing place one project at different folders, the first met wins with no warning, in the order the entries are written; consider reporting the disagreement.
+- (combined review, 2026-10-30) `_REPOSITORY_CACHE` in tcw/store/project.py lives as long as the process and now holds each checkout's `insteadOf` rules, so under `tcw serve` a remote or rule added later is seen only after a restart; the user's own rules are read again on every call, uncached.
+- (combined review, fix check, 2026-10-30) An entry reached only in passing that places a 3.x copy, or a newer TCW's copy, of the very project it names is passed over like a wrong folder, so the lookup ends in "check the spelling" rather than "run tcw migrate". Treat such an answer as deciding, or as a fallback ahead of "not on this machine"; `_entry_answer` would need to say which kind of probe it met.
+- (combined review, fix check, 2026-10-30) When every entry reached in passing is passed over, the final remedy still says "no manifest lists it", though a sibling's manifest lists it at a wrong folder.
+- (evaluation of candidate 6, 2026-10-30) A manifest entry's relative path leaving a linked worktree that lands on a checkout none of whose remotes names the declared repository is read beside the main checkout, as documented; but the error that follows (for example "places it at <main checkout>, which is a TCW 3.x project") names only the main checkout. `tcw migrate`'s summary names both folders for a store path passed over this way; the lookup's errors, and `tcw validate`, should say too that the worktree's folder was passed over and why, so the reader corrects that checkout's remote rather than migrating the main checkout.
+- (worktree 3.x fix review, 2026-10-30) Any root `tcw-config.yaml` where a worktree's path lands in another repository's checkout now counts as a project, so another tool's file of that name gives "which is a TCW 3.x project … run 'tcw migrate'" (an error, never a wrong folder); and a root file that is not a mapping is reported as "whose .tcw/tcw-config.yaml cannot be read", naming a file that does not exist.
+- (worktree 3.x fix review, 2026-10-30) One predicate for "this folder declares a project of any version": `_declares_a_project` (tcw/store/project.py), `holds_project` (tcw/migrate/legacy.py) and nearly `find_marker` (tcw/project_files.py); move it to tcw/project_files.py.
+- (worktree 3.x fix review, 2026-10-30) No test covers `_read_from`'s use of the any-version test (the provisioning `repository_path`): `placement()` raises while the landed-on copy is 3.x, so a test needs a fetch or provision scenario on the same layout.
+- (evaluation of candidate 7, review, 2026-10-31) When one command meets a project both at a main checkout (found by a search) and at a linked worktree's copy (placed by a manifest), it says "duplicate project id ... also used by" without suggesting the personal-manifest entry that settles which folder is meant, as the "is found at" error does.
+- (evaluation of candidate 7, review, 2026-10-31) From a linked worktree away from its main checkout, a project no manifest places is found by the search beside the main checkout even when a linked worktree of its repository sits beside this one (Design 4.3); consider searching beside the worktree first when its neighbours are worktrees of the repositories beside the main checkout. Also consider whether separate clones, not only linked worktrees, should count as the same place, and share one `git rev-parse` helper among `_same_place_in_two_checkouts`, `_probe_worktree` and `_repository_of`.

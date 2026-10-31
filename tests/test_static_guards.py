@@ -33,12 +33,28 @@ GIT_WORDS = re.compile(r"\b(git|commit(?:s|ted|ting)?|push(?:es|ed|ing)?|"
 EXEMPT = {
     ("store/fs.py", "git_root"),                      # finding the repository root
     ("store/fs.py", "personal_file_tracked"),         # TCW-72's read-only status check
-    ("store/fs.py", "FsStoreProvisioner"),            # `tcw provision` clones
+    ("store/fs.py", "FsStoreProvisioner"),            # `tcw project provision` clones
     ("cli.py", "run_provision"),
-    ("cli.py", "_provision_projects"),
-    ("work/open.py", "uncommitted_changes"),          # TCW-70's read-only check
-    ("work/open.py", "_check_target"),                # the delegation condition using it
     ("store/project.py", "FsProjectRegistry._other_branch_warning"),
+    # TCW-107: an entry folder holding only `.git` is named as such, because
+    # the command that fetches the project refuses it (TCW-115's handoff).
+    ("store/project.py", "_holds_only_git"),
+    # TCW-114 Design 5.8: after a clash with a move made in another clone,
+    # that clone's folder move arrives only by pulling its commit.
+    ("move.py", "clash_advice"),
+    # TCW-115 Design 7: fetching a project names git where git is the reason.
+    ("provision.py", "repository_top"),     # why git could not name a repository
+    ("provision.py", "_bound_problem"),     # 7.8: "git could not say which repository"
+    ("provision.py", "_folder_problem"),    # 7.6: "holds only .git … with git"
+    ("store/fs.py", "fetch_project"),       # git's failure text, through `_git_reason`
+    # TCW-116 Design 6.5 (Decided 23): a related project `tcw migrate` must
+    # read and that is not on this machine is fetched with the clone itself,
+    # since every command but `tcw migrate` is refused in a 3.x project.
+    ("migrate/family.py", "absent_project_message"),
+    # TCW-118, evaluation finding 2: a file the run would write that git would
+    # ignore refuses the run (B18); git's ignore rule is the reason, and the
+    # advice is a line of .gitignore.
+    ("migrate/plan.py", "ignored_blockers"),
 }
 
 WORKTREE_SENTENCE = ("while this worktree has its own at",
@@ -122,9 +138,9 @@ def test_the_guard_sees_a_git_word_in_the_taxonomy_commands():
     """Mutation check (AC 5): `"run git commit first"` in any `tcw/taxonomy/`
     function is reported."""
     source = (PACKAGE / "taxonomy/cli.py").read_text(encoding="utf-8")
-    broken = source.replace("        st.remove(args.path)\n",
+    broken = source.replace("        st.remove(target)\n",
                             "        print(\"run git commit first\")\n"
-                            "        st.remove(args.path)\n", 1)
+                            "        st.remove(target)\n", 1)
     assert broken != source
     assert git_word_offenders("taxonomy/cli.py", broken)
 

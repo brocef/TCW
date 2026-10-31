@@ -29,4 +29,7 @@ export type TEditorSession =
           revision: string
           draft: TDraft
           original: TDraft
+          /** The body shown on the page holds more than the text edited
+           * here (TCW-112 Design 4.5). */
+          bodyNote?: boolean
       }

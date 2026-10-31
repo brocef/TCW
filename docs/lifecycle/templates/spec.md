@@ -56,8 +56,8 @@ this document, so there is no judgment about what to vary — only about what ea
 cell holds. Writing criteria as general properties is **not** a substitute; it
 was tried, and the narrowing simply moved into the test fixtures._
 
-| # | rule 1 | rule 2 | rule 3 | rule 4 |
-| - | ------ | ------ | ------ | ------ |
+| #   | rule 1 | rule 2 | rule 3 | rule 4 |
+| --- | ------ | ------ | ------ | ------ |
 
 ## Risks
 

@@ -1,0 +1,7 @@
+id: cap-be6d93
+name: Find where a project is on this machine
+Status: Supported
+Subject:
+- project
+- manifest
+Feature: project-registry

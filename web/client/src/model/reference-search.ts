@@ -1,3 +1,9 @@
+import {
+    fullIdText,
+    objectAddress,
+    parseFullId,
+    type Namespace,
+} from "./identifier"
 import type { CapabilityItem, TaxonomyItem, WorkItem } from "./types"
 
 export type TReferenceField =
@@ -33,6 +39,9 @@ export interface THighlightPart {
 }
 
 export interface TReferenceContext {
+    /** The served project's ID, which tells this project's entries from
+     * inherited ones. */
+    projectId: string
     work: WorkItem[]
     taxonomy: TaxonomyItem[]
     capabilities: CapabilityItem[]
@@ -45,6 +54,17 @@ export interface TReferenceContext {
 }
 
 const RESULT_LIMIT = 10
+
+/** A route key as the full identifier a record stores: an id-path is the
+ * served project's own entry. */
+function asFullId(
+    key: string | undefined,
+    namespace: Namespace,
+    projectId: string
+): string | undefined {
+    if (key === undefined || parseFullId(key)) return key
+    return fullIdText(projectId, namespace, key)
+}
 
 function option(
     identifier: string,
@@ -62,9 +82,9 @@ function descendantsOf(identifier: string, items: WorkItem[]): Set<string> {
             if (
                 item.parent &&
                 (item.parent === identifier || descendants.has(item.parent)) &&
-                !descendants.has(item.slug)
+                !descendants.has(item["full-id"])
             ) {
-                descendants.add(item.slug)
+                descendants.add(item["full-id"])
                 changed = true
             }
         }
@@ -87,13 +107,15 @@ export function referenceOptions(
 ): TReferenceOption[] {
     const current = context.currentIdentifier
     const selected = new Set(context.selected ?? [])
-    const work = context.work.map((item) => option(item.slug, item.title))
+    const work = context.work.map((item) => option(item["full-id"], item.title))
+    // A stored reference is the entry's full identifier (TCW-110 Design 5.1).
     const taxonomy = context.taxonomy.map((item) =>
-        option(item.qualified ?? item.slug, item.name)
+        option(item["full-id"], item.name)
     )
     const capabilities = context.capabilities.map((item) =>
-        option(item.qualified ?? item.path, item.name)
+        option(item["full-id"], item.name)
     )
+
     if (field === "work-parent") {
         const excluded = current
             ? descendantsOf(current, context.work)
@@ -102,6 +124,7 @@ export function referenceOptions(
         return work.filter((item) => !excluded.has(item.identifier))
     }
     if (field.startsWith("declaration-"))
+        // A `capabilities.yaml` entry is the record's full identifier.
         return (
             field.startsWith("declaration-taxonomy") ? taxonomy : capabilities
         ).filter((item) => !selected.has(item.identifier))
@@ -126,40 +149,42 @@ export function referenceOptions(
     if (field === "taxonomy-vocabulary")
         return context.taxonomy
             .filter((item) => item.kind === "Vocabulary")
-            .map((item) => option(item.qualified ?? item.slug, item.name))
-    if (field === "taxonomy-relates")
+            .map((item) => option(item["full-id"], item.name))
+    if (field === "taxonomy-relates") {
+        const self = asFullId(current, "taxonomy", context.projectId)
         return taxonomy.filter(
-            (item) =>
-                item.identifier !== current && !selected.has(item.identifier)
+            (item) => item.identifier !== self && !selected.has(item.identifier)
         )
-    if (field === "taxonomy-parent") return taxonomy
+    }
+    if (field === "taxonomy-parent")
+        // A folder of this project's own store, named by its id-path.
+        return context.taxonomy
+            .map((item) => ({ found: parseFullId(item["full-id"]), item }))
+            .filter(({ found }) => found?.project === context.projectId)
+            .map(({ found, item }) => option(found?.idPath ?? "", item.name))
     if (field === "capability-feature")
         return context.taxonomy
             .filter((item) => item.kind === "Feature")
-            .map((item) => option(item.qualified ?? item.slug, item.name))
+            .map((item) => option(item["full-id"], item.name))
     if (field === "capability-subject")
         return context.taxonomy
             .filter((item) => item.kind === "Vocabulary")
-            .map((item) => option(item.qualified ?? item.slug, item.name))
+            .map((item) => option(item["full-id"], item.name))
             .filter((item) => !selected.has(item.identifier))
     if (field === "capability-roles" || field === "capability-when") {
-        // A role or condition is named by its path, `roles/…` or
-        // `conditions/…`, inherited ones included: the ledger resolves the
-        // bare path through `extends`.
+        // A role or condition is a capability under `roles/` or
+        // `conditions/`, inherited ones included.
         const prefix = field === "capability-roles" ? "roles/" : "conditions/"
-        const seen = new Set<string>()
         return context.capabilities
-            .filter((item) => item.path.startsWith(prefix))
-            .map((item) => option(item.path, item.name))
-            .filter((item) => {
-                if (seen.has(item.identifier) || selected.has(item.identifier))
-                    return false
-                seen.add(item.identifier)
-                return true
-            })
+            .filter((item) =>
+                (parseFullId(item["full-id"])?.idPath ?? "").startsWith(prefix)
+            )
+            .map((item) => option(item["full-id"], item.name))
+            .filter((item) => !selected.has(item.identifier))
     }
+    const self = asFullId(current, "capabilities", context.projectId)
     return capabilities.filter(
-        (item) => item.identifier !== current && !selected.has(item.identifier)
+        (item) => item.identifier !== self && !selected.has(item.identifier)
     )
 }
 
@@ -239,21 +264,20 @@ export function pathSegments(
     return [...found.values()]
 }
 
-/** Every object a `tcw://` link can name, in the three axes, inherited
- * entries included. A work item is named by its folder (`tcw://W/<folder>`),
- * never by a key a backend gives it, so a link reads the same in every
- * mode. */
+/** Every object a `tcw://` link can name, in the three namespaces,
+ * inherited entries included: its object address, `tcw://<full id>`
+ * (TCW-110 Design 4.5). A work item's full identifier names its folder,
+ * never a key a backend gives it, so a link reads the same in every mode. */
 export function tcwLinkOptions(context: TReferenceContext): TReferenceOption[] {
-    const folder = (slug: string) => slug.slice(slug.lastIndexOf("/") + 1)
     return [
         ...context.work.map((item) =>
-            option(`tcw://W/${folder(item.slug)}`, item.title)
+            option(objectAddress(item["full-id"]), item.title)
         ),
         ...context.taxonomy.map((item) =>
-            option(`tcw://T/${item.qualified ?? item.slug}`, item.name)
+            option(objectAddress(item["full-id"]), item.name)
         ),
         ...context.capabilities.map((item) =>
-            option(`tcw://C/${item.qualified ?? item.path}`, item.name)
+            option(objectAddress(item["full-id"]), item.name)
         ),
     ]
 }
@@ -264,15 +288,14 @@ export function typedLink(textBeforeCaret: string): string | null {
     return found ? found[0] : null
 }
 
-const SLUG = /^([a-z0-9]+(?:-[a-z0-9]+)*)\/([A-Za-z0-9][A-Za-z0-9-]*)$/
-
-/** The warning a full slug naming another project's item carries: it is
- * kept, but this page cannot check it. Null for anything else. */
+/** The warning a full identifier naming another project's item carries: it
+ * is kept, but this page cannot check it. Null for anything else. */
 export function otherProjectWarning(
     text: string,
     projectId: string
 ): string | null {
-    const found = SLUG.exec(text.trim())
-    if (!found || found[1] === projectId) return null
-    return `${text.trim()} is in project ${found[1]}, which this page does not check; make sure it exists`
+    const found = parseFullId(text.trim())
+    if (!found || found.namespace !== "work" || found.project === projectId)
+        return null
+    return `${text.trim()} is in project ${found.project}, which this page does not check; make sure it exists`
 }

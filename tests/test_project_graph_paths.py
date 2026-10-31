@@ -3,6 +3,7 @@ locator spells it in, whether its config is a symlink, and from submodules in
 linked worktrees (spec:
 2026-09-27-resolve-project-graph-paths-by-case-and-through-a-symlinked-config)."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -20,7 +21,9 @@ def test_a_locator_in_other_letter_case_loads_the_node_once(tmp_path):
     if not case_insensitive(tmp_path):
         pytest.skip("the disk is case-sensitive")
     root = repo(tmp_path / "Root")
-    spelled = str(tmp_path / "ROOT" / "kid")
+    # A manifest's locations are relative, so the folder spelled in other
+    # letters is written relative to `root`.
+    spelled = os.path.relpath(tmp_path / "ROOT" / "kid", root)
     config(root, "root", children={"kid": spelled})
     config(root / "kid", "kid", parent={"root": ".."})
     done = validate(root)
@@ -28,7 +31,7 @@ def test_a_locator_in_other_letter_case_loads_the_node_once(tmp_path):
 
 
 def test_an_override_in_other_letter_case_is_the_node_it_names(tmp_path, monkeypatch):
-    """`tcw provision` asks whether each override delivered its project; that
+    """`tcw project provision` asks whether each override delivered its project; that
     check compared path text and refused what the walk had accepted."""
     if not case_insensitive(tmp_path):
         pytest.skip("the disk is case-sensitive")
@@ -37,7 +40,9 @@ def test_an_override_in_other_letter_case_is_the_node_it_names(tmp_path, monkeyp
     config(root, "root", children={"kid": "kid"})
     config(root / "kid", "kid", parent={"root": ".."})
     monkeypatch.setenv("TCW_PROJECT_KID", str(tmp_path / "root" / "kid"))
-    registry = FsProjectRegistry.open(root / "kid")
+    # From the parent, which looks its child up (an ancestor's children are
+    # not followed from below, TCW-108 Design 3.1).
+    registry = FsProjectRegistry.open(root)
     assert [o.problem for o in registry.overrides()] == [None]
 
 
@@ -45,7 +50,8 @@ def test_a_symlinked_config_belongs_to_the_folder_it_sits_in(tmp_path):
     node = repo(tmp_path / "node")
     store = tmp_path / "store"
     config(store, "nd", children={"kid": "kid"})
-    (node / "tcw-config.yaml").symlink_to(store / "tcw-config.yaml")
+    (node / ".tcw").mkdir()
+    (node / ".tcw/tcw-config.yaml").symlink_to(store / ".tcw/tcw-config.yaml")
     config(node / "kid", "kid", parent={"nd": ".."})
     done = validate(node)
     assert done.returncode == 0, done.stdout + done.stderr

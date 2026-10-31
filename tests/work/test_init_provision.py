@@ -1,9 +1,11 @@
-"""`tcw init` and `tcw provision` on the 3.0 work store (TCW-70 AC 18)."""
+"""`tcw project new` and `tcw project provision` on the 3.0 work store (TCW-70 AC 18)."""
 
+import pytest
 import yaml
 
 from tcw.cli import main
 from tests.work.projects import git, write_item
+from tests.projectfiles import write_config
 
 
 def run(capsys, monkeypatch, cwd, *argv):
@@ -26,7 +28,7 @@ def repository(path):
 
 def test_init_makes_the_work_folder_and_nothing_else(tmp_path, capsys, monkeypatch):
     root = repository(tmp_path / "p")
-    code, _, err = run(capsys, monkeypatch, root, "init", "--id", "p", "work")
+    code, _, err = run(capsys, monkeypatch, root, "project", "new", "--id", "p", "work")
     assert code == 0, err
     work = root / "docs" / "work"
     assert sorted(p.name for p in work.iterdir()) == [".gitkeep"]
@@ -37,18 +39,18 @@ def test_init_makes_the_work_folder_and_nothing_else(tmp_path, capsys, monkeypat
 
 def test_init_refuses_to_move_a_store_holding_an_item(tmp_path, capsys, monkeypatch):
     root = repository(tmp_path / "p")
-    assert run(capsys, monkeypatch, root, "init", "--id", "p", "work")[0] == 0
+    assert run(capsys, monkeypatch, root, "project", "new", "--id", "p", "work")[0] == 0
     write_item(root, "2026-10-01-a", {"title": "a", "stage": "request"})
-    code, _, err = run(capsys, monkeypatch, root, "init", "work",
+    code, _, err = run(capsys, monkeypatch, root, "project", "new", "work",
                        "--work-path", "elsewhere")
     assert code == 1 and "non-pristine" in err
-    assert (root / "docs/work/2026-10-01-a/item.yaml").exists()
+    assert (root / "docs/work/2026-10-01-a/tcw-work-item.yaml").exists()
 
 
 def test_init_moves_an_empty_store(tmp_path, capsys, monkeypatch):
     root = repository(tmp_path / "p")
-    assert run(capsys, monkeypatch, root, "init", "--id", "p", "work")[0] == 0
-    code, _, err = run(capsys, monkeypatch, root, "init", "work",
+    assert run(capsys, monkeypatch, root, "project", "new", "--id", "p", "work")[0] == 0
+    code, _, err = run(capsys, monkeypatch, root, "project", "new", "work",
                        "--work-path", "elsewhere")
     assert code == 0, err
     assert (root / "elsewhere" / ".gitkeep").exists()
@@ -61,13 +63,33 @@ def test_provision_accepts_a_store_of_item_folders(tmp_path, capsys, monkeypatch
     git(remote, "add", "-A")
     git(remote, "commit", "-qm", "seed")
     root = repository(tmp_path / "p")
-    (root / "tcw-config.yaml").write_text(yaml.safe_dump({
+    write_config(root, yaml.safe_dump({
         "id": "p",
         "work": {"repository": {"url": str(remote), "path": "docs/work",
                                 "checkout": str(tmp_path / "co")}}}))
-    code, out, err = run(capsys, monkeypatch, root, "provision",
+    code, out, err = run(capsys, monkeypatch, root, "project", "provision",
                          "--component", "work")
     assert code == 0, out + err
-    assert (tmp_path / "co" / "docs/work/2026-10-01-a/item.yaml").exists()
+    assert (tmp_path / "co" / "docs/work/2026-10-01-a/tcw-work-item.yaml").exists()
     code, out, err = run(capsys, monkeypatch, root, "work", "list")
-    assert (code, out) == (0, "p/2026-10-01-a\n"), err
+    assert (code, out) == (0, "p.work/2026-10-01-a\n"), err
+
+
+@pytest.mark.parametrize("option, component", [("--work-path", "work"),
+                                               ("--taxonomy-path", "taxonomy"),
+                                               ("--capabilities-path", "capabilities")])
+def test_init_refuses_a_store_location_given_as_an_address(tmp_path, capsys, monkeypatch,
+                                                           option, component):
+    """Turned into a path, `tcw://qq.path/board` collapses to `tcw:/qq.path/board`
+    and would be written as a plain folder of that name. The project being
+    created cannot yet be found through the registry, so init refuses. The
+    scheme is matched in any case: `TCW://` would otherwise become a folder
+    named `TCW:`."""
+    for n, address in enumerate(["tcw://qq.path/board", "TCW://qq.path/board",
+                                 "Tcw://qq.path/board"]):
+        root = repository(tmp_path / f"p{n}")
+        code, _, err = run(capsys, monkeypatch, root, "project", "new", "--id", "p",
+                           option, address, component)
+        assert code == 2, (address, err)
+        assert ".tcw/tcw-config.yaml by hand" in err, (address, err)
+        assert sorted(p.name for p in root.iterdir()) == [".git"], address

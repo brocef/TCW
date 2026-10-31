@@ -6,9 +6,12 @@ them.
 """
 
 OK = 0
-ERROR = 1  # the backend or TCW itself failed
+# An error: TCW, the backend, or something it was told to read failed, such as
+# a configuration problem or an unknown project ID.
+ERROR = 1
 USAGE = 2  # the command was asked for something that cannot be asked
 REFUSED = 3  # a legal request that a rule or a gate turned down; nothing changed
 NOT_FOUND = 4
 UNREACHABLE = 5  # a backend or another project could not be reached
 MOVED_WITH_PROBLEM = 6  # the item moved, but something after the move failed
+INHERITED_UNAVAILABLE = 7  # something this project inherits is not available here

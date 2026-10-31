@@ -14,11 +14,11 @@ import pytest
 import yaml
 
 from tcw.cli import main
-from tcw.store.fs import FsTaxonomyStore, init, write_sentinel
+from tcw.store.fs import init, write_sentinel
+from tcw.project_files import version_line
+from tests.projectfiles import config_file, write_config
 
-PARENT = ("id: child\nprojects:\n    parent:\n        base: ../base\n"
-          "    children:\n        other: ../other\n")
-
+BOM = "\ufeff".encode()
 
 def git(root: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(root), *args], check=True,
@@ -38,32 +38,10 @@ def commit_all(root: Path) -> None:
     git(root, "commit", "-q", "-m", "fixture", "--allow-empty")
 
 
-def federated(tmp_path: Path, child_config: bytes) -> Path:
-    """Registered `base` and `other` projects and a `child` whose config is
-    exactly `child_config`, all with taxonomy and capabilities trees, committed
-    so the index starts clean."""
-    base = repository(tmp_path / "base")
-    other = repository(tmp_path / "other")
-    child = repository(tmp_path / "child")
-    for root in (base, other, child):
-        for tree in ("taxonomy", "capabilities"):
-            (root / "docs" / tree).mkdir(parents=True)
-            (root / "docs" / tree / ".gitkeep").touch()
-    (base / "tcw-config.yaml").write_text(
-        "id: base\nprojects:\n  children:\n    child: ../child\n")
-    (other / "tcw-config.yaml").write_text(
-        "id: other\nprojects:\n  parent:\n    child: ../child\n")
-    (child / "tcw-config.yaml").write_bytes(child_config)
-    commit_all(other)
-    commit_all(base)
-    commit_all(child)
-    return child
-
-
 def work_node(tmp_path: Path, config: bytes) -> Path:
     root = repository(tmp_path / "node")
     init(["work"], root, "node")
-    (root / "tcw-config.yaml").write_bytes(config)
+    write_config(root, config)
     commit_all(root)
     return root
 
@@ -74,7 +52,14 @@ def run(root: Path, monkeypatch, *argv: str) -> int:
 
 
 def config(root: Path) -> bytes:
-    return (root / "tcw-config.yaml").read_bytes()
+    """The project file's bytes without its first line, after checking that
+    the first line is the version line the fixture wrote (TCW-106 Design 3.1
+    and 3.2: no edit moves or changes it). A byte order mark stays in front."""
+    raw = (root / ".tcw/tcw-config.yaml").read_bytes()
+    head = BOM if raw.startswith(BOM) else b""
+    first, _, rest = raw[len(head):].partition(b"\n")
+    assert first.rstrip(b"\r") == version_line().strip().encode(), raw.decode()
+    return head + rest
 
 
 def assert_only_added(before: bytes, after: bytes, *added: bytes) -> None:
@@ -103,102 +88,6 @@ def assert_refused_leaving_everything(root: Path, before: bytes, code: int, caps
     for text in expected:
         assert text in err, err
     return err
-
-
-# ── extends ──────────────────────────────────────────────────────────────────
-
-ANNOTATED = (PARENT + """\
-# Our own taxonomy lives beside the code.
-taxonomy:
-    path: docs/taxonomy   # moved here in 2.3
-work:
-    # A 3.0 work section, since every command now reads it (TCW-72).
-    stages:
-        # the spec stage runs our checklist first
-        spec:
-            pre: [{command: "./checklist.sh 'To Do' 'In Progress'"}]
-    tags: [web, api]   # the labels we use
-# end of file
-""").encode()
-
-
-def test_taxonomy_extends_add_changes_only_its_own_lines(tmp_path, monkeypatch):
-    child = federated(tmp_path, ANNOTATED)
-    assert run(child, monkeypatch, "taxonomy", "extends", "add", "base") == 0
-    assert_only_added(ANNOTATED, config(child), b"    extends:\n", b"        - base\n")
-
-
-def test_capabilities_extends_appends_a_missing_section(tmp_path, monkeypatch):
-    child = federated(tmp_path, ANNOTATED)
-    assert run(child, monkeypatch, "capabilities", "extends", "add", "base") == 0
-    assert config(child) == ANNOTATED + b"capabilities:\n    extends:\n        - base\n"
-
-
-def test_capabilities_extends_goes_before_a_document_end_marker(tmp_path, monkeypatch):
-    before = (PARENT + "...\n").encode()
-    child = federated(tmp_path, before)
-    assert run(child, monkeypatch, "capabilities", "extends", "add", "base") == 0
-    assert config(child) == (PARENT + "capabilities:\n    extends:\n"
-                             "        - base\n...\n").encode()
-
-
-def test_taxonomy_extends_rm_removes_only_that_line_then_the_key(tmp_path, monkeypatch):
-    before = (PARENT + "taxonomy:\n    path: docs/taxonomy\n    # inherited\n"
-              "    extends:\n        - base\n        - other  # kept\n").encode()
-    child = federated(tmp_path, before)
-    assert run(child, monkeypatch, "taxonomy", "extends", "rm", "base") == 0
-    after_one = config(child)
-    assert_only_removed(before, after_one, b"        - base\n")
-    assert run(child, monkeypatch, "taxonomy", "extends", "rm", "other") == 0
-    assert config(child) == (PARENT + "taxonomy:\n    path: docs/taxonomy\n"
-                             "    # inherited\n").encode()
-
-
-def test_extends_add_on_a_stub_section_keeps_its_comments(tmp_path, monkeypatch):
-    before = (PARENT + "taxonomy:\n    # extends:\n    #     - old-name\n").encode()
-    child = federated(tmp_path, before)
-    assert run(child, monkeypatch, "taxonomy", "extends", "add", "base") == 0
-    assert config(child) == (PARENT + "taxonomy:\n    extends:\n        - base\n"
-                             "    # extends:\n    #     - old-name\n").encode()
-
-
-def test_extends_add_on_an_empty_key_keeps_its_comment(tmp_path, monkeypatch):
-    before = (PARENT + "taxonomy:\n    extends: # filled in by tcw\n"
-              "    path: docs/taxonomy\n").encode()
-    child = federated(tmp_path, before)
-    assert run(child, monkeypatch, "taxonomy", "extends", "add", "base") == 0
-    assert config(child) == (PARENT + "taxonomy:\n    extends: # filled in by tcw\n"
-                             "        - base\n    path: docs/taxonomy\n").encode()
-
-
-def test_extends_add_into_a_brace_section_is_refused(tmp_path, monkeypatch, capsys):
-    before = (PARENT + "taxonomy: {path: docs/taxonomy}\n").encode()
-    child = federated(tmp_path, before)
-    code = run(child, monkeypatch, "taxonomy", "extends", "add", "base")
-    assert_refused_leaving_everything(child, before, code, capsys,
-                                      "inside the braces", ", extends: [base]")
-
-
-def test_extends_rm_over_an_aliased_anchor_is_refused(tmp_path, monkeypatch, capsys):
-    before = (PARENT + "taxonomy:\n    extends: &ids [base]\n"
-              "capabilities:\n    extends: *ids\n").encode()
-    child = federated(tmp_path, before)
-    code = run(child, monkeypatch, "taxonomy", "extends", "rm", "base")
-    assert_refused_leaving_everything(child, before, code, capsys, "taxonomy.extends")
-
-
-def test_a_refused_extends_add_leaves_the_store_object_unchanged(tmp_path):
-    before = (PARENT + "taxonomy: {path: docs/taxonomy}\n").encode()
-    child = federated(tmp_path, before)
-    store = FsTaxonomyStore.open(child)
-    with pytest.raises(ValueError, match="would lose its comments"):
-        store.extends_add("base")
-    assert "extends" not in store.config
-    (child / "tcw-config.yaml").write_bytes(
-        (PARENT + "taxonomy:\n    path: docs/taxonomy\n").encode())
-    store.extends_add("base")
-    assert store.config["extends"] == ["base"]
-    assert yaml.safe_load(config(child))["taxonomy"]["extends"] == ["base"]
 
 
 # ── tags ─────────────────────────────────────────────────────────────────────
@@ -232,10 +121,10 @@ def test_tags_add_where_work_has_no_tags(tmp_path, monkeypatch):
 def test_tags_add_of_a_registered_tag_writes_and_stages_nothing(tmp_path, monkeypatch):
     before = b"id: node\nwork:\n  tags: [bug]\n"
     root = work_node(tmp_path, before)
-    mtime = (root / "tcw-config.yaml").stat().st_mtime_ns
+    mtime = (root / ".tcw/tcw-config.yaml").stat().st_mtime_ns
     assert run(root, monkeypatch, "work", "tags", "add", "bug") == 0
     assert config(root) == before
-    assert (root / "tcw-config.yaml").stat().st_mtime_ns == mtime
+    assert (root / ".tcw/tcw-config.yaml").stat().st_mtime_ns == mtime
     assert subprocess.run(["git", "-C", str(root), "diff", "--cached", "--quiet"]).returncode == 0
 
 
@@ -246,7 +135,7 @@ def test_an_unsorted_tag_list_is_sorted_only_when_it_has_no_comments(tmp_path, m
     assert config(root) == (b"id: node\nwork:\n  tags:\n  - alpha\n  - beta\n  - gamma\n"
                             b"  path: docs/work\n")
     commented = b"id: node\nwork:\n  tags:\n  - gamma  # why\n  - alpha\n  path: docs/work\n"
-    (root / "tcw-config.yaml").write_bytes(commented)
+    write_config(root, commented)
     commit_all(root)
     code = run(root, monkeypatch, "work", "tags", "add", "beta")
     assert_refused_leaving_everything(root, commented, code, capsys,
@@ -256,6 +145,10 @@ def test_an_unsorted_tag_list_is_sorted_only_when_it_has_no_comments(tmp_path, m
 def test_windows_line_endings_and_a_byte_order_mark_survive(tmp_path, monkeypatch):
     before = "﻿id: node\r\n# tags\r\nwork:\r\n  tags:\r\n  - alpha\r\n".encode()
     root = work_node(tmp_path, before)
+    # The version line goes after the mark and ends as the file's lines do.
+    config_file(root).write_bytes(BOM + version_line().strip().encode() + b"\r\n"
+                                  + before[len(BOM):])
+    commit_all(root)
     assert run(root, monkeypatch, "work", "tags", "add", "beta") == 0
     assert config(root) == before + b"  - beta\r\n"
 
@@ -282,7 +175,7 @@ def test_tags_add_with_a_scalar_work_section_is_refused(tmp_path, monkeypatch, c
     assert code != 0
     assert config(root) == before
     assert git(root, "status", "--porcelain").stdout == ""
-    assert "work must be a mapping" in err and "tcw-config.yaml" in err
+    assert "work must be a mapping" in err and ".tcw/tcw-config.yaml" in err
 
 
 # ── init and write_sentinel ──────────────────────────────────────────────────
@@ -290,16 +183,15 @@ def test_tags_add_with_a_scalar_work_section_is_refused(tmp_path, monkeypatch, c
 def test_init_writes_only_the_id_and_path_lines(tmp_path):
     root = repository(tmp_path / "node")
     before = b"# my node\nwork:\n    tags: [a]  # registered by hand\n"
-    (root / "tcw-config.yaml").write_bytes(before)
-    target = root / "planning" / "work"
-    init(["work"], root, "node", work_path=target)
-    assert_only_added(before, config(root), b"id: node\n", f"    path: {target}\n".encode())
+    write_config(root, before)
+    init(["work"], root, "node", work_path=Path("planning/work"))
+    assert_only_added(before, config(root), b"id: node\n", b"    path: planning/work\n")
 
 
 def test_init_replacing_a_path_keeps_the_comment_after_it(tmp_path):
     root = repository(tmp_path / "node")
     before = b"id: node\ntaxonomy:\n    path: docs/old   # moved in 2.3\n"
-    (root / "tcw-config.yaml").write_bytes(before)
+    write_config(root, before)
     init(["taxonomy"], root, paths={"taxonomy": Path("docs/new")})
     assert config(root) == b"id: node\ntaxonomy:\n    path: docs/new   # moved in 2.3\n"
 
@@ -308,26 +200,33 @@ def test_init_rerun_without_a_path_keeps_a_relative_work_path_as_written(tmp_pat
     root = repository(tmp_path / "node")
     init(["work"], root, "node", work_path=Path("store"))
     before = b"id: node\nwork:\n    path: ./store\n"
-    (root / "tcw-config.yaml").write_bytes(before)
+    write_config(root, before)
     init(["work"], root)
     assert config(root) == before
 
 
-def test_init_rerun_without_a_path_does_not_expand_a_tilde(tmp_path, monkeypatch):
+def test_init_rerun_with_a_tilde_location_is_refused_and_writes_nothing(
+        tmp_path, monkeypatch, capsys):
+    """TCW-110 Design 7.1: a `~` location in the shared file names a folder
+    on one machine; every command refuses it, `tcw project new` included."""
     home = repository(tmp_path / "home")
     monkeypatch.setenv("HOME", str(home))
     root = repository(tmp_path / "node")
-    init(["work"], root, "node", work_path=home / "store")
     before = b"id: node\nwork:\n    path: ~/store\n"
-    (root / "tcw-config.yaml").write_bytes(before)
-    init(["work"], root)
+    write_config(root, before)
+    commit_all(root)
+    code = run(root, monkeypatch, "project", "new", "work")
+    err = capsys.readouterr().err
+    assert code == 1, err
+    assert "work.path must be a path relative to the project" in err
     assert config(root) == before
+    assert not (home / "store").exists()
 
 
 def test_init_with_an_explicit_path_still_writes_it(tmp_path):
     root = repository(tmp_path / "node")
     init(["work"], root, "node", work_path=Path("store"))
-    (root / "tcw-config.yaml").write_bytes(b"id: node\nwork:\n    path: ./store\n")
+    write_config(root, b"id: node\nwork:\n    path: ./store\n")
     init(["work"], root, work_path=Path("other"))
     assert config(root) == b"id: node\nwork:\n    path: other\n"
 
@@ -335,9 +234,9 @@ def test_init_with_an_explicit_path_still_writes_it(tmp_path):
 def test_init_reports_a_work_path_naming_no_user(tmp_path, monkeypatch, capsys):
     root = repository(tmp_path / "node")
     before = b"id: node\nwork:\n    path: ~no-such-user-tcw/store\n"
-    (root / "tcw-config.yaml").write_bytes(before)
-    assert run(root, monkeypatch, "init", "work") == 1
-    assert "tcw init:" in capsys.readouterr().err
+    write_config(root, before)
+    assert run(root, monkeypatch, "project", "new", "work") == 1
+    assert "tcw project new:" in capsys.readouterr().err
     assert config(root) == before
 
 
@@ -345,11 +244,11 @@ def test_a_refused_init_leaves_config_index_and_folders_alone(tmp_path, monkeypa
     root = repository(tmp_path / "node")
     init(["work"], root, "node")                      # a pristine default store
     before = b"# no id yet\nwork: {tags: [a]}\n"      # braces: `path` cannot be added
-    (root / "tcw-config.yaml").write_bytes(before)
+    write_config(root, before)
     commit_all(root)
     status = git(root, "status", "--porcelain").stdout
-    target = root / "planning" / "work"
-    code = run(root, monkeypatch, "init", "work", "--id", "node", "--work-path", str(target))
+    code = run(root, monkeypatch, "project", "new", "work", "--id", "node", "--work-path",
+               "planning/work")
     err = assert_refused_leaving_everything(root, before, code, capsys, "inside the braces")
     assert git(root, "status", "--porcelain").stdout == status   # .gitignore too
     assert "work.path" in err
@@ -362,21 +261,21 @@ def test_a_refused_init_leaves_config_index_and_folders_alone(tmp_path, monkeypa
 def test_a_fresh_init_writes_the_whole_file(tmp_path, monkeypatch, existing):
     root = repository(tmp_path / "node")
     if existing is not None:
-        (root / "tcw-config.yaml").write_bytes(existing)
-    assert run(root, monkeypatch, "init", "work", "--id", "fresh") == 0
+        write_config(root, existing)
+    assert run(root, monkeypatch, "project", "new", "work", "--id", "fresh") == 0
     assert yaml.safe_load(config(root))["id"] == "fresh"
 
 
 def test_write_sentinel_adds_id_below_the_leading_comments(tmp_path):
     before = b"# header\n# more\nwork:\n  tags: [a]  # keep\n"
-    (tmp_path / "tcw-config.yaml").write_bytes(before)
+    write_config(tmp_path, before)
     assert write_sentinel(tmp_path, "proj") is True
     assert config(tmp_path) == b"# header\n# more\nid: proj\nwork:\n  tags: [a]  # keep\n"
     assert write_sentinel(tmp_path, "proj") is False
 
 
 def test_write_sentinel_fills_a_null_id(tmp_path):
-    (tmp_path / "tcw-config.yaml").write_bytes(b"id: null\n# keep me\nwork: {}\n")
+    write_config(tmp_path, b"id: null\n# keep me\nwork: {}\n")
     assert write_sentinel(tmp_path, "proj") is True
     assert config(tmp_path) == b"id: proj\n# keep me\nwork: {}\n"
     assert yaml.safe_load(config(tmp_path))["id"] == "proj"
@@ -385,7 +284,7 @@ def test_write_sentinel_fills_a_null_id(tmp_path):
 def test_init_over_a_block_scalar_path_is_refused(tmp_path):
     root = repository(tmp_path / "node")
     before = b"id: node\ntaxonomy:\n  path: |\n    docs/old\n"
-    (root / "tcw-config.yaml").write_bytes(before)
+    write_config(root, before)
     with pytest.raises(ValueError, match="spans more than one line"):
         init(["taxonomy"], root, paths={"taxonomy": Path("docs/new")})
     assert config(root) == before
@@ -395,14 +294,14 @@ def test_init_over_a_block_scalar_path_is_refused(tmp_path):
 def test_init_with_a_scalar_work_section_is_refused(tmp_path, monkeypatch, capsys):
     root = repository(tmp_path / "node")
     before = b"id: node\nwork: docs/work\n"
-    (root / "tcw-config.yaml").write_bytes(before)
+    write_config(root, before)
     commit_all(root)
-    code = run(root, monkeypatch, "init", "work", "--work-path", str(root / "w"))
+    code = run(root, monkeypatch, "project", "new", "work", "--work-path", "w")
     err = capsys.readouterr().err
     assert code != 0
     assert config(root) == before
     assert git(root, "status", "--porcelain").stdout == ""
-    assert "work must be a mapping" in err and "tcw-config.yaml" in err
+    assert "work must be a mapping" in err and ".tcw/tcw-config.yaml" in err
     assert not (root / "w").exists()
 
 
@@ -419,7 +318,17 @@ def test_a_tags_change_that_changes_nothing_writes_nothing(tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize("text", [b"---\n", b"~\n", b"# placeholder\n---\n"])
-def test_write_sentinel_on_a_null_document(tmp_path, text):
-    (tmp_path / "tcw-config.yaml").write_bytes(text)
+def test_write_sentinel_refuses_a_null_document(tmp_path, text):
+    """A null document has no `tcw-version`, so it is read as a 3.x file and
+    refused before anything is written (TCW-106 Design 3.4 row a, 3.4a)."""
+    write_config(tmp_path, text)
+    assert (tmp_path / ".tcw/tcw-config.yaml").read_bytes() == text
+    with pytest.raises(ValueError, match="has no tcw-version"):
+        write_sentinel(tmp_path, "proj")
+    assert (tmp_path / ".tcw/tcw-config.yaml").read_bytes() == text
+
+
+def test_write_sentinel_on_a_file_holding_only_the_version(tmp_path):
+    write_config(tmp_path, b"")
     assert write_sentinel(tmp_path, "proj") is True
-    assert yaml.safe_load(config(tmp_path)) == {"id": "proj"}
+    assert config(tmp_path) == b"id: proj\n"

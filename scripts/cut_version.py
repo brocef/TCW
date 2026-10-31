@@ -8,6 +8,10 @@ entry files in `docs/{changelogs,release-notes}/upcoming/` into each folder's
 `v{version}.md` (deleting them, keeping the folder's README.md), then commits
 and tags. Does NOT push — publishing stays a human step.
 
+Naming the current version (X.Y.Z equal to what the files hold) cuts it
+without bumping, when it has no tag yet; while it has none, patch, minor and
+major are refused, since they would skip it.
+
 The version string lives in 5 files (see CLAUDE.md "Versioning");
 `.agents/plugins/marketplace.json` deliberately carries none and is untouched.
 """
@@ -96,6 +100,13 @@ def _git(root: Path, *args: str) -> None:
     subprocess.run(["git", "-C", str(root), *args], check=True)
 
 
+def _tagged(root: Path, version: str) -> bool:
+    """Whether `v{version}` is a tag here. Local tags only: no network."""
+    out = subprocess.run(["git", "-C", str(root), "tag", "--list", f"v{version}"],
+                         capture_output=True, text=True, check=True).stdout
+    return bool(out.strip())
+
+
 def combine(texts: list[str], order: tuple[str, ...] = ()) -> str:
     """Combine entry files into one body, merging `## ` sections by heading.
 
@@ -164,9 +175,14 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
 
     root = root or repo_root()
     old = current_version(root)
+    tagged = _tagged(root, old)
+    if args.bump in ("patch", "minor", "major") and not tagged:
+        # A bump from a version never released would skip that version.
+        sys.exit(f"cut_version: v{old} has no tag yet; cut it with "
+                 f"'python scripts/cut_version.py {old}'")
     new = next_version(old, args.bump)
-    if new == old:
-        sys.exit(f"cut_version: {new} is already the current version")
+    if new == old and tagged:
+        sys.exit(f"cut_version: v{old} is already tagged")
 
     missing = [rel for rel in UPCOMING if not (root / rel).is_dir()]
     if missing:
@@ -174,12 +190,14 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
         # ship empty notes under a real version number.
         sys.exit(f"cut_version: no entry folder at {', '.join(missing)}")
 
-    bump_files(root, old, new)
+    if new != old:   # else the files already hold the version, as on a new major's branch
+        bump_files(root, old, new)
     combined = combine_upcoming(root, new)
     _git(root, "add", "--", *VERSION_FILES.keys(), *combined)
     _git(root, "commit", "-qm", f"chore(release): cut v{new}")  # picks up the staged removals too
     _git(root, "tag", f"v{new}")
-    print(f"cut v{new} (was v{old}). Push with: git push origin main --tags")
+    was = "the version files already held it" if new == old else f"was v{old}"
+    print(f"cut v{new} ({was}). Push with: git push origin main --tags")
     return 0
 
 

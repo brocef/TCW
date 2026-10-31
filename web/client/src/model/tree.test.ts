@@ -27,41 +27,66 @@ describe("path tree", () => {
     test("returns path ancestors", () => {
         expect(pathAncestors("a/b/c")).toEqual(["a", "a/b"])
     })
+
+    test("an inherited entry sits under one top node for its owner and namespace", () => {
+        const keys = [
+            "cli/x",
+            "core.capabilities/cli/y",
+            "core.capabilities/web",
+        ]
+        const tree = buildPathTree(keys, (key) => key)
+        expect(tree.map((node) => node.name)).toEqual([
+            "cli",
+            "core.capabilities",
+        ])
+        const core = tree[1]
+        expect(core.children.map((node) => node.path)).toEqual([
+            "core.capabilities/cli",
+            "core.capabilities/web",
+        ])
+        expect(core.children[0].children[0].item).toBe(
+            "core.capabilities/cli/y"
+        )
+        expect(pathAncestors("core.capabilities/cli/y")).toEqual([
+            "core.capabilities",
+            "core.capabilities/cli",
+        ])
+    })
 })
 
 describe("work tree", () => {
     test("nests children under their parent's full slug", () => {
         const items = [
             workItem("parent"),
-            workItem("child", { parent: "p/parent" }),
+            workItem("child", { parent: "p.work/parent" }),
         ]
         const tree = buildWorkTree(items)
-        expect(tree.map((node) => node.path)).toEqual(["p/parent"])
-        expect(tree[0].children[0].path).toBe("p/child")
-        expect(workAncestors("p/child", items)).toEqual(["p/parent"])
+        expect(tree.map((node) => node.path)).toEqual(["p.work/parent"])
+        expect(tree[0].children[0].path).toBe("p.work/child")
+        expect(workAncestors("p.work/child", items)).toEqual(["p.work/parent"])
     })
 
     test("an item whose parent is in another project is a root", () => {
         const items = [
             workItem("parent"),
-            workItem("child", { parent: "q/parent" }),
+            workItem("child", { parent: "q.work/parent" }),
         ]
         expect(buildWorkTree(items).map((node) => node.path)).toEqual([
-            "p/parent",
-            "p/child",
+            "p.work/parent",
+            "p.work/child",
         ])
-        expect(workAncestors("p/child", items)).toEqual([])
+        expect(workAncestors("p.work/child", items)).toEqual([])
     })
 
     test("keeps malformed cycles reachable", () => {
         const items = [
-            workItem("a", { parent: "p/b" }),
-            workItem("b", { parent: "p/a" }),
+            workItem("a", { parent: "p.work/b" }),
+            workItem("b", { parent: "p.work/a" }),
         ]
         const tree = buildWorkTree(items)
         expect(tree).toHaveLength(1)
         expect(new Set([tree[0].path, tree[0].children[0].path])).toEqual(
-            new Set(["p/a", "p/b"])
+            new Set(["p.work/a", "p.work/b"])
         )
     })
 
@@ -77,7 +102,13 @@ describe("work tree", () => {
             sortWorkTree(tree, "name", "ascending", ORDER, PRIORITIES).map(
                 (node) => node.path
             )
-        ).toEqual(["p/first", "p/a", "p/z", "p/later", "p/none"])
+        ).toEqual([
+            "p.work/first",
+            "p.work/a",
+            "p.work/z",
+            "p.work/later",
+            "p.work/none",
+        ])
     })
 
     test("sorts by creation date", () => {
@@ -89,7 +120,7 @@ describe("work tree", () => {
             sortWorkTree(tree, "created", "descending", ORDER, PRIORITIES).map(
                 (node) => node.path
             )
-        ).toEqual(["p/new", "p/old"])
+        ).toEqual(["p.work/new", "p.work/old"])
     })
 
     test.each(["ascending", "descending"] as const)(
@@ -107,11 +138,11 @@ describe("work tree", () => {
                 ORDER,
                 PRIORITIES
             ).map((node) => node.path)
-            expect(sorted[2]).toBe("p/none")
+            expect(sorted[2]).toBe("p.work/none")
             expect(sorted.slice(0, 2)).toEqual(
                 direction === "ascending"
-                    ? ["p/top", "p/low"]
-                    : ["p/low", "p/top"]
+                    ? ["p.work/top", "p.work/low"]
+                    : ["p.work/low", "p.work/top"]
             )
         }
     )

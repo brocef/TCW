@@ -1,5 +1,5 @@
 As a user, I run `tcw validate` to check the current project: its
-`tcw-config.yaml`, its connections to other projects, the YAML and `tcw://` links
+`.tcw/tcw-config.yaml`, its connections to other projects, the YAML and `tcw://` links
 in its stores, its taxonomy and capabilities ledgers, and its work items. It checks this
 project only; a reference into another project is checked by resolving it. It
 takes no path, and nothing it does reaches the network.
@@ -12,34 +12,71 @@ notes such as a `TCW_PROJECT_<ID>` override in effect.
 
 There are three severities, and only one fails the run:
 
-- `error` — malformed YAML, a broken `tcw://` link, an `item.yaml` that cannot be
+- `error` — malformed YAML, a broken `tcw://` link, a `tcw-work-item.yaml` that cannot be
   read, a taxonomy or capabilities problem (including a capability record that
   still carries the retired `Planning doc` or `Tracker` field), or a
-  configuration problem in any layer — `tcw-config.yaml`, the user-wide file
-  or `tcw-config.local.yaml` — named by its file and key. Any error makes
-  `tcw validate` exit 1.
-- `warning` — for example a `tcw-config.local.yaml` that version control is
-  tracking, which should stay personal; a parent or blocker that names no item, an item whose
+  configuration problem in any layer — `.tcw/tcw-config.yaml`, the user-wide
+  file or `.tcw/tcw-config.local.yaml` — named by its file and key. That
+  includes a `.tcw/` file whose `tcw-version` is missing, is not a version
+  written as text, is older than TCW 4 or is newer than the running TCW, and
+  a key or project ID that is not lowercase letters and digits joined by
+  single hyphens. A problem with an override variable, `TCW_<KEY>__<PROJECT>`,
+  is an error whose `<where>` is `environment` and whose message starts with
+  the variable's name. Any error makes `tcw validate` exit 1.
+- `warning` — for example a `.tcw/tcw-config.local.yaml` or
+  `.tcw/tcw-manifest.local.yaml` that version control is tracking, which should
+  stay personal; a committed manifest entry overridden on this machine by the
+  personal manifest or a `TCW_PROJECT_<ID>`, whose problem would otherwise be
+  an error; a TCW 3.x `tcw-config.yaml` left at
+  the root of a TCW 4 project, which is not read; a load order that no order
+  can keep (see [Read a project's ancestors in one load
+  order](tcw://C/cli/read-ancestors-in-one-load-order)); a problem in a tag
+  list or Jira setting a parent passes down, or a value a parent's
+  `.tcw/tcw-config.local.yaml` may not set, at that parent's file, since it is
+  that project's error and fails only its own run; two parents that do not
+  inherit from each other with a taxonomy entry or capability at one path,
+  until this project has a complete one of its own there; a parent or blocker
+  that names no item, an item whose
   latest verdict round is invalid, or a stage ahead of its artifacts. The run
   still exits 0.
 - `unresolved` — something declared that cannot be checked from here: a project
   that is not on this machine, or a reference into one. The run still exits 0.
 
-**Connections between projects.** Missing or invalid IDs, malformed entries
-under `projects:`, mismatched IDs, a parent and child that do not name each
-other, and cycles are errors, with guidance on how to fix them. A parent/child
-connection is declared on both sides; an `upstream` connection is declared only
-by the reader and needs no counterpart. An upstream is never validated as part
-of the reader: only its own config is read, and problems in its connections are
-its own. A project declared as its own upstream, or declared upstream while also
-reachable as family, is an error. A former child still naming a parent that now
-reads it as an upstream is a warning, so neither project is blocked mid-change.
+**Connections between projects.** Missing or invalid IDs, a malformed
+`parents:` or `children:` entry, a project named both as a parent and as a
+child, a manifest entry placing a folder that holds another project or none,
+one ID found in two folders, a listed child that does not name this project
+among its parents, and a loop of parents are errors, with guidance on how to
+fix them. The TCW 3 `projects:` key is an error saying to name parents under
+`parents:` and children under `children:`. Every entry of this project's two
+manifests is checked, whether or not a link names it: an entry whose folder is
+not here, or is empty, is `unresolved`, and one whose folder is wrong is an
+error. A project not on this machine is reported with where its manifest entry
+places it and, when the entry gives a repository, the command that fetches it,
+`tcw project provision <id>` (see [Fetch a project that is not on this
+machine](tcw://C/cli/fetch-a-project-that-is-not-on-this-machine)).
+
+A parent, a project further up, or a listed child that is not on this machine
+is one `unresolved` finding saying what could not be checked: what it passes
+down to this project, or that it names its parent back. So is a parent whose
+own `parents:` cannot be read, or still holds the 3.x `projects:` key: its
+problem is its own, and this project's run goes on. When a taxonomy or
+capabilities check stops at such a project, the same finding adds that the
+taxonomy or capabilities inherited from it could not be checked; and when a
+setting the project inherits could have come from it, that `the configuration
+inherited from it` could not be checked, and the checks needing that setting
+are skipped.
 The key 2.x used before `projects` was named is an error naming
-`docs/migration-guide-2.8-to-3.0.0.md`.
+`docs/migration-guide-2.8-to-3.0.0.md`. A connected project still in the TCW
+3.x layout, or whose `.tcw/tcw-config.yaml` records a version this TCW cannot
+read, is an error on that connection naming what to do (converting it to TCW 4, or an
+upgrade), and that project is not read. In a 3.x project itself, `tcw validate`
+refuses like every other command.
 
 **Stores.** Validation tells a store's three failure modes apart: a
 `<component>.path` that is simply wrong, a store declared in another repository
-but not yet provisioned here (naming the declared remote and `tcw provision`),
+but not yet provisioned here (naming the declared remote and the command that
+fetches that store, `tcw project provision --component <axis>`),
 and a malformed `repository` block (naming the configuration key). The last is
 reported even when no local store can be opened to report it through. A store
 that cannot be opened is one finding beside the others rather than the end of
@@ -51,7 +88,7 @@ that is the ordinary state of a checkout holding only the code. A taxonomy or
 capabilities `config.yaml` or `.config.yaml` left over from before 2.5.0 is
 reported once for each store that has one.
 
-**Work items.** Every item is checked: an `item.yaml` that cannot be read is an
+**Work items.** Every item is checked: a `tcw-work-item.yaml` that cannot be read is an
 error naming the file and the key, and the other checks still run over the items
 that can be read. An item whose stage is not in the stage table, or is disabled
 in this project, is reported. While an item is still being worked, its
@@ -61,7 +98,7 @@ an error.
 
 **Jira mode.** When the project keeps its work items in Jira, plain
 `tcw validate` checks only what is on this machine: each item folder's name and
-`item.yaml`, the latest `review` round, and each folder's `capabilities.yaml`,
+`tcw-work-item.yaml`, the latest `review` round, and each folder's `capabilities.yaml`,
 which is an error when it cannot be read or is malformed, whatever the item's
 stage, since the stage is kept in Jira. A folder for a stage Jira keeps, such as
 `qa/`, is a warning that the folder is ignored, and its rounds are not read.
@@ -71,3 +108,13 @@ unfinished item's `capabilities.yaml` declares — and only reads; a
 `capabilities.yaml` already reported as malformed is not reported again. A Jira
 that cannot be reached is exit 5. In a project that keeps its items in files,
 `--remote` is a usage error (exit 2).
+
+`tcw validate` also checks the form of every reference stored in a record
+and every `tcw://` address, and reports one still in a TCW 3.x form as needing
+tcw migrate. It fails two stores that are the same folder or one inside the
+other, among this project's three stores and those of every project it can
+locate, and a store location that loops back to a store already followed.
+
+`tcw validate` also reports a file or folder that does not belong in an object's folder, a folder with a reserved name, a TCW 3.x state file (which `tcw migrate` converts), a state file whose version this TCW cannot read, an `id:` that differs from its folder's name, a full identifier longer than 255 characters, and, as a warning, an object that sits in another object's folder that its `parent` does not name. It never checks the YAML files under an object's `resources/` folder, so a broken sample file there stops no other check.
+
+**Inherited taxonomy and capabilities.** A taxonomy entry or capability of this project's own that overrides nothing must be complete — a name, a description file that may be empty, and for a capability a `Status` — and one that is not is an error, so an override whose original was moved or removed is found. Each of the project's own objects is checked as the project sees it, combined with what it inherits. An `overrides` key in a state file, and a `taxonomy:` or `capabilities:` section of this project's own `.tcw/tcw-config.yaml` that still lists projects to inherit from, are errors saying what TCW 4.0 replaced them with. When inherited content cannot be read, the checks that need it are reported as could not be checked, and the others still run. TCW no longer checks override pointers, inheritance cycles or a project ID colliding with a top-level entry.

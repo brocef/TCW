@@ -1,0 +1,251 @@
+## Changed
+
+- `--parent` on `tcw work new`, `tcw taxonomy add` and `tcw capabilities add`
+  makes the new folder inside the parent's folder whenever the parent is one
+  of this project's own objects. A
+  capability's path with `--parent` is read inside the parent's folder
+  (`bulk` under `billing/invoices` makes `billing/invoices/bulk`), unless it
+  already starts with the parent's path and a `/`; either way the new folder
+  must be directly inside the parent's, so a deeper path is refused with exit
+  code 2, naming the deeper capability to give as `--parent`. An inherited
+  parent holds the folder when this project has its own override at its
+  path. A parent that is inherited with no override here, or another
+  project's, cannot hold the folder, and the command, and the web app's term
+  form, say so in a line starting `not nested:`; a capability's path is then
+  read as given. (TCW-118)
+- The web app's new item form offers **Keep its folder at the top of the work
+  folder, not inside the parent's**, unticked by default, in place of the
+  option to put it inside the parent's folder, and `POST /api/work` takes
+  `flat` in place of `nest`. (TCW-118)
+- The plan stage prompt makes each part with `--parent <slug>` alone.
+  (TCW-118)
+
+- The plugin's session-start install pins `tcw-cli` to the plugin's own
+  version (`pipx install --force tcw-cli==<version>`), and the version warning
+  for an older CLI advises the same pinned command in place of
+  `pipx upgrade tcw-cli`. (TCW-118)
+
+## Fixed
+
+- `tcw migrate` rewrites a taxonomy reference whose first folder names a
+  project that 3.x reached only through another project's
+  `taxonomy.extends` as that project's, as 3.x read it, also once the
+  project in between is migrated; before, it became a path in this
+  project's own taxonomy that named nothing. (TCW-118)
+- The 3.x-to-4.0 migration guide says which runs' check stops at a project
+  still in 3.x form: a run in a project whose parents or children are, not
+  every run but the last. (TCW-118)
+- `tcw migrate`'s D1 no longer says a project now inherits terms that 3.x
+  already passed it through a chain of `taxonomy.extends`, and no longer
+  names a project with no terms, or no capabilities, to pass. (TCW-118)
+- Looking a project up by ID reads, when neither the manifests of the naming
+  project, its ancestors and the projects below it nor the search find it, the
+  manifests of the projects those manifests place, going down nearest first.
+  Read last, they never overrule an entry or the search, and an entry there
+  naming a wrong folder is passed over rather than stopping the lookup. Before, a
+  project could not reach a child of a sibling that only the sibling's
+  manifest lists: `tcw project path`, `tcw work show` and `--blocked-by` said
+  `no project with ID '<id>' is known or found near this one`. (TCW-118)
+- A refused `tcw://` address is quoted whole in the error, scheme included,
+  rather than without its `tcw://`. (TCW-118)
+- A store `path` or `tcw -C` target written with an uppercase scheme, such as
+  `TCW://p1.path/x`, is refused as a malformed address instead of being looked
+  for as a folder named `TCW:`. (TCW-118)
+- `tcw validate` no longer repeats the config file's absolute path inside a
+  finding already placed at that file, when a store cannot be opened.
+  (TCW-118)
+- `tcw capabilities set --parent` refuses, with exit code 2 and nothing
+  written, a parent that is the capability itself or whose chain of parents
+  comes back to it; before, the write succeeded and only `tcw validate`
+  reported it. (TCW-118)
+- A stage-named folder in the work store, which only a 2.x layout makes, is
+  reported with a pointer to the 2.8-to-3.0 migration guide again. (TCW-118)
+- Merging configuration clears the recorded list places of `work.tags` when a
+  later layer replaces the list with a value that is not a list. (TCW-118)
+- The `note:` naming the personal configuration that changed a stage's prompt
+  names only the files and variables whose list is used, not one a later list
+  without `inherit: true` replaced. (TCW-118)
+- `tcw capabilities rm` and `tcw taxonomy rm` name each object still referring
+  to the one being removed by its full identifier, as `tcw capabilities reset`
+  does, instead of a bare id-path. (TCW-118)
+- `tcw capabilities rm` refuses to remove a capability that another capability
+  names as its `parent`, which before left that `parent` dangling. (TCW-118)
+- `tcw capabilities rm`, `tcw capabilities reset` and `tcw taxonomy rm` remove
+  each organising folder the removal leaves empty, and name it on standard
+  error, as `move` does; before, the empty folder stayed and `tcw validate`
+  warned `holds no TCW object`. (TCW-118)
+- `tcw taxonomy rename` and `tcw capabilities rename`/`move` onto a name that
+  differs from an existing folder only in letter case name that folder as it
+  is spelled on disk. (TCW-118)
+- When several projects fetched by `tcw project provision` have a problem in
+  their own files, the refusal names each one's folder and how to undo its
+  fetch, not only the first one's. (TCW-118)
+- Test docstrings describe the own-scope list instead of the `--local` flag
+  TCW 4.0 replaced. (TCW-118)
+- `tcw capabilities drift`'s `unreviewed` line says the capability's status is
+  still the one it inherits, instead of the TCW 3.x term "upstream default".
+  (TCW-118)
+- `tcw project config --origin`'s help says that an inherited setting a parent
+  cannot give stops it, as it does, instead of saying it prints whatever is
+  wrong. (TCW-118)
+- `tcw migrate`'s A14 report is now tested for an absolute path taken from a
+  parent project's `tcw-config.yaml`, which it names by its path from the
+  project. (TCW-118)
+- `tcw migrate` run before a related project still in TCW 3.x form now ends
+  its summary with `check after the run stopped: a related project is still
+  TCW 3.x; run 'tcw validate' once it is migrated`. Before, it gave no sign
+  that the project's own findings were never checked. (TCW-118)
+- `tcw migrate`'s A8 list of related projects still in TCW 3.x form now puts
+  each parent before its child, including among a workspace's descendants.
+  (TCW-118)
+- `tcw migrate`'s summary says `1 file written` and `1 ticket edited` for a
+  count of one. (TCW-118)
+- A `tcw migrate` run refused by B9 no longer lists, among its planned lines,
+  a name (C12, D7) and an empty `description.md` for the override it refused.
+  (TCW-118)
+- `tcw project new --<axis>-path tcw://…` is refused naming
+  `tcw project new`, not the `init` command 4.0 no longer has. (TCW-118)
+- `tcw project config --origin`'s `# skipped:` line names the override
+  variable a Jira credential name came from, instead of ending in an empty
+  name. (TCW-118)
+- The advice for a missing taxonomy or capabilities store names `--id <id>`
+  only where no project with an ID is found; inside one it says
+  `tcw project new <axis>`. (TCW-118)
+- `tcw project provision` with no store declaring a repository says
+  `no store to fetch: no store declares a repository in .tcw/tcw-config.yaml`
+  in place of `Nothing to provision: …`, which it printed before going on to
+  provision the projects. (TCW-118)
+- Exit 1's meaning, in `tcw --help`, `tcw/exit.py` and `docs/guide/cli.md`,
+  covers something TCW was told to read failing, such as a configuration
+  problem or an unknown project ID, which already exit 1; no exit code
+  changes. (TCW-118)
+- The migration guide says that a dry run in a project whose work is kept in
+  Jira needs the credentials, and gives a finished Jira project's re-run with
+  `--no-jira` or with Jira failing; the taxonomy and capabilities guide says a
+  move changes no `parent` and how to set it; the validation guide's
+  folder-and-parent warning gives its `not set` form. (TCW-118)
+- `tcw validate` reports an unfinished `tcw migrate` (its progress record still in `.tcw/`) as an error naming `tcw migrate` to finish it, instead of passing with advice to delete the 3.x root `tcw-config.yaml`. (TCW-118)
+- A state file (`tcw-taxonomy.yaml`, `tcw-capability.yaml`, `tcw-work-item.yaml`) with no `tcw-version` is told only to add the line, no longer to run `tcw migrate`, which converts nothing in it. (TCW-118)
+- `tcw work move <item> --into <KEY>` (or `<project>.work/<KEY>`) moves the item into the folder of
+  the item carrying that key, instead of making a new folder named after the key; a key no item
+  carries stops the move (exit 4). (TCW-118)
+- `tcw work|taxonomy|capabilities move --into` takes a `tcw://` object address, as every other
+  option naming an object does. (TCW-118)
+- A `tcw://` address written with an upper-case scheme (`TCW://…`) as an object argument is refused
+  as an address, not as a folder to rename by hand. (TCW-118)
+- `tcw capabilities set <path> --parent <path>` on an inherited capability is refused as naming the
+  capability itself, instead of writing the capability it overrides as its parent. (TCW-118)
+- `tcw work move --into` no longer makes a folder named like a tracker key at any depth: `--into TCW-1/sub` or `--into 2026/TCW-5` is refused with exit code 2, where it used to make `TCW-1/` beside the item carrying that key (and, in Jira, write that path to the ticket). A key-shaped folder that already exists can still be used as part of the path. (TCW-118)
+- `tcw -C <address>` run from a TCW 3.x project, or from one whose configuration has problems, now says
+  it was resolving that address, and from which folder, before the refusal.
+- The 3.x to 4.0 migration guide gives one `grep` command that finds every removed command and flag in
+  agent-instruction files and scripts.
+- The 3.x to 4.0 migration guide gives a second `grep` command that finds 3.x file names
+  (`tcw-config.yaml` at a project's root, `item.yaml`, `meta.yaml`) and name forms (`<project>/<folder>`,
+  `tcw://C/…`, a capability's `cap-` id) in agent-instruction files and scripts, leaving out the 4.0
+  forms and `.tcw/tcw-migration.yaml`, and says its hits need reading and that the `.tcw/.gitignore`
+  line `/tcw-config.local.yaml` is 4.0's own.
+- The migration guide says a formatter or linter that checks a project's YAML may fail on the new
+  `.tcw/tcw-manifest.yaml` and `.tcw/tcw-migration.yaml`, and to leave `.tcw/` out of its checks.
+- The migration guide says that `TCW_SLUG` holds the full identifier in 4.0, that a `generate:` script's
+  input is `"schema": 2`, and that converting tickets from any copy affects every 3.x user of that Jira
+  project.
+- `tcw validate` no longer warns about a `README.md` directly inside an organising folder or a store's
+  root, in any store, which 3.x accepted, so a migrated ledger that describes its group folders, or
+  keeps a note at its root that the ledger moved, can reach 0 warnings. Any other file there still
+  warns.
+- `tcw migrate` names each file it writes once: `.tcw/.gitignore`, written twice in a run, is one change
+  line with the conversions of both writes.
+- The migration guide says `.tcw/tcw-migration.yaml` is written only when there is something to record,
+  and that in a family migrated parents first every run but the last stops its check, so the other
+  projects need a `tcw validate` once all are migrated.
+- `tcw migrate` refuses, with blocker B18, a run that would write a file git ignores when what it comes
+  from is tracked by git, such as `.tcw/` under a root `.gitignore` that ignores everything and
+  re-includes only what is tracked, naming the rule and the lines to add, which re-include each ignored
+  folder too; it used to write the ignored files and delete the tracked `tcw-config.yaml`. A file that
+  comes from one git does not track, such as a `.DS_Store` or a `.log` moved with its folder, a new file in
+  a store object's folder whose files git does not track, or a project that keeps its TCW files out of git,
+  is not refused; a new file in an object's folder that holds only subfolders comes from the files below it.
+  When git cannot answer, the run says so with git's message, a real run before it writes anything and a dry
+  run after the count, and on a refusal and when Jira fails while planning too; nothing is refused for it.
+- `tcw migrate` lists a parent before an earlier parent that inherits it, such as a project's upstream
+  before its parent when that parent names the same upstream, so the converted project no longer gets a
+  load-order warning in every `tcw validate`; it does so only when the new order loads the projects
+  exactly as TCW 4.0 would load the list as written, in that project and in every project below it on
+  this machine, so no value changes there, and otherwise reports D8.
+- The load-order warning names the `parents:` list to reorder, and the order that would keep every other
+  project's own order, instead of only "set it in '<project>'".
+- `tcw migrate` no longer reports its D8 load-order report a second time as A12.
+- In a linked git worktree, a relative manifest path or store path that leads
+  out of the worktree is first read as written: when it lands in a checkout,
+  main or linked, of another repository (of the repository the entry or store
+  declares, when it declares one), it is read there, and only otherwise
+  beside the main checkout. The search for a project with no manifest entry
+  starts from such a worktree too, and from the main checkout when that finds
+  nothing, except when the worktree is part of a copy: when the checkout
+  holding it is a linked worktree, and the worktree's own main checkout lies
+  inside that checkout's main checkout, a project the copy does not have is
+  not found rather than read from the folders it was copied from. Worktrees
+  made one inside another, such as a child repository's worktree placed
+  inside its workspace's worktree, read each other instead of the folders they were made from; `tcw migrate` reads
+  a 3.x store path the same way, and predicts the search for a project a
+  related project names from the worktree it runs in, as 4.0 searches,
+  rather than from the related project's own. (TCW-118)
+- `tcw migrate` refuses, with blocker B19 and nothing written, a run that
+  would change files in another checkout of a repository the project sits
+  in, such as a linked worktree's main checkout. (TCW-118)
+- In a linked worktree, a 3.x copy of a project on the worktree's side counts as the project, as
+  a 4.0 copy does: one where a manifest entry's relative path lands in a checkout of another
+  repository (the one the entry's `repository` names, when it names one), and one in the worktree
+  that a path into the main checkout stands for. It is reported as 3.x with its own folder named.
+  Before, the main checkout's copy, on another branch, was read in its place: the error named the
+  main checkout's folder, and once that copy was migrated the worktree read it silently. (TCW-118)
+- From a linked worktree, a sibling repository's project that an ancestor's manifest places in that
+  repository's own linked worktree is read there, with no error, although the search finds the
+  main checkout's copy: a main checkout and a linked worktree, or two
+  linked worktrees, of one repository, with the project at the same place in
+  each, no longer count as a disagreement between the manifest and the search. When the search's folder
+  is the one read, such a pair is still reported. (TCW-118)
+- A checkout counts as one of the repository a store or manifest entry
+  declares when one of its remotes names it in another form: the same
+  owner and name through an SSH host alias (`git@<alias>:<owner>/<name>.git`
+  for `https://github.com/<owner>/<name>.git`, where the alias is a name
+  with no dot, such as `github-work`, or the real host with a part added,
+  such as `github.com-work` or `work.github.com`), or a URL that a
+  `url.<base>.insteadOf` rule in the checkout's git config, `~/.gitconfig` or
+  `$XDG_CONFIG_HOME/git/config` rewrites to it. A store path leaving a linked
+  worktree that lands on a checkout of another repository, one with no
+  remote included, and is therefore read beside the main checkout, is now
+  named, with both folders and what to do, in `tcw migrate`'s summary and as
+  a `tcw validate` warning; before, the store was read beside the main
+  checkout without a word. (TCW-118)
+- `tcw migrate` names a planned file in no checkout the project sits in, such
+  as one in a clone of a store's repository, by its absolute path, instead of
+  a relative path climbing towards `/`. (TCW-118)
+- The Jira guide's limits say that a Jira-mode project uses one issue type and moves its ticket at every
+  stage, and what a team whose Jira workflows cannot change does instead.
+
+## Added
+
+- `--flat` on `tcw work new`, `tcw taxonomy add` and `tcw capabilities add`
+  keeps the new folder where it would be without a parent, recording
+  `parent:` all the same; without `--parent` it is refused with exit code 2.
+  (TCW-118)
+
+## Removed
+
+- `tests/test_repo_config_pair.py`, which kept this repository's 3.x root
+  `tcw-config.yaml` and its 4.0 `.tcw/tcw-config.yaml` in step until the
+  repository was migrated, and the root `.gitignore` line
+  `/tcw-config.local.yaml`, the 3.x place of the personal configuration file.
+  (TCW-118)
+
+## Internal
+
+- This repository is migrated to TCW 4.0. (TCW-118)
+- This repository's own taxonomy and capability records are now read by the
+  documentation scan for 3.x forms; `UNMIGRATED_RECORDS`, which left them out
+  until the migration, is deleted. (TCW-118)
+- `scripts/cut_version.py X.Y.Z` cuts an untagged current version without
+  bumping; it refuses an already tagged one, and refuses `patch`, `minor` and
+  `major` while the current version has no tag. (TCW-118)

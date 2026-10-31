@@ -1,4 +1,5 @@
-"""Top-level `tcw` CLI: dispatches `init | taxonomy | capabilities | work`.
+"""Top-level `tcw` CLI: dispatches `validate | serve | migrate | taxonomy |
+capabilities | work | project`.
 
 Built component groups register their own subparsers; the rest stub to "not yet
 implemented" until their phase lands (capabilities = Phase 3, work = Phase 5).
@@ -13,18 +14,18 @@ from pathlib import Path
 from tcw.cli_suggest import SuggestingParser, attach_index
 from tcw.errors import ConfigError, TcwError
 from tcw import __version__
-from tcw import config_cli, projects_cli
+from tcw import project_cli
 from tcw.capabilities import cli as capabilities_cli
+from tcw.migrate import cli as migrate_cli
 from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
     COMPONENTS, SENTINEL, STORE_CLASSES, FsStoreProvisioner,
-    LOCAL_CONFIG, declared_repository, find_project_root, git_root,
-    ignore_personal_file, init, load_config, read_yaml_text, refuse_retired_config,
-    provisioned_store_root,
+    LOCAL_CONFIG, LOCAL_MANIFEST, declared_repository, find_project_root, git_root,
+    ignore_personal_files, init, load_config, refuse_legacy_project,
+    refuse_retired_config,
 )
 from tcw.store.base import MultipleMatch
 from tcw.store.project import FsProjectRegistry
-from tcw.store.yaml_source import load as _load_named_yaml
 import yaml
 from tcw.taxonomy import cli as taxonomy_cli
 from tcw.work import cli as work_cli
@@ -55,13 +56,29 @@ def run_init(components: list[str], project_id: str | None = None,
     if unknown:
         raise UsageError(f"unknown axis {', '.join(repr(c) for c in unknown)}; "
                          f"choose from {', '.join(COMPONENTS)}")
+    # Checked on the text: as a `Path`, `tcw://` collapses to `tcw:/` and
+    # would be scaffolded as a plain folder of that name. Resolving the
+    # address needs the project to exist already, which here it may not.
+    # The scheme is matched in any case, as URL schemes are: `TCW://` would
+    # otherwise become a folder named `TCW:`.
+    given = {**(paths or {}), **({"work": work_path} if work_path is not None else {})}
+    for c, text in given.items():
+        if text.casefold().startswith("tcw:"):
+            raise UsageError(
+                f"--{c}-path {text!r}: `tcw project new` takes a path relative to the "
+                f"project; a store location given as a tcw:// address is written "
+                f"into {SENTINEL} by hand once the project exists")
     sentinel = root / SENTINEL
     if project_id is None:
-        configured = (_load_named_yaml(read_yaml_text(sentinel), sentinel)
-                      if sentinel.exists() else {})
+        configured = load_config(sentinel) if sentinel.exists() else {}
         if not isinstance(configured, dict) or not configured.get("id"):
             raise UsageError("a new project needs `--id <project-id>`; IDs are not "
                              "inferred")
+    from tcw.config import store_location_problem
+    for c, text in given.items():
+        problem = store_location_problem(f"{c}.path", text, address=False)
+        if problem:
+            raise UsageError(problem)
     try:
         written = init(
             components, root, project_id,
@@ -75,16 +92,19 @@ def run_init(components: list[str], project_id: str | None = None,
     # (TCW-72 Design 10.2). Outside a repository there is no ignore file to
     # write, so the person is told to do it themselves.
     if git_root(root) is not None:
-        written += ignore_personal_file(root)
+        written += ignore_personal_files(root)
         changed(written)
     else:
         changed(written)
         print(f"note: not inside a repository, so no ignore rule was written; "
-              f"keep {LOCAL_CONFIG} out of version control yourself", file=sys.stderr)
+              f"keep {LOCAL_CONFIG} and {LOCAL_MANIFEST} out of version control "
+              f"yourself", file=sys.stderr)
     return 0
 
 
-def run_provision(components: list[str], *, dry_run: bool = False) -> int:
+def run_provision(components: list[str], *, dry_run: bool = False,
+                  prefix: str = "tcw project provision", project_id: str | None = None,
+                  projects: bool = True) -> int:
     """Make this project's declared component stores usable here.
 
     The only command in `tcw` that clones a repository, and it does so only
@@ -98,6 +118,10 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
     printed before it is contacted, for the same reason. Everything it says
     goes to stderr, `--dry-run` included: it has no product (TCW-73 Design
     1.7). A store already here is never fetched into (Design 8.4).
+
+    Then, unless `projects` is false (the `--component` form), the projects
+    the family names that are not here (`tcw.provision`, TCW-115 Design 7).
+    With `project_id`, that project and its load order, and no store.
     """
     project_root = find_project_root()
     if project_root is None:
@@ -105,26 +129,26 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
         raise BackendError(NO_PROJECT)
 
     # The readers below treat a config too broken to read as declaring
-    # nothing, which would end in "Nothing to provision" and success.
+    # nothing, which would end in "no store to fetch" and success.
     try:
         load_config(project_root / SENTINEL)
     except ValueError as error:
-        print(f"tcw provision: {error}", file=sys.stderr)
+        print(f"{prefix}: {error}", file=sys.stderr)
         return 1
 
     # An override that is present and wrong refuses here too, and it has to be
     # said here rather than left to the registry. Every other command reaches a
     # broken override through `check()`, but this one reads declarations straight
     # from the configs — so without this gate the registry refused the override
-    # while `tcw provision` went and cloned a second copy of the very project the
+    # while provisioning went and cloned a second copy of the very project the
     # override was pointing at. That is the bug the whole feature exists to stop.
     #
-    # Deliberately only overrides, not graph problems at large:
-    # `_declared_projects_in_graph` opens the registry without `require_valid` on
-    # purpose, because a graph with an unreachable project is the graph this command
-    # exists to complete. An override is a declaration the environment made, and
-    # a declaration that is present and wrong refuses — the same rule the two
-    # blocks below apply to the ones written in files.
+    # Deliberately only overrides, not graph problems at large: a graph with a
+    # project not on this machine is routine here. An override is a declaration
+    # the environment made, and a declaration that is present and wrong refuses
+    # — the same rule the block below applies to the ones written in files. It
+    # still matters with no project fetched: a store whose repository is a
+    # project the variable places resolves inside it (TCW-107 plan, choice 6).
     try:
         failed_overrides = [o for o in FsProjectRegistry.open(project_root).overrides()
                             if o.problem is not None]
@@ -132,8 +156,20 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
         failed_overrides = []
     if failed_overrides:
         for override in failed_overrides:
-            print(f"tcw provision: {override.problem}", file=sys.stderr)
+            print(f"{prefix}: {override.problem}", file=sys.stderr)
         return 1
+
+    # A graph problem refuses before anything is contacted (TCW-115 Design
+    # 7.14); the `--component` form keeps exactly the checks it had.
+    if projects:
+        try:
+            FsProjectRegistry.open(project_root).require_valid(fetching=True)
+        except ValueError as error:
+            print(f"{prefix}: {error}", file=sys.stderr)
+            return 1
+    if project_id is not None:
+        from tcw.provision import provision_projects
+        return provision_projects(project_root, project_id, dry_run=dry_run, prefix=prefix)
 
     declared: list[tuple[str, object]] = []
     problems: list[str] = []
@@ -148,22 +184,16 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
     # a store and would be told everything is fine.
     if problems:
         for problem in problems:
-            print(f"tcw provision: {problem}", file=sys.stderr)
+            print(f"{prefix}: {problem}", file=sys.stderr)
         return 1
 
-    declared_projects, project_problems = _declared_projects_in_graph(project_root)
-    # Same rule as a component's: a declaration that is present and wrong
-    # refuses, rather than reading as "nothing declared" and reporting success.
-    if project_problems:
-        for problem in project_problems:
-            print(f"tcw provision: {problem}", file=sys.stderr)
-        return 1
-    if not declared and not declared_projects:
-        print(f"Nothing to provision: no component or connected project declares "
-              f"a home repository in {SENTINEL}.", file=sys.stderr)
-        return 0
+    if not declared:
+        print(f"no store to fetch: no store declares a repository in {SENTINEL}",
+              file=sys.stderr)
 
-    failed = False
+    # A store that fails does not stop the run: the projects pass follows,
+    # and the last line counts both (TCW-115 Design 7.2, 7.13).
+    fetched = failed = 0
     for component, declaration in declared:
         provisioner = FsStoreProvisioner(project_root, component, declaration)
         declared_available = provisioner.is_available()
@@ -184,202 +214,36 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
         try:
             result = provisioner.ensure_available(dry_run=dry_run)
         except (ValueError, OSError) as error:
-            print(f"tcw provision: {error}", file=sys.stderr)
-            failed = True
+            print(f"{prefix}: {error}", file=sys.stderr)
+            failed += 1
             continue
         print(f"  {result.detail}", file=sys.stderr)
-    if _provision_projects(project_root, dry_run=dry_run):
-        failed = True
-    return 1 if failed else 0
-
-
-def _declared_projects_in_graph(
-    root: Path, seen: set[Path] | None = None
-) -> tuple[list[tuple[Path, str, object]], list[str]]:
-    """Declarations on `root` and on every project reachable from it here.
-
-    Not just the project the command was run in: a declaration lives on whichever
-    project knows about that edge, which in a monorepo is routinely a sibling
-    package rather than the one the user happens to be standing in. Walking the
-    present graph is what makes "declarations follow the graph" true from
-    anywhere in it.
-
-    The registry is opened without `require_valid`, deliberately — a graph with
-    an unreachable project is exactly the graph this command exists to complete, and
-    refusing to read it would be circular.
-    """
-    from tcw.store.fs import declared_connected_projects
-
-    seen = set() if seen is None else seen
-    roots = [root]
-    try:
-        # Every project the registry holds, not `ancestors + descendants`. That
-        # triple omits a sibling and a sibling of an ancestor — the shapes a
-        # workspace is actually made of — so a declaration living on one was
-        # never read, and the repository it named never obtained. Except an
-        # upstream: what it connects to is its own to obtain, not its readers'.
-        registry = FsProjectRegistry.open(root)
-        roots += [Path(project.locator) for project in registry.projects()
-                  if registry.read_only_reason(project.id) is None]
-    except Exception:
-        pass
-    found: list[tuple[Path, str, object, str]] = []
-    problems: list[str] = []
-    for candidate in roots:
-        candidate = candidate.resolve()
-        if candidate in seen:
-            continue
-        seen.add(candidate)
-        declared, candidate_problems = declared_connected_projects(candidate)
-        problems += [f"{candidate / SENTINEL}: {p}" for p in candidate_problems]
-        found += [(candidate, pid, d, relation) for pid, d, relation in declared]
-    return found, problems
-
-
-def _provision_projects(project_root: Path, *, dry_run: bool) -> bool:
-    """Obtain the connected projects this project declares, and the ones they
-    declare. Returns True if anything failed.
-
-    **Transitive on purpose, and this is the one place a URL the user did not
-    write can be contacted.** A project obtained here may declare others, and that
-    is what lets declarations stay where the knowledge is: a repository names
-    only its own edges, and never has to know about a project two hops away.
-    The safeguard is not to refuse it but to make it visible — every remote is
-    printed before it is contacted, transitive ones included, and `--dry-run`
-    walks the whole queue without touching the network. A consent prompt would
-    be worse than useless: `tcw` is non-interactive by contract, and every
-    script calling `tcw provision` would hang on it.
-
-    The walk terminates on the resolved checkout path, which is keyed on
-    (url, ref), so a cycle among declarations revisits nothing and two entries
-    naming one repository share one working copy.
-    """
-    from tcw.store.fs import PROJECT_TARGET
-
-    failed = False
-    seen: set[Path] = set()
-    queue: list[tuple[Path, str, object, str]] = []
-    # "A project that is already here always wins" is the rule the whole feature
-    # rests on, and the walk is the one place it was not applied: a declaration
-    # is written by whichever project knows about that edge, so an ancestor
-    # routinely declares where a project comes from that the *caller* is standing
-    # inside, or beside. Taking that at face value re-cloned repositories the
-    # user already had.
-    #
-    # The registry is asked directly rather than reconstructed from a chosen set
-    # of relations. An earlier version enumerated current/ancestors/descendants
-    # and missed a sibling of an ancestor — which is what a workspace looks like,
-    # and meant a machine holding every repository still planned a clone.
-    # Identity is the id; the registry rejects duplicates, so this inherits that
-    # guarantee.
-    starting_registry = None
-    try:
-        starting_registry = FsProjectRegistry.open(project_root)
-    except Exception:
-        pass
-    # Obtained during *this* run, so not in a registry read before they existed.
-    have: set[str] = set()
-
-    def resolved_outside(project_id: str, target: Path) -> "Path | None":
-        """Whether the graph already resolves this project somewhere other than
-        the copy this declaration would create.
-
-        A project resolved somewhere else is a checkout the user has, and
-        obtaining one anyway puts a second project in the graph under a single
-        id, which `require_valid` then rejects as a duplicate.
-        """
-        if starting_registry is None:
-            return None
-        try:
-            project = starting_registry.get(project_id)
-        except Exception:
-            return None
-        if project is None:
-            return None
-        try:
-            located = Path(project.locator).resolve()
-        except Exception:                       # an unresolvable locator: not it
-            return None
-        return located if located != target.resolve() else None
-
-    def enqueue(root: Path, relation: str = "children") -> None:
-        nonlocal failed
-        if relation == "upstream":
-            # Obtained so it can be read; its own connections are not followed,
-            # as the registry does not follow them. A reader must never fetch a
-            # project named only by something it reads — a public upstream can
-            # still name the private repository it is migrating away from.
-            return
-        found, problems = _declared_projects_in_graph(root, enqueued)
-        for problem in problems:
-            print(f"tcw provision: {problem}", file=sys.stderr)
-        # Counted, not merely printed. The same malformed declaration exits 1 on
-        # the starting graph and used to exit 0 on a project obtained during the
-        # walk, so a CI step gated on `tcw provision` read the second as success.
-        # A declaration that is present and wrong is present and wrong wherever
-        # it was found.
-        failed = failed or bool(problems)
-        queue.extend(found)
-
-    enqueued: set[Path] = set()
-    enqueue(project_root)
-    while queue:
-        source, project_id, declaration, relation = queue.pop(0)
-        target = provisioned_store_root(source, declaration)
-        if target in seen:
-            continue
-        seen.add(target)
-        if project_id in have:
-            # Obtained or confirmed earlier in this same run.
-            print(f"  {project_id}: already available", file=sys.stderr)
-            continue
-        if (present := resolved_outside(project_id, target)) is not None:
-            # A checkout of this project that is not the copy this declaration
-            # would create — including, routinely, the one the command is being
-            # run from. No location claimed: it may be in the working checkout
-            # or in a copy provisioned earlier, and both mean "do not fetch".
-            #
-            # Still enqueued. Not fetching a project is no reason to stop
-            # reading it: its own declarations are how the walk reaches anything
-            # beyond it, and skipping them made a repository disappear from
-            # provisioning precisely when an earlier one was already in place.
-            print(f"  {project_id}: already available", file=sys.stderr)
-            have.add(project_id)
-            enqueue(present, relation)
-            continue
-        provisioner = FsStoreProvisioner(source, PROJECT_TARGET, declaration)
-        if provisioner.is_available():
-            print(f"  {project_id}: already available at {target}", file=sys.stderr)
-            have.add(project_id)
-            enqueue(target, relation)
-            continue
-        print(f"→ {project_id}: {provisioner.describe().split(': ', 1)[1]}", file=sys.stderr)
-        try:
-            result = provisioner.ensure_available(dry_run=dry_run)
-        except (ValueError, OSError) as error:
-            print(f"tcw provision: {error}", file=sys.stderr)
-            failed = True
-            continue
-        print(f"  {project_id}: {result.detail.split(': ', 1)[1]}", file=sys.stderr)
-        if dry_run:
-            # Its own declarations live in a config we have not fetched, so
-            # saying nothing here would imply there are none. Say what is
-            # actually true instead.
-            print(f"  {project_id}: any projects it declares cannot be listed "
-                  f"until it is obtained", file=sys.stderr)
-            continue
-        # After the dry-run return, never before it: recording a *planned*
-        # obtain as available made a second declaration of the same project —
-        # routine when a parent and a grandparent both name it — report
-        # "already available" in a run that fetched nothing.
-        have.add(project_id)
-        enqueue(target, relation)
-    return failed
+        fetched += result.action == "obtained"
+    if not projects:
+        return 1 if failed else 0
+    from tcw.provision import provision_projects
+    return provision_projects(project_root, dry_run=dry_run, prefix=prefix,
+                              stores=(fetched, failed))
 
 
 def _cmd_provision(args: argparse.Namespace) -> int:
+    # The error lines name the command as it was typed (TCW-115 plan, choice 23).
+    from tcw.errors import UsageError
+    from tcw.project_files import validate_project_id
+    project_id = getattr(args, "id", None)
+    if project_id is not None:
+        if args.component:
+            raise UsageError("name a project or --component, not both: a project is "
+                             "fetched with its load order and no store")
+        try:
+            validate_project_id(project_id)
+        except ValueError as error:
+            raise UsageError(str(error)) from None
+        return run_provision([], dry_run=args.dry_run, prefix=args._command,
+                             project_id=project_id)
     return run_provision(args.component or list(PROVISION_COMPONENTS),
-                         dry_run=args.dry_run)
+                         dry_run=args.dry_run, prefix=args._command,
+                         projects=not args.component)
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
@@ -396,55 +260,73 @@ def _not_yet(name: str):
     return run
 
 
+def collect_findings(project_root: Path, *, notes: list[str] | None = None,
+                     work: bool = True) -> list:
+    """Every finding of an offline `tcw validate` of the project, unprinted,
+    with the lines about the run itself appended to `notes`. `work=False`
+    leaves out the work-store checks (`validate`'s section e). Called by
+    `_cmd_validate` and by `tcw migrate`'s check after its run (TCW-116
+    Design 2.1)."""
+    from tcw.findings import Finding
+    from tcw.validate import config_findings, validate
+    notes = [] if notes is None else notes
+    registry = FsProjectRegistry.open(project_root)
+    graph = registry.check()
+    if graph:
+        # `validate` is not reached, so the configuration findings it would
+        # have led with are added here.
+        return [*config_findings(project_root), *graph]
+    # A project of the family that is not available here, one finding each
+    # (TCW-108 Design 6.5); one that this project's own manifests place is
+    # reported once, by `manifest_findings` (TCW-107 Design 5.1).
+    unavailable: list = []
+    checked = validate(project_root, notes=notes, unavailable=unavailable, work=work)
+    # Where a store check stopped at a project it inherits from (Design 6.5
+    # row c), said in that project's one finding.
+    inherited = [(e.project, e.axis) for e in unavailable]
+    # A gap that left a key of the configuration undecided, after any store
+    # check's (TCW-109 Design 3.6).
+    from tcw.config import effective
+    inherited += [(gap, "configuration")
+                  for gap in effective(project_root).gaps_withholding]
+    findings: list[Finding] = registry.availability_findings(inherited)
+    findings += registry.manifest_findings(inherited)
+    findings += registry.warning_findings()
+    # Design 4.5: the fallback order is said here and in `projects list
+    # --json`, and by no other command.
+    warning = registry.load_order().warning
+    if warning is not None:
+        findings.append(Finding("warning", str(project_root / SENTINEL), warning))
+    return findings + checked
+
+
 def _cmd_validate(args: argparse.Namespace) -> int:
     """Findings on stdout, one per line; overrides in effect, what was skipped
     and the closing count on stderr (TCW-73 Design 6). Exit 1 with any error,
     5 when `--remote` could not reach Jira, else 0."""
     from tcw.errors import NO_PROJECT, BackendError, UsageError
-    from tcw.findings import Finding
-    from tcw.validate import config_findings, validate
     project_root = find_project_root()
     if project_root is None:
         raise BackendError(NO_PROJECT)
     if args.remote and _not_jira_mode(project_root):
         raise UsageError("--remote checks a Jira-mode project, and this project's "
                          "work.backend is not jira")
-    registry = FsProjectRegistry.open(project_root)
     # An override is set in an environment rather than in any file this
     # checkout holds, so a graph that resolves because of one resolves for a
     # reason no reader can grep. Narration, never a finding: an override is a
     # statement about this machine, not a defect. Said first, because a graph
     # problem below ends the run.
+    registry = FsProjectRegistry.open(project_root)
     for override in registry.overrides():
         print(f"connected project '{override.id}' is overridden by "
               f"{override.source} to {override.locator}", file=sys.stderr)
         if override.warning:
             print(f"warning: {override.warning}", file=sys.stderr)
-    graph = registry.check()
-    if graph:
-        # `validate` is not reached, so the configuration findings it would
-        # have led with are added here.
-        return _report([*config_findings(project_root), *graph], project_root)
-    findings: list[Finding] = []
-    for absent in registry.unreachable():
-        if absent.declaration is not None:
-            message = (f"connected project '{absent.id}' is declared in "
-                       f"{absent.declaration.url} but has not been provisioned "
-                       f"here; run `tcw provision` to obtain it")
-        else:
-            message = (f"connected project '{absent.id}' is declared but not "
-                       f"reachable in this checkout ({absent.locator})")
-        findings.append(Finding("unresolved", str(absent.declared_in), message))
-    # A locator that does not resolve here, for a project that is here: a typo,
-    # or a locator right for another machine. Both facts, no conclusion.
-    for entry in registry.misdirected():
-        findings.append(Finding(
-            "warning", str(entry.declared_in),
-            f"connected project '{entry.id}' is declared at {entry.locator}, which "
-            f"is not in this checkout; it was found at {registry.get(entry.id).locator}"))
-    findings += registry.warning_findings()
     notes: list[str] = []
-    findings += validate(project_root, notes=notes)
+    findings = collect_findings(project_root, notes=notes)
+    if registry.check():
+        # A graph problem ends the run here, before any note or remote check.
+        return _report(findings, project_root)
     for note in notes:
         print(note, file=sys.stderr)
     if args.remote:
@@ -553,33 +435,12 @@ def build_parser() -> argparse.ArgumentParser:
                               epilog=EXIT_CODES,
                               formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--version", action="version", version=f"tcw {__version__}")
+    parser.add_argument(
+        "-C", dest="chdir", action="append", default=[],
+        metavar="<folder or tcw://<id>.path/>",
+        help="run as if tcw had been started in this folder; repeat it to go "
+             "further, each one read from the folder the one before chose")
     sub = parser.add_subparsers(dest="group", required=True)
-
-    p_init = command(
-        sub, "init", help="make this folder a TCW project, with the named stores",
-        prints="nothing", writes="tcw-config.yaml and each store's folder, each "
-        "named on stderr",
-        examples=["init --id my-app", "init work --id my-app --work-path ../board"])
-    p_init.add_argument("components", nargs="*", metavar="axis",
-                        help=f"any of: {', '.join(COMPONENTS)} (default: all)")
-    p_init.add_argument("--id", help="the project's ID; required for a new project")
-    p_init.add_argument("--work-path", help="where the work store lives")
-    p_init.add_argument("--taxonomy-path", help="where the taxonomy store lives")
-    p_init.add_argument("--capabilities-path", help="where the capabilities store lives")
-    p_init.set_defaults(own_config=True, func=_cmd_init)
-
-    p_provision = command(
-        sub, "provision", help="obtain the stores and projects this project declares "
-        "but does not have here",
-        prints="nothing; its plan and every remote, before it is contacted, on stderr",
-        writes="a clone of each declared repository that is missing",
-        examples=["provision", "provision --component work --dry-run"])
-    p_provision.add_argument(
-        "--component", action="append", choices=list(PROVISION_COMPONENTS),
-        help="only this axis's store; repeat for more (default: every declared one)")
-    p_provision.add_argument("--dry-run", action="store_true",
-                             help="print the plan; contact nothing")
-    p_provision.set_defaults(own_config=True, func=_cmd_provision)
 
     p_validate = command(
         sub, "validate", help="check this project's files, stores and work items",
@@ -602,10 +463,13 @@ def build_parser() -> argparse.ArgumentParser:
                          help="do not open a browser")
     p_serve.set_defaults(func=_cmd_serve)
 
-    projects_cli.add_subparser(sub)
-    config_cli.add_subparser(sub)
+    migrate_cli.add_subparser(sub)
+
     for mod in _BUILT:
         mod.add_subparser(sub)
+    # After `work`: the suggester names commands in the order the groups are
+    # registered (TCW-115 Design 1.1, 1.3).
+    project_cli.add_subparser(sub)
     for name in _STUBBED:
         p = sub.add_parser(name, help=f"{name} commands (not yet implemented)")
         p.set_defaults(func=_not_yet(name))
@@ -618,6 +482,9 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(argv)
     command = getattr(args, "_command", "tcw")
+    # `tcw -C` changes the current folder; a caller in the same process
+    # (the suite, the eval harness) gets its own back (TCW-114 Design 4.5).
+    start = os.getcwd()
     try:
         code = _dispatch(args, command)
         # Flushed here, inside the `try`, so a reader that closed the pipe
@@ -637,6 +504,91 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, ValueError):
             pass                       # stdout is not a file descriptor here
         return 1
+    finally:
+        os.chdir(start)
+
+
+def _check_here(args: argparse.Namespace) -> None:
+    """The checks every command makes of the project in the current folder
+    before it runs."""
+    from tcw import config as layered
+    # Before anything else, for every command: a TCW 3.x project is refused,
+    # naming `tcw migrate` (TCW-106 Design 4.1).
+    refuse_legacy_project()
+    # One place for every command: a config still holding the 2.x key is
+    # refused before anything reads it (Design 9.3). `validate` reports it
+    # as one of its findings instead.
+    if args.group != "validate":
+        refuse_retired_config()
+    # And the project's configuration, every layer of it, is read and
+    # checked once before the command runs (TCW-72 Design 2.3). The few
+    # commands that must run with problems present read it themselves.
+    if not getattr(args, "own_config", False):
+        root = find_project_root()
+        if root is not None and layered.effective(root).problems:
+            raise ConfigError(layered.effective(root).problems)
+
+
+def _enter(target: str, args: argparse.Namespace) -> None:
+    """Change the current folder to the one `tcw -C <target>` names (TCW-114
+    Design 4.2-4.4): a path, from the current folder; or a folder address,
+    found from the project active in the current folder, after which the
+    project active there must be the one the address names. Reads only
+    folders on this machine."""
+    from tcw.errors import UsageError
+    from tcw.ids import FolderAddress, has_scheme, parse_address
+    if not has_scheme(target):
+        folder = Path(target)
+    else:
+        found = parse_address(target)
+        if not isinstance(found, FolderAddress):
+            raise UsageError(
+                f"{target} names an object, not a folder; tcw -C takes a folder "
+                f"address, tcw://<project>[.<namespace>].path/<folder>")
+        try:
+            _check_here(args)
+        except TcwError as error:
+            # The project refused here is the one the address is found from,
+            # not the one it names, so the message says so.
+            raise _resolving(error, f"resolving {target} from {os.getcwd()}: ")
+        here = find_project_root()
+        if here is None:
+            raise TcwError(f"tcw -C {target} needs a TCW project here to find "
+                           f"'{found.project}' from; give the folder's path instead")
+        from tcw.locate import Locator, resolve_folder_address
+        folder = resolve_folder_address(found, Locator.of(here), here)
+    if not folder.is_dir():
+        raise UsageError(f"cannot run in {target}: no such folder")
+    os.chdir(folder)
+    if has_scheme(target):
+        _runs_as(found, target, folder)
+
+
+def _resolving(error: TcwError, prefix: str) -> TcwError:
+    """`error` with `prefix` before each line it prints, keeping its class
+    and so its exit code."""
+    if isinstance(error, ConfigError):
+        error.problems = [prefix + str(p) for p in error.problems]
+        error.args = ("\n".join(error.problems),)
+    else:
+        error.args = (prefix + str(error),)
+    return error
+
+
+def _runs_as(address, target: str, folder: Path) -> None:
+    """Refuse an address whose folder is not in the project it names: the
+    command would run as another project (TCW-114 Design 4.4)."""
+    from tcw.errors import UsageError
+    from tcw.locate import Locator
+    root = find_project_root()
+    to_run = f"give tcw://{address.project}.path/ to run as '{address.project}'"
+    if root is None:
+        raise UsageError(f"{target} is {folder.resolve()}, which is in no TCW project; "
+                         f"{to_run}")
+    active = Locator.of(root).project_id
+    if active != address.project:
+        raise UsageError(f"{target} is a folder of project '{active}', so the command "
+                         f"would run as '{active}', not '{address.project}'; {to_run}")
 
 
 def _dispatch(args: argparse.Namespace, command: str) -> int:
@@ -645,18 +597,14 @@ def _dispatch(args: argparse.Namespace, command: str) -> int:
     from tcw import config as layered
     layered.begin_command()
     try:
-        # One place for every command: a config still holding the 2.x key is
-        # refused before anything reads it (Design 9.3). `validate` reports it
-        # as one of its findings instead.
-        if args.group != "validate":
-            refuse_retired_config()
-        # And the project's configuration, every layer of it, is read and
-        # checked once before the command runs (TCW-72 Design 2.3). The few
-        # commands that must run with problems present read it themselves.
-        if not getattr(args, "own_config", False):
-            root = find_project_root()
-            if root is not None and layered.effective(root).problems:
-                raise ConfigError(layered.effective(root).problems)
+        # `tcw -C`: the folder the command runs in, chosen before anything of
+        # the command reads the current one (TCW-114 Design 4.5).
+        for target in getattr(args, "chdir", None) or ():
+            _enter(target, args)
+        # `tcw migrate` reads the files these checks would refuse, so it
+        # makes none of them (TCW-116 Design 1.2).
+        if not getattr(args, "skips_checks", False):
+            _check_here(args)
         return args.func(args)
     except TcwError as error:
         # A failure after something was created still names it, on stdout

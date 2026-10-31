@@ -8,6 +8,7 @@ import yaml
 
 from tcw.config_cli import _scalar
 from tests.config.conftest import tcw
+from tests.projectfiles import write_config_file
 
 LIST_KEY = "? [a]\n: 1\n"
 
@@ -19,10 +20,10 @@ LIST_KEY = "? [a]\n: 1\n"
 def test_a_list_as_a_key_names_the_file_without_a_traceback(personal, which):
     target = personal.project_file if which == "project" else personal.local_file
     if which == "project":
-        target.write_text("id: p\n" + LIST_KEY)
+        write_config_file(target, "id: p\n" + LIST_KEY)
     else:
         personal.local(LIST_KEY)
-    result = tcw(personal.root, "config", "show")
+    result = tcw(personal.root, "project", "config")
     assert result.code == 1, result
     assert target.name in result.err
     assert "Traceback" not in result.err
@@ -35,9 +36,9 @@ def test_a_list_as_a_key_names_the_file_without_a_traceback(personal, which):
 def test_an_empty_mapping_written_twice_is_blamed_on_the_higher_layer(personal):
     personal.project({"work": {"procedures": {"custom": {}}}})
     personal.local({"work": {"procedures": {"custom": {}}}})
-    result = tcw(personal.root, "config", "show", "--origin")
+    result = tcw(personal.root, "project", "config", "--origin")
     [line] = [l for l in result.out.splitlines() if "custom:" in l]
-    assert line.endswith("custom: {}  # local: tcw-config.local.yaml"), line
+    assert line.endswith("custom: {}  # p, local .tcw/tcw-config.local.yaml"), line
 
 
 # -- P5: values only an unknown key can hold ---------------------------------------------
@@ -53,13 +54,31 @@ def test_a_binary_or_set_value_is_one_line_that_reads_back(value):
 
 
 def test_config_show_writes_an_unknown_keys_binary_and_set_on_one_line(personal):
-    personal.project_file.write_text(
+    write_config_file(personal.project_file,
         "id: p\nextra:\n  blob: !!binary AGJpbmFyef8=\n"
         "  members: !!set {1: null, a: null}\n")
-    result = tcw(personal.root, "config", "show")
+    result = tcw(personal.root, "project", "config")
     assert result.code == 0, result
     lines = [l.strip() for l in result.out.splitlines()
              if l.strip().startswith(("blob:", "members:"))]
     assert len(lines) == 2, result.out
     assert yaml.safe_load(result.out)["extra"] == {"blob": b"\x00binary\xff",
                                                    "members": {1, "a"}}
+
+
+# -- A later layer replacing a list that takes `inherit` with a scalar ---------------------
+
+
+def test_a_scalar_over_an_inherit_list_leaves_no_places_behind():
+    """`places` records where each entry of a `work.tags` list came from; a
+    later layer writing a non-list there replaces the list, so none of its
+    entries may keep a place."""
+    from tcw.config import Origin, _merge
+    values, origins, written, places = {}, {}, {}, {}
+    _merge(values, origins, written, {"work": {"tags": ["a", "b"]}}, Origin("project"),
+           places=places)
+    assert [k for k in places if k[:2] == ("work", "tags")]
+    _merge(values, origins, written, {"work": {"tags": "x"}}, Origin("local"),
+           places=places)
+    assert values["work"]["tags"] == "x"
+    assert [k for k in places if k[:2] == ("work", "tags")] == []

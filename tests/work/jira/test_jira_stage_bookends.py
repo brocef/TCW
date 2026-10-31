@@ -6,6 +6,8 @@ stage with files names the plain `advance`."""
 
 import pytest
 
+from tests.fullids import wid
+
 EXTERNAL_SENTENCE = "a person decides whether the item moves on"
 
 
@@ -16,7 +18,7 @@ def last_block(text: str) -> str:
 @pytest.fixture
 def item(jira_project):
     key, folder = jira_project.item("Refund a payment", "refund-a-payment")
-    return f"{jira_project.id}/{folder}"
+    return wid(jira_project.id, folder)
 
 
 @pytest.mark.parametrize("stage", ["request", "qa"])

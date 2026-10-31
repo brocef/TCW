@@ -6,7 +6,7 @@ import pytest
 
 from tcw.errors import BackendError
 from tcw.work.jira.config import (
-    JiraConfig, JiraFields, parse_delegation_block, parse_jira_config,
+    JiraConfig, JiraFields, parse_jira_config,
 )
 from tcw.work.open import open_backend
 from tests.work.projects import make_project
@@ -135,44 +135,6 @@ def test_open_backend_names_every_problem(tmp_path):
                                               "completed", "discarded")}})
     with pytest.raises(BackendError, match="work.jira.project"):
         open_backend(p)
-
-
-# -- the connected-project `jira` block ----------------------------------------
-
-BLOCK = {"site": "https://acme.atlassian.net", "project": "WEB", "inbox-status": "To Do",
-         "credentials": {"email-env": "E", "token-env": "T"},
-         "fields": {"project": "TCW Project"}}
-WHERE = ("projects", "children", "web", "jira")
-
-
-def test_a_delegation_block_parses():
-    target, problems = parse_delegation_block(BLOCK, WHERE)
-    assert problems == []
-    assert (target.site, target.project, target.inbox_status, target.email_env,
-            target.token_env, target.project_field) == (
-        "https://acme.atlassian.net", "WEB", "To Do", "E", "T", "TCW Project")
-
-
-@pytest.mark.parametrize("change, key", [
-    ({"site": "https://acme.atlassian.net/x"}, "site"),
-    ({"project": "web"}, "project"),
-    ({"inbox-status": ""}, "inbox-status"),
-    ({"credentials": {"email-env": "E", "token-env": SECRET}}, "credentials.token-env"),
-    ({"fields": {"item": "TCW Item"}}, "fields.item"),
-    ({"extra": 1}, "extra"),
-])
-def test_a_bad_delegation_block_is_named_by_key(change, key):
-    target, problems = parse_delegation_block(dict(BLOCK, **change), WHERE)
-    assert target is None
-    text = [str(p) for p in problems]
-    assert any(p.startswith(".".join(WHERE) + "." + key) for p in text), text
-    assert not any(SECRET in p for p in text)
-
-
-def test_a_delegation_block_missing_a_key():
-    block = {k: v for k, v in BLOCK.items() if k != "inbox-status"}
-    _, problems = parse_delegation_block(block, WHERE)
-    assert [str(p) for p in problems] == [".".join(WHERE) + ".inbox-status: required"]
 
 
 def test_every_bad_credential_name_is_named():

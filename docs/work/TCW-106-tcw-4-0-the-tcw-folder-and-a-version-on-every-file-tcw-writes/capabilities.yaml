@@ -1,0 +1,14 @@
+new:
+    - cli/read-a-file-by-the-format-version-it-records
+changed:
+    - cli/scaffold-the-doc-trees
+    - cli/validate-a-project
+    - cli/override-the-team-configuration-for-myself
+    - work/configure-the-work-lifecycle
+    - work/configure-procedures
+taxonomy:
+    new:
+        - format-version
+    changed:
+        - project
+        - personal-configuration

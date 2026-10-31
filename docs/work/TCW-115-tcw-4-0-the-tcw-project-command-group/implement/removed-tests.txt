@@ -1,0 +1,25 @@
+# Tests removed on purpose by TCW-115, against the suite at 78c88809 plus
+# Step 2's own tests. One ID per line, then its reason.
+
+tests/test_cli_contract.py::test_every_command_outside_a_project[config show]
+    The ROWS entry for `tcw config show` went with the command (Design 1.2);
+    `tcw project config` has its own row.
+tests/test_cli_contract.py::test_every_command_outside_a_project[projects list]
+    The ROWS entry for `tcw projects list` went with the command; `tcw project
+    list` has its own row.
+tests/test_cli_contract.py::test_every_command_outside_a_project[provision]
+    The ROWS entry for `tcw provision` went with the command; `tcw project
+    provision` has its own row.
+tests/test_project_group.py::test_side_by_side_in_a_project[old0-new0]
+tests/test_project_group.py::test_side_by_side_in_a_project[old1-new1]
+tests/test_project_group.py::test_side_by_side_in_a_project[old2-new2]
+tests/test_project_group.py::test_side_by_side_new
+    Step 2's comparisons of each old command with its new name, run while both
+    existed; Step 4 removed the old commands, so there is nothing left to
+    compare. Their replacement is AC 2's tests in the same file (each removed
+    command exits 2 naming its replacement).
+tests/test_manifest_cli.py::test_ac22_provision_fetches_no_project
+    TCW-107's AC 22 pinned that provisioning fetched no project, which this item
+    reverses (Design 7). Replaced in the same file by
+    test_ac22_a_dry_run_plans_the_project_and_contacts_nothing, and covered in
+    full by tests/test_project_provision.py.

@@ -19,6 +19,8 @@ from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tcw.store.project import FsProjectRegistry
 from tcw.validate import validate
 from tests.serve.conftest import Served, start
+from tests.projectfiles import write_config
+from tests.statefiles import write_state, TAXONOMY_STATE
 
 RENDERED = re.compile(r"(error|warning|unresolved): \S.*: \S.*")
 
@@ -37,7 +39,7 @@ def broken(tmp_path):
     root = _node(tmp_path)
     term = root / "docs" / "taxonomy" / "search"
     term.mkdir(parents=True)
-    (term / "meta.yaml").write_text("name: search\nkind: Feature\nrelatesTo: []\n")
+    write_state(term / TAXONOMY_STATE, "name: search\nkind: Feature\nrelatesTo: []\n")
     (term / "description.md").write_text("[gone](tcw://T/nowhere)\n")
     FsCapabilitiesStore.open(root).add("half", status="Partial")
     return root
@@ -57,14 +59,14 @@ def test_the_taxonomy_check(tmp_path):
 
 def test_the_capabilities_check(tmp_path):
     [finding] = only_findings(FsCapabilitiesStore.open(broken(tmp_path)).check())
-    assert finding == Finding("error", "docs/capabilities/half", "Partial requires Gaps")
+    assert finding == Finding("error", "docs/capabilities/half/tcw-capability.yaml", "Partial requires Gaps")
 
 
 def test_the_registry_check(tmp_path):
     root = _node(tmp_path)
-    config = yaml.safe_load((root / "tcw-config.yaml").read_text())
-    config["projects"] = {"cousins": {}}
-    (root / "tcw-config.yaml").write_text(yaml.safe_dump(config))
+    config = yaml.safe_load((root / ".tcw/tcw-config.yaml").read_text())
+    config["children"] = ["cousins", "cousins"]
+    write_config(root, yaml.safe_dump(config))
     [finding] = only_findings(FsProjectRegistry.open(root).check())
     assert finding.where.endswith("tcw-config.yaml")
     assert "cousins" in finding.message
@@ -73,7 +75,7 @@ def test_the_registry_check(tmp_path):
 def test_validate(tmp_path):
     findings = only_findings(validate(broken(tmp_path)))
     assert {f.where for f in findings} >= {"docs/taxonomy/search",
-                                          "docs/capabilities/half",
+                                          "docs/capabilities/half/tcw-capability.yaml",
                                           "docs/taxonomy/search/description.md"}
     assert all(RENDERED.fullmatch(str(f)) for f in findings), findings
 
@@ -90,5 +92,5 @@ def test_a_viewer_save_reports_its_findings_in_parts(tmp_path):
         thread.join(timeout=10)
     assert answer.status == HTTPStatus.CREATED
     assert answer.json["warnings"] == [{"severity": "error",
-                                        "where": "docs/capabilities/half",
+                                        "where": "docs/capabilities/half/tcw-capability.yaml",
                                         "message": "Partial requires Gaps"}]

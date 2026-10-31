@@ -50,10 +50,32 @@ def changed(lines: list[tuple[str, Path]]) -> None:
         {"wrote": wrote, "removed": removed, "created": created}[verb](path)
 
 
+def left_out(unreadable: dict) -> int:
+    """After a listing, each object it left out because its state file's
+    version cannot be read, one `<file>: <problem>` line on stderr, and the
+    exit code: 1 when there was one (TCW-111 Design 1.5), else 0."""
+    for path, problem in sorted(unreadable.items()):
+        say(f"{shown(path)}: {problem}")
+    return 1 if unreadable else 0
+
+
+def own_only_line(error: Exception, project_id: str) -> str:
+    """The one line a reader prints when it shows a project's own objects
+    without their inherited content (TCW-112 Design 3.4)."""
+    return f"warning: {error}; showing only '{project_id}''s own declarations"
+
+
+def own_only(error: Exception, project_id: str) -> None:
+    say(own_only_line(error, project_id))
+
+
 def print_json(key: str | None, value: Any) -> None:
-    """Exactly one JSON object on stdout with `"schema": 1` first: `value`
-    under `key`, or `value`'s own keys when `key` is None (Design 1.6)."""
-    document: dict[str, Any] = {"schema": 1}
+    """Exactly one JSON object on stdout with `"schema": 2` first: `value`
+    under `key`, or `value`'s own keys when `key` is None (Design 1.6).
+
+    Schema 2 is TCW 4's: every record names its object by `full-id` and
+    `owner` (TCW-110 Design 4.3)."""
+    document: dict[str, Any] = {"schema": 2}
     if key is None:
         document.update(value)
     else:

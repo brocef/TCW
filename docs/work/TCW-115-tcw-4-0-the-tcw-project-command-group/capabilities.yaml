@@ -1,0 +1,27 @@
+new:
+    - cli/find-where-a-project-is-on-this-machine
+    - cli/see-how-a-project-is-assembled
+    - cli/fetch-a-project-that-is-not-on-this-machine
+changed:
+    - cli/scaffold-the-doc-trees
+    - cli/list-connected-projects
+    - cli/show-the-effective-configuration
+    - cli/provision-declared-stores
+    - cli/get-a-suggestion-for-a-mistyped-command
+    - cli/declare-a-connected-projects-home-repository
+    - cli/point-tcw-at-a-project-i-already-have
+    - cli/locate-tcw-storage-folders
+    - cli/validate-a-project
+    - cli/override-the-team-configuration-for-myself
+    - cli/host-multiple-projects-in-one-repo
+    - cli/read-a-file-by-the-format-version-it-records
+    - work/configure-the-work-store-location
+    - taxonomy/configure-the-taxonomy-store-location
+    - capabilities/configure-the-capabilities-store-location
+    - work/declare-the-work-stores-home-repository
+    - taxonomy/declare-the-taxonomy-stores-home-repository
+    - capabilities/declare-the-capabilities-stores-home-repository
+taxonomy:
+    changed:
+        - cli
+        - project-registry

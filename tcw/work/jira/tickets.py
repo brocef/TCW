@@ -9,31 +9,25 @@ exists in filesystem mode.
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+import yaml
+
 from tcw import exit as codes
-from tcw.errors import BackendError, NotFound, Refused, TcwError, UsageError
+from tcw.errors import BackendError, NotFound, Refused, StateFileProblem, TcwError, UsageError
+from tcw.ids import IdError
 from tcw.work.advance import run_post
 from tcw.work.config import WorkConfig
 from tcw.work.jira import jql
 from tcw.work.jira.backend import (
-    ITEM_FILE, KEY, JiraBackend, Refusal, _jira, _named, choose_transition, field_id,
-    folder_key,
+    KEY, STATE_FILE, JiraBackend, Refusal, _jira, _named, choose_transition, folder_key,
 )
-from tcw.work.jira.client import (
-    JiraClient, TrackerError, TrackerNotFound, TrackerRequestInvalid,
-)
-from tcw.work.jira.config import (
-    DEFAULT_ISSUE_TYPE, DEFAULT_PRIORITY_NAMES, parse_delegation_block,
-)
-from tcw.work.jira.mapping import document_text, text_document
+from tcw.work.jira.client import TrackerError, TrackerNotFound, TrackerRequestInvalid
+from tcw.work.jira.mapping import document_text
 from tcw.work.layout import Layout
-from tcw.work.model import (
-    DEFAULT_PRIORITY, PRIORITIES, Slug, check_encodable, inbox_stage, start_stage,
-    title_words,
-)
+from tcw.work.model import Slug, fitted_words, inbox_stage, start_stage
 
 
 def _say(line: str) -> None:
@@ -85,7 +79,10 @@ def inbox(backend: JiraBackend) -> tuple[list[dict], str]:
         if fields.get(ids["item"]) or fields.get(ids["project"]) not in (None, "",
                                                                           backend.project):
             continue
-        if backend.lookup(key) is not None:
+        # Any folder named for the key, with its state file or without one,
+        # as adopt refuses beside either: the list offers only what adopt
+        # accepts (TCW-111 Design 6.4).
+        if backend.key_folders(key):
             continue
         description = document_text(fields.get("description"))
         reporter = fields.get("reporter")
@@ -135,7 +132,17 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
     if tcw_project not in (None, "", backend.project):
         raise Refused(f"{key} belongs to TCW project {tcw_project!r}, not "
                       f"{backend.project!r}")
-    here = backend.lookup(key)
+    # Every folder named for the key, with its state file or without one, at
+    # any depth (TCW-111 Design 6.4): `lookup` answers only for items, and a
+    # folder an interrupted run left without its state file is adopt's to
+    # finish, or to refuse beside.
+    named_for_key = backend.key_folders(key)
+    if len(named_for_key) > 1:
+        raise BackendError(f"two folders in {backend.work_path} carry the key {key}: "
+                           f"{', '.join(named_for_key)}; rename or remove one")
+    here = named_for_key[0] if named_for_key else None
+    if here is not None:
+        _refuse_unreadable_state(backend.work_path / here / STATE_FILE)
     tcw_item = fields.get(ids["item"])
     # Statuses of stages past request: adopting from one would skip stages.
     moved_on = set(backend.statuses.values()) - {inbox_status, request_status}
@@ -147,17 +154,21 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
         if here is not None and here != named.folder:
             raise Refused(f"a folder for {key} already exists here ({here}), but the "
                           f"ticket names {named.folder}")
-        # A folder without item.yaml is an adoption that stopped part way, but
+        # A folder without its state file is an adoption that stopped part way, but
         # only at a status nothing has moved it on from (Design 7.2).
         unfinished = (here is not None and status not in moved_on
-                      and not (backend.work_path / here / ITEM_FILE).is_file())
+                      and not (backend.work_path / here / STATE_FILE).is_file())
         if here is not None and status != inbox_status and not unfinished:
             raise Refused(f"{key} is already the item {named}")
         slug, resuming = named, True
     else:
         if here is not None:
             raise Refused(f"a folder for {key} already exists here: {here}")
-        slug = Slug(backend.project, f"{key}-{title_words(str(fields.get('summary') or key))}")
+        # The key is known, so the room is too: refused before any edit
+        # (TCW-111 Design 4.3, choice 2).
+        words = fitted_words(str(fields.get('summary') or key), project=backend.project,
+                             parent=None, prefix=len(key) + 1)
+        slug = Slug(backend.project, f"{key}-{words}")
     # A ticket this project made, whose create or delegation stopped before it
     # set TCW Item, may sit at a first status that no stage maps (Design 7.2).
     ours = tcw_project == backend.project and not tcw_item and \
@@ -179,8 +190,8 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
         with _jira():
             backend.client.edit_issue(key, {ids["project"]: backend.project,
                                             ids["item"]: str(slug)})
-    # 4. Write the folder and item.yaml, or finish a folder left without one.
-    if not (backend.work_path / slug.folder / ITEM_FILE).is_file():
+    # 4. Write the folder and its state file, or finish a folder left without one.
+    if not (backend.work_path / slug.folder / STATE_FILE).is_file():
         try:
             backend._item_file(slug.folder, key, resume=True)
         except OSError as error:
@@ -230,11 +241,23 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
     return str(slug), codes.OK
 
 
+def _refuse_unreadable_state(path: Path) -> None:
+    """Adopt writes nothing over a state file whose version this TCW cannot
+    read (TCW-111 Design 1.5): exit 1 with the version check's message."""
+    from tcw.object_folders import read_state
+    try:
+        _, problem = read_state(path)
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        return                       # `tcw validate` reports a file that cannot be read
+    if problem is not None:
+        raise StateFileProblem(path, problem)
+
+
 def _own_slug(backend: JiraBackend, value: Any, key: str) -> Slug | None:
     """The slug TCW Item names, when it is an item of this project for `key`."""
     try:
-        slug = Slug.parse(value, backend.project)
-    except (UsageError, TypeError):
+        slug = Slug.stored(value)
+    except IdError:
         return None
     if slug.project != backend.project or folder_key(slug.folder) != key:
         return None
@@ -304,155 +327,3 @@ def create_fields(backend: JiraBackend) -> tuple[str, ...]:
     found = ("priority",) if meta.has_priority else ()
     return found + tuple(name for name in ("effort", "complexity")
                          if name in meta.field_ids)
-
-
-# -- delegation into a Jira-mode project (Design 8) ----------------------------------------
-
-
-@dataclass(frozen=True)
-class _Connection:
-    """What a client reads from its configuration. The site and the
-    credential names always come from one file, so a token is never sent to a
-    site another file named."""
-    site: str
-    email_env: str
-    token_env: str
-    timeout: float
-
-
-def delegate_to_jira(project_id: str, title: str, request: str | None,
-                     priority: str | None, *, root: Path | None = None, block: Any = None,
-                     report: Callable[[str], None] = _say) -> str:
-    """Create a ticket in a Jira-mode project's inbox, and make it an item
-    there when its checkout here allows. Returns the slug, or the key when
-    the ticket stays in the inbox. Runs no gates and no hooks: creation is not
-    a move."""
-    if not isinstance(title, str) or not title.strip():
-        raise UsageError("a title must not be empty")
-    check_encodable(title, "the title")
-    if request is not None:
-        check_encodable(request, "the request")
-    from tcw.work.open import open_backend
-    backend: JiraBackend | None = None
-    if root is not None:
-        # Another project: read from its tcw-config.yaml alone (TCW-72 AC 9).
-        backend = jira_backend(open_backend(root, report=report, personal=False))
-        site, jira_project = backend.jira.site, backend.jira.project
-        client, priorities = backend.client, backend.jira.priorities
-        meta = backend.metadata()
-        issue_type, field = meta.issue_type.id, meta.field_ids["project"]
-        has_priority = meta.has_priority
-        inbox_status = backend.statuses[inbox_stage()]
-    else:
-        target, problems = parse_delegation_block(
-            block, ("projects", project_id, "jira"))
-        if problems:
-            raise BackendError("; ".join(str(p) for p in problems))
-        site, jira_project = target.site, target.project
-        client = JiraClient(_Connection(target.site, target.email_env, target.token_env,
-                                        target.timeout))
-        priorities = dict(zip(PRIORITIES, DEFAULT_PRIORITY_NAMES))
-        issue_type, field, has_priority = _remote_metadata(client, jira_project,
-                                                           target.project_field)
-        inbox_status = target.inbox_status
-    if priority is not None and not has_priority:
-        raise Refused(f"Jira project {jira_project} has no Priority field, so an item "
-                      f"there has no priority to set")
-    # 2. Create the ticket.
-    fields: dict = {"project": {"key": jira_project}, "issuetype": {"id": issue_type},
-                    "summary": title, field: project_id}
-    if request is not None:
-        fields["description"] = text_document(request)
-    if has_priority:
-        fields["priority"] = {"name": priorities[priority or DEFAULT_PRIORITY]}
-    with _jira():
-        created = client.create_issue(fields)
-    key = created.get("key") if isinstance(created, dict) else None
-    if not isinstance(key, str) or not KEY.fullmatch(key):
-        raise BackendError(f"Jira's answer to the create request names no ticket key; a "
-                           f"ticket may have been created in {jira_project}: look for it")
-    report(f"created Jira ticket {site}/browse/{key} for {project_id}")
-    # 3. Place it at the target's inbox status.
-    try:
-        _move_to(client, key, inbox_status)
-    except TcwError as error:
-        raise _named(error, key) from None
-    # 4. Try to create the item.
-    why = _cannot_make_item(backend, project_id, key)
-    if why is not None:
-        report(f"{key} stays in {project_id}'s Jira inbox: {why}")
-        return key
-    slug = Slug(project_id, f"{key}-{title_words(title)}")
-    try:
-        with _jira():
-            client.edit_issue(key, {backend.metadata().field_ids["item"]: str(slug)})
-        backend._item_file(slug.folder, key)
-        _move_to(client, key, backend.statuses[start_stage()])
-    except (TcwError, OSError) as error:
-        raise _named(BackendError(f"created {key} for {project_id}, but did not finish "
-                                  f"making it the item {slug}: {error}; finish with "
-                                  f"`tcw work tickets adopt {key}` there"), key) from None
-    report(f"the new files in {backend.work_path / slug.folder} are left uncommitted; "
-           f"record them in that project's version control before filing into "
-           f"{project_id} again, or the next ticket stays in its Jira inbox")
-    return str(slug)
-
-
-def _remote_metadata(client: JiraClient, jira_project: str,
-                     project_field: str) -> tuple[str, str, bool]:
-    """The default issue type's id, the TCW Project field's id, and whether
-    Priority exists, read from the target's own create metadata."""
-    with _jira():
-        project = client.project(jira_project)
-        types = [t for t in project.get("issueTypes") or []
-                 if isinstance(t, dict) and t.get("name") == DEFAULT_ISSUE_TYPE]
-        if not types:
-            raise BackendError(f"Jira project {jira_project} has no "
-                               f"{DEFAULT_ISSUE_TYPE} issue type to delegate with")
-        fields = client.create_metadata(jira_project, str(types[0]["id"]))
-    named = [f for f in fields if isinstance(f, dict) and f.get("name") == project_field]
-    if len(named) != 1:
-        raise BackendError(f"Jira project {jira_project} has {len(named)} fields named "
-                           f"{project_field!r}; the connected-project jira block's "
-                           f"fields.project must name exactly one")
-    has_priority = any(isinstance(f, dict) and field_id(f) == "priority"
-                       for f in fields)
-    return str(types[0]["id"]), field_id(named[0]), has_priority
-
-
-def _move_to(client: JiraClient, key: str, status: str) -> None:
-    """Move `key` to `status` by the choice rule, unless it is there."""
-    with _jira():
-        issue = client.issue(key, ("status",))
-        if _name(_fields(issue).get("status")) == status:
-            return
-        chosen = choose_transition(client.transitions(key), status)
-    if isinstance(chosen, Refusal):
-        raise Refused(f"created {key}, but cannot move it to {status!r}: "
-                      f"{chosen.message}")
-    with _jira():
-        client.apply_transition(key, chosen.id)
-
-
-def _cannot_make_item(backend: JiraBackend | None, project_id: str,
-                      key: str) -> str | None:
-    """Why the item cannot be made in the target here, or None (Design 8
-    step 4)."""
-    if backend is None:
-        return f"{project_id} is not on this machine"
-    from tcw.work.open import uncommitted_changes
-    if not backend.work_path.is_dir():
-        return f"{project_id} has no work store at {backend.work_path}"
-    try:
-        changed = uncommitted_changes(backend.work_path, project_id)
-    except (Refused, BackendError) as error:
-        return str(error)
-    if changed:
-        return (f"{project_id}'s work store has uncommitted changes: "
-                f"{', '.join(changed)}")
-    with _jira():
-        chosen = choose_transition(backend.client.transitions(key),
-                                   backend.statuses[start_stage()])
-    if isinstance(chosen, Refusal):
-        return chosen.message
-    return None

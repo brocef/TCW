@@ -17,7 +17,8 @@ from tcw.work.model import Changes
 from tcw.work.open import open_backend
 from tests.config.conftest import tcw
 from tests.work.memory_backend import MemoryBackend
-from tests.work.projects import commit_all, connect, make_project
+from tests.work.projects import make_project
+from tests.statefiles import ITEM_STATE
 
 PACKAGE = Path(__file__).resolve().parents[2] / "tcw"
 
@@ -29,7 +30,7 @@ def project(personal) -> Path:
 
 def assignee(root: Path, slug: str) -> str | None:
     folder = slug.split("/", 1)[1]
-    record = yaml.safe_load((root / "docs" / "work" / folder / "item.yaml").read_text())
+    record = yaml.safe_load((root / "docs" / "work" / folder / ITEM_STATE).read_text())
     return record.get("assignee")
 
 
@@ -76,7 +77,7 @@ def no_identity(personal, monkeypatch):
 
 
 def _says_how_to_fix_it(personal, err: str) -> None:
-    for words in ("user.name", str(personal.user_file), "tcw-config.local.yaml",
+    for words in ("user.name", str(personal.user_file), ".tcw/tcw-config.local.yaml",
                   "work.jira.credentials"):
         assert words in err, (words, err)
 
@@ -102,14 +103,14 @@ def test_assign_me_without_an_identity_creates_nothing(personal, no_identity):
 
 def test_edit_of_a_missing_item_says_it_is_missing_before_who(personal, no_identity):
     # Review finding C8: the item is read before the identity is asked for.
-    result = tcw(no_identity, "work", "edit", "p/2026-01-01-nothing-here", "--assign-me")
+    result = tcw(no_identity, "work", "edit", "p.work/2026-01-01-nothing-here", "--assign-me")
     assert (result.code, result.out) == (4, ""), result
     assert "no identity" not in result.err
 
 
 def test_a_project_usage_error_does_not_wait_for_piped_input(tmp_path):
-    # Review finding C8: `--project` is checked before any wait for a pipe
-    # that is open but silent.
+    # Review finding C8: `--project` is refused before any wait for a pipe
+    # that is open but silent (it is removed in TCW 4, TCW-114 Design 2.1).
     import os
     import time
     from tests.config.conftest import SOURCE
@@ -126,7 +127,7 @@ def test_a_project_usage_error_does_not_wait_for_piped_input(tmp_path):
         out, err = child.stdout.read(), child.stderr.read()
         child.stdin.close()
     assert (code, out) == (2, ""), err
-    assert "--assign-me cannot be used with --project" in err
+    assert err.startswith("tcw work new: work new --project is removed in TCW 4:"), err
     assert elapsed < 3, elapsed
 
 
@@ -192,25 +193,6 @@ def test_a_backend_with_no_identity(recording):
     code, out, err = recording("list", "--mine")
     assert (code, out) == (1, "")
     assert err.startswith("tcw work list: no identity is configured: ")
-
-
-# -- AC 9: identity stays in the acting project ---------------------------------------
-
-
-def test_assign_me_with_another_project_is_a_usage_error(tmp_path, monkeypatch):
-    parent = make_project(tmp_path, "parent")
-    child = make_project(tmp_path, "child")
-    connect(parent, child, "children")
-    connect(child, parent, "parent")
-    commit_all(parent)
-    commit_all(child)
-    monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
-    (parent / "tcw-config.local.yaml").write_text("user:\n  name: Brian\n")
-    before = sorted((child / "docs" / "work").rglob("*"))
-    result = tcw(parent, "work", "new", "--project", "child", "--assign-me", "x")
-    assert (result.code, result.out) == (2, ""), result
-    assert "child" in result.err
-    assert sorted((child / "docs" / "work").rglob("*")) == before
 
 
 # -- AC 14: no fallback left -------------------------------------------------------------

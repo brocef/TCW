@@ -9,6 +9,8 @@ from tcw.work.jira.mapping import document_text
 from tcw.work.model import Changes, Slug
 from tests.work.jira.conftest import ME
 from tests.work.jira.fake import FIELDS
+from tests.statefiles import ITEM_STATE
+from tcw.project_files import version_line
 
 
 def ticket_of(project, item):
@@ -32,11 +34,11 @@ def test_a_new_item(jira_project):
     ticket = jira_project.fake.tickets["TCW-1"]
     assert item.slug == Slug("tcw", "TCW-1-dark-mode") and item.stage == "request"
     assert ticket.custom[FIELDS["TCW Project"]] == "tcw"
-    assert ticket.custom[FIELDS["TCW Item"]] == "tcw/TCW-1-dark-mode"
+    assert ticket.custom[FIELDS["TCW Item"]] == "tcw.work/TCW-1-dark-mode"
     assert ticket.status == "Triage" and document_text(ticket.description) == "Please"
     folder = jira_project.work / "TCW-1-dark-mode"
-    assert [p.name for p in folder.iterdir()] == ["item.yaml"]
-    assert (folder / "item.yaml").read_text() == \
+    assert [p.name for p in folder.iterdir()] == [ITEM_STATE]
+    assert (folder / ITEM_STATE).read_text() == version_line() + \
         f"ticket: {jira_project.fake.site}/browse/TCW-1\n"
 
 
@@ -93,9 +95,9 @@ def test_step_6_refused(jira_project, tcw):
                   if t.to == "Triage")
     jira_project.fake.require_screen_field(triage.id, "resolution")
     result = tcw(["new", "Half"], jira_project.root)
-    assert (result.code, result.out.strip()) == (1, "tcw/TCW-1-half")
+    assert (result.code, result.out.strip()) == (1, "tcw.work/TCW-1-half")
     assert "resolution is required" in result.err and "advance" in result.err
-    assert (jira_project.work / "TCW-1-half" / "item.yaml").is_file()
+    assert (jira_project.work / "TCW-1-half" / "tcw-work-item.yaml").is_file()
     assert jira_project.fake.tickets["TCW-1"].status == "To Do"
 
 
@@ -107,14 +109,14 @@ def test_step_6_drops(jira_project, monkeypatch, tcw):
         raise jira.TrackerUnavailable("connection lost")
     monkeypatch.setattr(jira_project.fake, "_transition", dropped)
     result = tcw(["new", "Half"], jira_project.root)
-    assert (result.code, result.out.strip()) == (5, "tcw/TCW-1-half")
+    assert (result.code, result.out.strip()) == (5, "tcw.work/TCW-1-half")
 
 
 def test_step_7_fails(jira_project, monkeypatch, tcw):
     _, blocker = jira_project.item("Blocker", "blocker")
     refuse(jira_project.fake, monkeypatch, "_link")
     result = tcw(["new", "Half", "--blocked-by", blocker], jira_project.root)
-    assert (result.code, result.out.strip()) == (1, "tcw/TCW-2-half")
+    assert (result.code, result.out.strip()) == (1, "tcw.work/TCW-2-half")
     assert "not made: add TCW-1" in result.err
     assert jira_project.fake.tickets["TCW-2"].status == "Triage"
 
@@ -262,44 +264,63 @@ def test_comment_text_reads_back_exactly(jira_project):
 
 
 def test_rename(jira_project):
+    # The backend's `move` takes the whole new id-path, sets the ticket's TCW
+    # Item, calls `before_folder`, and moves the folder last (TCW-114 Design
+    # 7.3); it refuses a new last part that does not keep the key.
     key, folder = jira_project.item("x", "old-words")
-    (jira_project.work / "TCW-2-other").mkdir()
-    (jira_project.work / "TCW-2-other" / "notes.md").write_text(f"see {folder}\n")
-    item = jira_project.backend().rename(folder, "new-words")
-    assert item.slug == Slug("tcw", f"{key}-new-words")
-    assert jira_project.fake.custom(key, "TCW Item") == f"tcw/{key}-new-words"
+    backend = jira_project.backend()
+    with pytest.raises(UsageError, match=f"keeps the key {key}"):
+        backend.move(folder, "TCW-9-new-words", lambda: None)
+    assert jira_project.fake.writes() == []
+    seen = []
+    pairs = backend.move(folder, f"{key}-new-words",
+                         lambda: seen.append((jira_project.work / folder).is_dir()))
+    assert seen == [True]
+    assert pairs == [(Slug("tcw", folder), Slug("tcw", f"{key}-new-words"))]
+    assert jira_project.fake.custom(key, "TCW Item") == f"tcw.work/{key}-new-words"
     assert (jira_project.work / f"{key}-new-words").is_dir()
     assert not (jira_project.work / folder).exists()
 
 
 @pytest.mark.parametrize("words", ["TCW-9-new", "Not Words", "x/y"])
-def test_rename_keeps_the_key_and_takes_words(jira_project, words):
+def test_rename_keeps_the_key_and_takes_words(jira_project, tcw, words):
+    # The words rules live in `tcw work rename` (TCW-114 Design 5.4 b).
     _, folder = jira_project.item("x", "old")
-    with pytest.raises(UsageError):
-        jira_project.backend().rename(folder, words)
+    r = tcw(["rename", folder, words], jira_project.root)
+    assert (r.code, r.out) == (2, "")
     assert jira_project.fake.writes() == []
+    assert (jira_project.work / folder).is_dir()
 
 
-def test_rename_with_the_key_given(jira_project):
+def test_rename_with_the_key_given(jira_project, tcw):
     key, folder = jira_project.item("x", "old")
-    assert jira_project.backend().rename(folder, f"{key}-new").slug.folder == f"{key}-new"
+    r = tcw(["rename", folder, f"{key}-new"], jira_project.root)
+    assert (r.code, r.out) == (0, f"tcw.work/{folder} -> tcw.work/{key}-new\n")
 
 
 def test_a_failed_tcw_item_edit_keeps_the_folder(jira_project, monkeypatch):
     _, folder = jira_project.item("x", "old")
     refuse(jira_project.fake, monkeypatch, "_edit")
+    called = []
     with pytest.raises(BackendError):
-        jira_project.backend().rename(folder, "new")
+        jira_project.backend().move(folder, folder.rsplit("-", 1)[0] + "-new",
+                                    lambda: called.append(1))
+    assert called == []
     assert (jira_project.work / folder).is_dir()
 
 
-def test_rename_reports_other_mentions(jira_project, capsys):
+def test_rename_reports_other_mentions(jira_project, tcw):
+    # `tcw work rename` lists each line that still names the old identifier,
+    # once, after the move (TCW-114 Design 5.8).
     key, folder = jira_project.item("x", "old")
     note = jira_project.work / folder / "notes.md"
     note.write_text(f"{folder} is mine\n")
-    jira_project.backend().rename(folder, "new")
-    assert f"names {folder}, not rewritten" in capsys.readouterr().err
-    assert (jira_project.work / f"{key}-new" / "notes.md").read_text() == f"{folder} is mine\n"
+    r = tcw(["rename", folder, "new"], jira_project.root)
+    assert r.code == 0, r.err
+    moved = jira_project.work / f"{key}-new" / "notes.md"
+    mention = f"{moved}:1: names tcw.work/{folder}, not rewritten"
+    assert r.err.splitlines().count(mention) == 1, r.err
+    assert moved.read_text() == f"{folder} is mine\n"
 
 
 def test_step_6_without_permission_is_not_unreachable(jira_project, monkeypatch, tcw):
@@ -307,5 +328,5 @@ def test_step_6_without_permission_is_not_unreachable(jira_project, monkeypatch,
         raise jira_project.fake._error(403, route, "You do not have permission")
     monkeypatch.setattr(jira_project.fake, "_transition", forbidden)
     result = tcw(["new", "Half"], jira_project.root)
-    assert (result.code, result.out.strip()) == (1, "tcw/TCW-1-half")
-    assert "advance tcw/TCW-1-half --to request --force --reason" in result.err
+    assert (result.code, result.out.strip()) == (1, "tcw.work/TCW-1-half")
+    assert "advance tcw.work/TCW-1-half --to request --force --reason" in result.err

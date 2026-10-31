@@ -50,39 +50,43 @@ def test_a_nested_command_names_every_word(run, fx):
 
 
 def test_a_failure_after_creation_prints_the_name_then_the_error(run, fx, monkeypatch):
-    def create(self, title, props, *, stage, request):
+    def create(self, title, props, *, stage, request, nest=False):
         (self.work_path / "2026-10-02-x").mkdir()
-        raise BackendError("made it, then failed", name="fx/2026-10-02-x")
+        raise BackendError("made it, then failed", name="fx.work/2026-10-02-x")
     monkeypatch.setattr(FsWorkBackend, "create", create)
     code, out, err = run(["work", "new", "x"], fx)
-    assert (code, out) == (1, "fx/2026-10-02-x\n")
+    assert (code, out) == (1, "fx.work/2026-10-02-x\n")
     assert err == "tcw work new: made it, then failed\n"
 
 
 def test_a_failure_before_anything_exists_prints_nothing_on_stdout(run, fx, monkeypatch):
-    def create(self, title, props, *, stage, request):
+    def create(self, title, props, *, stage, request, nest=False):
         raise BackendError("refused before writing")
     monkeypatch.setattr(FsWorkBackend, "create", create)
     code, out, _ = run(["work", "new", "x"], fx)
     assert (code, out) == (1, "")
 
 
-def test_a_rename_that_fails_after_the_move_prints_the_new_slug(run, fx, monkeypatch):
+def test_a_rename_that_stops_prints_nothing_on_stdout(run, fx, monkeypatch):
+    # The folder moves last (TCW-114 Design 5.8): a write that fails first
+    # leaves the item at its old name, so stdout names nothing, and the
+    # message says what was written and to run the same command again.
     code, out, _ = run(["work", "new", "A b"], fx)
     first = out.strip()
     code, out, _ = run(["work", "new", "C d", "--blocked-by", first], fx)
     assert code == 0
     import tcw.work.fs_backend as fs_backend
-    real = fs_backend.FsWorkBackend._write
 
-    def failing(self, item, raw_stage):
+    def failing(path, text):
         raise OSError("disk full")
-    monkeypatch.setattr(fs_backend.FsWorkBackend, "_write", failing)
+    monkeypatch.setattr(fs_backend, "_replace_file", failing)
     code, out, err = run(["work", "rename", first, "other"], fx)
-    monkeypatch.setattr(fs_backend.FsWorkBackend, "_write", real)
-    new = first.rsplit("-a-b", 1)[0] + "-other"
-    assert (code, out) == (1, new + "\n")
-    assert "still name the old slug" in err
+    monkeypatch.undo()
+    assert (code, out) == (1, "")
+    assert "disk full" in err and "the folder is still at" in err
+    assert f"run the same command again to finish the move: tcw work rename " \
+           f"{first} other" in err
+    assert (fx / "docs" / "work" / first.split("/", 1)[1]).is_dir()
 
 
 def test_an_abbreviated_option_is_not_accepted(run, fx):
@@ -106,7 +110,7 @@ def test_a_closed_stdout_exits_quietly(run, fx, monkeypatch):
     assert code == 1 and err == ""
 
 
-@pytest.mark.parametrize("argv", [["projects", "list"],
+@pytest.mark.parametrize("argv", [["project", "list"],
                                   ["work", "procedure", "audit-backlog"]])
 def test_a_reader_gone_before_short_output_exits_quietly(fx, argv):
     """Review fix C1: output shorter than the pipe buffer is only written when
@@ -137,7 +141,7 @@ def test_a_reader_gone_before_a_failure_names_what_it_made(fx):
         "def fail(*a, **k):\n"
         "    raise BackendError('stopped after creating it', name='TCW-9')\n"
         "cli.refuse_retired_config = fail\n"
-        "sys.exit(cli.main(['projects', 'list']))\n")
+        "sys.exit(cli.main(['project', 'list']))\n")
     read_end, write_end = os.pipe()
     os.close(read_end)
     try:
@@ -150,7 +154,7 @@ def test_a_reader_gone_before_a_failure_names_what_it_made(fx):
     assert b"Exception ignored" not in done.stderr, done.stderr.decode()
 
 def test_a_create_rolled_back_names_each_file_removed(run, fx, monkeypatch):
-    """Review fix N2: a create that fails after writing `item.yaml` removes
+    """Review fix N2: a create that fails after writing `tcw-work-item.yaml` removes
     its folder, naming each file removed and not the folder (Design 1.2)."""
     from tcw.work import fs_backend
     real = fs_backend._replace_file
@@ -163,5 +167,5 @@ def test_a_create_rolled_back_names_each_file_removed(run, fx, monkeypatch):
     code, out, err = run(["work", "new", "A b"], fx, stdin="Need X\n")
     assert (code, out) == (1, ""), err
     removed = [line for line in err.splitlines() if line.startswith("removed ")]
-    assert removed and all(line.endswith("/item.yaml") for line in removed), err
+    assert removed and all(line.endswith("/tcw-work-item.yaml") for line in removed), err
     assert not list((fx / "docs" / "work").glob("*-a-b"))

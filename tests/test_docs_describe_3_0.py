@@ -122,7 +122,7 @@ def test_a_new_document_exists(rel):
 
 def vocabulary_problems(rel: str, text: str) -> list[str]:
     """Every match of criterion 2's table, one line each. The table alone:
-    `builtin: true` is not in it, since `tcw config show` prints it."""
+    `builtin: true` is not in it, since `tcw project config` prints it."""
     lines = text.splitlines()
     return [f"{rel}:{h.line}: {h.text!r} ({h.reason}): {lines[h.line - 1].strip()}"
             for h in scan(text, PATTERNS)]
@@ -302,6 +302,12 @@ def test_the_command_check_sees_a_command_that_does_not_exist(text):
     assert command_problems(text)
 
 
+def test_the_command_check_skips_minus_c():
+    assert not command_problems('Run `tcw -C tcw://<id>.path/ work new "<title>" '
+                                '--parent <slug> --flat`.')
+    assert command_problems("Run `tcw -C <target> work new --no-such-flag`.")
+
+
 def test_the_agents_section_runs_to_the_next_level_two_heading():
     text = ("# A\n\n## B\n\n" + AGENTS_HEADING + "\n\nbody\n\n### deeper\n\nmore\n"
             "\n## C\n\nafter\n")
@@ -330,7 +336,7 @@ MOVED_PHRASES = (
 )
 
 BACKEND_OPERATIONS = ("create", "read", "list", "update", "set stage", "comment",
-                      "rename", "lookup", "read request", "read comments",
+                      "move", "lookup", "read request", "read comments",
                       "current user", "is item folder")
 
 
@@ -438,8 +444,36 @@ def test_the_web_app_and_the_cli_requirements_do_not_need_node():
 def test_the_documentation_index_links_the_guides_it_must():
     index = {target for _, target in
              links(_section(README.read_text(encoding="utf-8"), "## Documentation"))}
-    for must in ("docs/migration-guide-2.8-to-3.0.0.md",
+    for must in ("docs/migration-guide-3.X-to-4.0.0.md",
+                 "docs/migration-guide-2.8-to-3.0.0.md",
                  "docs/migration-guide-2.4.X-to-2.5.0.md", "docs/guide/cli.md"):
         assert must in index, must
     assert "docs/work-inbox-template.md" not in index
 
+
+
+def test_the_abstraction_document_bounds_an_object_folder_by_resources():
+    """TCW-111 AC 19 (Design 9.1)."""
+    text = " ".join(ABSTRACTION.read_text(encoding="utf-8").split())
+    assert ("treating an object's folder as an open set of files — _it is bounded: "
+            "its state file and fixed files") in text
+    assert "and one `resources/` folder for anything else" in text
+    assert "`item.yaml`" not in text
+    interface = " ".join(_bullets_under(ABSTRACTION.read_text(encoding="utf-8"),
+                                        "## The backend interface"))
+    assert "id-path" in interface
+    assert "Where a folder sits never declares a parent; `parent` does." in text
+
+
+def test_the_backend_docstring_counts_twelve_operations():
+    import tcw.work.backend
+    assert "Twelve operations" in tcw.work.backend.__doc__
+
+
+def test_abstraction_names_move_and_no_rename_and_no_uncommitted_check():
+    """TCW-114 Design 9.3, AC 23."""
+    text = " ".join((REPO / "docs/lifecycle/abstraction.md").read_text(
+        encoding="utf-8").split())
+    assert "- **move**: change an item's id-path" in text
+    assert "- **rename**:" not in text
+    assert "uncommitted changes before creating an item in another project" not in text

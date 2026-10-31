@@ -1,0 +1,9 @@
+id: cap-3d46db
+name: See how a project is assembled
+Status: Supported
+Subject:
+- project
+- parent-link
+- load-order
+- override
+Feature: project-registry

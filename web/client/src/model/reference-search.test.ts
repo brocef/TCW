@@ -10,7 +10,7 @@ import {
     typedLink,
     type TReferenceOption,
 } from "./reference-search"
-import { workItem } from "../test-fixtures"
+import { capability, term, workItem } from "../test-fixtures"
 
 const choices: TReferenceOption[] = [
     { displayName: "Useful editor", identifier: "web/use" },
@@ -55,49 +55,50 @@ describe("reference search", () => {
 
     test("applies centralized candidate restrictions and duplicate filtering", () => {
         const context = {
-            currentIdentifier: "parent",
-            selected: ["duplicate"],
+            currentIdentifier: "p.work/parent",
+            selected: ["p.work/duplicate"],
             work: [
-                workItem("parent", { slug: "parent" }),
-                workItem("child", { slug: "child", parent: "parent" }),
-                workItem("epic", { slug: "epic" }),
-                workItem("duplicate", { slug: "duplicate" }),
+                workItem("parent"),
+                workItem("child", { parent: "p.work/parent" }),
+                workItem("epic"),
+                workItem("duplicate"),
             ],
             taxonomy: [
-                { slug: "term", name: "Term", kind: "Vocabulary" },
-                { slug: "feature", name: "Feature", kind: "Feature" },
+                term("term", { name: "Term", kind: "Vocabulary" }),
+                term("feature", { name: "Feature", kind: "Feature" }),
             ],
             capabilities: [
-                { path: "roles/admin", name: "Admin" },
-                { path: "conditions/online", name: "Online" },
-                { path: "parent", name: "Current" },
+                capability("roles/admin", { name: "Admin" }),
+                capability("conditions/online", { name: "Online" }),
+                capability("parent", { name: "Current" }),
             ],
+            projectId: "p",
         }
         expect(
             referenceOptions("work-parent", context).map(
                 (item) => item.identifier
             )
-        ).toEqual(["epic", "duplicate"])
+        ).toEqual(["p.work/epic", "p.work/duplicate"])
         expect(
             referenceOptions("work-blockers", context).map(
                 (item) => item.identifier
             )
-        ).toEqual(["child", "epic"])
+        ).toEqual(["p.work/child", "p.work/epic"])
         expect(
             referenceOptions("taxonomy-vocabulary", context).map(
                 (item) => item.identifier
             )
-        ).toEqual(["term"])
+        ).toEqual(["p.taxonomy/term"])
         expect(
             referenceOptions("capability-roles", context).map(
                 (item) => item.identifier
             )
-        ).toEqual(["roles/admin"])
+        ).toEqual(["p.capabilities/roles/admin"])
         expect(
             referenceOptions("capability-when", context).map(
                 (item) => item.identifier
             )
-        ).toEqual(["conditions/online"])
+        ).toEqual(["p.capabilities/conditions/online"])
     })
 })
 
@@ -105,34 +106,24 @@ describe("the fields of the autocomplete table", () => {
     const context = {
         work: [
             workItem("parent"),
-            workItem("child", { parent: "p/parent" }),
-            workItem("grandchild", { parent: "p/child" }),
+            workItem("child", { parent: "p.work/parent" }),
+            workItem("grandchild", { parent: "p.work/child" }),
             workItem("other", { assignee: "acc-1" }),
         ],
         taxonomy: [
-            { slug: "term", name: "Term", kind: "Vocabulary" },
-            {
-                slug: "shared",
-                qualified: "base/shared",
-                name: "Shared",
-                kind: "Vocabulary",
-                origin: "base",
-            },
-            { slug: "feature", name: "Feature", kind: "Feature" },
+            term("term", { name: "Term", kind: "Vocabulary" }),
+            term("shared", { name: "Shared", kind: "Vocabulary" }, "base"),
+            term("feature", { name: "Feature", kind: "Feature" }),
         ],
         capabilities: [
-            { path: "roles/admin", name: "Admin" },
-            {
-                path: "roles/guest",
-                qualified: "base/roles/guest",
-                name: "Guest",
-                origin: "base",
-            },
-            { path: "web/editing", name: "Editing" },
-            { path: "web/reading", name: "Reading" },
+            capability("roles/admin", { name: "Admin" }),
+            capability("roles/guest", { name: "Guest" }, "base"),
+            capability("web/editing", { name: "Editing" }),
+            capability("web/reading", { name: "Reading" }),
         ],
         people: { "acc-1": "Ann" },
         user: "acc-me",
+        projectId: "p",
     }
     const ids = (field: Parameters<typeof referenceOptions>[0], extra = {}) =>
         referenceOptions(field, { ...context, ...extra }).map(
@@ -140,9 +131,9 @@ describe("the fields of the autocomplete table", () => {
         )
 
     test("a work parent excludes the item and its descendants", () => {
-        expect(ids("work-parent", { currentIdentifier: "p/parent" })).toEqual([
-            "p/other",
-        ])
+        expect(
+            ids("work-parent", { currentIdentifier: "p.work/parent" })
+        ).toEqual(["p.work/other"])
     })
 
     test("assignees are the names on items and the user", () => {
@@ -154,21 +145,45 @@ describe("the fields of the autocomplete table", () => {
     })
 
     test("a subject and a feature's vocabulary are vocabulary entries, inherited included", () => {
-        expect(ids("capability-subject")).toEqual(["term", "base/shared"])
-        expect(ids("taxonomy-vocabulary")).toEqual(["term", "base/shared"])
-        expect(ids("capability-feature")).toEqual(["feature"])
+        // TCW-110 Design 5.1: the value a picker inserts is the full identifier.
+        expect(ids("capability-subject")).toEqual([
+            "p.taxonomy/term",
+            "base.taxonomy/shared",
+        ])
+        expect(ids("taxonomy-vocabulary")).toEqual([
+            "p.taxonomy/term",
+            "base.taxonomy/shared",
+        ])
+        expect(ids("capability-feature")).toEqual(["p.taxonomy/feature"])
     })
 
-    test("roles are roles capabilities by path, inherited included", () => {
-        expect(ids("capability-roles")).toEqual(["roles/admin", "roles/guest"])
+    test("roles are roles capabilities, inherited included", () => {
+        expect(ids("capability-roles")).toEqual([
+            "p.capabilities/roles/admin",
+            "base.capabilities/roles/guest",
+        ])
     })
 
-    test("declaration lists offer the ledger's entries", () => {
+    test("a capability's own entry is left out by its route key", () => {
+        expect(
+            ids("capability-blocked-by", { currentIdentifier: "web/editing" })
+        ).toEqual([
+            "p.capabilities/roles/admin",
+            "base.capabilities/roles/guest",
+            "p.capabilities/web/reading",
+        ])
+    })
+
+    test("a taxonomy parent is a folder of this project's own store", () => {
+        expect(ids("taxonomy-parent")).toEqual(["term", "feature"])
+    })
+
+    test("declaration lists offer the ledger's entries by full identifier", () => {
         expect(ids(declarationField("capabilities", "changed"))).toContain(
-            "web/editing"
+            "p.capabilities/web/editing"
         )
         expect(ids(declarationField("taxonomy", "new"))).toContain(
-            "base/shared"
+            "base.taxonomy/shared"
         )
     })
 })
@@ -187,28 +202,32 @@ test("a capability path is offered one segment at a time", () => {
     ).toEqual(["web/reading/fast"])
 })
 
-test("tcw:// completion names a work item by its folder, and every axis", () => {
+test("tcw:// completion offers each object's address, in every namespace", () => {
     const found = tcwLinkOptions({
+        projectId: "p",
         work: [workItem("2026-10-01-x", { title: "X" })],
-        taxonomy: [{ slug: "t", qualified: "base/t", name: "T" }],
-        capabilities: [{ path: "web", name: "Web" }],
+        taxonomy: [term("t", { name: "T" }, "base")],
+        capabilities: [capability("web", { name: "Web" })],
     })
     expect(found.map((item) => item.identifier)).toEqual([
-        "tcw://W/2026-10-01-x",
-        "tcw://T/base/t",
-        "tcw://C/web",
+        "tcw://p.work/2026-10-01-x",
+        "tcw://base.taxonomy/t",
+        "tcw://p.capabilities/web",
     ])
 })
 
 test("the link being typed is found before the caret", () => {
-    expect(typedLink("See tcw://W/20")).toBe("tcw://W/20")
-    expect(typedLink("See [x](tcw://C/we")).toBe("tcw://C/we")
-    expect(typedLink("See tcw://W/x done")).toBeNull()
+    expect(typedLink("See tcw://p.work/20")).toBe("tcw://p.work/20")
+    expect(typedLink("See [x](tcw://p.capabilities/we")).toBe(
+        "tcw://p.capabilities/we"
+    )
+    expect(typedLink("See tcw://p.work/x done")).toBeNull()
 })
 
-test("another project's full slug is kept with a warning; this project's is not", () => {
-    expect(otherProjectWarning("q/2026-01-01-x", "p")).toMatch(/project q/)
-    expect(otherProjectWarning("p/2026-01-01-x", "p")).toBeNull()
+test("another project's full identifier is kept with a warning; this project's is not", () => {
+    expect(otherProjectWarning("q.work/2026-01-01-x", "p")).toMatch(/project q/)
+    expect(otherProjectWarning("p.work/2026-01-01-x", "p")).toBeNull()
+    expect(otherProjectWarning("q/" + "2026-01-01-x", "p")).toBeNull()
     expect(otherProjectWarning("2026-01-01-x", "p")).toBeNull()
     expect(otherProjectWarning("not a slug", "p")).toBeNull()
 })

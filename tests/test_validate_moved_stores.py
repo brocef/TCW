@@ -1,6 +1,7 @@
 """`tcw validate` finds a taxonomy or capabilities store where it really is
 (spec: 2026-09-21-make-tcw-validate-check-taxonomy-and-capabilities-stores-moved-by-their-path-setting)."""
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 from tcw.validate import validate
 from nodeconfig import set_component_key
+from tests.projectfiles import write_config, write_manifest
+from tests.statefiles import write_state, CAPABILITY_STATE, TAXONOMY_STATE
 
 
 def repo(root: Path, name: str = "node") -> Path:
@@ -25,15 +28,15 @@ def repo(root: Path, name: str = "node") -> Path:
 def term(store: Path, slug: str, **meta) -> None:
     d = store / slug
     d.mkdir(parents=True, exist_ok=True)
-    (d / "meta.yaml").write_text(yaml.safe_dump({"name": slug, "relatesTo": [], **meta}))
+    write_state(d / TAXONOMY_STATE, yaml.safe_dump({"name": slug, "relatesTo": [], **meta}))
     (d / "description.md").write_text("")
 
 
 def cap(store: Path, path: str, **meta) -> None:
     d = store / path
     d.mkdir(parents=True, exist_ok=True)
-    (d / "meta.yaml").write_text(yaml.safe_dump(
-        {"id": "cap-" + path.replace("/", "-"), "name": path, **meta}))
+    write_state(d / CAPABILITY_STATE, yaml.safe_dump(
+        {"name": path, **meta}))
     (d / "description.md").write_text("")
 
 
@@ -77,9 +80,9 @@ def test_a_moved_taxonomy_is_checked(tmp_path):
 def test_a_moved_taxonomy_is_scanned_for_yaml(tmp_path):
     root, store = moved(tmp_path, "taxonomy")
     (store / "broken").mkdir()
-    (store / "broken" / "meta.yaml").write_text("name: [unclosed\n")
+    write_state(store / "broken" / TAXONOMY_STATE, "name: [unclosed\n")
     problems = validate(root)
-    assert any(p.where == "moved/broken/meta.yaml" for p in problems), problems
+    assert any(p.where == "moved/broken/tcw-taxonomy.yaml" for p in problems), problems
 
 
 def test_a_moved_capabilities_store_is_checked(tmp_path):
@@ -123,7 +126,6 @@ def test_a_missing_taxonomy_path_is_listed_not_raised(tmp_path):
 
 @pytest.mark.parametrize("config", [
     {},                                             # nothing configured, no folders
-    {"taxonomy": {"extends": []}},                  # extends only
 ])
 def test_a_node_without_tree_stores_reports_nothing_new(tmp_path, config):
     root = repo(tmp_path / "node")
@@ -136,25 +138,27 @@ def test_a_node_without_tree_stores_reports_nothing_new(tmp_path, config):
 # ── criterion 8: a shared store is reported by each project ──────────────────
 
 def test_a_store_shared_by_two_projects_is_reported_by_each(tmp_path, monkeypatch, capsys):
-    """Each project's own run reports the shared store's problem (TCW-73
-    Design 6: `validate` checks the current project only)."""
+    """Each project's own run reports the shared store (TCW-73 Design 6:
+    `validate` checks the current project only). Since TCW-110 Design 7.4 two
+    projects' stores that are one folder are themselves the error, named
+    with both projects."""
     parent = repo(tmp_path / "parent", "parent")
     child = repo(tmp_path / "child", "child")
-    (parent / "tcw-config.yaml").write_text(
-        "id: parent\nprojects:\n  children:\n    child: ../child\n")
-    (child / "tcw-config.yaml").write_text(
-        "id: child\nprojects:\n  parent:\n    parent: ../parent\n")
+    write_config(parent, "id: parent\nchildren:\n- child\n")
+    write_manifest(parent, {"child": "../child"})
+    write_config(child, "id: child\nparents:\n- parent\n")
+    write_manifest(child, {"parent": "../parent"})
     shared = tmp_path / "shared"
     shared.mkdir()
     term(shared, "payment", relatesTo=["invoice"])
     for root in (parent, child):
-        set_component_key(root, "taxonomy", "path", str(shared))
+        set_component_key(root, "taxonomy", "path", os.path.relpath(shared, root))
     for root in (parent, child):
         monkeypatch.chdir(root)
         assert main(["validate"]) == 1
         out = capsys.readouterr().out
-        reported = [line for line in out.splitlines() if "invoice" in line]
-        assert len(reported) == 1, out
+        [reported] = [line for line in out.splitlines() if "same folder" in line]
+        assert "project 'parent'" in reported and "project 'child'" in reported, out
 
 
 # ── review findings: nothing that used to be reported goes quiet ──────────────
@@ -177,12 +181,15 @@ def test_nothing_is_said_unchecked_when_no_capability_names_a_subject(tmp_path):
     assert FsCapabilitiesStore.open(root).check() == []
 
 
+@pytest.mark.parametrize("extends", [[], ["ghost"]])
 @pytest.mark.parametrize("component", ["taxonomy", "capabilities"])
-def test_a_broken_extends_without_a_local_tree_is_reported(tmp_path, component):
+def test_an_extends_key_without_a_local_tree_is_reported(tmp_path, component, extends):
+    """TCW-112 Design 1.5: `<component>.extends` was removed, so even an empty
+    one, in a project with no folder for that tree, is reported as an error."""
     root = repo(tmp_path / "node")
-    set_component_key(root, component, "extends", ["ghost"])
+    set_component_key(root, component, "extends", extends)
     lines = check_lines(validate(root), component, root)
-    assert any("ghost" in p for p in lines), lines
+    assert any(f"'{component}.extends' was removed in TCW 4.0" in p for p in lines), lines
 
 
 def test_a_work_only_node_reports_nothing_new(tmp_path):

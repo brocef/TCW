@@ -26,6 +26,7 @@ from tcw.config import PERSONAL_KEYS, load_config
 from tcw.work.layout import front_matter
 from tests.doc_vocabulary import PATTERNS, scan
 from tests.test_docs_describe_3_0 import FENCE, HEADING, links
+from tests.projectfiles import write_config
 
 REPO = Path(__file__).resolve().parent.parent
 ROUTER = REPO / "skills/configure/SKILL.md"
@@ -36,8 +37,8 @@ PERSONAL = REFERENCES / "personal.md"
 # chooses: a stage, a procedure or a project ID.
 KEY_PATHS = (
     "id", "user.name",
-    "taxonomy.path", "taxonomy.repository", "taxonomy.extends",
-    "capabilities.path", "capabilities.repository", "capabilities.extends",
+    "taxonomy.path", "taxonomy.repository",
+    "capabilities.path", "capabilities.repository",
     "work.path", "work.repository", "work.backend", "work.tags",
     "work.documentation", "work.procedures.*",
     *(f"work.stages.*.{key}" for key in ("enabled", "status", "prompt", "pre", "post")),
@@ -46,18 +47,14 @@ KEY_PATHS = (
                                      "timeout", "priorities")),
     "work.jira.credentials.email-env", "work.jira.credentials.token-env",
     *(f"work.jira.fields.{key}" for key in ("project", "item", "effort", "complexity")),
-    *(f"projects.{relation}.*.{key}" for relation in ("parent", "children", "upstream")
-      for key in ("path", "repository")),
-    *(f"projects.{relation}.*.jira.{key}" for relation in ("parent", "children", "upstream")
-      for key in ("site", "project", "inbox-status", "credentials.email-env",
-                  "credentials.token-env", "fields.project")),
+    "parents", "children",
 )
 
 LABELS = ("Shared", "Overridable", "Personal only")
 
 
 def test_the_key_path_list_has_no_repeats():
-    assert len(KEY_PATHS) == len(set(KEY_PATHS)) == 57
+    assert len(KEY_PATHS) == len(set(KEY_PATHS)) == 33
 
 
 # ── criterion 6: the router and its references ───────────────────────────────
@@ -226,7 +223,7 @@ def test_each_work_key_path_is_accepted(key, tmp_path, monkeypatch):
     jira = key.startswith("work.jira.") or key == "work.stages.*.status"
     config = {"id": "x", "work": copy.deepcopy(JIRA_BASE) if jira else {}}
     _set(config, key, _sample(key))
-    (tmp_path / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False),
+    write_config(tmp_path, yaml.safe_dump(config, sort_keys=False),
                                               encoding="utf-8")
     problems = [str(p) for p in load_config(tmp_path).problems]
     assert not problems, f"{key} set to {_sample(key)!r}: {problems}"

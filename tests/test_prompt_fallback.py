@@ -26,6 +26,15 @@ the recorded bytes were never brought up to it. Nothing else moved.
 spec prompt's "The requester revises the request" bullet, and the plan
 prompt's step 6 on filing a part into another project. A diff of the old and
 new bytes showed nothing else moved.
+
+**Re-captured again by TCW-111**, for the plan prompt's step 6 only, which now
+makes each part with `--nest`: the recorded step was replaced by the new one,
+text for text, and nothing else in the file was touched.
+
+**Re-captured again by TCW-118**, for the same step only: `--nest` is gone,
+since `--parent` now puts a part's folder inside its parent's by default. The
+recorded step was replaced by the new one, text for text, and nothing else in
+the file was touched.
 """
 
 import json
@@ -53,7 +62,7 @@ def replayed(tmp_path_factory):
     root = scratch / "unconfigured"
     root.mkdir(parents=True)
     subprocess.run(["git", "init", "-q", str(root)], check=True)
-    subprocess.run(["tcw", "init", "--id", "fallback", "work"], cwd=root,
+    subprocess.run(["tcw", "project", "new", "--id", "fallback", "work"], cwd=root,
                    capture_output=True, check=True, stdin=subprocess.DEVNULL,
                    env=env)
     slug = subprocess.run(["tcw", "work", "new", "Baseline item"], cwd=root,

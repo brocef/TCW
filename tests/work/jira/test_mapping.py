@@ -103,7 +103,7 @@ def test_every_property_is_read():
             {"type": {"name": "Blocks"}, "inwardIssue": {"key": "TCW-2"}},
             {"type": {"name": "Blocks"}, "outwardIssue": {"key": "TCW-3"}},
             {"type": {"name": "Relates"}, "inwardIssue": {"key": "TCW-4"}}],
-        customfield_1="tcw", customfield_2="tcw/TCW-7-dark-mode",
+        customfield_1="tcw", customfield_2="tcw.work/TCW-7-dark-mode",
         customfield_3={"value": "Very High"}, customfield_4={"value": "low"}),
         CONFIG, IDS, {"ui", "api"}, STATUSES)
     assert (props.key, props.title, props.status, props.stage) == (
@@ -114,7 +114,7 @@ def test_every_property_is_read():
     assert (props.assignee, props.assignee_name) == ("a1", "Ann")
     assert (props.parent_key, props.blocker_keys) == ("TCW-1", ("TCW-2",))
     assert (props.tcw_project, props.tcw_item, props.issue_type) == (
-        "tcw", "tcw/TCW-7-dark-mode", "Task")
+        "tcw", "tcw.work/TCW-7-dark-mode", "Task")
 
 
 def test_unmapped_and_absent_values_read_as_none():

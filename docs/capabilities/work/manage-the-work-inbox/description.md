@@ -1,8 +1,7 @@
 As a user, I keep raw requests in the inbox: an item at the `inbox` stage, which
 says nothing has been decided about it yet. `tcw work new "<title>" --stage inbox`
-files one, with any text I pipe in as its request, and work another project
-delegates to mine lands there too
-([Delegate a work item to another project](tcw://C/work/delegate-a-work-item-to-another-project)).
+files one, with any text I pipe in as its request. Another project's request
+for mine is filed the same way, from my project, with `tcw -C`.
 
 `tcw work list --stage inbox` lists them. A plain `tcw work list` shows them
 beside every other unfinished item.

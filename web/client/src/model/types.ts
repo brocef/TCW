@@ -22,15 +22,6 @@ export interface TStageRow {
     discard: boolean
 }
 
-export interface TConnectedProject {
-    id: string
-    relation: string
-    /** Declared, and found on this machine. */
-    present: boolean
-    /** An upstream project: creating into it is refused. */
-    upstream: boolean
-}
-
 export interface TProject {
     id: string
     /** Who owns an item's request, comments, stage and properties: the files
@@ -40,7 +31,9 @@ export interface TProject {
     inboxStage: string
     startStage: string
     inboxItems: boolean
-    tags: string[]
+    /** The registered tags, or why they cannot be read: a parent that is not
+     * on this machine, or one that passes them with a problem (TCW-109). */
+    tags: string[] | TUnavailable
     scales: { priority: string[]; size: string[] }
     capabilityScales: {
         status: string[]
@@ -51,13 +44,40 @@ export interface TProject {
     createFields: string[] | TUnavailable
     user: string | null
     people: Record<string, string>
-    projects: TConnectedProject[]
     axes: Record<Axis, boolean>
+    /** The IDs each scope covers, in scope order, those not on this machine
+     * included (TCW-113 Design 6.2). */
+    scopes: Record<TScope, string[]>
+}
+
+/** Which projects a list or a page covers (TCW-113 Design 1). */
+export type TScope = "own" | "up" | "down" | "all"
+
+/** One project a scoped answer covers: how it is related to the served
+ * project and, when it could not be read, why (TCW-113 Design 1.8). */
+export interface TScopeProject {
+    id: string
+    relation: "ancestor" | "current" | "descendant"
+    unavailable?: string
+}
+
+/** One project's status of a capability path, under `down` or `all`
+ * (TCW-113 Design 4.6). */
+export interface TScopeStatus {
+    project: string
+    status: string | null
+    inherited: boolean
+    /** The object the project's view at the path comes from: its own
+     * when its owner is `project`, whether or not that object sets a
+     * Status. */
+    "full-id": string
 }
 
 /** An item record: what `tcw work list --json` and `show --json` carry. */
 export interface WorkItem {
-    slug: string
+    /** `<project>.work/<folder>` (TCW-110 Design 4.3). */
+    "full-id": string
+    owner: string
     title: string
     stage: string | null
     created: string
@@ -79,7 +99,8 @@ export interface WorkItem {
 
 /** A board row when the backend cannot answer: the folder alone. */
 export interface TFallbackRow {
-    slug: string
+    "full-id": string
+    owner: string
     path: string
 }
 
@@ -88,6 +109,8 @@ export interface TBoard {
     people: Record<string, string>
     fallback: boolean
     unavailable?: string
+    /** Under a scope other than `own` (TCW-113 Design 6.2). */
+    projects?: TScopeProject[]
 }
 
 export interface TComment {
@@ -177,28 +200,54 @@ export interface TTicket {
     description: string | null
 }
 
-export interface TaxonomyItem extends JsonRecord {
-    slug: string
-    qualified?: string
+/** What a taxonomy or capability record says of the object it overrides
+ * (TCW-112 Design 3.3, 3.4): the full identifier of the next object in its
+ * chain, or null; or, read from its own declaration alone, `partial`. */
+interface TOverrides {
+    overrides?: string | null
+    partial?: boolean
+}
+
+export interface TaxonomyItem extends JsonRecord, TOverrides {
+    /** `<project>.taxonomy/<slug>` (TCW-110 Design 4.5). */
+    "full-id": string
+    owner: string
     name?: string
     kind?: string
-    origin?: string
     parent?: string
     relates_to?: string[]
     vocabulary?: string[]
     description?: string
     modified?: string
+    /** The objects of the row's group that override this one, under `down`
+     * or `all` (TCW-113 Design 4.7). */
+    "overridden-by"?: string[]
 }
 
-export interface CapabilityItem extends JsonRecord {
-    path: string
-    qualified?: string
+export interface CapabilityItem extends JsonRecord, TOverrides {
+    /** `<project>.capabilities/<path>` (TCW-110 Design 4.5). */
+    "full-id": string
+    owner: string
     name?: string
     status?: string
-    origin?: string
     fields?: Record<string, string | string[]>
     body?: string
     modified?: string
+    /** Each covered project's status, under `down` or `all` (TCW-113
+     * Design 4.6). */
+    statuses?: TScopeStatus[]
+    "overridden-by"?: string[]
+}
+
+/** `GET /api/taxonomy` and `GET /api/capabilities` (TCW-113 Design 6.2). */
+export interface TaxonomyList {
+    terms: TaxonomyItem[]
+    projects?: TScopeProject[]
+}
+
+export interface CapabilityList {
+    capabilities: CapabilityItem[]
+    projects?: TScopeProject[]
 }
 
 export type AxisItem = WorkItem | TaxonomyItem | CapabilityItem
@@ -206,11 +255,19 @@ export type AxisItem = WorkItem | TaxonomyItem | CapabilityItem
 export interface TaxonomyDetail {
     term: TaxonomyItem
     coreRevision: string
+    /** Under a scope other than `own` (TCW-113 Design 6.2). */
+    projects?: TScopeProject[]
 }
 
 export interface CapabilityDetail {
     capability: CapabilityItem
     coreRevision: string
+    /** The owner's own declared description, trimmed, or null when it
+     * declares none: what the editor edits, never the combined `body`
+     * (TCW-112 Design 4.5). */
+    declaredDescription?: string | null
+    /** Under a scope other than `own` (TCW-113 Design 6.2). */
+    projects?: TScopeProject[]
 }
 
 export interface ApiResult<T = JsonRecord> {

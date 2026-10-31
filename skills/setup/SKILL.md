@@ -1,7 +1,7 @@
 ---
 name: setup
-description: Gets TCW working where it does not work yet. Use when a project does not use TCW yet, when the `tcw` CLI is missing, broken, or stale (not on PATH, `tcw --version` fails, or a plugin update left it behind), when an existing TCW project needs its stores or connected projects on a new machine, or when starting a taxonomy or capabilities ledger from an existing codebase. Changing the configuration of a project that already works is the `configure` skill.
-when_to_use: Use when a user asks to install or repair tcw, start tracking a repository with TCW, run tcw init or tcw provision, get a cloned TCW project working on this machine, or seed a first taxonomy or capabilities ledger from the code. Under Claude a SessionStart hook installs the CLI automatically, so a missing CLI means that hook did not finish; Codex and Pi use this skill directly instead of that hook.
+description: Gets TCW working where it does not work yet. Use when a project does not use TCW yet, when the `tcw` CLI is missing, broken, or stale (not on PATH, `tcw --version` fails, or a plugin update left it behind), when an existing TCW project needs its stores or related projects on a new machine, when a TCW 3.x project must be moved to 4.0 with `tcw migrate`, or when starting a taxonomy or capabilities ledger from an existing codebase. Changing the configuration of a project that already works is the `configure` skill.
+when_to_use: Use when a user asks to install or repair tcw, start tracking a repository with TCW, run tcw project new or tcw project provision, get a cloned TCW project working on this machine, move a TCW 3.x project to 4.0 with tcw migrate, or seed a first taxonomy or capabilities ledger from the code. Under Claude a SessionStart hook installs the CLI automatically, so a missing CLI means that hook did not finish; Codex and Pi use this skill directly instead of that hook.
 allowed-tools: Bash(tcw *), Bash(command -v *), Bash(realpath *), Bash(head *), Bash(pipx *), Bash(python3 *), Bash(*/scripts/session_bootstrap.sh *), Read, Grep, Glob
 metadata:
     author: Brian Cefali
@@ -28,18 +28,19 @@ Skip a step that is already done. Steps 3 and 4 are optional, and 4 needs 3.
 A project that keeps its work in Jira continues with
 [`jira.md`](references/jira.md) once step 2 is done.
 
-| The user wants to… | Open |
-| --- | --- |
-| install `tcw`, or fix one that is missing, broken or out of date | [`install.md`](references/install.md) |
-| start tracking a repository with TCW | [`project.md`](references/project.md) |
-| get a TCW project cloned from elsewhere working on this machine | [`project.md`](references/project.md) |
-| write down the project's terms and features from its existing code | [`taxonomy.md`](references/taxonomy.md) |
-| write down what users can already do, from the existing code | [`capabilities.md`](references/capabilities.md) |
-| keep the project's work items in Jira, and check its workflow fits | [`jira.md`](references/jira.md) |
-| set up documentation entries (which documents a change must update) | the `configure` skill |
-| set up stage bindings (skills or commands run at a stage) | the `configure` skill |
-| set up store locations, or keep a store in another repository | the `configure` skill |
-| set up connected or inherited projects | the `configure` skill |
+| The user wants to…                                                  | Open                                            |
+| ------------------------------------------------------------------- | ----------------------------------------------- |
+| install `tcw`, or fix one that is missing, broken or out of date    | [`install.md`](references/install.md)           |
+| start tracking a repository with TCW                                | [`project.md`](references/project.md)           |
+| get a TCW project cloned from elsewhere working on this machine     | [`project.md`](references/project.md)           |
+| move a TCW 3.x project to 4.0 (`tcw migrate`)                       | [`project.md`](references/project.md)           |
+| write down the project's terms and features from its existing code  | [`taxonomy.md`](references/taxonomy.md)         |
+| write down what users can already do, from the existing code        | [`capabilities.md`](references/capabilities.md) |
+| keep the project's work items in Jira, and check its workflow fits  | [`jira.md`](references/jira.md)                 |
+| set up documentation entries (which documents a change must update) | the `configure` skill                           |
+| set up stage bindings (skills or commands run at a stage)           | the `configure` skill                           |
+| set up store locations, or keep a store in another repository       | the `configure` skill                           |
+| set up parent links, children or inheritance                        | the `configure` skill                           |
 
 A request that says "set up" but names one of the last four areas is a
 configuration change to a project that already works, not first-time setup.

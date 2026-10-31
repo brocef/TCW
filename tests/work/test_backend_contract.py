@@ -23,6 +23,7 @@ from tcw.work.model import Changes
 from tests.work.jira.conftest import EMAIL_ENV, STATUSES, TOKEN_ENV, jira_config
 from tests.work.jira.fake import FakeJira
 from tests.work.memory_backend import MemoryBackend
+from tests.statefiles import write_state, ITEM_STATE
 
 TAGS = ["bug", "docs", "ui", "api"]
 
@@ -52,10 +53,10 @@ def _filesystem(tmp_path, monkeypatch, user):
                             today=lambda: date(2026, 10, 2), now=_Clock())
 
     def put_stage(folder, stage):
-        path = tmp_path / "work" / folder / "item.yaml"
+        path = tmp_path / "work" / folder / ITEM_STATE
         data = yaml.safe_load(path.read_text())
         data["stage"] = "verify" if stage is None else stage
-        path.write_text(yaml.safe_dump(data, sort_keys=False))
+        write_state(path, yaml.safe_dump(data, sort_keys=False))
 
     return backend, put_stage
 
@@ -200,10 +201,21 @@ def test_set_stage_without_a_note_writes_no_comment(backend):
 
 
 def test_rename_keeps_the_prefix(backend):
+    # `move` takes the whole new id-path (TCW-114 Design 7.1): it returns the
+    # (old, new) pair for every identifier it changed, the item's first, and
+    # refuses a new last part that does not keep the old date or key.
     item = new(backend, "old words")
     prefix = item.slug.folder[: -len("old-words")]
-    renamed = backend.rename(item.slug.folder, "new-words")
-    assert renamed.slug.folder == f"{prefix}new-words"
+    with pytest.raises(UsageError):
+        backend.move(item.slug.folder, "2001-01-01-new-words", lambda: None)
+    backend.read(item.slug.folder)        # the refusal moved nothing
+    called = []
+    pairs = backend.move(item.slug.folder, f"{prefix}new-words",
+                         lambda: called.append(True))
+    assert called == [True]
+    assert [(old.folder, new.folder) for old, new in pairs] == [
+        (item.slug.folder, f"{prefix}new-words")]
+    assert backend.read(f"{prefix}new-words").slug.folder == f"{prefix}new-words"
     with pytest.raises(NotFound):
         backend.read(item.slug.folder)
 
@@ -243,3 +255,17 @@ def test_only_its_own_item_folders_are_items(backend, tmp_path):
     assert not backend.is_item_folder("notes")
     assert not backend.is_item_folder("2026-10-02-no-item-file")
     assert not backend.is_item_folder("no-such-folder")
+
+
+def test_a_nested_create_puts_the_folder_under_the_parents(backend, tmp_path):
+    """`nest` with a parent of this backend (TCW-111 AC 9); without it the
+    folder is made at the top, as before."""
+    epic = new(backend, "Epic")
+    part = backend.create("Part", Changes(parent=epic.slug), stage="request",
+                          request=None, nest=True)
+    assert part.slug.folder.startswith(epic.slug.folder + "/")
+    assert (tmp_path / "work" / part.slug.folder).is_dir()
+    assert backend.read(part.slug.folder).parent == epic.slug
+    flat = backend.create("Flat", Changes(parent=epic.slug), stage="request",
+                          request=None)
+    assert "/" not in flat.slug.folder

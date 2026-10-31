@@ -2,6 +2,7 @@ name: Configurable component-store location
 kind: Feature
 relatesTo: []
 vocabulary:
-- store
-- project
-- namespace
+    - store
+    - project
+    - namespace
+    - tcw-address

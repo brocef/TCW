@@ -6,6 +6,7 @@ import pytest
 
 from tcw.config import load_config
 from tests.config.conftest import problem_lines
+from tests.projectfiles import write_config_file
 
 B = {"builtin": True}
 SPEC = ("work", "stages", "spec")
@@ -88,7 +89,7 @@ def test_a_bad_inherit_entry_is_one_problem(personal, entry, words):
     personal.local({"work": {"stages": {"spec": {"prompt": [entry]}}}})
     lines = problem_lines(load_config(personal.root))
     assert len(lines) == 1, lines
-    assert lines[0].startswith("tcw-config.local.yaml: work.stages.spec.prompt[0]: ")
+    assert lines[0].startswith(".tcw/tcw-config.local.yaml: work.stages.spec.prompt[0]: ")
     assert words in lines[0]
 
 
@@ -99,12 +100,14 @@ def test_two_inherit_entries_are_one_problem(personal):
 
 
 def test_inherit_outside_a_chain_list_is_one_problem(personal):
-    personal.project({"work": {"tags": [INHERIT]}})
-    # The tag parser also says the entry is not a tag; this is the one
-    # problem about `inherit` itself.
+    # TCW-109 Design 2.4: `work.tags` takes the entry now, so the list that
+    # refuses it is another one, and the refusal names `work.tags`.
+    personal.project({"work": {"documentation": [INHERIT]}})
     lines = [line for line in problem_lines(load_config(personal.root))
              if "'inherit' is allowed only" in line]
-    assert len(lines) == 1 and lines[0].startswith("tcw-config.yaml: work.tags[0]: ")
+    assert len(lines) == 1 and lines[0].startswith(
+        ".tcw/tcw-config.yaml: work.documentation[0]: ")
+    assert "work.tags" in lines[0]
 
 
 @pytest.mark.parametrize("layer", ["project", "user", "local"])
@@ -121,7 +124,7 @@ def test_a_repeated_entry_in_one_file_is_one_problem(personal):
     personal.project({"work": {"stages": {"spec": {"prompt": [{"file": "a.md"},
                                                               {"file": "a.md"}]}}}})
     lines = problem_lines(load_config(personal.root))
-    assert len(lines) == 1 and lines[0].startswith("tcw-config.yaml: ")
+    assert len(lines) == 1 and lines[0].startswith(".tcw/tcw-config.yaml: ")
 
 
 def test_the_same_entry_in_two_layers_is_no_problem(personal):
@@ -144,7 +147,7 @@ def test_with_nothing_set_a_stage_prompt_is_the_built_in_entry(personal):
 
 
 def test_an_empty_work_key_keeps_the_built_in_prompts(personal):
-    personal.project_file.write_text("id: p\nwork:\n")
+    write_config_file(personal.project_file, "id: p\nwork:\n")
     config = load_config(personal.root)
     assert config.problems == []
     assert config.values["work"]["stages"]["spec"]["prompt"] == [{"builtin": True}]
@@ -191,7 +194,7 @@ def test_an_empty_mapping_is_blamed_on_the_file_that_wrote_it(personal):
     assert problem.file == personal.local_file
     from tcw.config_cli import render
     [line] = [l for l in render(config, origin=True).splitlines() if "custom:" in l]
-    assert line.endswith("custom: {}  # local: tcw-config.local.yaml"), line
+    assert line.endswith("custom: {}  # p, local .tcw/tcw-config.local.yaml"), line
 
 
 def test_a_mapping_problem_is_blamed_on_the_highest_layer_under_it(personal):

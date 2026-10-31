@@ -12,6 +12,8 @@ import yaml
 
 from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, init
+from tests.projectfiles import write_config, write_manifest
+from tests.statefiles import STATE_OF, write_state, CAPABILITY_STATE, TAXONOMY_STATE
 
 pytestmark = pytest.mark.skipif(
     hasattr(os, "geteuid") and os.geteuid() == 0,
@@ -38,7 +40,8 @@ def check(err: str, store_root: Path, top: Path) -> None:
              for line in err.splitlines() if line.startswith("removed ")}
     assert named, err
     assert all(not p.exists() for p in named), err
-    assert (top / "meta.yaml").resolve() in named or not (top / "meta.yaml").exists()
+    state = top / STATE_OF[store_root.name]
+    assert state.resolve() in named or not state.exists()
     for p in named:
         assert store_root.resolve() in p.parents
     errors = [line for line in err.splitlines() if line.startswith("tcw ")]
@@ -62,7 +65,7 @@ def test_taxonomy_rm_stopped_partway(tmp_path, monkeypatch, capsys):
     root = project(tmp_path)
     d = root / "docs" / "taxonomy" / "zed"
     d.mkdir()
-    (d / "meta.yaml").write_text(yaml.safe_dump({"name": "zed"}))
+    write_state(d / TAXONOMY_STATE, yaml.safe_dump({"name": "zed"}))
     (d / "description.md").write_text("")
     kid = locked(d / "kid")
     monkeypatch.chdir(root)
@@ -79,8 +82,7 @@ def test_capabilities_rm_stopped_partway(tmp_path, monkeypatch, capsys):
     root = project(tmp_path)
     d = root / "docs" / "capabilities" / "pay"
     d.mkdir()
-    (d / "meta.yaml").write_text(yaml.safe_dump({"id": "cap-pay001", "name": "Pay",
-                                                 "Status": "Supported"}))
+    write_state(d / CAPABILITY_STATE, yaml.safe_dump({"name": "Pay", "Status": "Supported"}))
     (d / "description.md").write_text("")
     kid = locked(d / "files")
     monkeypatch.chdir(root)
@@ -95,22 +97,21 @@ def test_capabilities_rm_stopped_partway(tmp_path, monkeypatch, capsys):
 
 def test_capabilities_reset_stopped_partway(tmp_path, monkeypatch, capsys):
     base = project(tmp_path)
-    (base / "tcw-config.yaml").write_text(
-        "id: base\nprojects:\n  parent:\n    child: ../child\n")
+    write_config(base, "id: base\n")
     d = base / "docs" / "capabilities" / "login"
     d.mkdir()
-    (d / "meta.yaml").write_text(yaml.safe_dump({"id": "cap-aaa111", "name": "Login",
-                                                 "Status": "Supported"}))
+    write_state(d / CAPABILITY_STATE, yaml.safe_dump({"name": "Login", "Status": "Supported"}))
     (d / "description.md").write_text("")
     child = tmp_path / "child"
     child.mkdir()
     init(["taxonomy", "capabilities"], child, "child")
-    (child / "tcw-config.yaml").write_text(
-        "id: child\nprojects:\n  children:\n    base: ../solo\n")
-    FsCapabilitiesStore.open(child).extends_add("base")
+    # `base` is `child`'s parent passing capabilities.
+    write_config(child,
+        "id: child\nparents:\n- id: base\n  inherit: [capabilities]\n")
+    write_manifest(child, {"base": "../solo"})
     FsCapabilitiesStore.open(child).set("login", {"Status": "Missing"})
     override = child / "docs" / "capabilities" / "login"
-    assert (override / "meta.yaml").is_file()
+    assert (override / CAPABILITY_STATE).is_file()
     kid = locked(override / "files")
     monkeypatch.chdir(child)
     try:
@@ -149,7 +150,7 @@ def test_a_removal_deletes_everything_it_can_whatever_the_listing_order(
     root = project(tmp_path)
     d = root / "docs" / "taxonomy" / "zed"
     d.mkdir()
-    (d / "meta.yaml").write_text(yaml.safe_dump({"name": "zed"}))
+    write_state(d / TAXONOMY_STATE, yaml.safe_dump({"name": "zed"}))
     (d / "description.md").write_text("")
     kid = locked(d / "kid")
     real = os.scandir

@@ -1,3 +1,4 @@
+import os
 import subprocess
 from pathlib import Path
 
@@ -7,6 +8,8 @@ import yaml
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tcw.findings import Finding
 from tcw.validate import ValidationTarget, validate
+from tests.projectfiles import write_config, write_manifest
+from tests.statefiles import write_state, ITEM_STATE, TAXONOMY_STATE
 
 
 def _node(tmp_path: Path) -> Path:
@@ -31,12 +34,16 @@ def test_graph_problems_precede_target_resolution(tmp_path):
     root = _node(tmp_path)
     broken = tmp_path / "broken-node"
     broken.mkdir()
-    (broken / "tcw-config.yaml").write_text("id: broken-node\nid: dupe\n")
-    config = yaml.safe_load((root / "tcw-config.yaml").read_text())
-    config["projects"] = {"children": {"broken-node": str(broken)}}
-    (root / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config(broken, "id: broken-node\nid: dupe\n")
+    config = yaml.safe_load((root / ".tcw/tcw-config.yaml").read_text())
+    config["children"] = ["broken-node"]
+    write_config(root, yaml.safe_dump(config, sort_keys=False))
+    write_manifest(root, {"broken-node": os.path.relpath(broken, root)})
     problems = validate(root, target=ValidationTarget("taxonomy", "missing"))
-    assert problems and all(p.where.endswith("tcw-config.yaml") for p in problems)
+    # TCW-107 Design 2.6: a problem of the folder an entry places is the
+    # entry's, recorded against its manifest.
+    assert problems and all(p.where.endswith(("tcw-config.yaml", "tcw-manifest.yaml"))
+                            for p in problems)
 
 
 def test_an_absent_connected_project_does_not_block_target_resolution(tmp_path):
@@ -47,9 +54,10 @@ def test_an_absent_connected_project_does_not_block_target_resolution(tmp_path):
     of refusing before it.
     """
     root = _node(tmp_path)
-    config = yaml.safe_load((root / "tcw-config.yaml").read_text())
-    config["projects"] = {"children": {"missing": "missing-node"}}
-    (root / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+    config = yaml.safe_load((root / ".tcw/tcw-config.yaml").read_text())
+    config["children"] = ["missing"]
+    write_config(root, yaml.safe_dump(config, sort_keys=False))
+    write_manifest(root, {"missing": "missing-node"})
     assert validate(root, target=ValidationTarget("taxonomy", "missing")) == [
         Finding("error", "missing", "no such taxonomy object")
     ]
@@ -61,22 +69,22 @@ def test_target_scans_only_selected_yaml_and_links(tmp_path):
     taxonomy.add("Good", slug="good")
     taxonomy.add("Broken", slug="broken")
     (root / "docs/taxonomy/good/description.md").write_text("[bad](tcw://T/missing)\n")
-    (root / "docs/taxonomy/broken/meta.yaml").write_text("name: [\n")
+    (root / "docs/taxonomy/broken/tcw-taxonomy.yaml").write_text("name: [\n")
     targeted = [str(f) for f in validate(root, target=ValidationTarget("taxonomy", "good"))]
     full = [str(f) for f in validate(root)]
     assert any("tcw://" in problem for problem in targeted)
-    assert not any("broken/meta.yaml" in problem for problem in targeted)
-    assert any("broken/meta.yaml" in problem for problem in full)
+    assert not any("broken/tcw-taxonomy.yaml" in problem for problem in targeted)
+    assert any("broken/tcw-taxonomy.yaml" in problem for problem in full)
 
 
 def test_target_reports_its_own_malformed_yaml(tmp_path):
     root = _node(tmp_path)
     FsCapabilitiesStore.open(root).add("broken")
-    (root / "docs/capabilities/broken/meta.yaml").write_text("name: [\n")
+    (root / "docs/capabilities/broken/tcw-capability.yaml").write_text("name: [\n")
     notes: list[str] = []
     problems = [str(f) for f in validate(
         root, target=ValidationTarget("capabilities", "broken"), notes=notes)]
-    assert any("broken/meta.yaml" in problem for problem in problems)
+    assert any("broken/tcw-capability.yaml" in problem for problem in problems)
     assert any("checks skipped" in note for note in notes), notes
 
 
@@ -87,7 +95,7 @@ def test_axis_semantics_are_object_local(tmp_path):
     for slug in ("feature", "other"):
         d = root / "docs" / "taxonomy" / slug
         d.mkdir(parents=True)
-        (d / "meta.yaml").write_text(f"name: {slug}\nkind: Feature\nrelatesTo: []\n")
+        write_state(d / TAXONOMY_STATE, f"name: {slug}\nkind: Feature\nrelatesTo: []\n")
         (d / "description.md").write_text("")
     capability = FsCapabilitiesStore.open(root)
     capability.add("bad", status="Partial")
@@ -105,7 +113,7 @@ def test_axis_semantics_are_object_local(tmp_path):
 def _spec_item(root: Path, name: str) -> Path:
     from tests.work.projects import write_item
     folder = write_item(root, name, {"title": name, "stage": "spec",
-                                     "blocked-by": [f"{name}-gone"]})
+                                     "blocked-by": [f"repo.work/{name}-gone"]})
     (folder / "spec").mkdir()
     (folder / "spec" / "spec.md").write_text("See [x](tcw://C/nowhere).\n")
     (folder / "review").mkdir()
@@ -126,14 +134,14 @@ def test_one_work_item_reports_its_own_problems_only(tmp_path):
     assert by_file["spec.md"].severity == "error" and "tcw://C/nowhere" in by_file["spec.md"].message
     assert by_file["round-1.md"].severity == "warning"
     assert by_file["capabilities.yaml"].severity == "error"
-    assert by_file["item.yaml"].severity == "warning" and "2026-10-01-a-gone" in \
-        by_file["item.yaml"].message
+    assert by_file[ITEM_STATE].severity == "warning" and "2026-10-01-a-gone" in \
+        by_file[ITEM_STATE].message
     assert len(found) == 4, found
 
 
 def test_one_work_item_uses_the_item_it_is_given(tmp_path):
     """The caller's item decides the stage: a terminal one skips the records
-    check that `item.yaml`'s stage would run."""
+    check that `tcw-work-item.yaml`'s stage would run."""
     from dataclasses import replace
     from tcw.work.open import open_backend
     root = _node(tmp_path)
@@ -160,7 +168,7 @@ def test_one_jira_item_sharing_its_key_with_another_folder(tmp_path):
         folder = root / "docs" / "work" / name
         folder.mkdir(parents=True)
         key = name.rsplit("-", 1)[0]
-        (folder / "item.yaml").write_text(yaml.safe_dump({"ticket": f"{SITE}/browse/{key}"}))
+        write_state(folder / ITEM_STATE, yaml.safe_dump({"ticket": f"{SITE}/browse/{key}"}))
     found = validate(root, target=ValidationTarget("work", "TCW-1-a"))
     assert any("the key TCW-1 names 2 folders" in f.message for f in found), found
     other = validate(root, target=ValidationTarget("work", "TCW-2-c"))

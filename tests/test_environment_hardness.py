@@ -6,17 +6,19 @@ Four environments are scaffolded on ``tmp_path``:
    canonical layout).  No inheritance, no children.
 
 2. **Nested monorepo** — multiple TCW nodes nested inside a single git repo.
-   Subprojects inherit taxonomy from the root project via *relative* paths in
-   ``extends``.  Parent-child node relations derive from nesting.
+   Subprojects inherit from the root project through their ``parents:``
+   link, the root placed by a *relative* manifest location.  Parent-child
+   node relations derive from nesting.
 
 3. **Sibling nodes with absolute-path inheritance** — two (or more) sibling
-   git repos under a common parent directory.  Inheritance is declared with
-   *absolute* paths.  Parent-child relations derive from the enclosing git
+   git repos under a common parent directory.  Each inherits from the parent
+   through its ``parents:`` link, the parent's folder written from its
+   *absolute* path.  Parent-child relations derive from the enclosing git
    worktree.
 
 4. **Linked git worktree** — a node checked out in a linked worktree
    (``git worktree add``) rather than its primary checkout.  A relative
-   ``projects`` locator was authored against the node's primary
+   location in its manifest was authored against the node's primary
    position on disk, so inside the worktree it is off by the worktree's nesting
    depth; the registry re-anchors it against the main worktree root and folds
    the two on-disk copies of the current node into one graph entry.  The
@@ -28,6 +30,7 @@ capabilities, work) plus the node-relation operations (``nodes``,
 ``reconcile``, ``delegate``, ``escalate``).
 """
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -35,9 +38,25 @@ import pytest
 import yaml
 
 from tcw.store.fs import (
-    FsCapabilitiesStore, FsTaxonomyStore, WorkLocation, child_projects,
-    descendant_projects, init, load_yaml, parent_project,
+    FsCapabilitiesStore, FsTaxonomyStore, WorkLocation, init, load_yaml,
 )
+from tcw.store.project import FsProjectRegistry
+from tests.statefiles import write_state, CAPABILITY_STATE, TAXONOMY_STATE
+
+
+def _parent_folder(root):
+    """The folder of the project's first ancestor, or None."""
+    ancestors = FsProjectRegistry.open(root).require_valid().ancestors()
+    return Path(ancestors[-1].locator) if ancestors else None
+
+
+def _child_folders(root):
+    return [Path(p.locator) for p in FsProjectRegistry.open(root).require_valid().children()]
+
+
+def _descendant_folders(root):
+    return [Path(p.locator)
+            for p in FsProjectRegistry.open(root).require_valid().descendants()]
 
 
 # ────────────────────────────────────────────────────────────────────────
@@ -45,7 +64,7 @@ from tcw.store.fs import (
 # ────────────────────────────────────────────────────────────────────────
 
 
-from nodeconfig import declare_extends
+from tests.projectfiles import config_file, write_config, write_config_file, write_manifest
 
 
 def _git_init(path: Path) -> None:
@@ -82,10 +101,10 @@ def nested_monorepo(tmp_path: Path) -> tuple[Path, Path, Path]:
     """Return (root, child-a, child-b) for a monorepo with nested children.
 
     Root and children share **one git repo**; each is a node via its own
-    ``tcw-config.yaml`` sentinel.  Children inherit taxonomy from root via
-    *relative* paths in ``extends``.
+    ``tcw-config.yaml`` sentinel.  Children inherit from root through their
+    ``parents:`` link, which passes every axis.
 
-    NB: cross-node *work* discovery (``child_projects``/``delegate``/``reconcile``)
+    NB: cross-node *work* discovery (the registry's children, ``delegate``, ``reconcile``)
     is git-repo-scoped in SP1 — plain subfolders of one repo are valid single
     nodes but are not enumerated as child nodes.  Spanning subfolders is SP2
     (unbuilt); the boundary tests below pin that contract.
@@ -103,42 +122,37 @@ def nested_monorepo(tmp_path: Path) -> tuple[Path, Path, Path]:
     init(["taxonomy", "capabilities", "work"], child_a, "child-a")
     init(["taxonomy", "capabilities", "work"], child_b, "child-b")
 
-    (root / "tcw-config.yaml").write_text(yaml.safe_dump({
+    write_config(root, yaml.safe_dump({
         "id": "root",
-        "projects": {
-            "children": {"child-a": "a", "child-b": "b"}
-        },
+        "children": ["child-a", "child-b"],
     }, sort_keys=False))
+    write_manifest(root, {"child-a": "a", "child-b": "b"})
     for child, child_id in ((child_a, "child-a"), (child_b, "child-b")):
-        (child / "tcw-config.yaml").write_text(yaml.safe_dump({
+        write_config(child, yaml.safe_dump({
             "id": child_id,
-            "projects": {"parent": {"root": ".."}},
+            "parents": ["root"],
         }, sort_keys=False))
-
-    # Both children extend the root via relative paths
-    declare_extends(child_a, "taxonomy",
-        yaml.safe_dump({"extends": ["root"]}))
-    declare_extends(child_b, "taxonomy",
-        yaml.safe_dump({"extends": ["root"]}))
+        write_manifest(child, {"root": ".."})
 
     return root, child_a, child_b
 
 
 def sibling_nodes(tmp_path: Path) -> tuple[Path, Path, Path]:
-    """Return (parent, left, right) for two sibling repos with absolute-path extends.
+    """Return (parent, left, right) for two sibling repos inheriting from parent.
 
     Each sibling is its own git repo.  The *parent* is a git repo that
     contains the two sibling repos as subdirectories (and has ``docs/work/``
-    so it qualifies as a node for ``parent_project`` / ``child_projects``).
-    Left and right extend the parent via *absolute* paths.
+    so it qualifies as a node for the registry's parents and children).
+    Left and right inherit from the parent through their ``parents:`` link,
+    its folder written from its *absolute* path.
     """
     parent = tmp_path / "parent"
     parent.mkdir()
     _git_init(parent)
-    # parent needs taxonomy (children extend it) and work (node-relation ops)
+    # parent needs taxonomy (children inherit it) and work (node-relation ops)
     init(["taxonomy", "work"], parent, "parent")
     # NB: don't _commit_all(parent) — untracked nested git repos (left/right)
-    # would block the commit. child_projects only walks the filesystem.
+    # would block the commit. The registry only reads the files.
 
     left = parent / "left"
     left.mkdir()
@@ -150,23 +164,20 @@ def sibling_nodes(tmp_path: Path) -> tuple[Path, Path, Path]:
     _git_init(right)
     init(["taxonomy", "capabilities", "work"], right, "right")
 
-    (parent / "tcw-config.yaml").write_text(yaml.safe_dump({
+    # A manifest's locations are relative, so each absolute folder is written
+    # relative to the project whose manifest names it.
+    write_config(parent, yaml.safe_dump({
         "id": "parent",
-        "projects": {
-            "children": {"left": str(left.resolve()), "right": str(right.resolve())}
-        },
+        "children": ["left", "right"],
     }, sort_keys=False))
+    write_manifest(parent, {"left": os.path.relpath(left.resolve(), parent),
+                            "right": os.path.relpath(right.resolve(), parent)})
     for child, child_id in ((left, "left"), (right, "right")):
-        (child / "tcw-config.yaml").write_text(yaml.safe_dump({
+        write_config(child, yaml.safe_dump({
             "id": child_id,
-            "projects": {"parent": {"parent": str(parent.resolve())}},
+            "parents": ["parent"],
         }, sort_keys=False))
-
-    # Both siblings extend parent using *absolute* paths
-    declare_extends(left, "taxonomy",
-        yaml.safe_dump({"extends": ["parent"]}))
-    declare_extends(right, "taxonomy",
-        yaml.safe_dump({"extends": ["parent"]}))
+        write_manifest(child, {"parent": os.path.relpath(parent.resolve(), child)})
 
     return parent, left, right
 
@@ -185,16 +196,20 @@ def two_node_graph(tmp_path: Path, absolute: bool = False) -> tuple[Path, Path]:
     server.mkdir()
     init(["taxonomy", "capabilities", "work"], workspace, "example-app")
     init(["taxonomy", "capabilities", "work"], server, "example-server")
-    up = str(workspace.resolve()) if absolute else ".."
-    down = str(server.resolve()) if absolute else "example-server"
-    (workspace / "tcw-config.yaml").write_text(yaml.safe_dump({
+    # A manifest's locations are relative: an absolute folder is written
+    # relative to the project whose manifest names it.
+    up = os.path.relpath(workspace.resolve(), server) if absolute else ".."
+    down = os.path.relpath(server.resolve(), workspace) if absolute else "example-server"
+    write_config(workspace, yaml.safe_dump({
         "id": "example-app",
-        "projects": {"children": {"example-server": down}},
+        "children": ["example-server"],
     }, sort_keys=False))
-    (server / "tcw-config.yaml").write_text(yaml.safe_dump({
+    write_manifest(workspace, {"example-server": down})
+    write_config(server, yaml.safe_dump({
         "id": "example-server",
-        "projects": {"parent": {"example-app": up}},
+        "parents": ["example-app"],
     }, sort_keys=False))
+    write_manifest(server, {"example-app": up})
     return workspace, server
 
 
@@ -212,8 +227,8 @@ class TestLoneProject:
         st.add("Admin")
         st.add("Permission", parent="admin")
         st.add("User")
-        assert st.get("admin").name == "Admin"
-        assert st.get("admin/permission").slug == "admin/permission"
+        assert st.get_view("admin").name == "Admin"
+        assert st.get_view("admin/permission").slug == "admin/permission"
         assert {t.slug for t in st.list_all()} == {"admin", "admin/permission", "user"}
         assert {t.slug for t in st.list_all(local_only=True)} == {"admin", "admin/permission", "user"}
         assert st.search("admin")
@@ -224,7 +239,7 @@ class TestLoneProject:
         st = FsTaxonomyStore.open(root)
         st.add("Temp")
         st.remove("temp")
-        assert st.get("temp") is None
+        assert st.get_view("temp") is None
 
     def test_taxonomy_check_clean(self, tmp_path):
         root = lone_project(tmp_path)
@@ -237,7 +252,8 @@ class TestLoneProject:
         st = FsTaxonomyStore.open(root)
         st.add("Thing")
         d = root / "docs" / "taxonomy" / "thing"
-        (d / "meta.yaml").write_text(yaml.safe_dump({"name": "Thing", "relatesTo": ["nope"]}))
+        nope = f"{st.project_id}.taxonomy/nope"
+        write_state(d / TAXONOMY_STATE, yaml.safe_dump({"name": "Thing", "relatesTo": [nope]}))
         problems = [str(f) for f in st.check()]
         assert any("dangling" in p for p in problems)
 
@@ -254,7 +270,7 @@ class TestLoneProject:
         st = FsCapabilitiesStore.open(root)
         st.add("routes/home")
         st.set("routes/home", {"Status": "Supported"})
-        assert st.get("routes/home").status == "Supported"
+        assert st.get_view("routes/home").status == "Supported"
 
     def test_capabilities_check_clean(self, tmp_path):
         root = lone_project(tmp_path)
@@ -264,8 +280,8 @@ class TestLoneProject:
 
     def test_nodes_leaf(self, tmp_path):
         root = lone_project(tmp_path)
-        p = parent_project(root)
-        c = child_projects(root)
+        p = _parent_folder(root)
+        c = _child_folders(root)
         assert p is None
         assert c == []
 
@@ -287,10 +303,10 @@ class TestLoneProject:
         tax = FsTaxonomyStore.open(root)
         caps = FsCapabilitiesStore.open(root)
         caps.add("routes/x", status="Supported")
-        meta_path = root / "docs" / "capabilities" / "routes" / "x" / "meta.yaml"
+        meta_path = root / "docs" / "capabilities" / "routes" / "x" / CAPABILITY_STATE
         meta = load_yaml(meta_path)
-        meta["Subject"] = ["ghost"]
-        meta_path.write_text(
+        meta["Subject"] = [f"{tax.project_id}.taxonomy/ghost"]
+        write_state(meta_path,
             yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
         problems = [str(f) for f in caps.check(taxonomy=tax)]
         assert any("dangling" in p for p in problems)
@@ -302,43 +318,49 @@ class TestLoneProject:
 
 
 class TestNestedMonorepo:
-    """Subprojects inside one repo inherit taxonomy from root via relative paths."""
+    """Subprojects inside one repo inherit taxonomy from root through `parents:`."""
 
     def test_root_taxonomy_visible_to_child(self, tmp_path):
         root, child_a, _ = nested_monorepo(tmp_path)
         FsTaxonomyStore.open(root).add("Shared")
         st_a = FsTaxonomyStore.open(child_a)
-        assert st_a.get("root/shared").name == "Shared"
+        shared = st_a.get_view("shared")
+        assert (shared.name, shared.owner) == ("Shared", "root")
 
     def test_child_cannot_see_other_child_taxonomy(self, tmp_path):
         root, child_a, child_b = nested_monorepo(tmp_path)
         FsTaxonomyStore.open(child_a).add("LocalA")
         st_b = FsTaxonomyStore.open(child_b)
-        assert st_b.get("locala") is None
-        assert st_b.get("root/locala") is None  # not in root either
+        assert st_b.get_view("locala") is None
+        assert FsTaxonomyStore.open(root).get_view("locala") is None  # not in root either
 
     def test_child_can_add_local_terms(self, tmp_path):
         root, child_a, _ = nested_monorepo(tmp_path)
         FsTaxonomyStore.open(root).add("Shared")
         st = FsTaxonomyStore.open(child_a)
         st.add("Plugin")
-        assert st.get("plugin").origin == "local"
-        # Root's terms are visible through the inherited namespace
-        assert st.get("root/shared").origin == "root"
+        assert st.get_view("plugin").origin == "local"
+        # Root's terms are in the child's view, owned by root
+        assert st.get_view("shared").origin == "root"
 
     def test_local_wins_bare_ref_in_child(self, tmp_path):
         root, child_a, _ = nested_monorepo(tmp_path)
         FsTaxonomyStore.open(root).add("Shared")
-        FsTaxonomyStore.open(child_a).add("Shared", slug="shared")
-        assert FsTaxonomyStore.open(child_a).get("shared").origin == "local"
+        # At an inherited path, `add` writes an override, which must differ
+        # from what it inherits (TCW-112 Design 4.1).
+        FsTaxonomyStore.open(child_a).add("Shared", slug="shared",
+                                          description="The child's own meaning.")
+        found = FsTaxonomyStore.open(child_a).get_view("shared")
+        assert found.origin == "local"
+        assert str(found.overrides) == "root.taxonomy/shared"
 
     def test_child_node_relation_parent(self, tmp_path):
         root, child_a, _ = nested_monorepo(tmp_path)
-        assert parent_project(child_a).resolve() == root.resolve()
+        assert _parent_folder(child_a).resolve() == root.resolve()
 
     def test_registered_subfolder_children_are_discovered(self, tmp_path):
         root, child_a, child_b = nested_monorepo(tmp_path)
-        found = {p.resolve() for p in child_projects(root)}
+        found = {p.resolve() for p in _child_folders(root)}
         assert child_a.resolve() in found
         assert child_b.resolve() in found
 
@@ -347,7 +369,7 @@ class TestNestedMonorepo:
         _, child_a, _ = nested_monorepo(tmp_path)
         caps = FsCapabilitiesStore.open(child_a)
         caps.add("routes/local", status="Supported")
-        assert caps.get("routes/local").status == "Supported"
+        assert caps.get_view("routes/local").status == "Supported"
         assert caps.check() == []
 
 
@@ -356,7 +378,7 @@ class TestNestedMonorepo:
         FsTaxonomyStore.open(root).add("User")
         caps = FsCapabilitiesStore.open(child_a)
         caps.add("routes/profile", status="Supported")
-        caps.set("routes/profile", {"Subject": "root/user"})
+        caps.set("routes/profile", {"Subject": "root.taxonomy/user"})
         assert caps.check(taxonomy=FsTaxonomyStore.open(child_a)) == []
 
     def test_nested_deep_children_found(self, tmp_path):
@@ -366,18 +388,18 @@ class TestNestedMonorepo:
         _git_init(deep)
         init(["work"], deep, "deep")
         child_a = root / "a"
-        child_cfg = yaml.safe_load((child_a / "tcw-config.yaml").read_text()) or {}
-        child_cfg.setdefault("projects", {}).setdefault("children", {})[
-            "deep"
-        ] = "deep"
-        (child_a / "tcw-config.yaml").write_text(
+        child_cfg = yaml.safe_load((child_a / ".tcw/tcw-config.yaml").read_text()) or {}
+        child_cfg.setdefault("children", []).append("deep")
+        write_config(child_a,
             yaml.safe_dump(child_cfg, sort_keys=False)
         )
-        (deep / "tcw-config.yaml").write_text(
-            "id: deep\nprojects:\n  parent:\n    child-a: ..\n"
+        write_manifest(child_a, {"deep": "deep"})
+        write_config(deep,
+            "id: deep\nparents:\n- child-a\n"
         )
+        write_manifest(deep, {"child-a": ".."})
         _commit_all(deep)
-        found = descendant_projects(root)
+        found = _descendant_folders(root)
         deep_path = deep.resolve()
         assert any(f.resolve() == deep_path for f in found)
 
@@ -388,38 +410,39 @@ class TestNestedMonorepo:
 
 
 class TestSiblingNodes:
-    """Two sibling repos under a common parent with absolute-path extends."""
+    """Two sibling repos under a common parent, each inheriting from it."""
 
     def test_sibling_inherits_via_absolute_path(self, tmp_path):
         parent, left, _ = sibling_nodes(tmp_path)
         FsTaxonomyStore.open(parent).add("Platform")
         st = FsTaxonomyStore.open(left)
-        assert st.get("parent/platform").name == "Platform"
+        platform = st.get_view("platform")
+        assert (platform.name, platform.owner) == ("Platform", "parent")
 
     def test_sibling_standalone_taxonomy(self, tmp_path):
         _, left, _ = sibling_nodes(tmp_path)
         st = FsTaxonomyStore.open(left)
         st.add("Feature")
-        assert st.get("feature").origin == "local"
+        assert st.get_view("feature").origin == "local"
 
     def test_siblings_cannot_see_each_other(self, tmp_path):
         parent, left, right = sibling_nodes(tmp_path)
         FsTaxonomyStore.open(left).add("Leftonly")
         st_right = FsTaxonomyStore.open(right)
-        assert st_right.get("leftonly") is None
-        assert st_right.get("parent/leftonly") is None
+        assert st_right.get_view("leftonly") is None
+        assert FsTaxonomyStore.open(parent).get_view("leftonly") is None
 
     def test_child_nodes_finds_siblings(self, tmp_path):
         parent, left, right = sibling_nodes(tmp_path)
-        found = child_projects(parent)
+        found = _child_folders(parent)
         found_resolved = {p.resolve() for p in found}
         assert left.resolve() in found_resolved
         assert right.resolve() in found_resolved
 
     def test_parent_node_resolved_through_git(self, tmp_path):
         parent, left, _ = sibling_nodes(tmp_path)
-        # parent_project walks up through git worktree ancestry
-        p = parent_project(left)
+        # the parent is found through the manifests and the search
+        p = _parent_folder(left)
         assert p is not None
         # The parent must be a node (has docs/work/) and be reachable
         assert (p / "docs" / "work").is_dir()
@@ -436,7 +459,7 @@ class TestSiblingNodes:
         FsTaxonomyStore.open(parent).add("User")
         caps = FsCapabilitiesStore.open(left)
         caps.add("routes/profile", status="Supported")
-        caps.set("routes/profile", {"Subject": "parent/user"})
+        caps.set("routes/profile", {"Subject": "parent.taxonomy/user"})
         st = FsTaxonomyStore.open(left)
         assert caps.check(taxonomy=st) == []
 
@@ -454,7 +477,7 @@ class TestWorktreeNode:
         from tcw.cli import main
         _, server = two_node_graph(tmp_path)          # no _git_init anywhere
         monkeypatch.chdir(server)
-        for argv in (["work", "list"], ["validate"], ["projects", "list"]):
+        for argv in (["work", "list"], ["validate"], ["project", "list"]):
             assert main(argv) == 0, argv
 
 
@@ -499,21 +522,21 @@ class TestCLISmoke:
         monkeypatch.chdir(parent)
         assert main(["taxonomy", "add", "Platform"]) == 0
         # List from parent — should see local
-        assert main(["taxonomy", "list"]) == 0
+        assert main(["taxonomy", "list", "--scope", "up"]) == 0
         parent_out = capsys.readouterr().out
 
         monkeypatch.chdir(left)
         # List from left — should see the inherited term (slug + origin flag)
-        assert main(["taxonomy", "list"]) == 0
+        assert main(["taxonomy", "list", "--scope", "up"]) == 0
         left_out = capsys.readouterr().out
-        assert "parent/platform" in left_out.split()     # qualified by its origin
-        assert "platform" in parent_out
+        assert "parent.taxonomy/platform" in left_out.split()
+        assert "parent.taxonomy/platform" in parent_out
 
     def test_nested_cli_nodes_command(self, tmp_path, monkeypatch, capsys):
         from tcw.cli import main
         root, child_a, _ = nested_monorepo(tmp_path)
         monkeypatch.chdir(root)
-        assert main(["projects", "list"]) == 0
+        assert main(["project", "list"]) == 0
         out = capsys.readouterr().out.split()
         assert "child-a" in out and "child-b" in out
 
@@ -521,7 +544,7 @@ class TestCLISmoke:
         from tcw.cli import main
         root = lone_project(tmp_path)
         monkeypatch.chdir(root)
-        assert main(["projects", "list"]) == 0
+        assert main(["project", "list"]) == 0
         assert len(capsys.readouterr().out.split()) == 1
 
     def test_nested_cli_delegate_subfolder_unsupported_sp2_boundary(self, tmp_path, monkeypatch, capsys):
@@ -571,14 +594,14 @@ class TestCrossEnvironment:
         root, _ = env
         st = FsTaxonomyStore.open(root)
         st.add("Term")
-        assert st.get("term").name == "Term"
+        assert st.get_view("term").name == "Term"
         assert st.search("term")
 
     def test_capabilities_add_and_query(self, env):
         root, _ = env
         st = FsCapabilitiesStore.open(root)
         st.add("test/cap", status="Supported")
-        assert st.get("test/cap").status == "Supported"
+        assert st.get_view("test/cap").status == "Supported"
 
 
 # ────────────────────────────────────────────────────────────────────────
@@ -654,12 +677,12 @@ def test_init_refuses_a_malformed_config_and_leaves_it_alone(
     root = tmp_path / "repo"
     root.mkdir()
     subprocess.run(["git", "init", "-q", str(root)], check=True)
-    config = root / "tcw-config.yaml"
-    config.write_text(text, encoding="utf-8")
+    config = config_file(root)
+    write_config_file(config, text, encoding="utf-8")
     before = hashlib.sha256(config.read_bytes()).hexdigest()
     monkeypatch.chdir(root)
 
-    assert main(["init", "--id", "demo"]) == 1
+    assert main(["project", "new", "--id", "demo"]) == 1
     assert hashlib.sha256(config.read_bytes()).hexdigest() == before
     err = capsys.readouterr().err
     assert "tcw-config.yaml" in err, err

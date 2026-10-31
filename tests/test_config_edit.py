@@ -11,6 +11,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tcw import __version__
+from tcw.project_files import version_line
 from tcw.store import config_edit
 from tcw.store.config_edit import (
     ConfigEditRefused, Remove, SetId, SetList, SetScalar, edit_text,
@@ -184,8 +186,11 @@ def test_a_byte_order_mark_is_kept():
 
 @pytest.mark.parametrize("text", [None, "", "  \n\n"])
 def test_a_missing_or_empty_file_is_written_in_full(text):
+    """Written in full, with the version line first (TCW-106 Design 3.1)."""
     after = edit(text, SetId("p"), SetScalar("work", "path", "w"))
-    assert yaml.safe_load(after) == {"id": "p", "work": {"path": "w"}}
+    assert after.startswith(version_line())
+    assert yaml.safe_load(after) == {"tcw-version": __version__, "id": "p",
+                                     "work": {"path": "w"}}
 
 
 def test_nothing_to_change_returns_none():
@@ -464,3 +469,179 @@ def test_a_document_end_marker_followed_by_a_comment_still_takes_a_section():
 def test_two_appends_to_a_file_without_a_final_break_leave_no_blank_line():
     after = edit("id: a", SetScalar("work", "path", "w"), SetScalar("taxonomy", "path", "t"))
     assert after == "id: a\nwork:\n  path: w\ntaxonomy:\n  path: t\n"
+
+
+# -- a leading `inherit: true` entry (TCW-109 Design 6.2) ----------------------------
+
+
+def test_a_new_list_with_inherit_writes_the_entry_first_in_a_block():
+    before = "id: app\nwork:\n  backend: filesystem\n"
+    after = edit(before, SetList("work", "tags", ("z",), inherit=True))
+    assert_only_added(before, after, "  tags:\n", "    - inherit: true\n", "    - z\n")
+    assert yaml.safe_load(after)["work"]["tags"] == [{"inherit": True}, "z"]
+
+
+def test_a_flow_list_with_inherit_keeps_the_entry_first():
+    before = "work:\n  tags: [a]\n"
+    after = edit(before, SetList("work", "tags", ("a", "z"), inherit=True))
+    assert after == "work:\n  tags: [{inherit: true}, a, z]\n"
+
+
+def test_adding_to_a_block_list_that_starts_with_inherit_adds_one_line():
+    before = "work:\n  tags:\n  - inherit: true\n  - a\n"
+    after = edit(before, SetList("work", "tags", ("a", "y"), inherit=True))
+    assert_only_added(before, after, "  - y\n")
+
+
+def test_removing_from_a_list_that_starts_with_inherit_keeps_the_entry():
+    before = "work:\n  tags:\n  - inherit: true\n  - z\n"
+    after = edit(before, SetList("work", "tags", (), inherit=True))
+    assert_only_removed(before, after, "  - z\n")
+
+
+def test_a_flow_list_starting_with_inherit_keeps_its_spelling():
+    before = "work:\n  tags: [{inherit: true}, a]\n"
+    after = edit(before, SetList("work", "tags", ("a", "b"), inherit=True))
+    assert after == "work:\n  tags: [{inherit: true}, a, b]\n"
+
+
+@pytest.mark.parametrize("text", [
+    "work:\n  tags:\n  - a\n  - inherit: true\n",
+    "work:\n  tags:\n  - {when: x}\n  - a\n",
+    "work:\n  tags:\n  - inherit: false\n  - a\n",
+])
+def test_any_other_entry_that_is_not_plain_is_still_refused(text):
+    with pytest.raises(ConfigEditRefused, match="something other than plain values"):
+        edit(text, SetList("work", "tags", ("a", "b"), inherit=True))
+
+
+def test_intended_puts_the_entry_first():
+    assert config_edit.intended({}, [SetList("work", "tags", ("z",), inherit=True)]) == {
+        "work": {"tags": [{"inherit": True}, "z"]}}
+
+
+# ── key paths of any depth, whole top-level blocks, the version line (TCW-116) ──
+
+from tcw.store.config_edit import RemoveTop, RenameKey, SetTop  # noqa: E402
+
+NESTED = """\
+work:
+  stages:
+    spec:
+      prompt: &first
+      - blob: one
+        when:
+          old_key:
+          - bug
+      - blob: two
+    plan:
+      prompt: *first
+"""
+
+
+def test_a_key_is_renamed_at_any_depth_through_list_indexes():
+    after = edit(NESTED, RenameKey(("work", "stages", "spec", "prompt", 0, "when",
+                                    "old_key"), "new-key"))
+    assert after == NESTED.replace("old_key:", "new-key:")
+    data = yaml.safe_load(after)
+    assert data["work"]["stages"]["plan"]["prompt"][0]["when"] == {"new-key": ["bug"]}
+
+
+def test_a_key_reached_through_an_alias_is_renamed_once():
+    one = RenameKey(("work", "stages", "spec", "prompt", 0, "when", "old_key"), "new-key")
+    two = RenameKey(("work", "stages", "plan", "prompt", 0, "when", "old_key"), "new-key")
+    assert edit(NESTED, one, two) == NESTED.replace("old_key:", "new-key:")
+
+
+def test_a_key_not_written_is_refused_and_one_already_renamed_is_nothing():
+    with pytest.raises(ConfigEditRefused):
+        edit(NESTED, RenameKey(("work", "nothing"), "x"))
+    done = NESTED.replace("old_key:", "new-key:")
+    assert edit(done, RenameKey(("work", "stages", "spec", "prompt", 0, "when",
+                                 "old_key"), "new-key")) is None
+
+
+BLOCK = """\
+id: x1
+# who we read from
+links:
+  # the parent
+  parent:
+    base: ../base
+work:
+  backend: filesystem
+"""
+
+
+def test_a_top_level_block_is_removed_and_its_comments_reported():
+    dropped: list[str] = []
+    after = edit_text(PATH, BLOCK, [RemoveTop("links")], dropped=dropped)
+    assert after == "id: x1\n# who we read from\nwork:\n  backend: filesystem\n"
+    assert dropped == ["# the parent"]
+
+
+def test_a_removed_block_defining_an_anchor_used_outside_it_is_refused():
+    text = "id: x1\nlinks:\n  parent: &p ../base\nwork:\n  path: *p\n"
+    with pytest.raises(ConfigEditRefused, match="anchor"):
+        edit(text, RemoveTop("links"))
+    inside = "id: x1\nlinks:\n  parent: &p ../base\n  again: *p\nwork: {}\n"
+    assert edit(inside, RemoveTop("links")) == "id: x1\nwork: {}\n"
+
+
+def test_a_scalar_top_level_key_is_removed():
+    assert edit("id: x1\nname: N\n", RemoveTop("id")) == "name: N\n"
+
+
+def test_a_list_of_mappings_is_appended_in_tcws_usual_style():
+    after = edit(BLOCK, SetTop("parents", [{"id": "core", "inherit": ["taxonomy"]}]))
+    assert_only_added(BLOCK, after, "parents:\n", "- id: core\n", "  inherit:\n",
+                      "  - taxonomy\n")
+    assert yaml.safe_load(after)["parents"] == [{"id": "core", "inherit": ["taxonomy"]}]
+
+
+def test_a_top_level_key_goes_after_the_one_named():
+    text = "tcw-version: 4.0.0\nname: Line\nkind: Vocabulary\n"
+    after = edit(text, SetTop("parent", "app.taxonomy/invoice", after="name"))
+    assert after == ("tcw-version: 4.0.0\nname: Line\nparent: app.taxonomy/invoice\n"
+                     "kind: Vocabulary\n")
+    last = edit("kind: Vocabulary", SetTop("parent", "app.taxonomy/invoice", after="name"))
+    assert last == "kind: Vocabulary\nparent: app.taxonomy/invoice\n"
+
+
+def test_a_value_of_any_depth_is_checked():
+    after = edit(BLOCK, SetTop("children", [{"id": "kid", "deep": {"a": [1, {"b": 2}]}}]))
+    assert yaml.safe_load(after)["children"][0]["deep"] == {"a": [1, {"b": 2}]}
+
+
+def test_versioned_puts_the_version_line_first_and_keeps_every_other_byte():
+    text = "# a comment\r\nid: x1\r\n"
+    after = edit_text(PATH, text, [], versioned=True)
+    assert after == version_line().replace("\n", "\r\n") + text
+    assert edit_text(PATH, after, [], versioned=True) is None
+    assert edit_text(PATH, "", [], versioned=True) == version_line()
+    bom = "﻿id: x1\n"
+    assert edit_text(PATH, bom, [], versioned=True) == "﻿" + version_line() + "id: x1\n"
+
+
+def test_versioned_with_a_rename_in_one_edit():
+    after = edit_text(PATH, NESTED, [RenameKey(("work", "stages", "spec", "prompt", 0,
+                                                "when", "old_key"), "new-key")],
+                      versioned=True)
+    assert after == version_line() + NESTED.replace("old_key:", "new-key:")
+
+
+FROZEN = Path(__file__).parent / "migrate" / "data" / "repo-tcw-config-3x.yaml"
+
+
+def test_a_rename_deep_in_this_repositorys_own_configuration_changes_only_the_key():
+    """On the frozen copy of this repository's 3.x configuration (TCW-116
+    Decided 20): the spec stage's sixth prompt entry, the one with `when`."""
+    text = config_edit.read_text(FROZEN)
+    path = ("work", "stages", "spec", "prompt", 5, "when", "not_tags")
+    after = edit(text, RenameKey(path, "not-tags"))
+    assert after == text.replace("not_tags:", "not-tags:")
+    before, now = yaml.safe_load(text), yaml.safe_load(after)
+    stages, renamed = before["work"]["stages"], now["work"]["stages"]
+    for stage in ("plan", "implement", "review", "qa", "completed"):
+        assert renamed[stage] == stages[stage]           # *pull-text, *commit-after-move
+    assert renamed["qa"]["prompt"] == stages["request"]["prompt"]   # *pull-first

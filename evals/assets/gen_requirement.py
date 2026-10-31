@@ -35,7 +35,7 @@ def main() -> int:
         # `tcw work stage prompt` is run without a work item.
         item = payload.get("item")
         if isinstance(item, dict):
-            slug = item.get("slug")
+            slug = item.get("full-id")
     except Exception:
         slug = None
 

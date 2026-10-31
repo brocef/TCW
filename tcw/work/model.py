@@ -15,8 +15,8 @@ from datetime import date
 from typing import Any, Callable, Iterable
 
 from tcw.errors import UsageError
+from tcw.ids import ID_LIMIT, FullId, parse_stored, sort_input
 from tcw.store.base import normalize_tag
-from tcw.store.project import PROJECT_ID_PATTERN
 
 # ---------------------------------------------------------------------------
 # Identity
@@ -28,51 +28,50 @@ PREFIX_ALLOWANCE = 20
 FOLDER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
 
 
-@dataclass(frozen=True, order=True)
-class Slug:
-    """A work item's identity: the project it belongs to, and its folder name.
+class Slug(FullId):
+    """A work item's full identifier, `<project>.work/<folder>` (TCW-110):
+    the project it belongs to, and its folder name, which is its id-path.
+
+    A `FullId` with namespace `work`, so it equals, hashes and sorts with a
+    `FullId` parsed from text for the same item, and prints the same. It
+    carries no dataclass decorator of its own, which would generate equality
+    again and undo that.
 
     The folder pattern allows upper case so that a Jira key can lead it
     (`TCW-67-…`); each backend narrows the pattern for the names it creates.
     """
 
-    project: str
-    folder: str
+    def __init__(self, project: str, folder: str):
+        object.__setattr__(self, "project", project)
+        object.__setattr__(self, "namespace", "work")
+        object.__setattr__(self, "id_path", folder)
+
+    @property
+    def folder(self) -> str:
+        return self.id_path
 
     @classmethod
-    def parse(cls, text: str, current_project: str) -> Slug:
-        """`project/folder`, or a bare `folder` in `current_project`.
+    def of(cls, full_id: FullId) -> Slug:
+        return full_id if isinstance(full_id, Slug) else cls(full_id.project,
+                                                             full_id.id_path)
 
-        Anything else is a usage error. The 2.x reserved project names are not
-        applied: they kept project ids apart from status folders, and 3.0 has
-        none, so `backlog/f` is simply an unknown project.
-        """
-        if not isinstance(text, str):
-            raise UsageError(f"{text!r} is not a work item slug")
-        parts = text.split("/")
-        if len(parts) == 1:
-            project, folder = current_project, parts[0]
-        elif len(parts) == 2:
-            project, folder = parts
-        else:
-            raise UsageError(
-                f"{text!r} is not a work item slug: use `project/folder` or a "
-                f"bare folder name")
-        # fullmatch, not match: `$` also matches before a final newline, which
-        # would let a slug read from a file keep its line ending.
-        if not PROJECT_ID_PATTERN.fullmatch(project):
-            raise UsageError(
-                f"{text!r} is not a work item slug: {project!r} is not a "
-                f"project id (lowercase letters and digits joined by `-`)")
-        if len(folder) > FOLDER_LIMIT or not FOLDER_PATTERN.fullmatch(folder):
-            raise UsageError(
-                f"{text!r} is not a work item slug: a folder name is letters, "
-                f"digits and `-`, starts with a letter or digit, and is at "
-                f"most {FOLDER_LIMIT} characters")
-        return cls(project, folder)
+    @classmethod
+    def stored(cls, value: Any) -> Slug:
+        """A work reference read from a file or a ticket: a full identifier,
+        or a `ThreeXReference` / `MalformedId` (Design 5.2)."""
+        return cls.of(parse_stored(value, "work"))
 
-    def __str__(self) -> str:
-        return f"{self.project}/{self.folder}"
+    @classmethod
+    def typed(cls, text: Any, current_project: str) -> Slug:
+        """A work item named on a command line or in a request: its full
+        identifier, its address, or its folder name in `current_project`."""
+        found = sort_input(text, "work")
+        if found.form == "d":
+            # An id-path of any depth, each part already checked by
+            # `sort_input` (TCW-111: a nested item is named by its whole
+            # id-path). Whether it names an item is the backend's question.
+            return cls(current_project, found.id_path)
+        return cls.of(found.full_id)
 
 
 def title_words(title: str, limit: int = FOLDER_LIMIT - PREFIX_ALLOWANCE) -> str:
@@ -90,6 +89,53 @@ def title_words(title: str, limit: int = FOLDER_LIMIT - PREFIX_ALLOWANCE) -> str
         words = cut[:boundary] if boundary > 0 else words[:limit]
         words = words.strip("-")
     return words or "untitled"
+
+
+#: The fewest characters of title words a new item's folder may be given
+#: (TCW-111 Design 4.3): `untitled`'s length, so every refusal is about room
+#: and never about a title.
+MIN_TITLE_WORDS = 8
+
+
+def words_room(project: str, parent: str | None, prefix: int) -> int:
+    """How many characters of title words fit in a new item's full
+    identifier (TCW-111 Design 4.3): `ID_LIMIT`, less the project ID and
+    `.work/`, the parent's id-path and its `/` when the item is nested in
+    `parent`, and `prefix`, the backend's prefix with its `-`."""
+    room = ID_LIMIT - len(project) - len(".work/") - prefix
+    if parent:
+        room -= len(parent) + 1
+    return room
+
+
+def fitted_words(title: str, *, project: str, parent: str | None, prefix: int,
+                 refuse: bool = True) -> str | None:
+    """`title_words` cut to the smaller of today's limit and `words_room`.
+
+    With `refuse`, a room under `MIN_TITLE_WORDS` is a `UsageError`, said
+    before anything is written: naming the parent's full identifier when there
+    is one, else the project ID. Without it, the rule for after a ticket
+    exists (Design 4.3), it never raises: the words are cut to the room
+    however short, `untitled` included, and None means no character is left."""
+    room = words_room(project, parent, prefix)
+    if refuse and room < MIN_TITLE_WORDS:
+        if parent:
+            raise UsageError(
+                f"{FullId(project, 'work', parent)} leaves room for {max(room, 0)} "
+                f"characters of title words under it, and an item needs "
+                f"{MIN_TITLE_WORDS}, since no full identifier is longer than "
+                f"{ID_LIMIT}; nest the item higher, or not at all (pass --flat)")
+        raise UsageError(
+            f"the project ID {project!r} leaves room for {max(room, 0)} characters "
+            f"of title words, and an item needs {MIN_TITLE_WORDS}, since no full "
+            f"identifier is longer than {ID_LIMIT}: it leaves no room for any item")
+    if room < 1:
+        return None
+    limit = min(FOLDER_LIMIT - PREFIX_ALLOWANCE, room)
+    words = title_words(title, limit)
+    if len(words) > limit:                       # `untitled` in a smaller room
+        words = words[:limit].strip("-") or words[:limit]
+    return words
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +202,7 @@ def _as_slug(value: Any, current_project: str, what: str) -> Slug:
     if isinstance(value, Slug):
         return value
     try:
-        return Slug.parse(value, current_project)
+        return Slug.typed(value, current_project)
     except UsageError as error:
         raise UsageError(f"{what}: {error}") from None
 
@@ -206,10 +252,14 @@ def validate_changes(changes: Changes, *, item_slug: Slug | None,
     _check_scale(changes.effort, SIZES, "effort")
     _check_scale(changes.complexity, SIZES, "complexity")
 
-    registered = {_tag(t) for t in registered_tags}
-    for tag in changes.add_tags:
-        if _tag(tag) not in registered:
-            raise UsageError(f"tag {tag!r} is not registered for this project")
+    if changes.add_tags:
+        # Read only when a tag is added: an inherited tag list a missing
+        # parent leaves unknown stops only a command that applies a tag
+        # (TCW-109 Design 3.4, row b).
+        registered = {_tag(t) for t in registered_tags}
+        for tag in changes.add_tags:
+            if _tag(tag) not in registered:
+                raise UsageError(f"tag {tag!r} is not registered for this project")
 
     for blocker in changes.add_blocked_by:
         if _as_slug(blocker, current_project, "blocked-by") == item_slug:
@@ -402,3 +452,14 @@ def gates_for(target: str, enabled: frozenset[str]) -> tuple[str, ...]:
     if target == records_gate_stage(enabled):
         gates += (RECORDS_GATE,)
     return gates
+
+
+#: What an item folder's last part starts with: its date, in the files
+#: backend, or its ticket key, in Jira (TCW-114 Design 5.1).
+_ITEM_PREFIX = re.compile(r"^(\d{4}-\d{2}-\d{2}|[A-Z][A-Z0-9_]*-[1-9][0-9]*)-")
+
+
+def item_prefix(last_part: str) -> str | None:
+    """The date or ticket key an item folder's name starts with, or None."""
+    found = _ITEM_PREFIX.match(last_part) if isinstance(last_part, str) else None
+    return found.group(1) if found else None

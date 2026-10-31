@@ -21,7 +21,8 @@ from tcw.serve.server import ApiError, Request, not_found, route, usage
 from tcw.store.base import StaleRevision
 from tcw.store.fs import _atomic_write_all
 from tcw.validate import ValidationTarget
-from tcw.work.gates import Present, parse_declarations, project_reader
+from tcw.work.gates import (Invalid, Present, Unchecked, parse_declarations,
+                             project_reader)
 from tcw.work.layout import CAPABILITIES_FILE, HANDOFF_NAME, ROUND_NAME, Layout, round_verdict
 from tcw.work.model import (
     DOCUMENT, NO_ARTIFACT, ROUNDS, STAGES, Slug, check_encodable, is_stage,
@@ -165,7 +166,18 @@ def contained(item_dir: Path, path: Path) -> bool:
         return False
 
 
-def _target(request: Request):
+def _read_target(request: Request):
+    """The item a read route's key names, read from its owner (TCW-113
+    Design 6.4): another project's files are read from its own folder."""
+    from tcw.serve.work import context_for, item_folder, work_key
+    ctx = context_for(request, work_key(request, request.param(1)).project)
+    folder = item_folder(ctx, request.param(1))
+    return ctx, folder, ctx.slug(folder)
+
+
+def _write_target(request: Request):
+    """The item a write route's key names, within the served project only:
+    a full identifier naming another project is not found (Design 6.5)."""
     from tcw.serve.work import context, item_folder
     ctx = context(request)
     folder = item_folder(ctx, request.param(1))
@@ -226,14 +238,14 @@ def _expected(request: Request) -> str | None:
 
 
 def get_file(request: Request):
-    ctx, folder, slug = _target(request)
+    ctx, folder, slug = _read_target(request)
     path = file_path(ctx, slug, request.param(2))
     content = _read(path)
     return HTTPStatus.OK, {"content": content, "revision": revision(path)}
 
 
 def put_file(request: Request):
-    ctx, folder, slug = _target(request)
+    ctx, folder, slug = _write_target(request)
     path = file_path(ctx, slug, request.param(2))
     content = request.field("content")
     new = write_checked(request, path, content, _expected(request))
@@ -246,7 +258,7 @@ KINDS = {"document": DOCUMENT, "round": ROUNDS, "handoff": None}
 def new_file(request: Request):
     """Where a new document, round or handoff goes, and its starting text.
     Nothing is written: the `PUT` that follows creates it."""
-    ctx, folder, slug = _target(request)
+    ctx, folder, slug = _write_target(request)
     name, kind = request.field("stage"), request.field("kind")
     if kind not in KINDS:
         raise usage(f"kind must be one of {', '.join(KINDS)}")
@@ -284,7 +296,7 @@ def _lists(declared) -> dict[str, Any]:
 def get_declaration(request: Request):
     """The six lists, or, for a file the parser rejects, its message and the
     text, so the file can be fixed as plain text."""
-    ctx, folder, slug = _target(request)
+    ctx, folder, slug = _read_target(request)
     path = inside_item(ctx.layout.item_dir(slug), ctx.layout.capabilities_file(slug),
                        CAPABILITIES_FILE)
     declared = parse_declarations(path)
@@ -298,6 +310,23 @@ def get_declaration(request: Request):
 
 
 def _sent_lists(request: Request) -> dict[str, dict[str, list[str]]]:
+    """The six lists as sent, each entry written as a full identifier
+    (TCW-110 Design 5.3): an id-path names this project's own record."""
+    from tcw.ids import FullId, IdError, sort_input
+    from tcw.locate import Locator
+    project_id = None
+
+    def stored(value: str, namespace: str) -> str:
+        nonlocal project_id
+        try:
+            found = sort_input(value, namespace)
+        except IdError as error:
+            raise usage(str(error)) from None
+        if found.form != "d":
+            return str(found.full_id)
+        project_id = project_id or Locator.of(request.root).project_id
+        return str(FullId(project_id, namespace, found.id_path))
+
     sent: dict[str, dict[str, list[str]]] = {}
     for axis in ("capabilities", "taxonomy"):
         group = request.field(axis, dict, required=False, default={})
@@ -310,7 +339,7 @@ def _sent_lists(request: Request) -> dict[str, dict[str, list[str]]]:
             if not isinstance(values, list) or not all(
                     isinstance(v, str) and v.strip() for v in values):
                 raise usage(f"{axis}.{kind} must be a list of non-empty names")
-            sent[axis][kind] = list(dict.fromkeys(v.strip() for v in values))
+            sent[axis][kind] = list(dict.fromkeys(stored(v.strip(), axis) for v in values))
     return sent
 
 
@@ -327,7 +356,10 @@ def _check_existing(request: Request, sent, before) -> None:
                     continue
                 reader = reader or project_reader(request.root,
                                                   FsProjectRegistry.open(request.root))
-                if not isinstance(getattr(reader, ask)(name), Present):
+                answer = getattr(reader, ask)(name)
+                if isinstance(answer, (Invalid, Unchecked)):
+                    raise usage(f"{axis}.{kind}: {name}: {answer.reason}")
+                if not isinstance(answer, Present):
                     raise usage(f"{axis}.{kind}: {name} does not exist")
 
 
@@ -341,7 +373,7 @@ def _yaml(sent) -> str:
 
 
 def put_declaration(request: Request):
-    ctx, folder, slug = _target(request)
+    ctx, folder, slug = _write_target(request)
     path = inside_item(ctx.layout.item_dir(slug), ctx.layout.capabilities_file(slug),
                        CAPABILITIES_FILE)
     expected = _expected(request)
@@ -354,11 +386,17 @@ def put_declaration(request: Request):
     return HTTPStatus.OK, saved(request, ctx, folder, {"revision": new})
 
 
+def written_item(request: Request):
+    """The item the route's path names, as the work routes answer it."""
+    from tcw.serve.work import written_item as item
+    return item(request)
+
+
 ITEM = r"/api/work/([^/]+)"
 ROUTES = [
     route("GET", ITEM + r"/files/(.+)", get_file),
-    route("PUT", ITEM + r"/files/(.+)", put_file),
-    route("POST", ITEM + r"/files", new_file),
+    route("PUT", ITEM + r"/files/(.+)", put_file, writes=written_item),
+    route("POST", ITEM + r"/files", new_file, writes=written_item),
     route("GET", ITEM + r"/declaration", get_declaration),
-    route("PUT", ITEM + r"/declaration", put_declaration),
+    route("PUT", ITEM + r"/declaration", put_declaration, writes=written_item),
 ]

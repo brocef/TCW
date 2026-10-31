@@ -12,6 +12,8 @@ from tcw.work.model import Changes
 from tests.work.jira.conftest import JiraProject, jira_config
 from tests.work.jira.fake import FIELDS, Transition as Route
 from tests.work.projects import make_project
+from tests.statefiles import write_state, ITEM_STATE
+from tests.work.jira.conftest import key_folder
 
 ITEM = FIELDS["TCW Item"]
 LINE = re.compile(r"^(error|warning|unresolved): \S+: .+$")
@@ -140,13 +142,13 @@ def test_without_an_epic_type_a_task_still_needs_parent(clean, monkeypatch, caps
 
 
 def test_a_refused_key_search_reports_only_the_gone_ticket(clean, monkeypatch, capsys):
-    (clean.work / "TCW-50-gone").mkdir()
+    key_folder(clean.work, "TCW-50-gone")
     clean.fake.refuse_missing_key_search = True
     run = remote(clean, monkeypatch, capsys)
-    # The offline check's line for the folder's missing `item.yaml` shares
+    # The offline check's line for the folder's missing `tcw-work-item.yaml` shares
     # stdout with the remote findings since TCW-73 (Design 6.3).
-    remote_lines = [line for line in run.lines if "item.yaml" not in line]
-    assert remote_lines == ["error: tcw/TCW-50-gone: its ticket TCW-50 does not exist in "
+    remote_lines = [line for line in run.lines if ITEM_STATE not in line]
+    assert remote_lines == ["error: tcw.work/TCW-50-gone: its ticket TCW-50 does not exist in "
                             "Jira, or this account cannot see it"], run.out
 
 
@@ -163,11 +165,11 @@ def test_records_problems_mid_work_only(clean, monkeypatch, capsys):
     _, open_ = clean.item("Open", "open", status="In Progress")
     _, done = clean.item("Done", "done", status="Done")
     for folder in (open_, done):
-        (clean.work / folder / "capabilities.yaml").write_text("changed: [auth/login]\n")
+        (clean.work / folder / "capabilities.yaml").write_text("changed: [tcw.capabilities/auth/login]\n")
     run = remote(clean, monkeypatch, capsys)
     assert run.code == 1
-    assert any(line.startswith(f"error: tcw/{open_}:") for line in run.lines), run.out
-    assert not any(f"tcw/{done}" in line for line in run.lines), run.out
+    assert any(line.startswith(f"error: tcw.work/{open_}:") for line in run.lines), run.out
+    assert not any(f"tcw.work/{done}" in line for line in run.lines), run.out
 
 
 def test_records_problems_wait_for_remote_offline(clean, monkeypatch, capsys):
@@ -180,7 +182,7 @@ def test_records_problems_wait_for_remote_offline(clean, monkeypatch, capsys):
     def never(*args, **kwargs):
         raise AssertionError("the records check ran offline")
     _, open_ = clean.item("Open", "open", status="In Progress")
-    (clean.work / open_ / "capabilities.yaml").write_text("changed: [auth/login]\n")
+    (clean.work / open_ / "capabilities.yaml").write_text("changed: [tcw.capabilities/auth/login]\n")
     monkeypatch.setattr(gates, "records_problems", never)
     clean.fake.log.clear()
     monkeypatch.chdir(clean.root)
@@ -266,22 +268,22 @@ def test_without_the_definition_moves_are_sampled(clean, monkeypatch, capsys):
 
 
 def test_tcw_item_naming_another_slug(clean, monkeypatch, capsys):
-    clean.fake.tickets["TCW-1"].custom[ITEM] = "tcw/TCW-1-other"
+    clean.fake.tickets["TCW-1"].custom[ITEM] = "tcw.work/TCW-1-other"
     run = remote(clean, monkeypatch, capsys)
-    assert "error: tcw/TCW-1-x: its ticket's TCW Item is 'tcw/TCW-1-other', not " \
-           "'tcw/TCW-1-x'" in run.lines
+    assert "error: tcw.work/TCW-1-x: its ticket's TCW Item is 'tcw.work/TCW-1-other', not " \
+           "'tcw.work/TCW-1-x'" in run.lines
 
 
 def test_a_ticket_answered_under_another_key(clean, monkeypatch, capsys):
     moved = clean.fake.ticket("Moved")
-    moved.custom.update({FIELDS["TCW Project"]: "tcw", ITEM: "tcw/TCW-9-moved"})
+    moved.custom.update({FIELDS["TCW Project"]: "tcw", ITEM: "tcw.work/TCW-9-moved"})
     folder = clean.work / "TCW-9-moved"
     folder.mkdir()
-    (folder / "item.yaml").write_text(yaml.safe_dump(
+    write_state(folder / ITEM_STATE, yaml.safe_dump(
         {"ticket": f"{clean.fake.site}/browse/TCW-9"}))
     clean.fake.tickets["TCW-9"] = moved
     run = remote(clean, monkeypatch, capsys)
-    assert any(line.startswith(f"error: tcw/TCW-9-moved: Jira answers for TCW-9 with "
+    assert any(line.startswith(f"error: tcw.work/TCW-9-moved: Jira answers for TCW-9 with "
                                f"{moved.key}") for line in run.lines), run.out
 
 
@@ -290,9 +292,9 @@ def test_warnings_alone_exit_zero(clean, monkeypatch, capsys):
     clean.item("Waiting", "waiting", status="To Do")
     run = remote(clean, monkeypatch, capsys)
     assert run.code == 0, run.out
-    assert "warning: TCW-3: names tcw/TCW-3-elsewhere, whose folder is not here; the " \
+    assert "warning: TCW-3: names tcw.work/TCW-3-elsewhere, whose folder is not here; the " \
            "item may exist in another copy of this repository" in run.lines
-    assert any(line.startswith("warning: tcw/TCW-4-waiting: its ticket is at the inbox "
+    assert any(line.startswith("warning: tcw.work/TCW-4-waiting: its ticket is at the inbox "
                                "status") for line in run.lines)
 
 

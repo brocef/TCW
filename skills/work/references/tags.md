@@ -7,8 +7,18 @@ about priority, stage, ownership, or moves.
 Prefer a small reusable vocabulary. A tag that restates one item's title is
 noise.
 
-The registry lives in `tcw-config.yaml` (`work.tags`) and is **fail-closed**: an
-unregistered tag is rejected, not created.
+The registry lives in the project's `.tcw/tcw-config.yaml` (`work.tags`) and is
+**fail-closed**: an unregistered tag is rejected, not created.
+
+**A child inherits its parents' tags** when its parent link passes `config`,
+which a link does unless its `inherit` list leaves `config` out. In such a
+child, `tcw work tags list` prints the inherited tags and the child's own;
+`tcw work tags add` writes `- inherit: true` as the first entry of the child's
+`work.tags` before the new tag, so the inherited tags stay; and
+`tcw work tags rm` of an inherited tag is refused (exit 3) with a message that
+says how to stop inheriting it. When a parent that passes `config` is not on
+this machine, every `tags` command exits 7, as the skill's exit-code rules
+describe.
 
 ```sh
 tcw work tags list                   # the registered set

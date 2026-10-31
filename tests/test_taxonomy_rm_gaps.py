@@ -12,6 +12,8 @@ from tcw.cli import main
 from tcw.store.fs import FsTaxonomyStore, init
 from nodeconfig import set_component_key
 from tcw.errors import TcwError
+from tests.fullids import fid
+from tests.statefiles import write_state, CAPABILITY_STATE, TAXONOMY_STATE
 
 
 def git(root: Path, *args: str) -> None:
@@ -31,7 +33,7 @@ def node(tmp_path: Path) -> Path:
 def term(root: Path, slug: str, *, stage: bool = True) -> None:
     d = root / "docs" / "taxonomy" / slug
     d.mkdir(parents=True)
-    (d / "meta.yaml").write_text(yaml.safe_dump({"name": slug.rsplit("/", 1)[-1]}))
+    write_state(d / TAXONOMY_STATE, yaml.safe_dump({"name": slug.rsplit("/", 1)[-1]}))
     (d / "description.md").write_text("")
     if stage:
         git(root, "add", str(d))
@@ -40,7 +42,7 @@ def term(root: Path, slug: str, *, stage: bool = True) -> None:
 def cap(root: Path, path: str, **fields) -> None:
     d = root / "docs" / "capabilities" / path
     d.mkdir(parents=True)
-    (d / "meta.yaml").write_text(yaml.safe_dump(
+    write_state(d / CAPABILITY_STATE, yaml.safe_dump(
         {"id": f"cap-{path}", "name": path, "Status": "Supported", **fields}))
     (d / "description.md").write_text("")
     git(root, "add", str(d))
@@ -53,12 +55,13 @@ def rm(root: Path, monkeypatch, capsys, slug: str) -> tuple[int, str]:
 
 
 def lists(root: Path, slug: str) -> bool:
-    return FsTaxonomyStore.open(root).get(slug) is not None
+    return FsTaxonomyStore.open(root).get_view(slug) is not None
 
 
 # ── a capability names the term ──────────────────────────────────────────────
 
-@pytest.mark.parametrize("field, value", [("Subject", ["zed"]), ("Feature", "zed")])
+@pytest.mark.parametrize("field, value", [("Subject", [fid("node", "taxonomy", "zed")]),
+                                          ("Feature", fid("node", "taxonomy", "zed"))])
 def test_a_capability_naming_the_term_refuses_the_removal(tmp_path, monkeypatch, capsys,
                                                           field, value):
     root = node(tmp_path)
@@ -73,7 +76,7 @@ def test_a_capability_naming_another_term_does_not_block(tmp_path, monkeypatch, 
     root = node(tmp_path)
     term(root, "zed")
     term(root, "other")
-    cap(root, "login", Subject=["other"])
+    cap(root, "login", Subject=[fid("node", "taxonomy", "other")])
     code, err = rm(root, monkeypatch, capsys, "zed")
     assert code == 0, err
     assert not lists(root, "zed")
@@ -102,7 +105,7 @@ def test_a_node_without_capabilities_removes_as_before(tmp_path, monkeypatch, ca
 # ── a child the listing counts but git does not track ────────────────────────
 
 def test_a_child_term_refuses_the_removal_whatever_git_knows(tmp_path, monkeypatch, capsys):
-    """A nested term is a folder holding a `meta.yaml`, decided from the disk
+    """A nested term is a folder holding a `tcw-taxonomy.yaml`, decided from the disk
     (TCW-73 Design 8.2): one never added to git refuses like any other."""
     root = node(tmp_path)
     term(root, "zed")
@@ -154,8 +157,8 @@ def test_the_store_refuses_for_any_caller(tmp_path):
     goes through `FsTaxonomyStore.remove`, which is where the guard lives."""
     root = node(tmp_path)
     term(root, "zed")
-    cap(root, "login", Subject=["zed"])
-    with pytest.raises(TcwError, match="capability login"):
+    cap(root, "login", Subject=[fid("node", "taxonomy", "zed")])
+    with pytest.raises(TcwError, match=r"capability node\.capabilities/login \(Subject\)"):
         FsTaxonomyStore.open(root).remove("zed")
     assert lists(root, "zed")
 
@@ -167,28 +170,30 @@ def test_a_malformed_capability_names_the_capabilities_check(tmp_path, monkeypat
     term(root, "zed")
     bad = root / "docs" / "capabilities" / "broken"
     bad.mkdir()
-    (bad / "meta.yaml").write_text("Subject: [unclosed\n")
+    write_state(bad / CAPABILITY_STATE, "Subject: [unclosed\n")
     code, err = rm(root, monkeypatch, capsys, "zed")
     assert code == 3 and "capabilities that might name it cannot be read" in err, err
     assert lists(root, "zed")
 
 
-# ── review fix S1: a sub-folder without a meta.yaml still lists as a term ────
+# ── review fix S1, after TCW-111: a nested term refuses the removal ──────────
+#
+# These two tests were about a sub-folder with no state file listing as a
+# term, so that something could name `zed/sub`. Since TCW-111 (Design 2.3) a
+# folder with no state file in a term's folder is no term, only a misplaced
+# folder that `tcw validate` reports, so nothing can name it. `zed/sub` now
+# holds a state file, and the removal is still refused, as nested, before any
+# reference is looked at.
 
 def test_a_reference_to_a_folder_under_the_term_refuses_the_removal(
         tmp_path, monkeypatch, capsys):
-    """`taxonomy list` counts a folder with no `meta.yaml` as a term, so a
-    capability can name `zed/sub`. Removing `zed` would delete that folder and
-    leave the capability pointing at nothing, so the removal is refused."""
     root = node(tmp_path)
     term(root, "zed")
-    sub = root / "docs" / "taxonomy" / "zed" / "sub"
-    sub.mkdir()
-    (sub / "f").write_text("x")
+    term(root, "zed/sub")
     assert lists(root, "zed/sub")
-    cap(root, "pay", Subject=["zed/sub"])
+    cap(root, "pay", Subject=[fid("node", "taxonomy", "zed/sub")])
     code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 3 and "capability pay (Subject)" in err, err
+    assert code == 3 and "nested under it: zed/sub" in err, err
     assert lists(root, "zed") and lists(root, "zed/sub")
 
 
@@ -196,9 +201,25 @@ def test_a_term_naming_a_folder_under_the_term_refuses_the_removal(
         tmp_path, monkeypatch, capsys):
     root = node(tmp_path)
     term(root, "zed")
-    (root / "docs" / "taxonomy" / "zed" / "sub").mkdir()
+    term(root, "zed/sub")
     term(root, "other")
-    meta = root / "docs" / "taxonomy" / "other" / "meta.yaml"
-    meta.write_text(yaml.safe_dump({"name": "other", "relatesTo": ["zed/sub"]}))
+    meta = root / "docs" / "taxonomy" / "other" / TAXONOMY_STATE
+    write_state(meta, yaml.safe_dump({"name": "other",
+                                    "relatesTo": [fid("node", "taxonomy", "zed/sub")]}))
     code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 3 and "other (relatesTo)" in err, err
+    assert code == 3 and "nested under it: zed/sub" in err, err
+
+
+def test_a_folder_with_no_state_file_under_the_term_is_removed_with_it(
+        tmp_path, monkeypatch, capsys):
+    """The other half of the change: `zed/sub` with no state file is no term,
+    so it neither lists nor blocks; it goes with `zed`."""
+    root = node(tmp_path)
+    term(root, "zed")
+    sub = root / "docs" / "taxonomy" / "zed" / "sub"
+    sub.mkdir()
+    (sub / "f").write_text("x")
+    assert not lists(root, "zed/sub")
+    code, err = rm(root, monkeypatch, capsys, "zed")
+    assert code == 0, err
+    assert not (root / "docs" / "taxonomy" / "zed").exists()

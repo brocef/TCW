@@ -14,6 +14,7 @@ from tcw.work.model import STAGES
 from tests.serve.conftest import fs_project
 from tests.serve.memory import ME, NAMES, SITE
 from tests.work.projects import commit_all, connect, make_project, write_item
+from tests.statefiles import write_state, ITEM_STATE
 
 STAGE_NAMES = {s.name for s in STAGES}
 
@@ -69,7 +70,7 @@ def test_the_project_describes_itself(fs):
     assert project["createFields"] == ["priority", "effort", "complexity"]
     assert project["inboxItems"] is True
     assert project["axes"] == {"taxonomy": False, "capabilities": False, "work": True}
-    assert project["projects"] == []
+    assert "projects" not in project
 
 
 def test_with_no_user_name_the_user_is_null(tmp_path, personal_on, serve_project):
@@ -83,16 +84,6 @@ def test_a_disabled_stage_is_not_in_the_table(tmp_path, personal_on, serve_proje
     assert "plan" not in names and "spec" in names
 
 
-def test_connected_projects_are_listed(tmp_path, personal_on, serve_project):
-    root = fs_project(tmp_path)
-    child = make_project(tmp_path, "kid")
-    connect(root, child, "children")
-    connect(child, root, "parent")
-    projects = ok(serve_project(root).get("/api/project"))["projects"]
-    assert projects == [{"id": "kid", "relation": "child", "present": True,
-                         "upstream": False}]
-
-
 # -- the board -----------------------------------------------------------------------------
 
 
@@ -102,13 +93,13 @@ def test_the_board_is_the_clis_list(tagged, tcw):
     assert board["fallback"] is False and board["people"] == {}
     listed = tcw(["work", "list", "--json"], served.root).json["items"]
     assert board["items"] == listed
-    assert {i["slug"].split("/")[1] for i in board["items"]} == set(folders.values())
+    assert {i["full-id"].split("/")[1] for i in board["items"]} == set(folders.values())
 
 
 def test_the_tags_filter_is_the_clis_tag_query(tagged, tcw):
     served, folders = tagged
     board = ok(served.get("/api/work?tag=a&tag=b"))
-    assert {i["slug"].split("/")[1] for i in board["items"]} == \
+    assert {i["full-id"].split("/")[1] for i in board["items"]} == \
         {folders["a"], folders["b"], folders["ab"]}
     listed = tcw(["work", "list", "--tag", "a", "--tag", "b", "--json"],
                  served.root).json["items"]
@@ -125,14 +116,14 @@ def test_a_name_that_is_not_a_tag_is_a_usage_error(tagged, jira, tag):
 
 def test_finished_items_show_only_with_all(tagged, tcw):
     served, folders = tagged
-    item = served.root / "docs" / "work" / folders["none"] / "item.yaml"
+    item = served.root / "docs" / "work" / folders["none"] / ITEM_STATE
     data = yaml.safe_load(item.read_text())
     data["stage"] = "completed"
-    item.write_text(yaml.safe_dump(data))
-    default = {i["slug"] for i in ok(served.get("/api/work"))["items"]}
+    write_state(item, yaml.safe_dump(data))
+    default = {i["full-id"] for i in ok(served.get("/api/work"))["items"]}
     every = ok(served.get("/api/work?all=1"))["items"]
-    assert f"p/{folders['none']}" not in default
-    assert f"p/{folders['none']}" in {i["slug"] for i in every}
+    assert f"p.work/{folders['none']}" not in default
+    assert f"p.work/{folders['none']}" in {i["full-id"] for i in every}
     assert every == tcw(["work", "list", "--all", "--json"], served.root).json["items"]
 
 
@@ -154,7 +145,7 @@ def test_a_child_projects_items_are_not_on_the_board(tmp_path, personal_on,
     mine = new(tcw, root, "Mine")
     new(tcw, child, "Theirs")
     board = ok(serve_project(root).get("/api/work"))
-    assert [i["slug"] for i in board["items"]] == [f"p/{mine}"]
+    assert [i["full-id"] for i in board["items"]] == [f"p.work/{mine}"]
 
 
 # -- one item ---------------------------------------------------------------------------------
@@ -237,7 +228,7 @@ def test_jira_mode_project_survives_a_failing_user_and_fields(jira):
 def test_jira_board_is_one_list_with_names(jira):
     board = ok(jira.served.get("/api/work"))
     assert len(jira.backend.named("list")) == 1
-    assert {i["slug"] for i in board["items"]} == {"tcw/TCW-1-first", "tcw/TCW-2-second"}
+    assert {i["full-id"] for i in board["items"]} == {"tcw.work/TCW-1-first", "tcw.work/TCW-2-second"}
     assert board["people"] == {"acc-ann": NAMES["acc-ann"], ME: NAMES[ME]}
 
 
@@ -245,7 +236,7 @@ def test_jira_board_tags_are_a_backend_query(jira):
     board = ok(jira.served.get("/api/work?tag=ui"))
     tagged = [c for c in jira.backend.named("list") if c[1].tags is not None]
     assert len(tagged) == 1 and tagged[0][1].tags == frozenset({"ui"})
-    assert [i["slug"] for i in board["items"]] == ["tcw/TCW-1-first"]
+    assert [i["full-id"] for i in board["items"]] == ["tcw.work/TCW-1-first"]
 
 
 def test_jira_item(jira):
@@ -277,9 +268,9 @@ def test_jira_mode_degrades_when_the_backend_cannot_answer(jira, failure):
     board = ok(jira.served.get("/api/work"))
     assert board["fallback"] is True
     assert board["unavailable"] == str(failure)
-    assert sorted(r["slug"] for r in board["items"]) == \
-        ["tcw/TCW-1-first", "tcw/TCW-2-second"]
-    assert all(set(r) == {"slug", "path"} for r in board["items"])
+    assert sorted(r["full-id"] for r in board["items"]) == \
+        ["tcw.work/TCW-1-first", "tcw.work/TCW-2-second"]
+    assert all(set(r) == {"full-id", "owner", "path"} for r in board["items"])
     found = ok(jira.served.get("/api/work/TCW-1-first"))
     for part in ("item", "requestText", "comments"):
         assert found[part] == {"unavailable": str(failure)}, part
@@ -288,7 +279,7 @@ def test_jira_mode_degrades_when_the_backend_cannot_answer(jira, failure):
 
 
 def test_not_found_never_degrades(jira):
-    jira.backend.fail["read"] = NotFound("no work item tcw/TCW-1-first")
+    jira.backend.fail["read"] = NotFound("no work item tcw.work/TCW-1-first")
     answer = jira.served.get("/api/work/TCW-1-first")
     assert answer.status == 404 and answer.json["code"] == "not-found"
 
@@ -338,5 +329,43 @@ def test_a_stray_folder_is_not_on_the_fallback_board(jira):
     jira.backend.fail["list"] = Unreachable("could not reach the tracker")
     board = ok(jira.served.get("/api/work"))
     assert board["fallback"] is True
-    assert sorted(r["slug"] for r in board["items"]) == \
-        ["tcw/TCW-1-first", "tcw/TCW-2-second"]
+    assert sorted(r["full-id"] for r in board["items"]) == \
+        ["tcw.work/TCW-1-first", "tcw.work/TCW-2-second"]
+
+
+# -- a parent that is not here (TCW-109 Design 3.4, AC 32) -------------------------------
+
+
+def _with_parents(root, parents, work=None):
+    from tests.projectfiles import config_file, write_config_file
+    document = yaml.safe_load(config_file(root).read_text())
+    document["parents"] = parents
+    if work is not None:
+        document["work"] = work
+    write_config_file(config_file(root), yaml.safe_dump(document, sort_keys=False))
+    return root
+
+
+def test_ac32_undecided_tags_do_not_stop_the_project_summary(tmp_path, serve_project):
+    decided = ok(serve_project(fs_project(tmp_path / "d", "app", tags=())).get(
+        "/api/project"))
+    app = _with_parents(fs_project(tmp_path / "u", "app", config={}), ["core"])
+    served = serve_project(app)
+    project = ok(served.get("/api/project"))
+    assert set(project["tags"]) == {"unavailable"}
+    assert "(work.tags)" in project["tags"]["unavailable"]
+    for key in decided:
+        if key not in ("tags", "user", "scopes"):
+            assert project[key] == decided[key], key
+    assert served.get("/api/work").status == 200
+
+
+def test_ac32_undecided_jira_settings_stop_the_work_routes(tmp_path, serve_project):
+    from tests.test_inherited_config import jira_mode
+    app = _with_parents(fs_project(tmp_path, "app", config={}), ["core"],
+                        jira_mode(jira={"project": "APP"}))
+    answer = serve_project(app).get("/api/work")
+    # 503, as every `InheritedUnavailable` an API request raises is
+    # answered (TCW-112 Design 4.5).
+    assert (answer.status, answer.json["code"]) == (503, "inherited-unavailable")
+    assert "(work.jira)" in answer.json["error"]

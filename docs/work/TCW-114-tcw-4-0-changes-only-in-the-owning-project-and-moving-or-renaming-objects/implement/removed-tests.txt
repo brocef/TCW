@@ -1,0 +1,148 @@
+# Tests removed on purpose in TCW-114 Step 7. compare_outcomes.py reads every
+# line whole, so each reason is on the comment line above its test.
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.config.test_personal_commands::test_a_childs_local_file_is_not_read_when_delegating_to_it
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.config.test_personal_identity::test_assign_me_with_another_project_is_a_usage_error
+# TCW-108 Design 1.8 interim read-only rule removed (read_only_reason, the read-only field)
+tests.serve.test_work_write::test_ac33_the_project_answer_marks_a_read_only_project
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.serve.test_work_write::test_another_project_takes_only_title_request_and_priority
+# spec Design 2.2: the --blocks option of tcw work edit is removed
+tests.serve.test_work_write::test_blocks_adds_this_item_to_the_targets_blocked_by
+# spec Design 2.2: the --blocks option of tcw work edit is removed
+tests.serve.test_work_write::test_blocks_an_unknown_local_item_is_refused
+# spec Design 2.2: the --blocks option of tcw work edit is removed
+tests.serve.test_work_write::test_blocks_into_a_connected_project
+# spec Design 2.2: the --blocks option of tcw work edit is removed
+tests.serve.test_work_write::test_blocks_into_an_upstream_is_refused
+# spec Design 2.2: the --blocks option of tcw work edit is removed
+tests.serve.test_work_write::test_blocks_needs_expected_false
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.serve.test_work_write::test_creating_into_a_connected_project
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.serve.test_work_write::test_targets_delegation_refuses
+# spec Design 2.2: the --blocks option of tcw work edit is removed
+tests.test_cli_contract::test_blocks_into_a_project_not_here_is_refused
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.test_cli_contract::test_delegation_that_is_refused_writes_nothing[absent-None]
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.test_cli_contract::test_delegation_that_is_refused_writes_nothing[ghost-None]
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.test_cli_contract::test_delegation_that_is_refused_writes_nothing[up-read-only]
+# spec Design 2.4: code that only served --project and --blocks is removed (delegate, open_for_update, uncommitted_changes, _check_declared, _check_target)
+tests.test_inherited_config::test_each_reading_of_another_project_passes_the_registry
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.test_manifest_cli::test_delegating_to_a_project_not_on_this_machine_says_where[none]
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.test_manifest_cli::test_delegating_to_a_project_not_on_this_machine_says_where[placed]
+# TCW-108 Design 1.8 interim read-only rule removed (read_only_reason, the read-only field)
+tests.test_parent_links::test_ac21_the_write_rule
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.test_parent_links_cli::test_ac21_a_parent_not_here_is_refused_with_no_jira_block
+# TCW-108 Design 1.8 interim read-only rule removed (read_only_reason, the read-only field)
+tests.test_parent_links_cli::test_ac21_and_ac33_read_only_rows
+# spec Design 2.1: the --project option of tcw work new is removed, and TCW-108 Design 1.8 interim read-only rule removed
+tests.test_parent_links_cli::test_ac21_writing_into_another_project
+# TCW-108 Design 1.8 interim read-only rule removed (read_only_reason, the read-only field)
+tests.test_upstream_projects::test_an_upstream_is_read_only_from_its_declarer
+# TCW-108 Design 1.8 interim read-only rule removed (read_only_reason, the read-only field)
+tests.test_upstream_projects::test_family_members_stay_writable
+# TCW-108 Design 1.8 interim read-only rule removed (read_only_reason, the read-only field)
+tests.test_upstream_projects::test_the_upstream_writes_to_itself_from_its_own_checkout
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.jira.test_jira_delegation::test_a_creatable_folder_makes_the_item
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.jira.test_jira_delegation::test_a_refused_inbox_move_prints_the_created_key
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.jira.test_jira_delegation::test_a_target_not_here_without_a_block
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.jira.test_jira_delegation::test_a_user_wide_token_name_does_not_reach_the_target
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.jira.test_jira_delegation::test_no_route_to_request_keeps_it_in_the_inbox
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.jira.test_jira_delegation::test_other_property_flags_are_usage_errors
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.jira.test_jira_delegation::test_the_targets_local_file_is_not_read
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.jira.test_jira_delegation::test_uncommitted_changes_keep_it_in_the_inbox
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.jira.test_jira_nested::test_a_delegation_into_a_project_with_little_room_fits_its_item
+# spec Design 2.2: the --blocks option of tcw work edit is removed
+tests.work.test_cli_items::test_blocks_into_a_project_not_here_is_refused
+# spec Design 2.2: the --blocks option of tcw work edit is removed
+tests.work.test_cli_items::test_edit_blocks_into_another_project
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.test_cli_items::test_new_into_an_undeclared_project
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.test_cli_items::test_new_into_another_project
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.test_cli_items::test_new_with_project_refuses_stage
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.test_cli_items::test_new_with_project_takes_only_priority
+# spec Design 2.2: the --blocks option of tcw work edit is removed; rewritten onto --blocked-by as tests.work.test_full_identifiers::test_ac7_list_parent_and_edit_blocked_by_take_a_full_identifier
+tests.work.test_full_identifiers::test_ac7_list_parent_and_edit_blocks_take_a_full_identifier
+# spec Design 2.4: code that only served --project and --blocks is removed (delegate, open_for_update, uncommitted_changes, _check_declared, _check_target)
+tests.work.test_open::test_a_declared_absent_project_is_refused
+# spec Design 2.4: code that only served --project and --blocks is removed (delegate, open_for_update, uncommitted_changes, _check_declared, _check_target)
+tests.work.test_open::test_a_missing_work_store_is_refused
+# spec Design 2.4: code that only served --project and --blocks is removed (delegate, open_for_update, uncommitted_changes, _check_declared, _check_target)
+tests.work.test_open::test_a_refused_delegation_does_not_touch_the_index
+# spec Design 2.4: code that only served --project and --blocks is removed (delegate, open_for_update, uncommitted_changes, _check_declared, _check_target)
+tests.work.test_open::test_a_store_outside_git_cannot_be_checked
+# spec Design 2.4: code that only served --project and --blocks is removed (delegate, open_for_update, uncommitted_changes, _check_declared, _check_target)
+tests.work.test_open::test_an_absent_project_names_no_jira_block
+# spec Design 2.4: code that only served --project and --blocks is removed (delegate, open_for_update, uncommitted_changes, _check_declared, _check_target)
+tests.work.test_open::test_an_undeclared_id_is_refused
+# spec Design 2.4: code that only served --project and --blocks is removed (delegate, open_for_update, uncommitted_changes, _check_declared, _check_target)
+tests.work.test_open::test_an_upstream_project_is_read_only
+# spec Design 2.4: code that only served --project and --blocks is removed (delegate, open_for_update, uncommitted_changes, _check_declared, _check_target)
+tests.work.test_open::test_delegate_creates_an_inbox_item_and_commits_nothing
+# spec Design 2.4: code that only served --project and --blocks is removed (delegate, open_for_update, uncommitted_changes, _check_declared, _check_target)
+tests.work.test_open::test_open_for_update_follows_the_same_conditions
+# spec Design 2.4: code that only served --project and --blocks is removed (delegate, open_for_update, uncommitted_changes, _check_declared, _check_target)
+tests.work.test_open::test_uncommitted_changes
+# spec Design 2.4: code that only served --project and --blocks is removed (delegate, open_for_update, uncommitted_changes, _check_declared, _check_target)
+tests.work.test_open::test_uncommitted_changes_are_refused
+# spec Design 2.2: the --blocks option of tcw work edit is removed
+tests.work.test_review_findings::test_a_missing_blocks_target_leaves_the_item_unchanged[2026-10-01-nothing]
+# spec Design 2.2: the --blocks option of tcw work edit is removed
+tests.work.test_review_findings::test_a_missing_blocks_target_leaves_the_item_unchanged[q.work/2026-10-01-nothing]
+# spec Design 2.2: the --blocks option of tcw work edit is removed
+tests.work.test_review_findings::test_a_refused_blocks_target_leaves_the_item_unchanged
+# spec Design 2.2: the --blocks option of tcw work edit is removed
+tests.work.test_review_findings::test_a_second_refused_target_leaves_the_first_unchanged
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.test_review_findings::test_an_empty_property_with_project_is_a_usage_error[--assignee]
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.test_review_findings::test_an_empty_property_with_project_is_a_usage_error[--effort]
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.test_review_findings::test_delegation_names_the_repository_holding_the_store
+# spec Design 2.1: the --project option of tcw work new is removed
+tests.work.test_review_findings::test_new_with_its_own_project_is_a_usage_error
+# spec Design 2.4: code that only served --project and --blocks is removed (delegate, open_for_update, uncommitted_changes, _check_declared, _check_target)
+tests.work.test_review_findings::test_the_uncommitted_message_names_the_project_once
+# plan Step 7: the delegate capability record is deleted, so its two document-check rows go
+tests.test_documented_cli_surface::test_documented_verbs_and_flags_exist[docs/capabilities/work/delegate-a-work-item-to-another-project/description.md]
+tests.test_documented_cli_surface::test_documents_name_no_refused_key[docs/capabilities/work/delegate-a-work-item-to-another-project/description.md]
+# spec Design 2.4: the functions are removed, so their EXEMPT rows go
+tests.test_static_guards::test_every_exempt_function_still_exists[work/open.py-_check_target]
+tests.test_static_guards::test_every_exempt_function_still_exists[work/open.py-uncommitted_changes]
+# Tests removed or renamed on purpose in TCW-114 Steps 8 to 21; each reason is on the comment line above its test.
+# Step 8, Design 2.3: the web page offers no other project, and its project answer lists none
+tests.serve.test_work_read::test_connected_projects_are_listed
+# Steps 13-15, Design 3.3: a Jira-mode create records a blocker in another project instead of refusing it; tests/work/jira/test_jira_recorded.py covers the warning it answers with
+tests.serve.test_work_write::test_jira_create_blocked_by_only_this_projects_items
+# Step 17, Design 5.8: nothing is set back; tests/work/jira/test_jira_move.py covers each stop and its re-run
+tests.work.jira.test_jira_nested::test_a_failed_nested_move_sets_the_item_field_back
+# Step 17, AC 12: an item with nested items is renamed in Jira mode (tests/work/jira/test_jira_move.py)
+tests.work.jira.test_jira_nested::test_an_epic_with_a_nested_item_is_not_renamed_in_jira_mode
+# Step 17, AC 11: an item with nested items is renamed (tests/work/test_move.py)
+tests.work.test_nested_items::test_an_item_with_items_nested_in_it_is_not_renamed
+# Steps 13-15: the message now names parent and blocked-by too; the same case runs under its new ID
+tests.work.jira.test_jira_validate_offline::test_each_error[<lambda>-exactly tcw-version and ticket (and may hold id); it also has stage]
+# Step 17, Design 5.8: the folder moves last, so a failure after the move no longer exists; a stop prints nothing on stdout and names the command to run again (test_cli_contract's stop test)
+tests.test_cli_contract::test_a_rename_that_fails_after_moving_prints_the_new_slug
+tests.test_cli_handler::test_a_rename_that_fails_after_the_move_prints_the_new_slug
+# Step 20: --project is removed, so the checker no longer accepts it as a real command
+tests.test_shipped_text::test_the_command_check_accepts_real_commands[tcw work new "<title>" --project <id>]

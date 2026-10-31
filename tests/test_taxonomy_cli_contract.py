@@ -14,6 +14,8 @@ import pytest
 from tcw.cli import main
 from tcw.store.fs import init
 from tests.work.projects import make_project
+from tests.statefiles import write_state, TAXONOMY_STATE
+
 
 
 @pytest.fixture
@@ -45,8 +47,8 @@ def test_a_mistyped_command_is_a_usage_error_not_a_lookup(project, run):
 
 def test_add_prints_the_path_and_names_its_files(project, run):
     code, out, err = run(project, "taxonomy", "add", "Widget", stdin="A small part.\n")
-    assert (code, out) == (0, "widget\n")
-    assert err.splitlines() == ["wrote docs/taxonomy/widget/meta.yaml",
+    assert (code, out) == (0, "fx.taxonomy/widget\n")
+    assert err.splitlines() == ["wrote docs/taxonomy/widget/tcw-taxonomy.yaml",
                                 "wrote docs/taxonomy/widget/description.md"]
     assert run(project, "taxonomy", "add", "Widget")[0] == 3
 
@@ -60,8 +62,8 @@ def test_show_of_nothing_is_not_found(project, run):
 def test_rm_of_a_referenced_term_is_refused(project, run):
     run(project, "taxonomy", "add", "Invoice")
     run(project, "taxonomy", "add", "Payment")
-    meta = project / "docs" / "taxonomy" / "payment" / "meta.yaml"
-    meta.write_text(meta.read_text().replace("relatesTo: []", "relatesTo: [invoice]"))
+    meta = project / "docs" / "taxonomy" / "payment" / TAXONOMY_STATE
+    write_state(meta, meta.read_text().replace("relatesTo: []", "relatesTo: [fx.taxonomy/invoice]"))
     code, out, err = run(project, "taxonomy", "rm", "invoice")
     assert (code, out) == (3, "")
     assert "payment" in err
@@ -72,36 +74,28 @@ def test_rm_names_each_file_it_removed(project, run):
     code, out, err = run(project, "taxonomy", "rm", "widget")
     assert (code, out) == (0, "")
     assert sorted(err.splitlines()) == ["removed docs/taxonomy/widget/description.md",
-                                        "removed docs/taxonomy/widget/meta.yaml"]
-
-
-def test_extends_add_prints_nothing_and_names_the_config(tmp_path, run):
-    base = make_project(tmp_path, "base")
-    init(["taxonomy"], base, "base")
-    project = make_project(tmp_path, "fx", config={})
-    init(["taxonomy"], project, "fx")
-    from tests.work.projects import connect
-    connect(project, base, "upstream")
-    code, out, err = run(project, "taxonomy", "extends", "add", "base")
-    assert (code, out) == (0, ""), err
-    assert err.splitlines() == ["wrote tcw-config.yaml"]
+                                        "removed docs/taxonomy/widget/tcw-taxonomy.yaml"]
 
 
 def test_list_and_search_print_one_path_per_line(project, run):
     run(project, "taxonomy", "add", "Widget", stdin="small\n")
     run(project, "taxonomy", "add", "Gear", "--parent", "widget")
-    assert run(project, "taxonomy", "list")[1] == "widget\nwidget/gear\n"
-    assert run(project, "taxonomy", "search", "small")[1] == "widget\n"
+    assert run(project, "taxonomy", "list")[1] == \
+        "fx.taxonomy/widget\nfx.taxonomy/widget/gear\n"
+    assert run(project, "taxonomy", "search", "small")[1] == "fx.taxonomy/widget\n"
     data = json.loads(run(project, "taxonomy", "list", "--json")[1])
-    assert data["schema"] == 1
-    assert data["terms"][1] == {"path": "widget/gear", "name": "Gear",
-                                "kind": "Vocabulary", "origin": "local"}
+    assert data["schema"] == 2
+    assert data["terms"][1] == {"full-id": "fx.taxonomy/widget/gear", "owner": "fx",
+                                "parent": "fx.taxonomy/widget",
+                                "name": "Gear", "kind": "Vocabulary",
+                                "overrides": None}
+    assert data["terms"][0]["parent"] is None
 
 
 def test_show_json(project, run):
     run(project, "taxonomy", "add", "Widget", stdin="small\n")
     data = json.loads(run(project, "taxonomy", "show", "widget", "--json")[1])
-    assert data["schema"] == 1 and data["term"]["path"] == "widget"
+    assert data["schema"] == 2 and data["term"]["full-id"] == "fx.taxonomy/widget"
     assert data["term"]["description"].strip() == "small"
 
 
@@ -114,11 +108,13 @@ def test_removed_spellings(project, run, argv):
 
 
 @pytest.mark.parametrize("axis", ["taxonomy", "capabilities"])
-def test_extends_add_of_a_malformed_name_is_a_usage_error(tmp_path, run, axis):
-    """Review fix S3: a name that cannot be a project ID is a usage error (2),
-    not a failure (1)."""
+@pytest.mark.parametrize("verb", ["add", "rm"])
+def test_the_extends_commands_are_gone(tmp_path, run, axis, verb):
+    """TCW 4.0 removes `tcw <axis> extends add|rm`: a project inherits from its
+    parents (TCW-112 Design 1). Naming one is a usage error (2) that names
+    nothing it wrote."""
     project = make_project(tmp_path, "fx")
     init([axis], project, "fx")
-    code, out, err = run(project, axis, "extends", "add", "Bad ID!")
+    code, out, err = run(project, axis, "extends", verb, "base")
     assert (code, out) == (2, ""), err
-    assert err.startswith(f"tcw {axis} extends add: project ID must match"), err
+    assert "invalid choice: 'extends'" in err, err

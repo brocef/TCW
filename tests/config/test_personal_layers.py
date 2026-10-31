@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from tcw.config import load_config, user_config_path
+from tests.projectfiles import write_local_config
 
 
 def test_an_absolute_xdg_config_home_names_the_user_file(monkeypatch, tmp_path):
@@ -54,7 +55,7 @@ def test_a_local_file_beside_the_project_file_is_read(personal):
 
 
 def test_a_local_file_in_the_parent_folder_is_not_read(personal):
-    (personal.root.parent / "tcw-config.local.yaml").write_text("id: wrong\n")
+    write_local_config(personal.root.parent, "id: wrong\n")
     config = load_config(personal.root)
     assert config.problems == []
     assert config.values["id"] == "p"
@@ -90,10 +91,28 @@ def test_personal_false_reads_only_the_project_file(personal):
     assert config.problems == [] and config.user_name is None
 
 
-@pytest.mark.parametrize("text", ["", "null\n"])
-def test_an_empty_personal_file_is_an_empty_layer(personal, text):
-    personal.local(text)
+def test_a_personal_file_holding_only_its_version_is_an_empty_layer(personal):
+    personal.local("")     # holds only the version line the helper writes
     assert load_config(personal.root).problems == []
+
+
+def test_a_0_byte_personal_file_has_no_version(personal):
+    """An empty file carries no `tcw-version`, so it is refused as a 3.x file
+    is (TCW-106 Design 3.4 row a)."""
+    personal.local_file.parent.mkdir(parents=True, exist_ok=True)
+    personal.local_file.write_bytes(b"")
+    problems = load_config(personal.root).problems
+    assert [(p.file, p.key_path) for p in problems] == [(personal.local_file, ())]
+    assert "has no tcw-version" in problems[0].message
+
+
+def test_a_null_personal_file_has_no_version(personal):
+    """`null` cannot carry `tcw-version`, so it is read as a 3.x file
+    (TCW-106 Design 3.4 row a)."""
+    personal.local("null\n")
+    problems = load_config(personal.root).problems
+    assert [(p.file, p.key_path) for p in problems] == [(personal.local_file, ())]
+    assert "has no tcw-version" in problems[0].message
 
 
 def test_an_unreadable_personal_file_is_a_problem_naming_it(personal):

@@ -29,7 +29,9 @@ SYSTEM_PATH = "/usr/bin:/bin"
 # The first words of the warning. Tests recognize the message by it.
 PREFIX = "tcw: the `tcw` CLI on your PATH is"
 NEWER_ADVICE = "claude plugin update tcw@tcw"
-OLDER_ADVICE = "pipx upgrade tcw-cli"
+# The newer-CLI advice names `pipx install --force tcw-cli==` too, as its
+# alternative, so the older-CLI advice is told apart by the words before it.
+OLDER_ADVICE = "match the CLI to the skills: pipx install --force tcw-cli=="
 
 
 def _plugin(folder: Path, version: str | None, manifest: str = ".claude-plugin") -> Path:
@@ -100,6 +102,7 @@ def test_cli_older(tmp_path):
     _prints(tmp_path / "bin", "2.3.0")
     r = _run(plugin, tmp_path / "bin")
     _assert_warns(r, "2.3.0", "2.4.0", "older")
+    assert "pipx install --force tcw-cli==2.4.0 " in r.stdout
     assert "If that does not reach 2.4.0" in r.stdout
 
 

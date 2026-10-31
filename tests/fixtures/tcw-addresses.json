@@ -1,0 +1,24 @@
+{
+    "about": "TCW-110 AC 2: the addresses tcw/ids.py accepts and refuses. Each accepted address gives the path text a general URL parser must return for it, read by tests/test_ids.py (Python's urlsplit) and web/client/src/model/identifier.test.ts (Node's URL).",
+    "accepted": [
+        { "address": "tcw://p1.work/x", "path": "/x" },
+        { "address": "tcw://p1.path/", "path": "/" },
+        { "address": "tcw://p1.work.path/", "path": "/" },
+        { "address": "tcw://p1.path/docs/p2-work", "path": "/docs/p2-work" },
+        {
+            "address": "tcw://p1.capabilities.path/.github/v1.2/",
+            "path": "/.github/v1.2/"
+        }
+    ],
+    "refused": [
+        "tcw://p1/",
+        "tcw://p1.path",
+        "tcw://p1.path/../x",
+        "tcw://p1.path/./x",
+        "tcw://p1.path/a//b",
+        "tcw://p1.work/x/",
+        "tcw://p1.work/x#y",
+        "tcw://p1.work/x?y",
+        "tcw://P1.work/x"
+    ]
+}

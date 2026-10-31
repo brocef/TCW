@@ -10,6 +10,7 @@ from tcw.work.open import open_backend, open_project
 from tcw.work.resolve import packaged_text
 from tests.config.conftest import tcw
 from tests.work.projects import commit_all, connect, make_project
+from tests.projectfiles import config_file, write_config_file, write_local_config
 
 
 def packaged_lines(name: str) -> list[str]:
@@ -25,7 +26,7 @@ def packaged_lines(name: str) -> list[str]:
     ["work", "stage", "prompt", "spec"],
     ["taxonomy", "list"],
     ["capabilities", "list"],
-    ["projects", "list"],
+    ["project", "list"],
     ["work", "lifecycle"],
 ])
 def test_a_shared_key_in_the_local_file_stops_every_command(personal, argv):
@@ -34,9 +35,9 @@ def test_a_shared_key_in_the_local_file_stops_every_command(personal, argv):
     result = tcw(personal.root, *argv)
     assert result.code == 1, result
     assert result.out == ""
-    assert "tcw-config.local.yaml" in result.err and "id" in result.err
+    assert ".tcw/tcw-config.local.yaml" in result.err and "id" in result.err
     words = argv[:3] if argv[1] == "stage" else argv[:2]
-    assert result.err.startswith(f"tcw {' '.join(words)}: tcw-config.local.yaml: id: ")
+    assert result.err.startswith(f"tcw {' '.join(words)}: .tcw/tcw-config.local.yaml: id: ")
 
 
 def test_version_runs_whatever_the_configuration(personal):
@@ -60,7 +61,7 @@ def test_open_backend_refuses_a_shared_key_in_a_personal_file(personal):
     with pytest.raises(ConfigError) as caught:
         open_backend(personal.root)
     assert caught.value.code == 1
-    assert "tcw-config.local.yaml" in str(caught.value) and "id" in str(caught.value)
+    assert ".tcw/tcw-config.local.yaml" in str(caught.value) and "id" in str(caught.value)
 
 
 def test_open_backend_opens_with_personal_files_switched_off(personal, monkeypatch):
@@ -91,37 +92,24 @@ def family(tmp_path, monkeypatch):
     return parent, child
 
 
-def test_a_childs_local_file_is_not_read_when_delegating_to_it(family):
-    parent, child = family
-    (child / "tcw-config.local.yaml").write_text("id: wrong\n")
-    result = tcw(parent, "work", "new", "--project", "child", "x")
-    assert result.code == 0, result
-    assert result.out.startswith("child/")
-    folder = result.out.strip().split("/", 1)[1]
-    assert (child / "docs" / "work" / folder).is_dir()
-
-
 def test_identity_is_only_the_acting_projects(family, tmp_path):
     parent, child = family
     user = tmp_path / "xdg-config" / "tcw" / "config.yaml"
     user.parent.mkdir(parents=True)
-    user.write_text("user:\n  name: Brian\n")
+    write_config_file(user, "user:\n  name: Brian\n")
     assert open_backend(parent).current_user() == "Brian"
     assert open_project("child", parent).current_user() is None
 
 
 def test_graph_readers_tolerate_what_the_loader_refuses(family, monkeypatch):
     parent, child = family
-    before = tcw(parent, "provision")
-    path = child / "tcw-config.yaml"
+    path = config_file(child)
     document = yaml.safe_load(path.read_text())
     document["work"] = {"lifecycle": {"spec": {"prompt": []}}}
-    path.write_text(yaml.safe_dump(document))
-    (parent / "tcw-config.local.yaml").write_text("work: [unclosed\n")
-    after = tcw(parent, "provision")
-    assert (after.code, after.out) == (before.code, before.out), (before, after)
+    write_config_file(path, yaml.safe_dump(document))
+    write_local_config(parent, "work: [unclosed\n")
     monkeypatch.setenv("TCW_NO_PERSONAL_CONFIG", "1")
-    listed = tcw(parent, "projects", "list")
+    listed = tcw(parent, "project", "list")
     assert listed.code == 0, listed
     assert "child" in listed.out.split()
 

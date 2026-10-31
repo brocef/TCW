@@ -14,6 +14,8 @@ from pathlib import Path
 import yaml
 
 from tcw.store.fs import init
+from tests.projectfiles import config_file, write_config_file, write_manifest
+from tests.statefiles import write_state, ITEM_STATE
 
 WORK_PATH = Path("docs") / "work"
 
@@ -34,23 +36,31 @@ def make_project(tmp_path: Path, project_id: str, *, config: dict | None = None,
     git(root, "config", "user.name", "t")
     init(["work"], root, project_id)                 # the branch's own init
     if config is not None:
-        path = root / "tcw-config.yaml"
+        path = config_file(root)
         document = yaml.safe_load(path.read_text())
         document["work"] = config
-        path.write_text(yaml.safe_dump(document, sort_keys=False))
+        write_config_file(path, yaml.safe_dump(document, sort_keys=False))
     return root
 
 
-def connect(a: Path, b: Path, relation: str) -> None:
-    """Declare `b` in `a`'s projects under `relation` (parent or
-    children), by a path relative to `a`."""
+def connect(a: Path, b: Path, relation: str, *, inherit="all") -> None:
+    """Name `b` in `a`'s configuration by its ID, as a parent (`relation`
+    "parent", passing `inherit`: "all", "none" or a list of axes) or as a
+    child ("children"), and place it in `a`'s manifest by a path relative to
+    `a` (TCW-107, TCW-108)."""
     import os
-    path = a / "tcw-config.yaml"
+    path = config_file(a)
     document = yaml.safe_load(path.read_text())
-    b_id = yaml.safe_load((b / "tcw-config.yaml").read_text())["id"]
-    section = document.setdefault("projects", {}).setdefault(relation, {})
-    section[b_id] = os.path.relpath(b, a)
-    path.write_text(yaml.safe_dump(document, sort_keys=False))
+    b_id = yaml.safe_load((b / ".tcw/tcw-config.yaml").read_text())["id"]
+    if relation == "children":
+        document.setdefault("children", []).append(b_id)
+    elif relation == "parent":
+        document.setdefault("parents", []).append(
+            b_id if inherit == "all" else {"id": b_id, "inherit": inherit})
+    else:
+        raise ValueError(f"relation must be 'parent' or 'children', not {relation!r}")
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    write_manifest(a, {b_id: os.path.relpath(b, a)})
 
 
 def commit_all(root: Path, message: str = "fixture") -> None:
@@ -63,5 +73,5 @@ def write_item(root: Path, folder: str, data: "dict | str") -> Path:
     path = root / WORK_PATH / folder
     path.mkdir(parents=True, exist_ok=True)
     text = data if isinstance(data, str) else yaml.safe_dump(data, sort_keys=False)
-    (path / "item.yaml").write_text(text)
+    write_state(path / ITEM_STATE, text)
     return path

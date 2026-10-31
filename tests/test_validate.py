@@ -1,13 +1,18 @@
 """`tcw validate` — aggregate YAML + tcw:// link + component-check pass."""
 
+import os
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tcw.validate import validate
+from tests.projectfiles import config_file, write_config, write_config_file
+from tests.projectfiles import write_manifest
+from tests.statefiles import CAPABILITY_STATE, TAXONOMY_STATE, write_state
 
 
 def node(
@@ -26,20 +31,18 @@ def node(
 
 
 def connect(parent: Path, child: Path) -> None:
-    parent_config_path = parent / "tcw-config.yaml"
-    child_config_path = child / "tcw-config.yaml"
+    parent_config_path = config_file(parent)
+    child_config_path = config_file(child)
     parent_config = yaml.safe_load(parent_config_path.read_text())
     child_config = yaml.safe_load(child_config_path.read_text())
     parent_id = parent_config["id"]
     child_id = child_config["id"]
-    parent_config.setdefault("projects", {}).setdefault("children", {})[
-        child_id
-    ] = str(child)
-    child_config.setdefault("projects", {})["parent"] = {
-        parent_id: str(parent)
-    }
-    parent_config_path.write_text(yaml.safe_dump(parent_config, sort_keys=False))
-    child_config_path.write_text(yaml.safe_dump(child_config, sort_keys=False))
+    parent_config.setdefault("children", []).append(child_id)
+    child_config["parents"] = [parent_id]
+    write_config_file(parent_config_path, yaml.safe_dump(parent_config, sort_keys=False))
+    write_config_file(child_config_path, yaml.safe_dump(child_config, sort_keys=False))
+    write_manifest(parent, {child_id: os.path.relpath(child, parent)})
+    write_manifest(child, {parent_id: os.path.relpath(parent, child)})
 
 
 def _vocabless_feature(root: Path, slug: str) -> None:
@@ -47,7 +50,7 @@ def _vocabless_feature(root: Path, slug: str) -> None:
     node directly — the point of these tests is that `check` still reports it."""
     d = root / "docs" / "taxonomy" / slug
     d.mkdir(parents=True)
-    (d / "meta.yaml").write_text(f"name: {slug.title()}\nkind: Feature\nrelatesTo: []\n")
+    write_state(d / TAXONOMY_STATE, f"name: {slug.title()}\nkind: Feature\nrelatesTo: []\n")
     (d / "description.md").write_text("")
 
 
@@ -68,7 +71,7 @@ def test_clean_node_ok(tmp_path):
 def test_valid_tcw_link_ok(tmp_path):
     root = node(tmp_path)
     FsTaxonomyStore.open(root).add("Login", slug="auth")
-    _body(root, "signin", "See [the term](tcw://T/auth).")
+    _body(root, "signin", "See [the term](tcw://test-project.taxonomy/auth).")
     assert validate(root) == []
 
 
@@ -76,10 +79,10 @@ def test_valid_tcw_link_ok(tmp_path):
 
 def test_bad_yaml_syntax_does_not_crash_and_skips_checks(tmp_path):
     root = node(tmp_path)
-    (root / "docs" / "capabilities" / "meta.yaml").write_text("a: [unterminated\n")
+    write_state(root / "docs" / "capabilities" / "x" / CAPABILITY_STATE, "a: [unterminated\n")
     notes: list[str] = []
     findings = validate(root, notes=notes)
-    assert any("meta.yaml" in f.where for f in findings)
+    assert any(CAPABILITY_STATE in f.where for f in findings)
     assert any("checks skipped" in n for n in notes), notes
     # No taxonomy/capabilities check ran: the YAML error is the only finding.
     assert len(findings) == 1, findings
@@ -89,9 +92,10 @@ def test_bad_yaml_syntax_does_not_crash_and_skips_checks(tmp_path):
 
 def test_dangling_link_is_a_problem(tmp_path):
     root = node(tmp_path)
-    _body(root, "signin", "Broken [x](tcw://C/does-not-exist).")
+    _body(root, "signin", "Broken [x](tcw://test-project.capabilities/does-not-exist).")
     problems = [str(f) for f in validate(root)]
-    assert any("tcw://C/does-not-exist" in p for p in problems)
+    assert any("tcw://test-project.capabilities/does-not-exist → no capability "
+               "test-project.capabilities/does-not-exist" in p for p in problems), problems
 
 
 def test_upward_epic_link_validates(tmp_path):
@@ -105,15 +109,15 @@ def test_upward_epic_link_validates(tmp_path):
     slice_ = FsWorkStore.open(child).create("Slice", created="2026-01-02")
     FsWorkStore.open(child).write_artifact(
         slice_.slug, "initial-request",
-        f"Epic: [Parent epic](tcw://W/root/{epic.slug})\n")
+        f"Epic: [Parent epic](tcw://root.work/{epic.slug})\n")
     assert validate(child) == []
 
 
 def test_link_to_unregistered_project_names_the_cause(tmp_path):
     root = node(tmp_path)
-    _body(root, "signin", "Bad [x](tcw://W/ghost/2026-01-01-x).")
+    _body(root, "signin", "Bad [x](tcw://ghost.work/2026-01-01-x).")
     problems = [str(f) for f in validate(root)]
-    assert any("no such project in this graph: ghost" in p for p in problems)
+    assert any("no project with ID 'ghost'" in p for p in problems), problems
 
 
 def test_malformed_link_is_a_problem(tmp_path):
@@ -125,13 +129,13 @@ def test_malformed_link_is_a_problem(tmp_path):
 
 def test_link_in_fenced_code_block_is_ignored(tmp_path):
     root = node(tmp_path)
-    _body(root, "signin", "Example:\n\n```\n[x](tcw://C/nope)\n```\n")
+    _body(root, "signin", "Example:\n\n```\n[x](tcw://test-project.capabilities/nope)\n```\n")
     assert validate(root) == []
 
 
 def test_link_in_inline_code_is_ignored(tmp_path):
     root = node(tmp_path)
-    _body(root, "signin", "Write `[x](tcw://C/nope)` in prose.")
+    _body(root, "signin", "Write `[x](tcw://test-project.capabilities/nope)` in prose.")
     assert validate(root) == []
 
 
@@ -167,7 +171,7 @@ def test_cli_clean_exits_0(tmp_path, monkeypatch, capsys):
 
 def test_cli_problem_exits_1(tmp_path, monkeypatch, capsys):
     root = node(tmp_path)
-    _body(root, "signin", "Broken [x](tcw://C/nope).")
+    _body(root, "signin", "Broken [x](tcw://test-project.capabilities/nope).")
     monkeypatch.chdir(root)
     assert main(["validate"]) == 1
 
@@ -180,14 +184,14 @@ def test_cli_checks_only_the_current_project(tmp_path, monkeypatch, capsys):
     grandchild = node(tmp_path, "grandchild", "grandchild")
     connect(root, child)
     connect(child, grandchild)
-    _body(grandchild, "signin", "Broken [x](tcw://C/nope).")
+    _body(grandchild, "signin", "Broken [x](tcw://grandchild.capabilities/nope).")
 
     monkeypatch.chdir(root)
     assert main(["validate"]) == 0
     assert capsys.readouterr().out == ""
     monkeypatch.chdir(grandchild)
     assert main(["validate"]) == 1
-    assert "tcw://C/nope" in capsys.readouterr().out
+    assert "tcw://grandchild.capabilities/nope" in capsys.readouterr().out
 
 
 # ── the same verdict in every checkout ────────────────────────────────────────
@@ -208,7 +212,7 @@ def _resolved_item_referenced_by_a_tracked_file(root: Path) -> str:
     st.start(slug, owner="t")
     st.complete(slug, "done", [])
     (root / "docs" / "work" / "inbox" / "ref.md").write_text(
-        f"see [the finished thing](tcw://W/{slug})\n")
+        f"see [the finished thing](tcw://test-project.work/{slug})\n")
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(root), "commit", "-qm", "a reference"], check=True)
     return slug
@@ -240,7 +244,7 @@ def test_a_typo_reference_still_fails_in_both(tmp_path):
     """The graveyard must not turn every unresolvable reference into a pass."""
     root = node(tmp_path)
     (root / "docs" / "work" / "inbox" / "ref.md").write_text(
-        "see [a typo](tcw://W/2026-01-01-never-created)\n")
+        "see [a typo](tcw://test-project.work/2026-01-01-never-created)\n")
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(root), "commit", "-qm", "seed"], check=True)
 
@@ -248,7 +252,7 @@ def test_a_typo_reference_still_fails_in_both(tmp_path):
     subprocess.run(["git", "clone", "-q", str(root), str(clone)], check=True)
     for where in (root, clone):
         problems = [str(f) for f in validate(where)]
-        assert any("no such work item: 2026-01-01-never-created" in p
+        assert any("no work item test-project.work/2026-01-01-never-created" in p
                    for p in problems), (where, problems)
 
 
@@ -257,31 +261,30 @@ def test_a_typo_reference_still_fails_in_both(tmp_path):
 
 def test_an_absent_connected_project_is_reported_and_not_fatal(tmp_path, monkeypatch, capsys):
     root = node(tmp_path)
-    config_path = root / "tcw-config.yaml"
+    config_path = config_file(root)
     config = yaml.safe_load(config_path.read_text())
-    config.setdefault("projects", {})["children"] = {
-        "gone-project": str(tmp_path / "gone")
-    }
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    config["children"] = ["gone-project"]
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
+    write_manifest(root, {"gone-project": os.path.relpath(tmp_path / "gone", root)})
     monkeypatch.chdir(root)
     assert main(["validate"]) == 0
     [line] = capsys.readouterr().out.splitlines()
     assert line.startswith("unresolved: ")
-    assert "gone-project" in line and "not reachable in this checkout" in line
+    # TCW-107 Design 6.2: a project not on this machine.
+    assert "project 'gone-project' is not on this machine" in line
 
 
 def test_a_real_graph_error_still_fails(tmp_path, monkeypatch, capsys):
     root = node(tmp_path)
     other = tmp_path / "other"
     other.mkdir()
-    (other / "tcw-config.yaml").write_text("id: other-project\nid: dupe\n")
-    config_path = root / "tcw-config.yaml"
+    write_config(other, "id: other-project\nid: dupe\n")
+    config_path = config_file(root)
     config = yaml.safe_load(config_path.read_text())
-    config.setdefault("projects", {})["children"] = {
-        "other-project": str(other),
-        "gone-project": str(tmp_path / "gone"),
-    }
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    config["children"] = ["other-project", "gone-project"]
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
+    write_manifest(root, {"other-project": os.path.relpath(other, root),
+                          "gone-project": os.path.relpath(tmp_path / "gone", root)})
     monkeypatch.chdir(root)
     assert main(["validate"]) == 1
     assert "duplicate key" in capsys.readouterr().out
@@ -295,7 +298,7 @@ def _bare_node(tmp_path: Path, name: str, project_id: str) -> Path:
     root = tmp_path / name
     root.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", "-q", str(root)], check=True)
-    (root / "tcw-config.yaml").write_text(f"id: {project_id}\n")
+    write_config(root, f"id: {project_id}\n")
     return root
 
 
@@ -316,10 +319,10 @@ def test_a_node_that_claims_a_board_it_cannot_open_still_says_so(tmp_path):
     reports why rather than being skipped, and narrowing what counts as a claim
     must not lose that."""
     root = _bare_node(tmp_path, "claims", "claims-project")
-    config_path = root / "tcw-config.yaml"
+    config_path = config_file(root)
     config = yaml.safe_load(config_path.read_text())
     config["work"] = {"path": "nowhere"}
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     problems = [str(f) for f in validate(root)]
     assert any("work.path is not a directory" in p for p in problems)
 
@@ -328,10 +331,10 @@ def test_a_node_declaring_only_tags_is_not_claiming_a_board(tmp_path):
     """A `work:` section that carries tags or documentation entries says nothing
     about where a store is, so it must not conjure one."""
     root = _bare_node(tmp_path, "tagged", "tagged-project")
-    config_path = root / "tcw-config.yaml"
+    config_path = config_file(root)
     config = yaml.safe_load(config_path.read_text())
     config["work"] = {"tags": ["bug", "docs"]}
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     assert validate(root) == []
 
 
@@ -358,10 +361,10 @@ def _node_with(tmp_path: Path, *, work: dict) -> Path:
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
     init(["work"], root, "corelib")
-    config_path = root / "tcw-config.yaml"
+    config_path = config_file(root)
     config = _yaml.safe_load(config_path.read_text()) or {}
     config.setdefault("work", {}).update(work)
-    config_path.write_text(_yaml.safe_dump(config, sort_keys=False))
+    write_config_file(config_path, _yaml.safe_dump(config, sort_keys=False))
     return root
 
 
@@ -374,7 +377,7 @@ def _half_a_store(tmp_path: Path) -> Path:
 def test_a_broken_path_and_an_unprovisioned_declaration_are_two_problems(tmp_path):
     half = _half_a_store(tmp_path)
     root = _node_with(tmp_path, work={
-        "path": str(half),
+        "path": os.path.relpath(half, tmp_path / "code"),
         "repository": {"url": "https://example.invalid/orchestrator.git"},
     })
 
@@ -423,7 +426,7 @@ def test_a_broken_path_is_reported_even_when_the_declaration_answers(tmp_path):
 
     half = _half_a_store(tmp_path)
     root = _node_with(tmp_path, work={
-        "path": str(half),
+        "path": os.path.relpath(half, tmp_path / "code"),
         "repository": {"url": str(remote), "path": "docs/work/corelib"},
     })
     from tcw.store.fs import FsStoreProvisioner
@@ -514,7 +517,7 @@ def test_a_duplicate_key_is_still_reported(tmp_path):
 
 def test_every_yaml_name_tcw_writes_is_owned_or_deliberately_not(tmp_path):
     """The set is a judgment that drifts as record files are added, so it is
-    checked against the YAML names the source mentions. Five absences are
+    checked against the YAML names the source mentions. Seven absences are
     deliberate: each is a file that is legitimately not a mapping, is never
     reached by this pass, or is no longer written at all — see
     `OWNED_YAML_NAMES` for why."""
@@ -543,4 +546,49 @@ def test_every_yaml_name_tcw_writes_is_owned_or_deliberately_not(tmp_path):
         # that will not parse, independently of this set.
         "config.yaml",
         ".config.yaml",
+        # The TCW 3.x state files, named only so the walk and `tcw validate`
+        # can say that a folder holding one needs `tcw migrate` (TCW-111
+        # Design 2.6 row f). TCW never writes either one now.
+        "meta.yaml",
+        "item.yaml",
     }, written
+
+
+# -- code spans located, not deleted (TCW-114 plan Step 11) ---------------------------
+
+CODE_TEXTS = [
+    "Example:\n\n```\n[x](tcw://test-project.capabilities/nope)\n```\n",
+    "Write `[x](tcw://test-project.capabilities/nope)` in prose.",
+    "strip fenced ```` ``` ```` then match `](tcw://…)` targets",
+    "a [b](tcw://p.work/x) and `[c](tcw://p.work/y)` and\n~~~\n[d](tcw://p.work/z)\n~~~\n"
+    "[e](tcw://p.work/w)",
+    "``double `tick` span`` then [f](tcw://p.taxonomy/t)",
+    "no code at all [g](tcw://p.capabilities/c)",
+]
+
+
+def _old_strip(md: str) -> str:
+    """What `_strip_code` returned before TCW-114 replaced it."""
+    from tcw.validate import _FENCE_RE, _INLINE_CODE_RE
+    return _INLINE_CODE_RE.sub("", _FENCE_RE.sub("", md))
+
+
+@pytest.mark.parametrize("text", CODE_TEXTS)
+def test_the_text_outside_code_spans_is_what_stripping_left(text):
+    from tcw.validate import code_spans
+    spans = code_spans(text)
+    outside, at = [], 0
+    for start, end in spans:
+        assert at <= start < end <= len(text)
+        outside.append(text[at:start])
+        at = end
+    outside.append(text[at:])
+    assert "".join(outside) == _old_strip(text)
+
+
+def test_links_outside_code_give_positions_in_the_original_text():
+    from tcw.validate import links_outside_code
+    text = CODE_TEXTS[3]
+    found = list(links_outside_code(text))
+    assert [a for _, _, a in found] == ["tcw://p.work/x", "tcw://p.work/w"]
+    assert all(text[s:e] == a for s, e, a in found)

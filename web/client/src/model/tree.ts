@@ -1,3 +1,4 @@
+import { keySegments } from "./identifier"
 import type { TreeNode, WorkItem } from "./types"
 
 export type TWorkSortKey = "name" | "created" | "priority"
@@ -13,7 +14,7 @@ export function buildPathTree<T>(
         if (!itemByKey.has(keyOf(item))) itemByKey.set(keyOf(item), item)
     for (const key of itemByKey.keys()) {
         let cursor = ""
-        for (const segment of key.split("/")) {
+        for (const segment of keySegments(key)) {
             cursor = cursor ? `${cursor}/${segment}` : segment
             if (!map.has(cursor))
                 map.set(cursor, {
@@ -35,17 +36,18 @@ export function buildPathTree<T>(
     return roots
 }
 
-/** The work tree by `parent`. Keys are full slugs, which is what `parent`
+/** The work tree by `parent`. Keys are full identifiers, which is what `parent`
  * holds; an item whose parent is not on the board (another project's item,
  * or one the filters left out of the load) is a root. A cycle is broken by
  * making its first unreachable member a root. */
 export function buildWorkTree(items: WorkItem[]): Array<TreeNode<WorkItem>> {
     const index = new Map<string, TreeNode<WorkItem>>()
     for (const item of items) {
-        if (!index.has(item.slug)) {
-            index.set(item.slug, {
-                name: item.title || item.slug,
-                path: item.slug,
+        const key = item["full-id"]
+        if (!index.has(key)) {
+            index.set(key, {
+                name: item.title || key,
+                path: key,
                 item,
                 children: [],
             })
@@ -107,9 +109,9 @@ export function sortWorkTree(
             return direction === "ascending" ? result : -result
         }
         const leftValue =
-            key === "name" ? left.title || left.slug : left.created
+            key === "name" ? left.title || left["full-id"] : left.created
         const rightValue =
-            key === "name" ? right.title || right.slug : right.created
+            key === "name" ? right.title || right["full-id"] : right.created
         if (key === "created" && (!leftValue || !rightValue)) {
             if (!leftValue && !rightValue) return 0
             return leftValue ? -1 : 1
@@ -166,15 +168,16 @@ export function pruneTree<T>(
 }
 
 export function pathAncestors(key: string): string[] {
-    const parts = key.split("/")
+    const parts = keySegments(key)
     return parts
         .slice(1)
         .map((_part, index) => parts.slice(0, index + 1).join("/"))
 }
 
-/** The slugs of an item's ancestors on the board, outermost first. */
+/** The full identifiers of an item's ancestors on the board, outermost
+ * first. */
 export function workAncestors(slug: string, items: WorkItem[]): string[] {
-    const bySlug = new Map(items.map((item) => [item.slug, item]))
+    const bySlug = new Map(items.map((item) => [item["full-id"], item]))
     const chain: string[] = []
     const visited = new Set([slug])
     let cursor = slug

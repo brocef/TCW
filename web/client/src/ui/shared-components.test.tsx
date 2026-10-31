@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { ThemeProvider } from "../theme"
-import type { CapabilityItem, TaxonomyItem } from "../model/types"
-import { workItem } from "../test-fixtures"
+import { capability, term, workItem } from "../test-fixtures"
 import { useState } from "react"
 import { LinkContext } from "./link-context"
+import { ProjectIdContext } from "./project-context"
 import { ItemMeta, Markdown, MarkdownEditor, Tree } from "./shared-components"
 
 const modified = "2026-07-22T18:30:00Z"
@@ -23,20 +23,23 @@ test("uses the same child grid and the row class at every depth", () => {
             children: [child],
         },
     ]
+    // Served from `p`, whose items are routed by folder (TCW-113 Design 6.3).
     const { container } = render(
         <ThemeProvider>
-            <Tree
-                nodes={nodes}
-                axis="work"
-                selected="child"
-                expanded={new Set(["p/parent"])}
-                visible={() => true}
-                rowClass={(item) =>
-                    `st-${item.stage === "ask" ? "flow" : "side"}`
-                }
-                onToggle={() => undefined}
-                onSelect={() => undefined}
-            />
+            <ProjectIdContext.Provider value="p">
+                <Tree
+                    nodes={nodes}
+                    axis="work"
+                    selected="child"
+                    expanded={new Set(["p/parent"])}
+                    visible={() => true}
+                    rowClass={(item) =>
+                        `st-${item.stage === "ask" ? "flow" : "side"}`
+                    }
+                    onToggle={() => undefined}
+                    onSelect={() => undefined}
+                />
+            </ProjectIdContext.Provider>
         </ThemeProvider>
     )
 
@@ -57,7 +60,7 @@ test("uses the same child grid and the row class at every depth", () => {
     fireEvent.click(toggle)
 })
 
-test("copies a work row's full slug", () => {
+test("copies a work row's full identifier", () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.assign(navigator, { clipboard: { writeText } })
     render(
@@ -66,7 +69,7 @@ test("copies a work row's full slug", () => {
                 nodes={[
                     {
                         name: "x",
-                        path: "p/x",
+                        path: "p.work/x",
                         item: workItem("x"),
                         children: [],
                     },
@@ -81,9 +84,11 @@ test("copies a work row's full slug", () => {
         </ThemeProvider>
     )
     fireEvent.click(
-        screen.getByRole("button", { name: "Copy slug to clipboard" })
+        screen.getByRole("button", {
+            name: "Copy full identifier to clipboard",
+        })
     )
-    expect(writeText).toHaveBeenCalledWith("p/x")
+    expect(writeText).toHaveBeenCalledWith("p.work/x")
 })
 
 test("a work row shows its stage and creation date; records their modified time", () => {
@@ -101,19 +106,11 @@ test("a work row shows its stage and creation date; records their modified time"
             />
             <ItemMeta
                 axis="taxonomy"
-                item={
-                    { slug: "term", kind: "Feature", modified } as TaxonomyItem
-                }
+                item={term("term", { kind: "Feature", modified })}
             />
             <ItemMeta
                 axis="capabilities"
-                item={
-                    {
-                        path: "web",
-                        status: "Supported",
-                        modified,
-                    } as CapabilityItem
-                }
+                item={capability("web", { status: "Supported", modified })}
             />
         </ThemeProvider>
     )
@@ -266,7 +263,7 @@ test("a superseded response never touches the document that replaced it", async 
     // arrives FIRST. Without the cleanup guard, A re-queries B's anchors, finds no
     // entry for B's uri, marks it unresolved and strips its href — and B's own
     // answer, arriving after, finds nothing left to repair.
-    const URI_A = "tcw://W/other/2026-01-01-a"
+    const URI_A = "tcw://other.work/2026-01-01-a"
     const gate: Record<string, () => void> = {}
     const waits: Record<string, Promise<void>> = {}
     for (const key of ["a", "b"])
@@ -321,10 +318,13 @@ test("typing tcw:// in the editor offers objects and inserts a work item's folde
             <LinkContext.Provider
                 value={[
                     {
-                        identifier: "tcw://W/2026-10-01-x",
+                        identifier: "tcw://p.work/2026-10-01-x",
                         displayName: "The X item",
                     },
-                    { identifier: "tcw://C/web", displayName: "Web" },
+                    {
+                        identifier: "tcw://p.capabilities/web",
+                        displayName: "Web",
+                    },
                 ]}
             >
                 <MarkdownEditor
@@ -352,7 +352,7 @@ test("typing tcw:// in the editor offers objects and inserts a work item's folde
     const listbox = screen.getByRole("listbox", { name: "Links" })
     expect(listbox).toHaveTextContent("The X item")
     fireEvent.keyDown(area, { key: "Enter" })
-    expect(text).toBe("See tcw://W/2026-10-01-x")
+    expect(text).toBe("See tcw://p.work/2026-10-01-x")
     expect(screen.queryByRole("listbox", { name: "Links" })).toBeNull()
 })
 
@@ -362,10 +362,10 @@ function LinkEditor({ onText }: { onText: (text: string) => void }) {
         <LinkContext.Provider
             value={[
                 {
-                    identifier: "tcw://W/2026-10-01-x",
+                    identifier: "tcw://p.work/2026-10-01-x",
                     displayName: "The X item",
                 },
-                { identifier: "tcw://C/web", displayName: "Web" },
+                { identifier: "tcw://p.capabilities/web", displayName: "Web" },
             ]}
         >
             <MarkdownEditor
@@ -425,11 +425,88 @@ test("a link typed in full ends the line on the first Enter", () => {
     )
     const area = screen.getByRole("textbox", { name: "Markdown" })
     fireEvent.change(area, {
-        target: { value: "See tcw://C/web", selectionStart: 15 },
+        target: { value: "See tcw://p.capabilities/web", selectionStart: 28 },
     })
     expect(screen.getByRole("listbox", { name: "Links" })).toBeInTheDocument()
     // Not prevented: the browser inserts the line break.
     expect(fireEvent.keyDown(area, { key: "Enter" })).toBe(true)
-    expect(text).toBe("See tcw://C/web")
+    expect(text).toBe("See tcw://p.capabilities/web")
     expect(screen.queryByRole("listbox", { name: "Links" })).toBeNull()
+})
+
+// -- another project's rows, and a row's statuses (TCW-113 Design 6.7, 6.9) ---
+
+function meta(
+    axis: "work" | "capabilities",
+    item: Parameters<typeof ItemMeta>[0]["item"]
+) {
+    return render(
+        <ThemeProvider>
+            <ProjectIdContext.Provider value="shared">
+                <ItemMeta axis={axis} item={item} />
+            </ProjectIdContext.Provider>
+        </ThemeProvider>
+    )
+}
+
+test("a board row of another project's item carries the badge", () => {
+    meta(
+        "work",
+        workItem("x", { "full-id": "desktop.work/x", owner: "desktop" })
+    )
+    expect(screen.getByText("owned by desktop")).toBeInTheDocument()
+})
+
+test("a board row of the project's own item carries none", () => {
+    meta("work", workItem("x", { "full-id": "shared.work/x", owner: "shared" }))
+    expect(screen.queryByText(/owned by/)).toBeNull()
+})
+
+test("a tree row of another project's capability carries the badge", () => {
+    meta("capabilities", capability("abc", { status: "Supported" }, "desktop"))
+    expect(screen.getByText("owned by desktop")).toBeInTheDocument()
+})
+
+test("a capability row under down shows each status counted", () => {
+    meta(
+        "capabilities",
+        capability(
+            "abc",
+            {
+                status: "Missing",
+                statuses: [
+                    {
+                        project: "shared",
+                        status: "Missing",
+                        inherited: false,
+                        "full-id": "shared.capabilities/abc",
+                    },
+                    {
+                        project: "desktop",
+                        status: "Supported",
+                        inherited: false,
+                        "full-id": "desktop.capabilities/abc",
+                    },
+                    {
+                        project: "server",
+                        status: "Omitted",
+                        inherited: false,
+                        "full-id": "server.capabilities/abc",
+                    },
+                ],
+            },
+            "shared"
+        )
+    )
+    expect(
+        screen.getByText("Missing(1), Supported(1), Omitted(1)", {
+            exact: false,
+        })
+    ).toBeInTheDocument()
+})
+
+test("a capability row with no statuses shows its status alone", () => {
+    meta("capabilities", capability("abc", { status: "Supported" }, "desktop"))
+    expect(screen.queryByText(/\(1\)/)).toBeNull()
+    expect(screen.getByText("Supported", { exact: false })).toBeInTheDocument()
 })

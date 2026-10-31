@@ -9,6 +9,8 @@ import tcw.cli
 from tcw.cli import main
 from tcw.serve.records import RESOLVE_MAX_URIS
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
+from tests.projectfiles import config_file, write_config_file
+from tests.statefiles import CAPABILITY_STATE, TAXONOMY_STATE
 
 
 def detail(served, axis: str, ref: str) -> dict:
@@ -27,8 +29,8 @@ def assert_error(answer, status: int, code: str):
 
 
 def test_list_terms(records):
-    slugs = {t["slug"] for t in records.get("/api/taxonomy").json}
-    assert {"work-item", "admin"} <= slugs
+    full_ids = {t["full-id"] for t in records.get("/api/taxonomy").json["terms"]}
+    assert {"r.taxonomy/work-item", "r.taxonomy/admin"} <= full_ids
 
 
 def test_create_a_vocabulary_term(records):
@@ -49,7 +51,7 @@ def test_update_a_term(records):
         "revision": revision, "fields": {"name": "Renamed", "relatesTo": ["admin"]}})
     assert answer.status == 200
     assert answer.json["term"]["name"] == "Renamed"
-    assert answer.json["term"]["relates_to"] == ["admin"]
+    assert answer.json["term"]["relates_to"] == ["r.taxonomy/admin"]   # stored in full
 
 
 def test_a_stale_term_edit_is_409(records):
@@ -111,7 +113,8 @@ def test_a_feature_with_an_unknown_vocabulary_term_is_refused_and_writes_nothing
 
 def test_an_encoded_slash_names_a_nested_term(records):
     FsTaxonomyStore.open(records.root).add("Adapter", slug="adapter", parent="admin")
-    assert detail(records, "taxonomy", "admin%2Fadapter")["term"]["slug"] == "admin/adapter"
+    assert detail(records, "taxonomy", "admin%2Fadapter")["term"]["full-id"] == \
+        "r.taxonomy/admin/adapter"
     revision = detail(records, "taxonomy", "admin%2Fadapter")["coreRevision"]
     answer = records.patch("/api/taxonomy/admin%2Fadapter",
                            {"revision": revision, "fields": {"description": "nested"}})
@@ -130,11 +133,12 @@ def test_create_a_capability(records):
 
 def test_create_a_nested_capability_without_a_name(records):
     answer = records.post("/api/capabilities", {"path": "web/editing"})
-    assert answer.status == 201 and answer.json["capability"]["path"] == "web/editing"
-    assert {"web", "web/editing"} <= {c["path"] for c in
-                                      records.get("/api/capabilities").json}
-    assert detail(records, "capabilities", "web%2Fediting")["capability"]["path"] \
-        == "web/editing"
+    assert answer.status == 201
+    assert answer.json["capability"]["full-id"] == "r.capabilities/web/editing"
+    assert {"r.capabilities/web", "r.capabilities/web/editing"} <= {
+        c["full-id"] for c in records.get("/api/capabilities").json["capabilities"]}
+    assert detail(records, "capabilities", "web%2Fediting")["capability"]["full-id"] \
+        == "r.capabilities/web/editing"
 
 
 def test_update_a_capability(records):
@@ -216,13 +220,13 @@ def test_every_write_route_works_outside_a_repository(records_root, serve_projec
     served = serve_project(records_root)
     assert served.post("/api/taxonomy", {"name": "Gadget", "slug": "gadget"}).status == 201
     assert served.post("/api/capabilities", {"path": "a/b", "name": "Thing"}).status == 201
-    assert (records_root / "docs" / "taxonomy" / "gadget" / "meta.yaml").is_file()
+    assert (records_root / "docs" / "taxonomy" / "gadget" / TAXONOMY_STATE).is_file()
 
 
 def test_a_project_without_a_taxonomy_lists_none(tmp_path, personal_on, serve_project):
     from tests.serve.conftest import fs_project
     served = serve_project(fs_project(tmp_path))
-    assert served.get("/api/taxonomy").json == []
+    assert served.get("/api/taxonomy").json == {"terms": []}
 
 
 # -- links ---------------------------------------------------------------------------------------
@@ -235,35 +239,43 @@ def resolve(served, uris):
 
 
 def test_resolve_local_and_broken_links(records):
-    found = resolve(records, ["tcw://C/web", "tcw://C/nope", "tcw://garbage",
-                              "tcw://W/2026-01-01-never-created"])
-    assert found["tcw://C/web"] == {"ok": True, "axis": "capabilities", "key": "web"}
-    assert found["tcw://C/nope"] == {"ok": False, "reason": "unresolved",
-                                     "detail": "no capability: nope"}
+    found = resolve(records, ["tcw://r.capabilities/web", "tcw://r.capabilities/nope",
+                              "tcw://garbage", "tcw://r.work/2026-01-01-never-created",
+                              "tcw://C/web", "tcw://r.path/docs"])
+    assert found["tcw://r.capabilities/web"] == {"ok": True, "axis": "capabilities",
+                                                "key": "web"}
+    assert found["tcw://r.capabilities/nope"] == {
+        "ok": False, "reason": "unresolved", "detail": "no capability r.capabilities/nope"}
     assert found["tcw://garbage"]["reason"] == "unresolved"
-    assert found["tcw://W/2026-01-01-never-created"]["reason"] == "unresolved"
+    assert found["tcw://r.work/2026-01-01-never-created"]["reason"] == "unresolved"
+    assert "TCW 3.x reference" in found["tcw://C/web"]["detail"]
+    assert found["tcw://r.path/docs"] == {
+        "ok": False, "reason": "unresolved",
+        "detail": "tcw://r.path/docs names a folder, not an object"}
 
 
 def test_resolve_caps_the_batch(records):
-    found = resolve(records, [f"tcw://C/x{i}" for i in range(RESOLVE_MAX_URIS + 50)])
+    found = resolve(records, [f"tcw://r.capabilities/x{i}"
+                              for i in range(RESOLVE_MAX_URIS + 50)])
     assert len(found) == RESOLVE_MAX_URIS
 
 
 def test_resolve_needs_a_list(records):
-    assert_error(records.post("/api/resolve", {"uris": "tcw://C/web"}), 400, "usage")
+    assert_error(records.post("/api/resolve", {"uris": "tcw://r.capabilities/web"}),
+                 400, "usage")
 
 
 def test_the_configuration_is_read_again_while_serving(records_root, monkeypatch):
     """`tcw serve` outlives its start-up, so the per-command read of the
     configuration (TCW-72 Design 2.3) ends before serving."""
-    from tcw.refs import resolve_tcw_ref
+    from tcw.refs import resolve_address
     seen = []
 
     def fake_serve(root, **_):
-        seen.append(resolve_tcw_ref(root, "tcw://W/2026-01-01-x").reason)
-        config = root / "tcw-config.yaml"
-        config.write_text(config.read_text() + "work:\n  hooks:\n    timeout: -1\n")
-        seen.append(resolve_tcw_ref(root, "tcw://W/2026-01-01-x").reason)
+        seen.append(resolve_address(root, "tcw://r.work/2026-01-01-x").reason)
+        config = config_file(root)
+        write_config_file(config, config.read_text() + "work:\n  hooks:\n    timeout: -1\n")
+        seen.append(resolve_address(root, "tcw://r.work/2026-01-01-x").reason)
         return 0
 
     monkeypatch.setattr(tcw.cli, "serve", fake_serve)
@@ -332,7 +344,7 @@ def test_a_refused_term_edit_is_400(refusing, fields):
     {"Status": "Sideways"},
 ])
 def test_a_refused_capability_value_is_400_and_writes_nothing(refusing, fields):
-    meta = refusing.root / "docs" / "capabilities" / "web" / "meta.yaml"
+    meta = refusing.root / "docs" / "capabilities" / "web" / CAPABILITY_STATE
     before = meta.read_text()
     assert_error(capability_patch(refusing, "web", fields), 400, "usage")
     assert meta.read_text() == before
@@ -347,7 +359,8 @@ def test_negation_is_accepted_on_roles_and_when(refusing):
                                                 "When": ["!conditions/offline"]})
     assert answer.status == 200, answer.body
     fields = answer.json["capability"]["fields"]
-    assert (fields["Roles"], fields["When"]) == (["!roles/admin"], ["!conditions/offline"])
+    assert (fields["Roles"], fields["When"]) == (["!r.capabilities/roles/admin"],
+                                                 ["!r.capabilities/conditions/offline"])
 
 
 def test_accepted_reference_values(refusing):
@@ -361,7 +374,8 @@ def test_accepted_reference_values(refusing):
 
 @pytest.fixture
 def inheriting(tmp_path, serve_project):
-    """`child` extends `base`'s taxonomy and capabilities."""
+    """`child` inherits `base`'s taxonomy and capabilities: `base` is its
+    parent passing both; `base` names nothing."""
     from tcw.store.fs import init
     from tests.work.projects import connect, git
     roots = {}
@@ -371,20 +385,18 @@ def inheriting(tmp_path, serve_project):
         git(root, "init", "-q")
         init(["taxonomy", "capabilities", "work"], root, name)
         roots[name] = root
-    connect(roots["child"], roots["base"], "children")
-    connect(roots["base"], roots["child"], "parent")
+    connect(roots["child"], roots["base"], "parent")
     FsTaxonomyStore.open(roots["base"]).add("Shared", slug="shared")
     FsCapabilitiesStore.open(roots["base"]).add("shared-cap", "Shared", status="Supported")
-    FsTaxonomyStore.open(roots["child"]).extends_add("base")
-    FsCapabilitiesStore.open(roots["child"]).extends_add("base")
     return serve_project(roots["child"])
 
 
-def test_an_inherited_capability_is_listed_with_its_origin_and_read_only(inheriting):
-    listed = {c["path"]: c for c in inheriting.get("/api/capabilities").json}
-    assert listed["shared-cap"]["origin"] == "base"
+def test_an_inherited_capability_is_listed_with_its_owner_and_read_only(inheriting):
+    listed = {c["full-id"]: c for c in
+              inheriting.get("/api/capabilities?scope=up").json["capabilities"]}
+    assert listed["base.capabilities/shared-cap"]["owner"] == "base"
     meta = inheriting.root.parent / "base" / "docs" / "capabilities" / "shared-cap" / \
-        "meta.yaml"
+        CAPABILITY_STATE
     before = meta.read_text()
     answer = inheriting.patch("/api/capabilities/shared-cap",
                               {"fields": {"Status": "Partial", "Gaps": "x"},
@@ -395,8 +407,8 @@ def test_an_inherited_capability_is_listed_with_its_origin_and_read_only(inherit
 
 
 def test_an_inherited_term_is_read_only(inheriting):
-    listed = {t["slug"]: t for t in inheriting.get("/api/taxonomy").json}
-    assert listed["shared"]["origin"] == "base"
+    listed = {t["full-id"]: t for t in inheriting.get("/api/taxonomy?scope=up").json["terms"]}
+    assert listed["base.taxonomy/shared"]["owner"] == "base"
     answer = inheriting.patch("/api/taxonomy/shared", {"fields": {"name": "Mine"},
                                                        "revision": "r"})
     assert_error(answer, 403, "read-only")
@@ -409,8 +421,8 @@ def test_an_inherited_capability_can_be_named_in_a_reference(inheriting):
     assert answer.status == 200, answer.body
 
 
-def test_a_link_to_another_projects_item_is_other_project(tmp_path, personal_on,
-                                                         serve_project, tcw):
+def test_a_link_to_another_projects_item_resolves(tmp_path, personal_on,
+                                                  serve_project, tcw):
     from tests.serve.conftest import fs_project
     from tests.serve.test_work_read import new
     from tests.work.projects import commit_all, connect, make_project
@@ -420,35 +432,37 @@ def test_a_link_to_another_projects_item_is_other_project(tmp_path, personal_on,
     connect(other, root, "parent")
     folder = new(tcw, other, "Theirs")
     commit_all(other)
-    found = resolve(serve_project(root), [f"tcw://q/W/{folder}"])
-    assert found[f"tcw://q/W/{folder}"] == {"ok": False, "reason": "other-project",
-                                            "project": "q"}
+    found = resolve(serve_project(root), [f"tcw://q.work/{folder}"])
+    # TCW-113 Design 6.4: the link names the item by its full identifier.
+    assert found[f"tcw://q.work/{folder}"] == {"ok": True, "axis": "work",
+                                               "key": f"q.work/{folder}"}
 
 
 # -- references through an encoded slash (2.x's coverage, kept) ---------------------------------
 
 
 def test_an_inherited_term_reads_by_an_encoded_slash(inheriting):
-    found = detail(inheriting, "taxonomy", "base%2Fshared")
-    assert (found["term"]["slug"], found["term"]["origin"]) == ("shared", "base")
+    found = detail(inheriting, "taxonomy", "base.taxonomy%2Fshared")
+    assert (found["term"]["full-id"], found["term"]["owner"]) == \
+        ("base.taxonomy/shared", "base")
 
 
 def test_an_inherited_capability_reads_by_an_encoded_slash(inheriting):
-    found = detail(inheriting, "capabilities", "base%2Fshared-cap")
-    assert found["capability"]["origin"] == "base"
+    found = detail(inheriting, "capabilities", "base.capabilities%2Fshared-cap")
+    assert found["capability"]["owner"] == "base"
 
 
 def test_a_link_into_an_inherited_store_resolves(inheriting):
-    found = resolve(inheriting, ["tcw://base/C/shared-cap"])
-    assert found["tcw://base/C/shared-cap"] == {"ok": True, "axis": "capabilities",
-                                               "key": "base/shared-cap"}
+    found = resolve(inheriting, ["tcw://base.capabilities/shared-cap"])
+    assert found["tcw://base.capabilities/shared-cap"] == {
+        "ok": True, "axis": "capabilities", "key": "base.capabilities/shared-cap"}
 
 
 def test_a_nested_capability_is_edited_by_an_encoded_slash(records):
     FsCapabilitiesStore.open(records.root).add("web/editing", "Editing", status="Missing")
     answer = capability_patch(records, "web%2Fediting", {"Status": "Partial", "Gaps": "x"})
     assert answer.status == 200, answer.body
-    assert answer.json["capability"]["path"] == "web/editing"
+    assert answer.json["capability"]["full-id"] == "r.capabilities/web/editing"
     assert answer.json["capability"]["status"] == "Partial"
 
 
@@ -474,13 +488,13 @@ def test_an_inherited_capabilitys_refusal_names_a_command_that_overrides_it(
     for argv in named:
         build_parser().parse_args(argv)
     base_meta = inheriting.root.parent / "base" / "docs" / "capabilities" / "shared-cap" / \
-        "meta.yaml"
+        CAPABILITY_STATE
     before = base_meta.read_text()
     argv = [part.replace("<name>=<value>", "Status=Partial") for part in named[0]]
     ran = tcw(argv, inheriting.root)
     assert ran.code == 0, ran.err
     assert base_meta.read_text() == before
-    shown = FsCapabilitiesStore.open(inheriting.root).get("shared-cap")
+    shown = FsCapabilitiesStore.open(inheriting.root).get_view("shared-cap")
     assert shown.status == "Partial"
 
 
@@ -492,3 +506,23 @@ def test_an_inherited_terms_refusal_names_no_command_the_cli_lacks(inheriting):
     assert "override" not in answer.json["error"]
     for argv in _named_commands(answer.json["error"]):
         build_parser().parse_args(argv)
+
+
+def test_a_term_whose_parent_cannot_hold_it_says_so_as_a_warning(tmp_path, personal_on,
+                                                                 serve_project):
+    """TCW-118 decision 5, on the page: the line saying the folder is made at
+    the top reaches the person, as a warning on the parent."""
+    from tests.objectcli import obj, project
+    from tests.projectfiles import connect_projects, write_manifest
+    app = project(tmp_path, "app", work={})
+    core = project(tmp_path, "core", work={})
+    connect_projects(app, "parent", "core", inherit="none")
+    write_manifest(app, {"core": "../core"})
+    obj(core, "taxonomy", "payment", name="Payment")
+    answer = serve_project(app).post("/api/taxonomy", {
+        "name": "Refund", "parent": "core.taxonomy/payment"})
+    assert answer.status == 201, answer.body
+    assert answer.json["term"]["full-id"] == "app.taxonomy/refund"
+    notes = [w for w in answer.json.get("warnings", [])
+             if w["message"].startswith("not nested: ")]
+    assert [(w["severity"], w["where"]) for w in notes] == [("warning", "parent")], answer.json

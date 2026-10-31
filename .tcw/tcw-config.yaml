@@ -1,0 +1,156 @@
+tcw-version: 4.0.0
+id: tcw
+work:
+  backend: jira
+  jira:
+    site: https://proposit.atlassian.net
+    project: TCW
+    credentials:
+      email-env: TCW_JIRA_EMAIL
+      token-env: TCW_JIRA_API_KEY
+    fields:
+      project: TCW Project
+      item: TCW Item
+      effort: Effort
+      complexity: Complexity
+  tags:
+  - bug
+  - capabilities
+  - cli
+  - docs
+  - remote
+  - skills
+  - store
+  - taxonomy
+  - tech-debt
+  - web
+  - work
+  documentation:
+  - path: README.md
+    trigger: Public-API
+    description: 'Public-facing overview: what TCW is, installation, each axis and its
+      skills and CLI, the work lifecycle and Jira, the local web app, and contributor
+      setup; plain, high-readability. Update when the public CLI surface or user-facing
+      behavior changes.'
+  - path: docs/guide/jira.md
+    trigger: Jira-Change
+    description: User-facing guide to the Jira backend; plain language. Update whenever
+      what a `tcw work` command does to a ticket, a `work.jira` key, a stage's `status`,
+      or `tcw work tickets list` or `tcw work tickets adopt` changes.
+  - path: docs/guide/<topic>.md
+    trigger: Guide-Topic-Change
+    description: The long-form user guides, one per topic — taxonomy and capabilities,
+      multi-repo, linking and validation, and the rest of docs/guide/. Update the
+      guide whose topic a change touches, in plain language. Fires on more than a
+      CLI surface change — it also covers where a setting is declared, what a command
+      writes to disk, and which files TCW treats as its own records, because a guide
+      that names a file or a key goes stale silently when that moves. docs/guide/jira.md
+      has its own entry and is covered by Jira-Change instead.
+  - path: docs/release-notes/upcoming/<folder>.md
+    trigger: Public-API
+    description: User-facing release notes for the next version; plain language, no
+      jargon or internal module names. One file per work item, named by the item's
+      folder name, never its full slug; never edit another item's file. The folder's
+      README.md says how to write one.
+  - path: docs/changelogs/upcoming/<folder>.md
+    trigger: Any-Code-Change
+    description: Developer changelog for the next version; technical, grouped under
+      `##` Added/Changed/Fixed/Removed/Internal headings. One file per work item,
+      named by the item's folder name, never its full slug; never edit another
+      item's file.
+  - path: skills/<component>/SKILL.md
+    trigger: Skill-Driven-Component
+    description: The driving skills (`work`, `capabilities`, …) that teach
+      agents to operate each component through its CLI. Always update the matching
+      skill whenever the component it drives changes — its CLI surface, model/fields,
+      lifecycle, or guardrails — so the skill never drifts from the tool. How to configure
+      a component goes to `configure`, not to the component's skill.
+  - path: skills/configure/references/<document>.md
+    trigger: Configuration-Key-Change
+    description: How to declare or change each configuration setting. Update the matching
+      document whenever a key in `tcw-config.yaml`, a component config file, or a
+      `TCW_PROJECT_<ID>`-style variable is added, removed, or changes meaning.
+  - path: docs/use-cases.md
+    trigger: Project-Setup-Change
+    description: The project setups and working situations TCW must work in, each
+      with its requirements and known gaps, for people changing TCW. Update when a
+      change alters how TCW behaves in one of those setups, when a new real setup
+      is found, or when a known gap's item is finished; plain language.
+  procedures:
+    create-work:
+    - inherit: true
+    - file: docs/procedures/create-work.md
+  stages:
+    inbox:
+      status: Triage
+    request:
+      status: To Do
+      prompt: &pull-first
+      - blob: &pull-text >-
+          Before you start, bring this checkout up to date with
+          `git pull --ff-only`. If the folder that
+          `tcw work path <item>` prints is inside a different
+          git repository, also run
+          `git -C <that folder> pull --ff-only`. If either
+          pull fails, tell the user and carry on with what
+          you have.
+      - inherit: true
+      post: &commit-after-move
+      - command: sh docs/guide/examples/commit-item-after-move.sh
+    spec:
+      status: Specifying
+      prompt:
+      - blob: *pull-text
+      - inherit: true
+      - file: docs/lifecycle/abstraction.md
+      - file: docs/lifecycle/harness.md
+      - file: docs/lifecycle/templates/spec-bug.md
+        when:
+          tags:
+          - bug
+      - file: docs/lifecycle/templates/spec.md
+        when:
+          not-tags:
+          - bug
+      post: *commit-after-move
+    plan:
+      status: Planning
+      pre:
+      - command: python scripts/require_artifact.py spec
+      prompt:
+      - blob: *pull-text
+      - inherit: true
+      - file: docs/lifecycle/abstraction.md
+      post: *commit-after-move
+    implement:
+      status: In Progress
+      pre:
+      - command: python scripts/require_artifact.py spec
+      - command: python scripts/require_artifact.py plan
+      prompt:
+      - blob: *pull-text
+      - inherit: true
+      - file: docs/lifecycle/implementation.md
+      - file: docs/lifecycle/harness.md
+      post: *commit-after-move
+    review:
+      status: In Review
+      prompt:
+      - blob: *pull-text
+      - inherit: true
+      - file: docs/lifecycle/review.md
+      post: *commit-after-move
+    qa:
+      status: In QA
+      prompt: *pull-first
+      post: *commit-after-move
+    completed:
+      status: Done
+      pre:
+      - command: tcw validate
+      post: *commit-after-move
+    discarded:
+      status: Won't Do
+      post: *commit-after-move
+    postmortem:
+      prompt: *pull-first

@@ -1,7 +1,7 @@
-"""`tcw projects list` (TCW-73 Design 2; AC 7's last part).
+"""`tcw project list` (TCW-73 Design 2; AC 7's last part).
 
-One project ID per line, this project first, then its parent, children and
-upstream projects, present or not; `--json` says which is which.
+One project ID per line, this project first, then its parents and its
+children, present or not; `--json` says which is which.
 """
 
 import json
@@ -12,32 +12,42 @@ import yaml
 
 from tcw.cli import main
 from tests.work.projects import make_project
+from tests.projectfiles import config_file, write_config_file, write_manifest
 
 
 def declare(root, relation, project_id, target):
-    path = root / "tcw-config.yaml"
+    """Name `project_id` in `root`'s configuration — as a parent passing every
+    axis (`relation` "parent"), a parent passing none ("upstream", what a 3.x
+    upstream became) or a child ("children") — and say in `root`'s manifest
+    that it is at `target`."""
+    path = config_file(root)
     document = yaml.safe_load(path.read_text())
-    section = document.setdefault("projects", {}).setdefault(relation, {})
-    section[project_id] = os.path.relpath(target, root)
-    path.write_text(yaml.safe_dump(document, sort_keys=False))
+    if relation == "children":
+        document.setdefault("children", []).append(project_id)
+    else:
+        document.setdefault("parents", []).append(
+            project_id if relation == "parent" else {"id": project_id, "inherit": "none"})
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    write_manifest(root, {project_id: os.path.relpath(target, root)})
 
 
 @pytest.fixture
-def graph(tmp_path):
+def graph(tmp_path, request):
     """`fx` under parent `top`, with children `c1` and `c2`, an absent child
-    `gone`, and an upstream `up`."""
+    `gone`, and a parent `up` passing no axis (a 3.x upstream)."""
+    link = declare
     top = make_project(tmp_path, "top")
     fx = make_project(tmp_path, "fx")
     c1 = make_project(tmp_path, "c1")
     c2 = make_project(tmp_path, "c2")
     up = make_project(tmp_path, "up")
-    declare(top, "children", "fx", fx)
-    declare(fx, "parent", "top", top)
+    link(top, "children", "fx", fx)
+    link(fx, "parent", "top", top)
     for child in (c1, c2):
-        declare(fx, "children", child.name, child)
-        declare(child, "parent", "fx", fx)
-    declare(fx, "children", "gone", tmp_path / "gone")
-    declare(fx, "upstream", "up", up)
+        link(fx, "children", child.name, child)
+        link(child, "parent", "fx", fx)
+    link(fx, "children", "gone", tmp_path / "gone")
+    link(fx, "upstream", "up", up)
     return fx
 
 
@@ -52,32 +62,34 @@ def run(monkeypatch, capsys, cwd, *argv):
 
 
 def test_one_id_per_line_current_first(graph, monkeypatch, capsys):
-    code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
+    code, out, err = run(monkeypatch, capsys, graph, "project", "list")
     assert code == 0, err
-    assert out.splitlines() == ["fx", "top", "c1", "c2", "gone", "up"]
+    # TCW-108 Design 8.1: the parents in listing order, then the children;
+    # the 3.x upstream is a parent.
+    assert out.splitlines() == ["fx", "top", "up", "c1", "c2", "gone"]
 
 
 def test_json_says_relation_and_presence(graph, monkeypatch, capsys):
-    code, out, _ = run(monkeypatch, capsys, graph, "projects", "list", "--json")
+    code, out, _ = run(monkeypatch, capsys, graph, "project", "list", "--json")
     data = json.loads(out)
-    assert data["schema"] == 1
+    assert data["schema"] == 2
     rows = {p["id"]: p for p in data["projects"]}
-    assert [p["id"] for p in data["projects"]] == ["fx", "top", "c1", "c2", "gone", "up"]
+    assert [p["id"] for p in data["projects"]] == ["fx", "top", "up", "c1", "c2", "gone"]
     assert rows["fx"]["relation"] == "current" and rows["top"]["relation"] == "parent"
-    assert rows["c1"]["relation"] == "child" and rows["up"]["relation"] == "upstream"
+    assert rows["c1"]["relation"] == "child" and rows["up"]["relation"] == "parent"
     assert rows["gone"]["present"] is False and rows["gone"]["path"] is None
     assert rows["c1"]["present"] is True and rows["c1"]["path"].endswith("c1")
 
 
 def test_a_lone_project_lists_itself(tmp_path, monkeypatch, capsys):
     root = make_project(tmp_path, "solo")
-    assert run(monkeypatch, capsys, root, "projects", "list")[:2] == (0, "solo\n")
+    assert run(monkeypatch, capsys, root, "project", "list")[:2] == (0, "solo\n")
 
 
 def test_outside_a_project(tmp_path, monkeypatch, capsys):
-    code, out, err = run(monkeypatch, capsys, tmp_path, "projects", "list")
+    code, out, err = run(monkeypatch, capsys, tmp_path, "project", "list")
     assert (code, out) == (1, "")
-    assert err.startswith("tcw projects list: no TCW project here")
+    assert err.startswith("tcw project list: no TCW project here")
 
 
 def test_work_nodes_is_gone(graph, monkeypatch, capsys):
@@ -87,11 +99,17 @@ def test_work_nodes_is_gone(graph, monkeypatch, capsys):
 # -- the `projects:` key (Design 9.3; AC 7) -------------------------------------------
 
 
-def _rename_key(root, old, new):
-    path = root / "tcw-config.yaml"
+def _add_2x_key(root):
+    """Give `root`'s configuration the 2.x `connected-projects` key."""
+    path = config_file(root)
     document = yaml.safe_load(path.read_text())
-    document[new] = document.pop(old)
-    path.write_text(yaml.safe_dump(document, sort_keys=False))
+    document["connected-projects"] = {"children": {"zz": None}}
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+
+
+REFUSED = ("'connected-projects' is not a TCW 4.0 key: name parents under "
+           "'parents:' and children under 'children:', by ID, and say where "
+           "projects are in .tcw/tcw-manifest.yaml")
 
 
 def test_the_graph_under_projects_validates(graph, monkeypatch, capsys):
@@ -101,51 +119,44 @@ def test_the_graph_under_projects_validates(graph, monkeypatch, capsys):
 
 
 def test_the_2x_key_is_an_error_naming_the_guide(graph, monkeypatch, capsys):
-    _rename_key(graph, "projects", "connected-projects")
+    """TCW-108 Design 3.5: the message names `parents:`, `children:` and the
+    manifest rather than the 3.x key it was renamed to."""
+    _add_2x_key(graph)
     code, out, err = run(monkeypatch, capsys, graph, "validate")
     assert code == 1
-    text = out + err
-    assert "connected-projects" in text and "'projects'" in text
-    assert "docs/migration-guide-2.8-to-3.0.0.md" in text
+    assert REFUSED in out + err
 
 
 # -- review fix R1: every command refuses the 2.x key ------------------------------
 
 
 @pytest.mark.parametrize("argv", [
-    ("projects", "list"),
-    ("provision",),
+    ("project", "list"),
+    ("project", "provision"),
     ("work", "list"),
-    ("work", "new", "x", "--project", "c1"),
+    ("work", "new", "x"),
     ("taxonomy", "list"),
 ])
 def test_every_command_refuses_the_2x_key(graph, monkeypatch, capsys, argv):
-    _rename_key(graph, "projects", "connected-projects")
+    _add_2x_key(graph)
     code, out, err = run(monkeypatch, capsys, graph, *argv)
     assert (code, out) == (1, ""), (out, err)
     assert err.count("\n") == 1, err
-    assert err.startswith(f"tcw {' '.join(argv[:2]) if argv[0] != 'provision' else 'provision'}"), err
-    assert "connected-projects" in err and "docs/migration-guide-2.8-to-3.0.0.md" in err
+    assert err.startswith(f"tcw {' '.join(argv[:2])}"), err
+    assert REFUSED in err
 
 
-def test_provision_refuses_the_2x_key_in_a_child(graph, monkeypatch, capsys):
-    """A child in the graph still holding the old key is reported by
-    `provision`, which reads every connected project's declarations."""
-    child = graph.parent / "c1"
-    _rename_key(child, "projects", "connected-projects")
-    code, out, err = run(monkeypatch, capsys, graph, "provision", "--dry-run")
-    assert (code, out) == (1, ""), err
-    assert "c1" in err and "docs/migration-guide-2.8-to-3.0.0.md" in err
+
 
 
 def test_work_list_refuses_the_2x_key_in_a_child(graph, monkeypatch, capsys):
     """Pre-freeze clean-up, C9: `open_backend` checks the project graph, as
     `taxonomy list` does."""
     child = graph.parent / "c1"
-    _rename_key(child, "projects", "connected-projects")
+    _add_2x_key(child)
     code, out, err = run(monkeypatch, capsys, graph, "work", "list")
     assert (code, out) == (1, ""), err
-    assert "c1" in err and "docs/migration-guide-2.8-to-3.0.0.md" in err
+    assert "c1" in err and REFUSED in err
 
 
 def test_work_list_runs_with_a_declared_child_that_is_not_here(graph, monkeypatch,
@@ -158,29 +169,82 @@ def test_work_list_runs_with_a_declared_child_that_is_not_here(graph, monkeypatc
 def test_the_2x_key_refusal_names_the_file_from_a_sub_folder(graph, monkeypatch,
                                                              capsys):
     """Pre-freeze clean-up, C8: run from `fx/docs`, the file is
-    `../tcw-config.yaml`."""
-    _rename_key(graph, "projects", "connected-projects")
+    `../.tcw/tcw-config.yaml`."""
+    _add_2x_key(graph)
     code, out, err = run(monkeypatch, capsys, graph / "docs", "taxonomy", "list")
     assert (code, out) == (1, ""), err
-    assert ": ../tcw-config.yaml: the key 'connected-projects'" in err, err
+    assert f": ../.tcw/tcw-config.yaml: {REFUSED}" in err, err
 
 
 def test_an_upstreams_own_2x_key_is_not_its_readers_problem(graph, monkeypatch, capsys):
     up = graph.parent / "up"
-    path = up / "tcw-config.yaml"
+    path = config_file(up)
     document = yaml.safe_load(path.read_text())
     document["connected-projects"] = {"children": {"zz": "../zz"}}
-    path.write_text(yaml.safe_dump(document, sort_keys=False))
-    code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    code, out, err = run(monkeypatch, capsys, graph, "project", "list")
     assert code == 0, err
 
 
 def test_projects_list_reports_a_registry_problem(graph, monkeypatch, capsys):
     """An invalid child ID is an error, not a project left off the list."""
-    path = graph / "tcw-config.yaml"
+    path = config_file(graph)
     document = yaml.safe_load(path.read_text())
-    document["projects"]["children"]["Bad ID"] = "../c1"
-    path.write_text(yaml.safe_dump(document, sort_keys=False))
-    code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
+    document["children"].append("Bad ID")
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    code, out, err = run(monkeypatch, capsys, graph, "project", "list")
     assert (code, out) == (1, ""), (out, err)
-    assert err.startswith("tcw projects list: ") and "children key" in err, err
+    index = document["children"].index("Bad ID")
+    assert err.startswith("tcw project list: "), err
+    assert f"fx/.tcw/tcw-config.yaml: children[{index}]: project ID must match" in err, err
+
+
+# -- TCW-115 AC 6: `tcw project list` as TCW-107 and TCW-114 leave it --------------
+
+def ac6(tmp_path):
+    """TCW-115 AC 6's projects: `app` with parent `core` (passing taxonomy)
+    next to it and in no manifest, and child `k` at `<tmp>/x/k`, placed by
+    `app`'s manifest. Returns `app`'s root."""
+    from tests.projectfiles import connect_projects
+    app = make_project(tmp_path, "app")
+    core = make_project(tmp_path, "core")
+    k = make_project(tmp_path / "x", "k")
+    connect_projects(app, "parent", "core", inherit=["taxonomy"])
+    connect_projects(app, "children", "k")
+    write_manifest(app, {"k": "../x/k"})
+    connect_projects(k, "parent", "app")
+    write_manifest(k, {"app": os.path.relpath(app, k)})
+    assert core.is_dir()
+    return app
+
+
+def test_ac6_the_plain_listing(tmp_path, monkeypatch, capsys):
+    app = ac6(tmp_path)
+    assert run(monkeypatch, capsys, app, "project", "list")[:2] == (0, "app\ncore\nk\n")
+
+
+def test_ac6_the_json_document(tmp_path, monkeypatch, capsys):
+    app = ac6(tmp_path)
+    code, out, err = run(monkeypatch, capsys, app, "project", "list", "--json")
+    assert code == 0, err
+    data = json.loads(out)
+    assert set(data) == {"schema", "projects", "load-order", "load-order-complete",
+                         "load-order-warning"}
+    rows = {p["id"]: p for p in data["projects"]}
+    assert rows["app"]["found"] is None and rows["app"]["relation"] == "current"
+    assert rows["core"]["inherit"] == ["taxonomy"]
+    assert rows["core"]["found"] == {"by": "search"}
+    assert rows["k"]["personal"] is False
+    assert rows["k"]["found"] == {"by": "manifest",
+                                  "file": str((app / ".tcw/tcw-manifest.yaml").resolve())}
+    assert not any("read-only" in row for row in data["projects"])
+
+
+def test_ac6_a_child_not_here_is_a_row(tmp_path, monkeypatch, capsys):
+    import shutil
+    app = ac6(tmp_path)
+    shutil.rmtree(tmp_path / "x" / "k")
+    code, out, err = run(monkeypatch, capsys, app, "project", "list", "--json")
+    assert code == 0, err
+    k = {p["id"]: p for p in json.loads(out)["projects"]}["k"]
+    assert (k["present"], k["path"], k["found"]) == (False, None, None)

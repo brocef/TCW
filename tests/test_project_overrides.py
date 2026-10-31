@@ -21,17 +21,22 @@ from pathlib import Path
 import pytest
 
 from tcw.cli import main
+from tests.projectfiles import write_config, write_manifest
 
 
-def _node(root: Path, body: str) -> Path:
-    """A tcw node at `root` with `body` as its config, and nothing defaulted.
+def _node(root: Path, body: str, where: dict | None = None) -> Path:
+    """A tcw node at `root` with `body` as its config, and nothing defaulted;
+    `where`, when given, is written to its manifest, saying where the
+    projects it names are.
 
     Every key the resolution ladder branches on is written by the caller. A
     helper that supplied a locator or a repository of its own would fix an axis
     these tests exist to vary.
     """
     root.mkdir(parents=True, exist_ok=True)
-    (root / "tcw-config.yaml").write_text(body, encoding="utf-8")
+    write_config(root, body, encoding="utf-8")
+    if where:
+        write_manifest(root, where)
     return root
 
 
@@ -55,13 +60,17 @@ def workspace(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     orchestrator = _node(
         tmp_path / "orchestrator",
-        "id: root-project\nprojects:\n  children:\n"
-        "    core-project: ./core\n",
+        "id: root-project\nchildren:\n- core-project\n",
+        {"core-project": "./core"},
     )
+    # `core` places its parent where it is on this machine. In TCW 4 a
+    # manifest entry naming a folder that holds files and no project is an
+    # error (TCW-107 Design 2.6), and the entry under test here is the
+    # orchestrator's.
     core = _node(
         tmp_path / "core",
-        "id: core-project\nprojects:\n  parent:\n"
-        "    root-project: ..\n",
+        "id: core-project\nparents:\n- root-project\n",
+        {"root-project": "../orchestrator"},
     )
     monkeypatch.chdir(orchestrator)
     return tmp_path, orchestrator, core
@@ -122,7 +131,7 @@ def test_validate_with_no_override_says_nothing_about_one(workspace, capsys):
     """
     assert main(["validate"]) == 0
     printed = capsys.readouterr()
-    assert "declared but not reachable" in printed.out       # an `unresolved` line
+    assert "is not on this machine" in printed.out           # an `unresolved` line
     assert "TCW_PROJECT" not in printed.out + printed.err
     assert "overridden" not in printed.out + printed.err
 
@@ -130,14 +139,16 @@ def test_validate_with_no_override_says_nothing_about_one(workspace, capsys):
 # --- provisioning, and the commands that resolve a graph ----------------------
 
 
-def _node_remote(tmp_path: Path, name: str, body: str) -> Path:
+def _node_remote(tmp_path: Path, name: str, body: str, where: dict | None = None) -> Path:
     """A git repository whose working tree *is* a tcw node, used as a remote.
 
     Git does not care that the URL is a local path, which is how these stay
     inside the "no network, ever" rule while doing a real clone.
     """
     remote = _git_repo(tmp_path / name)
-    (remote / "tcw-config.yaml").write_text(body, encoding="utf-8")
+    write_config(remote, body, encoding="utf-8")
+    if where:
+        write_manifest(remote, where)
     subprocess.run(["git", "-C", str(remote), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(remote), "commit", "-qm", "seed node"], check=True)
     return remote
@@ -159,18 +170,18 @@ def provisionable(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
     remote = _node_remote(
         tmp_path, "remote-core",
-        "id: core-project\nprojects:\n  parent:\n    root-project: ..\n",
+        "id: core-project\nparents:\n- root-project\n",
+        {"root-project": ".."},
     )
     orchestrator = _node(
         tmp_path / "orchestrator",
-        "id: root-project\nprojects:\n  children:\n"
-        "    core-project:\n      path: ./core\n      repository:\n"
-        f"        url: {remote}\n        ref: main\n",
+        "id: root-project\nchildren:\n- core-project\n",
+        {"core-project": {"path": "./core", "repository": f"{remote}#main"}},
     )
     local_core = _node(
         tmp_path / "core",
-        "id: core-project\nprojects:\n  parent:\n"
-        f"    root-project: {orchestrator}\n",
+        "id: core-project\nparents:\n- root-project\n",
+        {"root-project": "../orchestrator"},
     )
     monkeypatch.chdir(orchestrator)
     return orchestrator, local_core, cache
@@ -179,81 +190,6 @@ def provisionable(tmp_path, monkeypatch):
 def _cache_entries(cache: Path) -> list[str]:
     stores = cache / "tcw" / "stores"
     return sorted(p.name for p in stores.iterdir()) if stores.is_dir() else []
-
-
-def test_without_an_override_the_declared_repository_is_fetched(
-        provisionable, capsys):
-    """The behaviour the override exists to prevent, asserted first.
-
-    Without this, the next test cannot tell "the override stopped a fetch" from
-    "nothing was ever going to fetch".
-    """
-    _orchestrator, _local_core, cache = provisionable
-    assert main(["provision"]) == 0
-    assert _cache_entries(cache), "expected a fetched copy with no override set"
-
-
-def test_an_overridden_project_is_never_fetched(provisionable, capsys, monkeypatch):
-    """Criterion 2 — resolved here, so nothing is obtained on its behalf.
-
-    Provisioning is not told about overrides. It asks the registry where each
-    project is, and the registry answers with the override, so this holds
-    because rule 0 lives in graph loading rather than in one command.
-    """
-    _orchestrator, local_core, cache = provisionable
-    monkeypatch.setenv("TCW_PROJECT_CORE_PROJECT", str(local_core))
-    assert main(["provision"]) == 0
-    out = capsys.readouterr().err
-    assert "core-project: already available" in out
-    assert _cache_entries(cache) == [], "an overridden project must not be fetched"
-
-
-def test_one_variable_set_serves_both_session_shapes(tmp_path, monkeypatch, capsys):
-    """Criterion 7 — the case that justifies absent-is-not-wrong.
-
-    One set of variables is configured once for an environment. A session that
-    attaches the repository resolves it locally and fetches nothing; a session
-    that does not finds the same variable naming an absent path, falls through
-    to the declaration, and provisions exactly as it would with no variable at
-    all. Neither session is told which case it is in, and that is the point —
-    if the absent path were an error, the second session would simply refuse.
-    """
-    remote = _node_remote(
-        tmp_path, "remote-core",
-        "id: core-project\nprojects:\n  parent:\n    root-project: ..\n",
-    )
-
-    def session(name: str, *, attach_core: bool):
-        base = tmp_path / name
-        base.mkdir()
-        cache = base / "cache"
-        monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
-        orchestrator = _node(
-            base / "orchestrator",
-            "id: root-project\nprojects:\n  children:\n"
-            "    core-project:\n      path: ./core\n      repository:\n"
-            f"        url: {remote}\n        ref: main\n",
-        )
-        if attach_core:
-            _node(
-                base / "core",
-                "id: core-project\nprojects:\n  parent:\n"
-                f"    root-project: {orchestrator}\n",
-            )
-        # The same variable in both, naming the same place in the layout —
-        # which exists in one session and not the other.
-        monkeypatch.setenv("TCW_PROJECT_CORE_PROJECT", str(base / "core"))
-        monkeypatch.chdir(orchestrator)
-        return orchestrator, cache
-
-    _orchestrator, cache = session("attached", attach_core=True)
-    assert main(["provision"]) == 0
-    assert _cache_entries(cache) == [], "an attached repository must not be fetched"
-
-    _orchestrator, cache = session("detached", attach_core=False)
-    assert main(["provision"]) == 0
-    assert _cache_entries(cache), "an absent override must fall through and provision"
-    assert main(["validate"]) == 0
 
 
 def test_the_override_is_honoured_by_every_command(provisionable, monkeypatch, capsys):
@@ -276,7 +212,7 @@ def test_the_override_is_honoured_by_every_command(provisionable, monkeypatch, c
     assert main(["work", "list", "--include-descendants"]) == 0
     assert "core-project" in capsys.readouterr().out
 
-    assert main(["projects", "list"]) == 0
+    assert main(["project", "list"]) == 0
     assert "core-project" in capsys.readouterr().out
 
     assert main(["taxonomy", "list"]) == 0
@@ -290,19 +226,20 @@ def test_with_no_variable_set_the_nested_layout_is_untouched(tmp_path, monkeypat
     which the suite cannot run. The stronger evidence is the whole suite: the
     conftest fixture guarantees no `TCW_PROJECT_*` variable is set, so all 2379
     other tests exercise this path. This one names the criterion so a later
-    change to `_target_path` that breaks the no-override case fails on a test
+    change to the lookup that breaks the no-override case fails on a test
     that says what it broke.
     """
     cache = tmp_path / "cache"
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
     orchestrator = _node(
         tmp_path / "orchestrator",
-        "id: root-project\nprojects:\n  children:\n"
-        "    core-project: ./core\n",
+        "id: root-project\nchildren:\n- core-project\n",
+        {"core-project": "./core"},
     )
     _node(
         tmp_path / "orchestrator" / "core",
-        "id: core-project\nprojects:\n  parent:\n    root-project: ..\n",
+        "id: core-project\nparents:\n- root-project\n",
+        {"root-project": ".."},
     )
     from tcw.store.project import FsProjectRegistry
 
@@ -310,7 +247,6 @@ def test_with_no_variable_set_the_nested_layout_is_untouched(tmp_path, monkeypat
     registry.require_valid()
     assert registry.check() == []
     assert registry.unreachable() == []
-    assert registry.misdirected() == []
     assert registry.overrides() == []
     assert [c.id for c in registry.children()] == ["core-project"]
     assert not (cache / "tcw").exists(), "a resolved graph must fetch nothing"
@@ -318,7 +254,7 @@ def test_with_no_variable_set_the_nested_layout_is_untouched(tmp_path, monkeypat
 
 # --- a broken override stops the one command that touches the network --------
 #
-# The registry refuses a present-and-wrong override everywhere. `tcw provision`
+# The registry refuses a present-and-wrong override everywhere. `tcw project provision`
 # reads declarations straight from config, so without a gate of its own it
 # fetched a second copy while `tcw validate` was refusing — the refusal was real
 # everywhere except the command that acts on it.
@@ -330,6 +266,10 @@ def _assert_refused_before_fetching(capsys, cache: Path, variable: str) -> str:
     "It refused" and "it refused *before* contacting anything" are different
     claims, and a sibling test that checked only the first would look identical
     in review.
+
+    Since TCW-107 `tcw project provision` fetches no connected project, so for
+    `core-project` the "fetched nothing" half holds whatever the variable says.
+    It is kept as a guard against a later change that fetches before refusing.
     """
     err = capsys.readouterr().err
     assert variable in err, f"the refusal must name the variable, got: {err}"
@@ -344,7 +284,7 @@ def test_provision_refuses_an_override_that_is_not_a_node(
     not_a_node = tmp_path / "notes"
     not_a_node.mkdir()
     monkeypatch.setenv("TCW_PROJECT_CORE_PROJECT", str(not_a_node))
-    assert main(["provision"]) == 1
+    assert main(["project", "provision"]) == 1
     err = _assert_refused_before_fetching(capsys, cache, "TCW_PROJECT_CORE_PROJECT")
     assert "tcw-config.yaml" in err
 
@@ -359,7 +299,7 @@ def test_provision_refuses_an_override_naming_the_wrong_node(
     _orchestrator, _local_core, cache = provisionable
     _node(tmp_path / "wrong", "id: other-project\n")
     monkeypatch.setenv("TCW_PROJECT_CORE_PROJECT", str(tmp_path / "wrong"))
-    assert main(["provision"]) == 1
+    assert main(["project", "provision"]) == 1
     err = _assert_refused_before_fetching(capsys, cache, "TCW_PROJECT_CORE_PROJECT")
     assert "other-project" in err
 

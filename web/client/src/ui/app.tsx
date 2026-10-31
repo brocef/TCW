@@ -54,8 +54,16 @@ import {
     SortControl,
 } from "./content-views"
 import { SettingsControl, Tree } from "./shared-components"
+import { ScopeControl } from "./scope-control"
+import {
+    detailScope,
+    scopeParams,
+    scopeSearch,
+    withScope,
+} from "../model/scope"
 import { RefusalContext, useRefusals } from "./refusals"
 import { beginResize, loadExpanded } from "./ui-state"
+import { ProjectIdContext } from "./project-context"
 import { AXES, LABELS, itemKey, parsePath, pathFor } from "./route-utils"
 import type {
     TClientData as Data,
@@ -68,12 +76,15 @@ import type {
     AxisItem,
     CapabilityDetail,
     CapabilityItem,
+    CapabilityList,
     JsonRecord,
     TBoard,
     TFileContent,
     TProject,
+    TScopeProject,
     TaxonomyDetail,
     TaxonomyItem,
+    TaxonomyList,
     TreeNode,
     WorkDetail,
     WorkItem,
@@ -81,8 +92,8 @@ import type {
 import { WorkPage } from "./work-views"
 import { LinkContext } from "./link-context"
 import { tcwLinkOptions } from "../model/reference-search"
+import { fullIdText, parseFullId } from "../model/identifier"
 import {
-    BlocksForm,
     CommentBox,
     FileEditor,
     NewItemForm,
@@ -105,15 +116,21 @@ type TBoardState = {
     people: Record<string, string>
     fallback: boolean
     unavailable?: string
+    projects?: TScopeProject[]
 }
 
 export function App() {
     const location = useLocation()
     const navigate = useNavigate()
     const initialRoute = useRef(parsePath(location.pathname)).current
+    // The scope and the project the page covers, kept in the URL's query
+    // string on every path (TCW-113 Design 6.6, plan choice 14).
+    const scopeKey = scopeSearch(scopeParams(location.search))
+    const scopeChoice = useMemo(() => scopeParams(scopeKey), [scopeKey])
     const [axis, setAxis] = useState<Axis>(initialRoute.axis)
     const [selected, setSelected] = useState<string | null>(initialRoute.key)
     const [project, setProject] = useState<TProject | null>(null)
+    const projectId = project?.id ?? ""
     const [data, setData] = useState<Data>({
         work: [],
         taxonomy: [],
@@ -183,10 +200,6 @@ export function App() {
         (value: boolean) => markDirty("declaration", value),
         [markDirty]
     )
-    const blocksDirty = useCallback(
-        (value: boolean) => markDirty("blocks", value),
-        [markDirty]
-    )
     const commentDirty = useCallback(
         (value: boolean) => markDirty("comment", value),
         [markDirty]
@@ -204,6 +217,18 @@ export function App() {
     // Every item, whatever the board's filters, for the fields that suggest
     // items and for `tcw://` links. Read only while something offers them.
     const [allWork, setAllWork] = useState<WorkItem[] | null>(null)
+    // The taxonomy and capabilities a reference may name: the served
+    // project's view, apart from the lists shown (plan choice 15).
+    // Each list's `projects`, under a scope other than `own`, for the
+    // notices of unavailable projects (Design 6.8).
+    const [listProjects, setListProjects] = useState<{
+        taxonomy?: TScopeProject[]
+        capabilities?: TScopeProject[]
+    }>({})
+    const [pickable, setPickable] = useState<{
+        taxonomy: TaxonomyItem[]
+        capabilities: CapabilityItem[]
+    }>({ taxonomy: [], capabilities: [] })
     const [loadError, setLoadError] = useState("")
 
     const showToast = useCallback((message: string) => {
@@ -254,27 +279,68 @@ export function App() {
         return found
     }, [])
 
-    const loadBoard = useCallback(async (search: string) => {
-        const found = await fetchJson<TBoard>(`/api/work${search}`)
-        setData((old) => ({ ...old, work: boardRows(found) }))
-        setBoard({
-            people: found.people,
-            fallback: found.fallback,
-            unavailable: found.unavailable,
-        })
-    }, [])
+    const loadBoard = useCallback(
+        async (search: string) => {
+            const found = await fetchJson<TBoard>(
+                withScope(`/api/work${search}`, scopeChoice)
+            )
+            setData((old) => ({ ...old, work: boardRows(found) }))
+            setBoard({
+                people: found.people,
+                fallback: found.fallback,
+                unavailable: found.unavailable,
+                projects: found.projects,
+            })
+        },
+        [scopeChoice]
+    )
 
-    const loadRecords = useCallback(async (found: TProject) => {
-        const [taxonomy, capabilities] = await Promise.all([
-            found.axes.taxonomy
-                ? fetchJson<TaxonomyItem[]>("/api/taxonomy")
-                : Promise.resolve([]),
-            found.axes.capabilities
-                ? fetchJson<CapabilityItem[]>("/api/capabilities")
-                : Promise.resolve([]),
-        ])
-        setData((old) => ({ ...old, taxonomy, capabilities }))
-    }, [])
+    const loadRecords = useCallback(
+        async (found: TProject) => {
+            // The lists shown, and apart from them what the pickers offer: the
+            // served project's view, `scope=up`, whatever the lists show
+            // (TCW-113 Design 6.6, plan choice 15).
+            const none: TaxonomyList & CapabilityList = {
+                terms: [],
+                capabilities: [],
+            }
+            const [taxonomy, capabilities, taxonomyUp, capabilitiesUp] =
+                await Promise.all([
+                    found.axes.taxonomy
+                        ? fetchJson<TaxonomyList>(
+                              withScope("/api/taxonomy", scopeChoice)
+                          )
+                        : Promise.resolve(none),
+                    found.axes.capabilities
+                        ? fetchJson<CapabilityList>(
+                              withScope("/api/capabilities", scopeChoice)
+                          )
+                        : Promise.resolve(none),
+                    found.axes.taxonomy
+                        ? fetchJson<TaxonomyList>("/api/taxonomy?scope=up")
+                        : Promise.resolve(none),
+                    found.axes.capabilities
+                        ? fetchJson<CapabilityList>(
+                              "/api/capabilities?scope=up"
+                          )
+                        : Promise.resolve(none),
+                ])
+            setData((old) => ({
+                ...old,
+                taxonomy: taxonomy.terms,
+                capabilities: capabilities.capabilities,
+            }))
+            setListProjects({
+                taxonomy: taxonomy.projects,
+                capabilities: capabilities.projects,
+            })
+            setPickable({
+                taxonomy: taxonomyUp.terms,
+                capabilities: capabilitiesUp.capabilities,
+            })
+        },
+        [scopeChoice]
+    )
 
     const load = useCallback(async () => {
         try {
@@ -324,7 +390,7 @@ export function App() {
         const route = parsePath(location.pathname)
         if (route.axis !== axis || route.key !== selected) {
             if (!confirmLeave()) {
-                navigate(pathFor(axis, selected), { replace: true })
+                navigate(pathFor(axis, selected) + scopeKey, { replace: true })
                 return
             }
             setProblem("")
@@ -344,18 +410,38 @@ export function App() {
     useEffect(() => {
         if (axis !== "work" || !selected) {
             setWorkDetail(null)
+            // The board with no item chosen: no other page's error stays.
+            if (axis === "work") setDetailError("")
             return
         }
         let stale = false
         setLoadingDetail(true)
         setDetailError("")
-        void fetchJson<WorkDetail>(`/api/work/${encodeRef(selected)}`)
+        // The scope decides its `children` and `blocks` (Design 3.3).
+        void fetchJson<WorkDetail>(
+            withScope(
+                `/api/work/${encodeRef(selected)}`,
+                detailScope(
+                    scopeChoice,
+                    parseFullId(selected)?.project ?? projectId
+                )
+            )
+        )
             .then((found) => {
                 if (stale) return
                 setWorkDetail(found)
-                if (found.folder !== selected) {
-                    setSelected(found.folder)
-                    navigate(pathFor("work", found.folder), { replace: true })
+                // The key the page is kept at: the folder of this project's
+                // item, the full identifier of another's (Design 6.3).
+                const owner = parseFullId(selected)?.project ?? projectId
+                const key =
+                    owner === projectId
+                        ? found.folder
+                        : fullIdText(owner, "work", found.folder)
+                if (key !== selected) {
+                    setSelected(key)
+                    navigate(pathFor("work", key) + scopeKey, {
+                        replace: true,
+                    })
                 }
             })
             .catch((error: unknown) => {
@@ -371,25 +457,73 @@ export function App() {
         return () => {
             stale = true
         }
-    }, [axis, selected, detailVersion]) // eslint-disable-line react-hooks/exhaustive-deps
+    }, [axis, selected, detailVersion, scopeChoice]) // eslint-disable-line react-hooks/exhaustive-deps
 
+    // What an unavailable project leaves out of the list shown (Design
+    // 1.8). On the board, one the project filter does not keep is read only
+    // for the kept items' children and blocks (Design 3.3).
+    const leftOut = (id: string) =>
+        axis === "work" && scopeChoice.project && scopeChoice.project !== id
+            ? "its items are not counted in children and blocks"
+            : "its objects are not listed"
+
+    // A term or capability of the served project is read when the list
+    // shown holds it, and its page is cleared when the list no longer does.
+    // Another project's is read by its full identifier whether or not the
+    // list holds it: under `down` the list shows an override's original,
+    // and a status line links to the override (Design 6.4, 6.9).
+    const selectedOwner = selected ? parseFullId(selected)?.project : undefined
+    const elsewhere = Boolean(
+        projectId && selectedOwner && selectedOwner !== projectId
+    )
+    const listed =
+        axis !== "work" &&
+        selected !== null &&
+        (data[axis] as AxisItem[]).some(
+            (item) => itemKey(axis, item, projectId) === selected
+        )
     useEffect(() => {
-        if (
-            axis === "work" ||
-            !selected ||
-            !(data[axis] as AxisItem[]).some(
-                (item) => itemKey(axis, item) === selected
-            )
-        ) {
+        if (axis === "work") {
             setDetail(null)
             return
         }
+        if (!selected || !(listed || elsewhere)) {
+            setDetail(null)
+            setDetailError("")
+            return
+        }
+        let stale = false
         setLoadingDetail(true)
-        void fetchJson<Detail>(`/api/${axis}/${encodeRef(selected)}`)
-            .then(setDetail)
-            .catch((error) => setLoadError(String(error)))
-            .finally(() => setLoadingDetail(false))
-    }, [axis, selected, data])
+        setDetailError("")
+        void fetchJson<Detail>(
+            withScope(
+                `/api/${axis}/${encodeRef(selected)}`,
+                detailScope(scopeChoice, selectedOwner ?? projectId)
+            )
+        )
+            .then((found) => {
+                if (!stale) setDetail(found)
+            })
+            .catch((error: unknown) => {
+                if (stale) return
+                setDetail(null)
+                // An object the list does not hold failed alone: say so
+                // where its page would be, and leave the list standing.
+                if (listed) setLoadError(String(error))
+                else
+                    setDetailError(
+                        error instanceof Error ? error.message : String(error)
+                    )
+            })
+            .finally(() => {
+                if (!stale) setLoadingDetail(false)
+            })
+        return () => {
+            stale = true
+        }
+        // A list reload reads the served project's entry again, after a
+        // save; another project's, which nothing here writes, is read once.
+    }, [axis, selected, elsewhere ? null : data, projectId, scopeChoice]) // eslint-disable-line react-hooks/exhaustive-deps
 
     // Only views that offer items to choose read every item: the forms
     // and editors, and an item page whose record is edited here. The
@@ -409,7 +543,12 @@ export function App() {
                 if (!stale) setAllWork(boardRows(found))
             })
             .catch(() => {
-                if (!stale) setAllWork(data.work)
+                // The board's rows of the served project alone: under a
+                // scope the board holds other projects' items too.
+                if (!stale)
+                    setAllWork(
+                        data.work.filter((item) => item.owner === projectId)
+                    )
             })
         return () => {
             stale = true
@@ -418,11 +557,11 @@ export function App() {
     const links = useMemo(
         () =>
             tcwLinkOptions({
+                projectId,
                 work: allWork ?? data.work,
-                taxonomy: data.taxonomy,
-                capabilities: data.capabilities,
+                ...pickable,
             }),
-        [allWork, data]
+        [allWork, data, pickable, projectId]
     )
 
     const readFile = useCallback(
@@ -433,27 +572,47 @@ export function App() {
         [selected]
     )
 
+    // The stage of the file last opened in the editor, so that the item's
+    // page comes back on that stage's tab rather than on the item's own.
+    const [fileStage, setFileStage] = useState<{
+        folder: string
+        stage: string
+    } | null>(null)
+
     // False when the user chose to stay on a page with unsaved changes.
-    const navigateTo = (nextAxis: Axis, key: string | null): boolean => {
-        if (!confirmLeave()) return false
+    // `saved` is for a form that has just saved its work: the `dirty` this
+    // render holds is still the form's, so asking would offer to discard
+    // what is already saved.
+    const navigateTo = (
+        nextAxis: Axis,
+        key: string | null,
+        saved = false
+    ): boolean => {
+        if (!saved && !confirmLeave()) return false
+        // The page already shown is kept: nothing would read it again,
+        // since the axis and the selection the reads depend on stay put.
+        const same = nextAxis === axis && key === selected
+        setFileStage(null)
         setProblem("")
         setEditor(null)
         setWorkMode(null)
         setDirty(false)
         setErrors([])
         setConflict(null)
-        setDetail(null)
-        setWorkDetail(null)
+        if (!same) {
+            setDetail(null)
+            setWorkDetail(null)
+        }
         setAxis(nextAxis)
         setSelected(key)
-        navigate(pathFor(nextAxis, key))
+        navigate(pathFor(nextAxis, key) + scopeKey)
         if (key) {
             const ancestors =
                 nextAxis === "work"
                     ? workAncestors(
                           data.work.find(
-                              (item) => itemKey("work", item) === key
-                          )?.slug ?? "",
+                              (item) => itemKey("work", item, projectId) === key
+                          )?.["full-id"] ?? "",
                           data.work
                       )
                     : pathAncestors(key)
@@ -509,7 +668,9 @@ export function App() {
                       stages.map((row) => row.name),
                       project?.scales.priority ?? []
                   )
-                : buildPathTree(currentItems, (item) => itemKey(axis, item))
+                : buildPathTree(currentItems, (item) =>
+                      itemKey(axis, item, projectId)
+                  )
         const filtering = Boolean(
             filter ||
             kindFilter.length ||
@@ -535,6 +696,7 @@ export function App() {
         filter,
         kindFilter.length,
         project,
+        projectId,
         stageFilter,
         stages,
         visible,
@@ -618,6 +780,7 @@ export function App() {
         let draft: Draft
         let ref: string
         let revision: string
+        let bodyNote = false
         if (axis === "taxonomy") {
             const payload = detail as TaxonomyDetail
             const term = payload.term
@@ -628,16 +791,21 @@ export function App() {
                 vocabulary: term.vocabulary ?? [],
                 body: term.description ?? "",
             }
-            ref = term.qualified ?? term.slug
+            ref = itemKey("taxonomy", term, projectId)
             revision = payload.coreRevision
         } else {
             const payload = detail as CapabilityDetail
             const capability = payload.capability
+            // The declared description, not the combined body, which also
+            // holds attached documents or an inherited description: sending
+            // that back would write them into this one (TCW-112 Design 4.5).
+            const declared = payload.declaredDescription ?? ""
             draft = {
                 ...(capability.fields ?? {}),
-                body: capability.body ?? "",
+                body: declared,
             }
-            ref = capability.path
+            bodyNote = (capability.body ?? "") !== declared
+            ref = itemKey("capabilities", capability, projectId)
             revision = payload.coreRevision
         }
         setEditor({
@@ -647,6 +815,7 @@ export function App() {
             revision,
             draft,
             original: structuredClone(draft),
+            bodyNote,
         })
         setDirty(false)
         setErrors([])
@@ -782,14 +951,20 @@ export function App() {
     const assignees = knownAssignees(data.work, project?.user ?? null)
     const people = { ...(project?.people ?? {}), ...board.people }
     const references = {
+        projectId,
         ...data,
+        ...pickable,
         work: allWork ?? data.work,
         people,
         user: project?.user ?? null,
     }
     // In filesystem mode the item record is the files' own and editable;
     // when the backend owns it, only the stage files are edited here.
-    const ownsRecord = project?.recordOwner === "local"
+    // Another project's item is read here and changed nowhere (TCW-113
+    // Design 6.7): its owner is the project its key names.
+    const ownsItem =
+        (parseFullId(selected ?? "")?.project ?? projectId) === projectId
+    const ownsRecord = project?.recordOwner === "local" && ownsItem
 
     const leaveWorkMode = () => {
         if (!confirmLeave()) return
@@ -840,6 +1015,7 @@ export function App() {
                 },
                 true
             )
+            setFileStage({ folder: selected, stage })
         } catch (error) {
             showToast(
                 `Could not open ${path}: ${error instanceof Error ? error.message : String(error)}`
@@ -873,465 +1049,525 @@ export function App() {
             },
             true
         )
+        setFileStage({ folder: selected, stage })
     }
     const openNewItem = () => {
         enterWorkMode({ mode: "new" })
     }
 
     return (
-        <LinkContext.Provider value={links}>
-            <header className="topbar">
-                <div>
-                    <Heading as="h1" size="6">
-                        TCW{project ? ` · ${project.id}` : ""}
-                    </Heading>
-                    <Text as="p" color="gray" size="2">
-                        {data.taxonomy.length} taxonomy ·{" "}
-                        {data.capabilities.length} capabilities ·{" "}
-                        {data.work.length} work items
-                    </Text>
-                </div>
-                <nav className="tabs" aria-label="TCW views">
-                    {AXES.map((candidate) => (
-                        <Button
-                            type="button"
-                            key={candidate}
-                            className={`tab${axis === candidate ? " active" : ""}`}
-                            variant={axis === candidate ? "solid" : "soft"}
-                            onClick={() => navigateTo(candidate, null)}
-                        >
-                            {LABELS[candidate]}
-                        </Button>
-                    ))}
-                    <SettingsControl />
-                </nav>
-            </header>
-            <main
-                className="shell"
-                style={
-                    { "--list-width": `${listWidth * 100}%` } as CSSProperties
-                }
-            >
-                <section className="list-pane">
-                    <div className="list-head">
-                        <Heading as="h2" size="3">
-                            {LABELS[axis]}
+        <ProjectIdContext.Provider value={projectId}>
+            <LinkContext.Provider value={links}>
+                <header className="topbar">
+                    <div>
+                        <Heading as="h1" size="6">
+                            TCW{project ? ` · ${project.id}` : ""}
                         </Heading>
-                        <TextField.Root
-                            type="search"
-                            placeholder="Filter"
-                            value={filter}
-                            onChange={(event) =>
-                                updateFilter(event.target.value)
-                            }
-                        >
-                            {filter && (
-                                <TextField.Slot side="right">
-                                    <IconButton
-                                        type="button"
-                                        size="1"
-                                        variant="ghost"
-                                        aria-label="Clear filter"
-                                        onClick={() => updateFilter("")}
-                                    >
-                                        ×
-                                    </IconButton>
-                                </TextField.Slot>
-                            )}
-                        </TextField.Root>
+                        <Text as="p" color="gray" size="2">
+                            {data.taxonomy.length} taxonomy ·{" "}
+                            {data.capabilities.length} capabilities ·{" "}
+                            {data.work.length} work items
+                        </Text>
                     </div>
-                    {axis === "work" && project && (
-                        <Flex
-                            className="status-filters"
-                            role="group"
-                            aria-label="Filters"
-                            align="center"
-                            gap="2"
-                            wrap="wrap"
-                        >
-                            <FacetPopover
-                                label="Stage"
-                                options={[
-                                    ...stages.map((row) => row.name),
-                                    ...(project.recordOwner === "backend"
-                                        ? [NO_STAGE]
-                                        : []),
-                                ]}
-                                value={Object.keys(stageFilter).filter(
-                                    (name) => stageFilter[name]
-                                )}
-                                onChange={(ticked) =>
-                                    setStageFilter(
-                                        Object.fromEntries(
-                                            [
-                                                ...stages.map(
-                                                    (row) => row.name
-                                                ),
-                                                NO_STAGE,
-                                            ].map((name) => [
-                                                name,
-                                                ticked.includes(name) ||
-                                                    (name === NO_STAGE &&
-                                                        project.recordOwner !==
-                                                            "backend"),
-                                            ])
-                                        )
+                    <nav className="tabs" aria-label="TCW views">
+                        {AXES.map((candidate) => (
+                            <Button
+                                type="button"
+                                key={candidate}
+                                className={`tab${axis === candidate ? " active" : ""}`}
+                                variant={axis === candidate ? "solid" : "soft"}
+                                onClick={() => navigateTo(candidate, null)}
+                            >
+                                {LABELS[candidate]}
+                            </Button>
+                        ))}
+                        {project && (
+                            <ScopeControl
+                                scopes={project.scopes}
+                                choice={scopeChoice}
+                                onChange={(next) => {
+                                    if (!confirmLeave()) return
+                                    setDirty(false)
+                                    setEditor(null)
+                                    setWorkMode(null)
+                                    navigate(
+                                        location.pathname + scopeSearch(next)
                                     )
+                                }}
+                            />
+                        )}
+                        <SettingsControl />
+                    </nav>
+                </header>
+                <main
+                    className="shell"
+                    style={
+                        {
+                            "--list-width": `${listWidth * 100}%`,
+                        } as CSSProperties
+                    }
+                >
+                    <section className="list-pane">
+                        <div className="list-head">
+                            <Heading as="h2" size="3">
+                                {LABELS[axis]}
+                            </Heading>
+                            <TextField.Root
+                                type="search"
+                                placeholder="Filter"
+                                value={filter}
+                                onChange={(event) =>
+                                    updateFilter(event.target.value)
                                 }
-                            />
-                            <FacetPopover
-                                label="Tags"
-                                options={project.tags}
-                                value={tagFilter}
-                                onChange={setTagFilter}
-                            />
-                            <FacetPopover
-                                label="Assignee"
-                                options={assignees}
-                                value={assigneeFilter}
-                                onChange={setAssigneeFilter}
-                                display={(id) =>
-                                    id === project.user
-                                        ? `${personName(id, people)} (me)`
-                                        : personName(id, people)
-                                }
-                            />
-                            <SortControl
-                                sortKey={workSortKey}
-                                direction={workSortDirection}
-                                onSortKeyChange={setWorkSortKey}
-                                onDirectionChange={setWorkSortDirection}
-                            />
-                        </Flex>
-                    )}
-                    {axis === "taxonomy" && kept && (
-                        <Flex
-                            className="status-filters"
-                            role="group"
-                            aria-label="Filters"
-                            align="center"
-                            gap="2"
-                        >
-                            <FacetPopover
-                                label="Kind"
-                                options={["Feature", "Vocabulary"]}
-                                value={kindFilter}
-                                onChange={setKindFilter}
-                            />
-                        </Flex>
-                    )}
-                    {axis === "work" && board.fallback && (
-                        <Callout.Root
-                            className="fallback-banner"
-                            color="amber"
-                            role="status"
-                        >
-                            <Callout.Text>
-                                The board could not be read: {board.unavailable}
-                                . Showing the item folders only.{" "}
+                            >
+                                {filter && (
+                                    <TextField.Slot side="right">
+                                        <IconButton
+                                            type="button"
+                                            size="1"
+                                            variant="ghost"
+                                            aria-label="Clear filter"
+                                            onClick={() => updateFilter("")}
+                                        >
+                                            ×
+                                        </IconButton>
+                                    </TextField.Slot>
+                                )}
+                            </TextField.Root>
+                        </div>
+                        {axis === "work" && project && (
+                            <Flex
+                                className="status-filters"
+                                role="group"
+                                aria-label="Filters"
+                                align="center"
+                                gap="2"
+                                wrap="wrap"
+                            >
+                                <FacetPopover
+                                    label="Stage"
+                                    options={[
+                                        ...stages.map((row) => row.name),
+                                        ...(project.recordOwner === "backend"
+                                            ? [NO_STAGE]
+                                            : []),
+                                    ]}
+                                    value={Object.keys(stageFilter).filter(
+                                        (name) => stageFilter[name]
+                                    )}
+                                    onChange={(ticked) =>
+                                        setStageFilter(
+                                            Object.fromEntries(
+                                                [
+                                                    ...stages.map(
+                                                        (row) => row.name
+                                                    ),
+                                                    NO_STAGE,
+                                                ].map((name) => [
+                                                    name,
+                                                    ticked.includes(name) ||
+                                                        (name === NO_STAGE &&
+                                                            project.recordOwner !==
+                                                                "backend"),
+                                                ])
+                                            )
+                                        )
+                                    }
+                                />
+                                <FacetPopover
+                                    label="Tags"
+                                    options={
+                                        isUnavailable(project.tags)
+                                            ? []
+                                            : project.tags
+                                    }
+                                    unavailable={
+                                        isUnavailable(project.tags)
+                                            ? project.tags.unavailable
+                                            : undefined
+                                    }
+                                    value={tagFilter}
+                                    onChange={setTagFilter}
+                                />
+                                <FacetPopover
+                                    label="Assignee"
+                                    options={assignees}
+                                    value={assigneeFilter}
+                                    onChange={setAssigneeFilter}
+                                    display={(id) =>
+                                        id === project.user
+                                            ? `${personName(id, people)} (me)`
+                                            : personName(id, people)
+                                    }
+                                />
+                                <SortControl
+                                    sortKey={workSortKey}
+                                    direction={workSortDirection}
+                                    onSortKeyChange={setWorkSortKey}
+                                    onDirectionChange={setWorkSortDirection}
+                                />
+                            </Flex>
+                        )}
+                        {axis === "taxonomy" && kept && (
+                            <Flex
+                                className="status-filters"
+                                role="group"
+                                aria-label="Filters"
+                                align="center"
+                                gap="2"
+                            >
+                                <FacetPopover
+                                    label="Kind"
+                                    options={["Feature", "Vocabulary"]}
+                                    value={kindFilter}
+                                    onChange={setKindFilter}
+                                />
+                            </Flex>
+                        )}
+                        {(axis === "work" ? board.projects : listProjects[axis])
+                            ?.filter((entry) => entry.unavailable)
+                            .map((entry) => (
+                                <Callout.Root
+                                    className="unavailable-project"
+                                    color="amber"
+                                    role="status"
+                                    key={entry.id}
+                                >
+                                    <Callout.Text>
+                                        Project {entry.id} could not be read, so{" "}
+                                        {leftOut(entry.id)}: {entry.unavailable}
+                                    </Callout.Text>
+                                </Callout.Root>
+                            ))}
+                        {axis === "work" && board.fallback && (
+                            <Callout.Root
+                                className="fallback-banner"
+                                color="amber"
+                                role="status"
+                            >
+                                <Callout.Text>
+                                    The board could not be read:{" "}
+                                    {board.unavailable}. Showing the item
+                                    folders only.{" "}
+                                    <Button
+                                        size="1"
+                                        variant="soft"
+                                        type="button"
+                                        onClick={() => void reloadBoard()}
+                                    >
+                                        Retry
+                                    </Button>
+                                </Callout.Text>
+                            </Callout.Root>
+                        )}
+                        {axis === "work" && kept && project && (
+                            <Flex className="create-row" gap="2">
                                 <Button
-                                    size="1"
+                                    className="create-btn"
+                                    variant="outline"
+                                    type="button"
+                                    onClick={openNewItem}
+                                >
+                                    + New item
+                                </Button>
+                                {project.recordOwner === "backend" && (
+                                    <Button
+                                        variant="outline"
+                                        type="button"
+                                        onClick={() =>
+                                            enterWorkMode({ mode: "tickets" })
+                                        }
+                                    >
+                                        Tickets
+                                    </Button>
+                                )}
+                            </Flex>
+                        )}
+                        {axis !== "work" && kept && (
+                            <div className="create-row">
+                                <Button
+                                    className="create-btn"
+                                    variant="outline"
+                                    type="button"
+                                    onClick={enterCreate}
+                                >
+                                    + Create {LABELS[axis]}
+                                </Button>
+                            </div>
+                        )}
+                        <div
+                            className="list"
+                            role="tree"
+                            aria-label="Objects"
+                            onKeyDown={handleTreeKeyboard}
+                        >
+                            {!kept ? (
+                                <Text className="empty" color="gray">
+                                    This project keeps no{" "}
+                                    {axis === "work"
+                                        ? "work"
+                                        : LABELS[axis].toLowerCase()}
+                                    .
+                                </Text>
+                            ) : tree.nodes.length ? (
+                                <Tree
+                                    nodes={tree.nodes}
+                                    axis={axis}
+                                    selected={selected}
+                                    expanded={effectiveExpanded}
+                                    visible={visible}
+                                    rowClass={
+                                        axis === "work"
+                                            ? workRowClass
+                                            : undefined
+                                    }
+                                    people={people}
+                                    onSelect={(key) => navigateTo(axis, key)}
+                                    onToggle={(path) => {
+                                        if (filter) return
+                                        setExpanded((old) => {
+                                            const next = new Set(old[axis])
+                                            if (next.has(path))
+                                                next.delete(path)
+                                            else next.add(path)
+                                            return { ...old, [axis]: next }
+                                        })
+                                    }}
+                                />
+                            ) : (
+                                <Text className="empty" color="gray">
+                                    No {LABELS[axis].toLowerCase()} entries.
+                                </Text>
+                            )}
+                        </div>
+                    </section>
+                    <div
+                        className="col-resizer"
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label="Resize list column"
+                        onPointerDown={(event) =>
+                            beginResize(
+                                event,
+                                event.currentTarget.parentElement!,
+                                0.12,
+                                0.6,
+                                setListWidth
+                            )
+                        }
+                    />
+                    <section
+                        className="detail-pane"
+                        aria-live="polite"
+                        onClick={(event) => {
+                            const anchor = (
+                                event.target as HTMLElement
+                            ).closest<HTMLAnchorElement>("a[data-nav-key]")
+                            if (anchor) {
+                                event.preventDefault()
+                                navigateTo(
+                                    anchor.dataset.navAxis as Axis,
+                                    anchor.dataset.navKey!
+                                )
+                            }
+                        }}
+                    >
+                        {problem && (
+                            <Callout.Root color="red" role="alert">
+                                <Callout.Text>{problem}</Callout.Text>
+                            </Callout.Root>
+                        )}
+                        {warnings.length > 0 && (
+                            <Callout.Root color="amber" role="alert">
+                                <Callout.Text>
+                                    <strong>
+                                        Saved with validation issues
+                                    </strong>
+                                    <ul>
+                                        {warnings.map((warning) => (
+                                            <li key={warning}>{warning}</li>
+                                        ))}
+                                    </ul>
+                                </Callout.Text>
+                            </Callout.Root>
+                        )}
+                        {loadError ? (
+                            <>
+                                <Text className="empty" color="gray">
+                                    Failed to load: {loadError}
+                                </Text>
+                                <Button
                                     variant="soft"
                                     type="button"
-                                    onClick={() => void reloadBoard()}
+                                    onClick={() => {
+                                        void load()
+                                        void reloadBoard()
+                                    }}
                                 >
                                     Retry
                                 </Button>
-                            </Callout.Text>
-                        </Callout.Root>
-                    )}
-                    {axis === "work" && kept && project && (
-                        <Flex className="create-row" gap="2">
-                            <Button
-                                className="create-btn"
-                                variant="outline"
-                                type="button"
-                                onClick={openNewItem}
+                            </>
+                        ) : editor ? (
+                            <RefusalContext.Provider
+                                value={editorRefusals.report}
                             >
-                                + New item
-                            </Button>
-                            {project.recordOwner === "backend" && (
-                                <Button
-                                    variant="outline"
-                                    type="button"
-                                    onClick={() =>
-                                        enterWorkMode({ mode: "tickets" })
+                                <EditorView
+                                    editor={editor}
+                                    scales={
+                                        project?.capabilityScales ?? {
+                                            status: [],
+                                            priority: [],
+                                            lifecycle: [],
+                                        }
                                     }
-                                >
-                                    Tickets
-                                </Button>
-                            )}
-                        </Flex>
-                    )}
-                    {axis !== "work" && kept && (
-                        <div className="create-row">
-                            <Button
-                                className="create-btn"
-                                variant="outline"
-                                type="button"
-                                onClick={enterCreate}
-                            >
-                                + Create {LABELS[axis]}
-                            </Button>
-                        </div>
-                    )}
-                    <div
-                        className="list"
-                        role="tree"
-                        aria-label="Objects"
-                        onKeyDown={handleTreeKeyboard}
-                    >
-                        {!kept ? (
+                                    setDraft={setDraft}
+                                    saving={saving}
+                                    errors={errors}
+                                    conflict={conflict}
+                                    data={{
+                                        ...data,
+                                        ...pickable,
+                                        work: references.work,
+                                    }}
+                                    onSave={() => void save()}
+                                    onCancel={cancelEditor}
+                                    onRefreshConflict={() =>
+                                        void refreshConflict()
+                                    }
+                                />
+                            </RefusalContext.Provider>
+                        ) : loadingDetail && !workDetail && !detail ? (
                             <Text className="empty" color="gray">
-                                This project keeps no{" "}
-                                {axis === "work"
-                                    ? "work"
-                                    : LABELS[axis].toLowerCase()}
-                                .
+                                Loading...
                             </Text>
-                        ) : tree.nodes.length ? (
-                            <Tree
-                                nodes={tree.nodes}
-                                axis={axis}
-                                selected={selected}
-                                expanded={effectiveExpanded}
-                                visible={visible}
-                                rowClass={
-                                    axis === "work" ? workRowClass : undefined
-                                }
-                                people={people}
-                                onSelect={(key) => navigateTo(axis, key)}
-                                onToggle={(path) => {
-                                    if (filter) return
-                                    setExpanded((old) => {
-                                        const next = new Set(old[axis])
-                                        if (next.has(path)) next.delete(path)
-                                        else next.add(path)
-                                        return { ...old, [axis]: next }
-                                    })
+                        ) : axis === "work" &&
+                          project &&
+                          workMode?.mode === "new" ? (
+                            <NewItemForm
+                                project={project}
+                                references={references}
+                                onCreated={(folder, message) => {
+                                    showToast(message)
+                                    setWorkMode(null)
+                                    setDirty(false)
+                                    setAllWork(null)
+                                    void reloadBoard()
+                                    if (folder) navigateTo("work", folder, true)
                                 }}
+                                onCancel={leaveWorkMode}
+                                onDirty={setDirty}
+                            />
+                        ) : axis === "work" && workMode?.mode === "tickets" ? (
+                            <TicketsView
+                                onAdopted={(folder, message, failed) => {
+                                    showToast(message)
+                                    setWorkMode(null)
+                                    setAllWork(null)
+                                    void reloadBoard()
+                                    navigateTo("work", folder)
+                                    // After navigating, which clears it: the
+                                    // item is made, but say what failed.
+                                    if (failed) setProblem(failed)
+                                }}
+                            />
+                        ) : axis === "work" && workMode?.mode === "file" ? (
+                            <FileEditor
+                                session={workMode.session}
+                                onSaved={workSaved}
+                                onCancel={leaveWorkMode}
+                                onDirty={setDirty}
+                            />
+                        ) : axis === "work" &&
+                          project &&
+                          workDetail &&
+                          workMode?.mode === "properties" &&
+                          !isUnavailable(workDetail.item) ? (
+                            <PropertiesForm
+                                project={project}
+                                item={workDetail.item}
+                                folder={workDetail.folder}
+                                references={references}
+                                onSaved={workSaved}
+                                onCancel={leaveWorkMode}
+                                onDirty={setDirty}
+                                onReload={() => {
+                                    setWorkMode(null)
+                                    setDirty(false)
+                                    retryDetail()
+                                }}
+                            />
+                        ) : axis === "work" && workDetail && project ? (
+                            <WorkPage
+                                project={project}
+                                detail={workDetail}
+                                readFile={readFile}
+                                onRetry={retryDetail}
+                                editing={{
+                                    openStage:
+                                        fileStage?.folder === workDetail.folder
+                                            ? fileStage.stage
+                                            : undefined,
+                                    onEditFile: ownsItem
+                                        ? (stage, path) =>
+                                              void openFile(stage, path)
+                                        : undefined,
+                                    onNewFile: ownsItem
+                                        ? (stage, kind) =>
+                                              void newFile(stage, kind)
+                                        : undefined,
+                                    onEditProperties: ownsRecord
+                                        ? () => {
+                                              enterWorkMode({
+                                                  mode: "properties",
+                                              })
+                                          }
+                                        : undefined,
+                                    commentBox: ownsRecord ? (
+                                        <CommentBox
+                                            folder={workDetail.folder}
+                                            onSaved={workSaved}
+                                            onDirty={commentDirty}
+                                        />
+                                    ) : undefined,
+                                    declaration: (
+                                        <DeclarationSection
+                                            folder={
+                                                ownsItem
+                                                    ? workDetail.folder
+                                                    : (selected ?? "")
+                                            }
+                                            references={references}
+                                            editable={ownsItem}
+                                            onSaved={workSaved}
+                                            onDirty={declarationDirty}
+                                        />
+                                    ),
+                                }}
+                            />
+                        ) : detailError ? (
+                            <Text className="empty" color="gray">
+                                {detailError}
+                            </Text>
+                        ) : axis !== "work" && detail ? (
+                            <DetailView
+                                axis={axis}
+                                detail={detail}
+                                onEdit={enterCore}
                             />
                         ) : (
                             <Text className="empty" color="gray">
-                                No {LABELS[axis].toLowerCase()} entries.
+                                Select an entry.
                             </Text>
                         )}
-                    </div>
-                </section>
-                <div
-                    className="col-resizer"
-                    role="separator"
-                    aria-orientation="vertical"
-                    aria-label="Resize list column"
-                    onPointerDown={(event) =>
-                        beginResize(
-                            event,
-                            event.currentTarget.parentElement!,
-                            0.12,
-                            0.6,
-                            setListWidth
-                        )
-                    }
-                />
-                <section
-                    className="detail-pane"
-                    aria-live="polite"
-                    onClick={(event) => {
-                        const anchor = (
-                            event.target as HTMLElement
-                        ).closest<HTMLAnchorElement>("a[data-nav-key]")
-                        if (anchor) {
-                            event.preventDefault()
-                            navigateTo(
-                                anchor.dataset.navAxis as Axis,
-                                anchor.dataset.navKey!
-                            )
-                        }
-                    }}
-                >
-                    {problem && (
-                        <Callout.Root color="red" role="alert">
-                            <Callout.Text>{problem}</Callout.Text>
-                        </Callout.Root>
-                    )}
-                    {warnings.length > 0 && (
-                        <Callout.Root color="amber" role="alert">
-                            <Callout.Text>
-                                <strong>Saved with validation issues</strong>
-                                <ul>
-                                    {warnings.map((warning) => (
-                                        <li key={warning}>{warning}</li>
-                                    ))}
-                                </ul>
-                            </Callout.Text>
-                        </Callout.Root>
-                    )}
-                    {loadError ? (
-                        <>
-                            <Text className="empty" color="gray">
-                                Failed to load: {loadError}
-                            </Text>
-                            <Button
-                                variant="soft"
-                                type="button"
-                                onClick={() => {
-                                    void load()
-                                    void reloadBoard()
-                                }}
-                            >
-                                Retry
-                            </Button>
-                        </>
-                    ) : editor ? (
-                        <RefusalContext.Provider value={editorRefusals.report}>
-                            <EditorView
-                                editor={editor}
-                                scales={
-                                    project?.capabilityScales ?? {
-                                        status: [],
-                                        priority: [],
-                                        lifecycle: [],
-                                    }
-                                }
-                                setDraft={setDraft}
-                                saving={saving}
-                                errors={errors}
-                                conflict={conflict}
-                                data={data}
-                                onSave={() => void save()}
-                                onCancel={cancelEditor}
-                                onRefreshConflict={() => void refreshConflict()}
-                            />
-                        </RefusalContext.Provider>
-                    ) : loadingDetail && !workDetail && !detail ? (
-                        <Text className="empty" color="gray">
-                            Loading...
-                        </Text>
-                    ) : axis === "work" &&
-                      project &&
-                      workMode?.mode === "new" ? (
-                        <NewItemForm
-                            project={project}
-                            references={references}
-                            onCreated={(folder, message) => {
-                                showToast(message)
-                                setWorkMode(null)
-                                setDirty(false)
-                                setAllWork(null)
-                                void reloadBoard()
-                                if (folder) navigateTo("work", folder)
-                            }}
-                            onCancel={leaveWorkMode}
-                            onDirty={setDirty}
-                        />
-                    ) : axis === "work" && workMode?.mode === "tickets" ? (
-                        <TicketsView
-                            onAdopted={(folder, message, failed) => {
-                                showToast(message)
-                                setWorkMode(null)
-                                setAllWork(null)
-                                void reloadBoard()
-                                navigateTo("work", folder)
-                                // After navigating, which clears it: the
-                                // item is made, but say what failed.
-                                if (failed) setProblem(failed)
-                            }}
-                        />
-                    ) : axis === "work" && workMode?.mode === "file" ? (
-                        <FileEditor
-                            session={workMode.session}
-                            onSaved={workSaved}
-                            onCancel={leaveWorkMode}
-                            onDirty={setDirty}
-                        />
-                    ) : axis === "work" &&
-                      project &&
-                      workDetail &&
-                      workMode?.mode === "properties" &&
-                      !isUnavailable(workDetail.item) ? (
-                        <PropertiesForm
-                            project={project}
-                            item={workDetail.item}
-                            folder={workDetail.folder}
-                            references={references}
-                            onSaved={workSaved}
-                            onCancel={leaveWorkMode}
-                            onDirty={setDirty}
-                            onReload={() => {
-                                setWorkMode(null)
-                                setDirty(false)
-                                retryDetail()
-                            }}
-                        />
-                    ) : axis === "work" && workDetail && project ? (
-                        <WorkPage
-                            project={project}
-                            detail={workDetail}
-                            readFile={readFile}
-                            onRetry={retryDetail}
-                            editing={{
-                                onEditFile: (stage, path) =>
-                                    void openFile(stage, path),
-                                onNewFile: (stage, kind) =>
-                                    void newFile(stage, kind),
-                                onEditProperties: ownsRecord
-                                    ? () => {
-                                          enterWorkMode({ mode: "properties" })
-                                      }
-                                    : undefined,
-                                blocksForm:
-                                    ownsRecord &&
-                                    !isUnavailable(workDetail.item) ? (
-                                        <BlocksForm
-                                            project={project}
-                                            item={workDetail.item}
-                                            folder={workDetail.folder}
-                                            references={references}
-                                            onSaved={workSaved}
-                                            onDirty={blocksDirty}
-                                        />
-                                    ) : undefined,
-                                commentBox: ownsRecord ? (
-                                    <CommentBox
-                                        folder={workDetail.folder}
-                                        onSaved={workSaved}
-                                        onDirty={commentDirty}
-                                    />
-                                ) : undefined,
-                                declaration: (
-                                    <DeclarationSection
-                                        folder={workDetail.folder}
-                                        references={references}
-                                        editable
-                                        onSaved={workSaved}
-                                        onDirty={declarationDirty}
-                                    />
-                                ),
-                            }}
-                        />
-                    ) : axis === "work" && detailError ? (
-                        <Text className="empty" color="gray">
-                            {detailError}
-                        </Text>
-                    ) : axis !== "work" && detail ? (
-                        <DetailView
-                            axis={axis}
-                            detail={detail}
-                            onEdit={enterCore}
-                        />
-                    ) : (
-                        <Text className="empty" color="gray">
-                            Select an entry.
-                        </Text>
-                    )}
-                </section>
-            </main>
-            {toast && (
-                <Card className="toast">
-                    <Text size="2">{toast}</Text>
-                </Card>
-            )}
-        </LinkContext.Provider>
+                    </section>
+                </main>
+                {toast && (
+                    <Card className="toast">
+                        <Text size="2">{toast}</Text>
+                    </Card>
+                )}
+            </LinkContext.Provider>
+        </ProjectIdContext.Provider>
     )
 }
 

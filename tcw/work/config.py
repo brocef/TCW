@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 from tcw.config import dotted
+from tcw.project_files import follows_naming_rule
 from tcw.store.base import (MIGRATION_GUIDE, PROCEDURE_IDS, DocEntry, normalize_tag,
                             parse_documentation_entries)
 from tcw.work.model import DOCUMENT, FLOW, SIDE, STAGES, stage as table_stage
@@ -73,8 +74,8 @@ _REMOVED_PROCEDURES = {
                    f"text under `work.stages.{_SIDE_STAGE}.prompt`",
     "decompose": f"it is now part of the {_PLANNING_STAGE} stage prompt; bind "
                  f"replacement text under `work.stages.{_PLANNING_STAGE}.prompt`",
-    "delegation": "its rule is now fixed text in the work skill, and "
-                  "delegating to another project is `tcw work new --project`",
+    "delegation": "a part in another project is now made in that project, "
+                  "with `tcw -C <folder> work new \"<title>\" --parent <full id>`",
     "consolidate-plans": "it was deleted; move a planning document kept "
                          "outside TCW into an item with `tcw work new`",
 }
@@ -94,7 +95,8 @@ class ConfigProblem:
 @dataclass(frozen=True)
 class When:
     """A binding applies to an item carrying any of `tags` and none of
-    `not_tags`. Both are normalized tags; an empty `tags` matches every item."""
+    `not_tags` (written `not-tags` in a file). Both are normalized tags; an
+    empty `tags` matches every item."""
 
     tags: tuple[str, ...] = ()
     not_tags: tuple[str, ...] = ()
@@ -171,18 +173,25 @@ def _describe(value: Any) -> str:
 def _parse_when(raw: Any, where: KeyPath, problems: _Problems) -> When | None:
     if not isinstance(raw, dict) or not raw:
         problems.add(where, "'when' must be a non-empty mapping with 'tags' "
-                            "and/or 'not_tags'")
+                            "and/or 'not-tags'")
         return None
     if "type" in raw:
         problems.add(where, "'when.type' is not supported: work items have no "
                             "type in TCW 3.0; condition on tags instead")
         return None
-    unknown = sorted(map(str, set(raw) - {"tags", "not_tags"}))
-    if unknown:
-        problems.add(where, f"unknown 'when' key(s) {', '.join(unknown)}; "
-                            f"expected 'tags' or 'not_tags'")
+    unknown = set(raw) - {"tags", "not-tags"}
+    # A key breaking the naming rule (`not_tags`) is already reported by the
+    # check every file gets before it is merged, saying what to write instead.
+    # Reporting it here too would give one mistake two errors.
+    misnamed = {k for k in unknown if not follows_naming_rule(k)}
+    if unknown - misnamed:
+        listed = ", ".join(sorted(map(str, unknown - misnamed)))
+        problems.add(where, f"unknown 'when' key(s) {listed}; "
+                            f"expected 'tags' or 'not-tags'")
         return None
-    lists: dict[str, tuple[str, ...]] = {"tags": (), "not_tags": ()}
+    if misnamed:
+        return None
+    lists: dict[str, tuple[str, ...]] = {"tags": (), "not-tags": ()}
     for key in lists:
         if key not in raw:
             continue
@@ -209,7 +218,7 @@ def _parse_when(raw: Any, where: KeyPath, problems: _Problems) -> When | None:
                 problems.add(where, f"'when.{key}' element: {error}")
                 return None
         lists[key] = tuple(tags)
-    return When(lists["tags"], lists["not_tags"])
+    return When(lists["tags"], lists["not-tags"])
 
 
 def _parse_binding(raw: Any, where: KeyPath, role: str, origin: Any,
@@ -316,7 +325,7 @@ def _parse_hooks(raw: Any, problems: _Problems) -> HookLimits:
     if not isinstance(raw, dict):
         problems.add(where, f"expected a mapping, got {_describe(raw)}")
         return HookLimits()
-    for key in sorted(map(str, set(raw) - set(HOOK_KEYS))):
+    for key in sorted(k for k in set(raw) - set(HOOK_KEYS) if follows_naming_rule(k)):
         problems.add((*where, key), f"unknown key; expected one of "
                                     f"{', '.join(HOOK_KEYS)}")
     limits = HookLimits()
@@ -347,8 +356,8 @@ def _parse_stage(name: str, raw: Any, jira: bool, origins: Mapping,
         problems.add(where, f"expected a mapping, got {_describe(raw)}")
         return StageConfig()
     allowed = SIDE_STAGE_KEYS if row.kind == SIDE else STAGE_KEYS
-    for key in sorted(map(str, raw)):
-        if key in allowed:
+    for key in sorted(raw, key=str):
+        if key in allowed or not follows_naming_rule(key):
             continue
         if key in STAGE_KEYS:
             problems.add((*where, key),
@@ -455,11 +464,13 @@ def _parse_tags(raw: Any, problems: _Problems) -> tuple[str, ...]:
         problems.add(where, f"expected a list of tags, got {_describe(raw)}")
         return ()
     tags: list[str] = []
-    for value in raw:
+    for i, value in enumerate(raw):
         try:
             tag = normalize_tag(value)
         except (ValueError, AttributeError):
-            problems.add(where, f"{value!r} is not a tag")
+            # Reported at the entry, which the caller names by its place in
+            # the file that wrote it.
+            problems.add((*where, i), f"{value!r} is not a tag")
             continue
         if tag not in tags:
             tags.append(tag)
@@ -488,7 +499,7 @@ def parse_work_config(mapping: Any, origins: Mapping[KeyPath, Any] | None = None
             problems.add(("work", key),
                          f"removed in TCW 3.0: {_REMOVED_WORK_KEYS[key]}. See "
                          f"{MIGRATION_GUIDE}")
-        elif key not in WORK_KEYS:
+        elif key not in WORK_KEYS and follows_naming_rule(key):
             problems.add(("work", str(key)),
                          f"unknown key; expected one of {', '.join(WORK_KEYS)}")
 

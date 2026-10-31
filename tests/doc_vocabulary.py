@@ -7,7 +7,12 @@ procedures (`tests/test_shipped_text.py`), and TCW-75's scan of the README and
 guides. Each entry is a regular expression, matched case-insensitively,
 Markdown code included, and the reason it goes.
 
-`builtin: true` is deliberately not here: `tcw config show` prints it for a
+A second table, `THREE_X_PATTERNS`, holds the 3.x forms no 4.0 document may
+name outside a passage about moving from 3.x (TCW-117 spec, Design 9.2). It is
+matched case-sensitively, so `scan` takes the regular-expression flags as an
+argument, and every caller of the 2.x table keeps the default.
+
+`builtin: true` is deliberately not here: `tcw project config` prints it for a
 built-in entry, so TCW-75's documents show it in that output (TCW-75 spec,
 criterion 2). TCW-74's own scan adds it, with its other extra patterns.
 """
@@ -48,6 +53,52 @@ PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\b(never|does not|doesn't) runs? git\b",
      'false: TCW reads git and `provision` clones; the rule is "never changes '
      'git state" (review decision R4)'),
+)
+
+
+# The 3.x forms TCW 4.0 removes or renames (TCW-117 spec, Design 9.2), read by
+# `tests/test_docs_describe_4_0.py` and `tests/test_migration_guide_4_0.py`.
+# Matched case-sensitively (`scan(..., flags=0)`): "TCW projects" is prose,
+# `tcw projects` a removed command. Each reason starts with its row's label and
+# names the item that removed the form, so a later change that brings one back
+# knows which entry to delete.
+THREE_X_PATTERNS: tuple[tuple[str, str], ...] = (
+    (r"tcw (init|provision|projects|config)\b",
+     "P1: removed commands (TCW-115) (scan: TCW-117)"),
+    (r"tcw work new [^`]*--project\b",
+     "P2: removed flag (TCW-114) (scan: TCW-117)"),
+    (r"--blocks\b",
+     "P3: removed flag (TCW-114) (scan: TCW-117)"),
+    (r"--local\b",
+     "P4: removed flag (TCW-113) (scan: TCW-117)"),
+    (r"extends (add|rm)\b",
+     "P5: removed commands (TCW-112) (scan: TCW-117)"),
+    (r"(taxonomy|capabilities)\.extends\b",
+     "P5: removed keys (TCW-112) (scan: TCW-117)"),
+    (r"\bextends:",
+     "P5: removed keys (TCW-112) (scan: TCW-117)"),
+    (r"\bupstream (project|connection|link|relation)s?\b",
+     "P6: removed relations (TCW-108) (scan: TCW-117)"),
+    (r"\bupstream:",
+     "P6: removed keys (TCW-108) (scan: TCW-117)"),
+    (r"projects\.(upstream|parent|children)\b",
+     "P6: removed keys (TCW-108) (scan: TCW-117)"),
+    (r"(?<![\w-])(meta|item)\.yaml\b",
+     "P7: renamed state files (TCW-111) (scan: TCW-117)"),
+    (r"tcw://[CTW]/",
+     "P8: 3.x addresses (TCW-110) (scan: TCW-117)"),
+    (r"tcw://[a-z0-9-]+/[CTW]/",
+     "P8: 3.x addresses (TCW-110) (scan: TCW-117)"),
+    (r"\bcap-[0-9a-f]{6}\b",
+     "P9: removed capability ids (TCW-112) (scan: TCW-117)"),
+    (r"\bnot_tags\b",
+     "P10: renamed key (TCW-106) (scan: TCW-117)"),
+    (r"<project(-id)?>/<",
+     "P11: 3.x slug forms (TCW-110) (scan: TCW-117)"),
+    (r"\btcw/TCW-[0-9]",
+     "P11: 3.x slug forms (TCW-110) (scan: TCW-117)"),
+    (r"^\s*overrides:\s*[^\s./]+/",
+     "P12: removed override pointer (TCW-112) (scan: TCW-117)"),
 )
 
 
@@ -119,13 +170,15 @@ def joined(block: list[tuple[int, str]]) -> tuple[str, list[tuple[int, int, int]
     return "".join(parts), where
 
 
-def scan(text: str, patterns=PATTERNS) -> list[Hit]:
+def scan(text: str, patterns=PATTERNS, flags=re.IGNORECASE) -> list[Hit]:
     """Every match of every pattern in `text`, read a block at a time (see
     `blocks`), so a phrase wrapped across a line break is found. Each hit is
     reported at the line where it starts, with its columns in that line and
     its end clamped to that line, ordered as a line-by-line scan orders them:
-    by line, then pattern, then column."""
-    compiled = [(re.compile(p, re.IGNORECASE), why) for p, why in patterns]
+    by line, then pattern, then column. Every pattern is compiled with
+    `flags`: case-insensitive by default, as the 2.x table is read, and `0`
+    for `THREE_X_PATTERNS`, which is read case-sensitively."""
+    compiled = [(re.compile(p, flags), why) for p, why in patterns]
     lines = text.splitlines()
     found = []
     for block in blocks(text):
@@ -140,3 +193,21 @@ def scan(text: str, patterns=PATTERNS) -> list[Hit]:
                 found.append((number, order, start,
                               Hit(number, start, end, m.group(0), why)))
     return [hit for *_, hit in sorted(found, key=lambda f: f[:3])]
+
+
+def without_chdir(tokens: list[str]) -> list[str]:
+    """`tokens` after each leading `-C <target>` (TCW-114 Design 4.1). The
+    target is one token, so a placeholder written as a phrase is read as
+    the command and fails (`chdir_problem`)."""
+    while len(tokens) >= 2 and tokens[0] == "-C":
+        tokens = tokens[2:]
+    return tokens
+
+
+def chdir_problem(tokens: list[str]) -> str | None:
+    """Why the `-C` targets at the start of `tokens` are not one token each:
+    what follows the last of them must be the command group."""
+    rest = without_chdir(tokens)
+    if rest is not tokens and rest and not re.match(r"[a-z][a-z0-9-]*$", rest[0]):
+        return f"tcw -C takes one token as its target, not a phrase: {rest[0]}"
+    return None

@@ -18,6 +18,7 @@ import pytest
 import yaml
 
 from tests.work.projects import make_project, write_item
+from tests.statefiles import ITEM_STATE
 
 REPO = Path(__file__).resolve().parents[2]
 TODAY = date.today().isoformat()
@@ -47,12 +48,12 @@ def p(tmp_path):
 
 def stage_of(root, folder):
     return yaml.safe_load(
-        (root / "docs/work" / folder / "item.yaml").read_text())["stage"]
+        (root / "docs/work" / folder / ITEM_STATE).read_text())["stage"]
 
 
 def test_new_prints_exactly_the_slug(p):
     r = tcw(["new", "Add a widget"], p)
-    assert (r.code, r.out) == (0, f"p/{TODAY}-add-a-widget\n"), r.err
+    assert (r.code, r.out) == (0, f"p.work/{TODAY}-add-a-widget\n"), r.err
     assert not (p / "docs/work" / f"{TODAY}-add-a-widget" / "request").exists()
 
 

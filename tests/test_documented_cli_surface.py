@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.doc_vocabulary import blocks, joined
+from tests.doc_vocabulary import blocks, joined, chdir_problem, without_chdir
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -199,6 +199,9 @@ def _check(span: str, tree: dict[tuple, set[str]]) -> str | None:
     # Same anchor the spans were found with: slicing at the first literal "tcw"
     # would land inside `tcw-cli` in a span like `pipx install tcw-cli && tcw …`.
     tokens = span[INVOCATION.search(span).end():].split()
+    if (problem := chdir_problem(tokens)) is not None:
+        return problem
+    tokens = without_chdir(tokens)
     path: list[str] = []
     for token in tokens:
         if not WORD.match(token):        # <slug>, "text", |, #comment → args start
@@ -325,6 +328,37 @@ def test_a_command_wrapped_inside_its_backticks_is_one_command(tree):
     [span] = _invocations("Run `tcw work\nlist --bogus` to see it.\n")
     assert span == "tcw work list --bogus"
     assert _check(span, tree) == "no such flag: --bogus on tcw work list"
+
+
+@pytest.mark.parametrize("span", [
+    "tcw -C <folder> work new --parent",
+    'tcw -C <folder> work new "<title>" --parent <slug>',
+    'tcw -C <folder> work new "<title>" --parent <full id>',
+    "tcw -C <folder>",
+    'tcw -C tcw://<parent>.path/ work new "capability wording: <name>"',
+    'tcw -C tcw://<id>.path/ work new "<title>" --parent <slug>',
+])
+def test_the_replacement_texts_name_working_commands(tree, span):
+    """TCW-114 plan Step 7: each text that replaced a removed option."""
+    assert _check(span, tree) is None
+
+
+@pytest.mark.parametrize("span", [
+    "tcw -C <target> work new --project x",
+    "tcw -C <its folder> work new --parent",
+    'tcw -C <its folder or tcw://<id>.path/> work new "<title>" --parent <slug>',
+    "tcw work edit <a> --blocks <b>",
+])
+def test_a_removed_option_or_a_phrase_target_is_refused(tree, span):
+    assert _check(span, tree) is not None
+
+
+def test_minus_c_and_its_target_are_skipped(tree):
+    """TCW-114 Design 4.1: the target is one token."""
+    assert _check('tcw -C <target> work new "<title>" --parent <slug>', tree) is None
+    assert _check("tcw -C tcw://<id>.path/ -C sub work list", tree) is None
+    assert _check("tcw -C <target> work new --no-such-flag", tree) == \
+        "no such flag: --no-such-flag on tcw work new"
 
 
 @pytest.mark.parametrize("text", [

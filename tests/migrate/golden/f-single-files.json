@@ -1,0 +1,66 @@
+{
+  "tcw-version": "tcw 3.0.2",
+  "pip-freeze": [
+    "PyYAML==6.0.3",
+    "-e git+ssh://git@github.com/brocef/TCW.git@64042c2b70c52804cbc3020b0ee9244c35d1afe6#egg=tcw_cli"
+  ],
+  "date": "2026-10-24",
+  "fixture-digest": "116c518409c3277683f939d0c1ab1873619c9a747fbfcdb355f5c145366c486f",
+  "commands": {
+    "taxonomy list --json": {
+      "exit": 0,
+      "stdout": "{\n  \"schema\": 1,\n  \"terms\": [\n    {\n      \"path\": \"customer\",\n      \"name\": \"Customer\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"invoice\",\n      \"name\": \"Invoice\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"invoice/line\",\n      \"name\": \"Line\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"order\",\n      \"name\": \"Order\",\n      \"kind\": \"Vocabulary\",\n      \"origin\": \"local\"\n    }\n  ]\n}\n",
+      "stderr": ""
+    },
+    "capabilities list --json": {
+      "exit": 0,
+      "stdout": "{\n  \"schema\": 1,\n  \"capabilities\": [\n    {\n      \"path\": \"cli/v\",\n      \"name\": \"Do V\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"cli/v/resources\",\n      \"name\": \"A sample, kept as a resource\",\n      \"status\": null,\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"cli/w\",\n      \"name\": \"Do W\",\n      \"status\": null,\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"cli/x\",\n      \"name\": \"Do X\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"cli/x/y\",\n      \"name\": \"Do Y\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"cli/z\",\n      \"name\": \"Z\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"conditions/online\",\n      \"name\": \"Online\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    },\n    {\n      \"path\": \"roles/admin\",\n      \"name\": \"Admin\",\n      \"status\": \"Supported\",\n      \"origin\": \"local\"\n    }\n  ]\n}\n",
+      "stderr": ""
+    },
+    "capabilities show cli/v --json": {
+      "exit": 0,
+      "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"cli/v\",\n    \"name\": \"Do V\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-5e6f70\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Does V.\"\n  }\n}\n",
+      "stderr": ""
+    },
+    "capabilities show cli/v/resources --json": {
+      "exit": 0,
+      "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"cli/v/resources\",\n    \"name\": \"A sample, kept as a resource\",\n    \"status\": null,\n    \"origin\": \"local\",\n    \"id\": \"\",\n    \"fields\": {},\n    \"body\": \"\"\n  }\n}\n",
+      "stderr": ""
+    },
+    "capabilities show cli/w --json": {
+      "exit": 0,
+      "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"cli/w\",\n    \"name\": \"Do W\",\n    \"status\": null,\n    \"origin\": \"local\",\n    \"id\": \"cap-4d5e6f\",\n    \"fields\": {},\n    \"body\": \"Does W.\"\n  }\n}\n",
+      "stderr": ""
+    },
+    "capabilities show cli/x --json": {
+      "exit": 0,
+      "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"cli/x\",\n    \"name\": \"Do X\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-1a2b3c\",\n    \"fields\": {\n      \"Status\": \"Supported\",\n      \"Subject\": [\n        \"invoice\"\n      ],\n      \"Roles\": [\n        \"!roles/admin\"\n      ],\n      \"When\": [\n        \"conditions/online\"\n      ]\n    },\n    \"body\": \"The camera is on.\\n\\nDoes X.\"\n  }\n}\n",
+      "stderr": ""
+    },
+    "capabilities show cli/x/y --json": {
+      "exit": 0,
+      "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"cli/x/y\",\n    \"name\": \"Do Y\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-2b3c4d\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Does Y.\"\n  }\n}\n",
+      "stderr": ""
+    },
+    "capabilities show cli/z --json": {
+      "exit": 0,
+      "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"cli/z\",\n    \"name\": \"Z\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-3c4d5e\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"\"\n  }\n}\n",
+      "stderr": ""
+    },
+    "capabilities show conditions/online --json": {
+      "exit": 0,
+      "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"conditions/online\",\n    \"name\": \"Online\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-708192\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Connected.\"\n  }\n}\n",
+      "stderr": ""
+    },
+    "capabilities show roles/admin --json": {
+      "exit": 0,
+      "stdout": "{\n  \"schema\": 1,\n  \"capability\": {\n    \"path\": \"roles/admin\",\n    \"name\": \"Admin\",\n    \"status\": \"Supported\",\n    \"origin\": \"local\",\n    \"id\": \"cap-6f7081\",\n    \"fields\": {\n      \"Status\": \"Supported\"\n    },\n    \"body\": \"Someone who runs it.\"\n  }\n}\n",
+      "stderr": ""
+    },
+    "validate": {
+      "exit": 1,
+      "stdout": "error: docs/capabilities/cli/v/resources: missing id\nerror: docs/capabilities/cli/v/resources: missing Status\nerror: docs/capabilities/cli/w: missing Status\n",
+      "stderr": "3 errors, 0 warnings, 0 unresolved\n"
+    }
+  }
+}

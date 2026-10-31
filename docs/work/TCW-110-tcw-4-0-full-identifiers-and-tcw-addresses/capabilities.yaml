@@ -1,0 +1,26 @@
+new:
+    - cli/name-any-tcw-object-by-its-full-identifier
+changed:
+    - cli/reference-a-tcw-object
+    - cli/rely-on-one-output-contract
+    - cli/validate-a-project
+    - work/configure-the-work-store-location
+    - taxonomy/configure-the-taxonomy-store-location
+    - capabilities/configure-the-capabilities-store-location
+    - work/read-a-work-item
+    - work/manage-blocking-relations
+    - work/decompose-a-work-item-into-children
+    - work/declare-capability-changes-in-a-child-projects-ledger
+    - taxonomy/read-a-term
+    - capabilities/read-a-capability
+    - web/pick-references-and-known-values-from-suggestions
+    - work/view-the-board
+    - work/keep-work-items-in-jira
+taxonomy:
+    new:
+        - full-identifier
+        - tcw-address
+    changed:
+        - namespace
+        - reference
+        - configurable-component-store-location

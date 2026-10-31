@@ -22,6 +22,7 @@ import pytest
 
 from evals import grade
 from evals.seed_fixture import QA_SCENARIOS, REVIEW_SKILL, seed
+from tests.projectfiles import write_config
 
 TCW_ENV = {**os.environ, "TCW_NO_PERSONAL_CONFIG": "1"}
 
@@ -71,7 +72,7 @@ def test_the_bare_variant_is_a_repository_that_does_not_use_tcw(bare):
     root, manifest = bare
     assert (root / ".git").is_dir()
     assert (root / "src/reports.py").is_file(), "the code files are there"
-    assert not (root / "tcw-config.yaml").exists()
+    assert not (root / ".tcw/tcw-config.yaml").exists()
     assert manifest["variant"] == "bare"
     assert manifest["items"] == {}
     assert manifest["nonces"] == {}
@@ -86,12 +87,12 @@ def test_the_bare_variant_is_a_repository_that_does_not_use_tcw(bare):
 
 
 def test_a_bare_fixture_inside_a_tcw_project_is_refused(tmp_path):
-    """`tcw` looks for `tcw-config.yaml` in every parent folder. A bare fixture
+    """`tcw` looks for `.tcw/tcw-config.yaml` in every parent folder. A bare fixture
     under a TCW project, such as the runner's default `eval-runs/` inside this
     checkout, would resolve to that project and stop being a repository that
     does not use TCW."""
-    (tmp_path / "tcw-config.yaml").write_text("id: outer\n")
-    with pytest.raises(ValueError, match="tcw-config.yaml"):
+    write_config(tmp_path, "id: outer\n")
+    with pytest.raises(ValueError, match=r"\.tcw/tcw-config\.yaml"):
         seed(tmp_path / "runs" / "fixture", "bare")
     assert not (tmp_path / "runs").exists(), "refused before building anything"
 
@@ -102,10 +103,12 @@ def test_a_folder_that_is_not_empty_is_refused(variant, tmp_path):
     would commit whatever was left there into the seeded commit."""
     dest = tmp_path / "used"
     dest.mkdir()
-    (dest / "tcw-config.yaml").write_text("id: left-over\n")
+    write_config(dest, "id: left-over\n")
     with pytest.raises(ValueError, match="not empty"):
         seed(dest, variant)
-    assert sorted(p.name for p in dest.iterdir()) == ["tcw-config.yaml"], (
+    assert sorted(p.name for p in dest.iterdir()) == [".tcw"], (
+        "refused before writing anything")
+    assert sorted(p.name for p in (dest / ".tcw").iterdir()) == ["tcw-config.yaml"], (
         "refused before writing anything")
 
 
@@ -294,11 +297,11 @@ def test_no_capability_is_seeded_missing(control):
     has. A record seeded `Missing` would teach the 2.x habit the B3 and B8
     cases exist to measure the absence of."""
     root, _ = control
-    paths = _tcw(root, "capabilities", "list").stdout.split()
-    assert paths == ["reports/view"]
-    for path in paths:
+    full_ids = _tcw(root, "capabilities", "list").stdout.split()
+    assert full_ids == ["demo-app.capabilities/reports/view"]
+    for full_id in full_ids:
         assert "Status: Missing" not in _tcw(root, "capabilities", "show",
-                                             path).stdout
+                                             full_id.partition("/")[2]).stdout
 
 
 # --- the bindings, which is what axis A rests on ---------------------------

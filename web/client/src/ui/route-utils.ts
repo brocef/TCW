@@ -5,7 +5,7 @@ import type {
     TaxonomyItem,
     WorkItem,
 } from "../model/types"
-import { folderOf } from "../model/work"
+import { parseFullId, routeKey } from "../model/identifier"
 
 export const AXES: Axis[] = ["taxonomy", "capabilities", "work"]
 
@@ -15,24 +15,34 @@ export const LABELS: Record<Axis, string> = {
     capabilities: "Capabilities",
 }
 
-/** What a row is selected and routed by: a work item's folder, a term's or
- * capability's qualified reference. */
-export function itemKey(axis: Axis, item: AxisItem): string {
-    if (axis === "work") return folderOf((item as WorkItem).slug)
-    if (axis === "taxonomy") {
-        const term = item as TaxonomyItem
-        return term.qualified ?? term.slug
-    }
-    const capability = item as CapabilityItem
-    return capability.qualified ?? capability.path
+/** What a row is selected and routed by: the id-path of an object this
+ * project owns (a work item's folder), and the whole full identifier of
+ * any other project's, in every namespace (TCW-113 Design 6.3). */
+export function itemKey(axis: Axis, item: AxisItem, projectId: string): string {
+    return routeKey(
+        (item as WorkItem | TaxonomyItem | CapabilityItem)["full-id"],
+        projectId
+    )
+}
+
+/** The id-path of a term's or capability's full identifier. */
+export function idPathOf(item: TaxonomyItem | CapabilityItem): string {
+    return parseFullId(item["full-id"])?.idPath ?? item["full-id"]
+}
+
+/** Whether a term or capability is another project's. */
+export function inherited(
+    item: TaxonomyItem | CapabilityItem,
+    projectId: string
+): boolean {
+    return item.owner !== projectId
 }
 
 export function itemTitle(axis: Axis, item: AxisItem): string {
     if (axis === "work")
-        return (item as WorkItem).title || (item as WorkItem).slug
-    if (axis === "taxonomy")
-        return (item as TaxonomyItem).name ?? (item as TaxonomyItem).slug
-    return (item as CapabilityItem).name ?? (item as CapabilityItem).path
+        return (item as WorkItem).title || (item as WorkItem)["full-id"]
+    const entry = item as TaxonomyItem | CapabilityItem
+    return entry.name ?? idPathOf(entry)
 }
 
 /** `/work/<folder>`, `/taxonomy/<ref>`, `/capabilities/<path>`. */

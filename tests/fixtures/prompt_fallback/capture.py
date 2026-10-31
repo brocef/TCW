@@ -61,10 +61,10 @@ def _run(root: Path, slug: str, env: dict, *args: str) -> dict:
 
 
 def build_project(root: Path, env: dict) -> str:
-    """A project that configures nothing beyond `tcw init`, with one item."""
+    """A project that configures nothing beyond `tcw project new`, with one item."""
     root.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", "-q", str(root)], check=True)
-    subprocess.run(["tcw", "init", "--id", "fallback", "work"], cwd=str(root),
+    subprocess.run(["tcw", "project", "new", "--id", "fallback", "work"], cwd=str(root),
                    capture_output=True, check=True, stdin=subprocess.DEVNULL,
                    env=env)
     r = subprocess.run(["tcw", "work", "new", "Baseline item"], cwd=str(root),

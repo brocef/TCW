@@ -1,9 +1,10 @@
-"""`tcw projects` — the projects this one is connected to (TCW-73 Design 2).
+"""`tcw project list` — the projects this one is connected to (TCW-73 Design
+2; TCW-115 Design 3), registered by `tcw/project_cli.py`.
 
-`tcw projects list` replaces the 2.8 command that listed parent and child
-projects: one project ID per line, this project first, then its parent, its
-children and the upstream projects it may read, each once, whether or not it
-is on this machine.
+It prints one project ID per line: this project first, then
+its parents in listing order, then its children (TCW-108 Design 8.1), each
+once, whether or not it is on this machine. `--json` adds what each link
+passes and the load order (Design 8.2).
 """
 
 from __future__ import annotations
@@ -15,39 +16,41 @@ from tcw import exit as codes
 from tcw.errors import NO_PROJECT, BackendError
 from tcw.output import print_json
 
-NAME = "projects"
-
-
-def connected(root: Path) -> list[dict]:
+def connected(root: Path, registry=None) -> list[dict]:
     """This project and the ones it is connected to, in the order `list`
-    prints them, each as `{id, relation, present, path}`."""
+    prints them, each as `{id, relation, present, path, found}`; `found` says
+    how TCW found a project on this machine other than this one (TCW-107
+    Design 6.1), and is None for this one and for one not here.
+
+    A parent row adds `inherit`, the axes it passes in `AXES` order; a child
+    row adds `personal`, true when only the personal file lists it."""
+    from tcw.store.base import AXES
     from tcw.store.project import FsProjectRegistry
-    # A registry problem — an invalid ID, a parent that does not name this
-    # project back — is an error, as `validate` reports it, never a project
+    # A registry problem — an invalid ID, a listed child that does not name
+    # this project back — is an error, as `validate` reports it, never a project
     # quietly left off the list.
-    registry = FsProjectRegistry.open(root).require_valid()
+    if registry is None:
+        registry = FsProjectRegistry.open(root).require_valid()
     here = registry.current
     rows = [{"id": here.id, "relation": "current", "present": True,
-             "path": str(here.locator)}]
+             "path": str(here.locator), "found": None}]
     seen = {here.id}
 
-    def add(project_id: str | None, relation: str) -> None:
+    def add(project_id: str | None, relation: str, **extra) -> None:
         if project_id is None or project_id in seen:
             return
         seen.add(project_id)
         project = registry.get(project_id)
         rows.append({"id": project_id, "relation": relation,
                      "present": project is not None,
-                     "path": str(project.locator) if project is not None else None})
+                     "path": str(project.locator) if project is not None else None,
+                     "found": registry.found(project_id), **extra})
 
-    add(registry.declared_parent_id(), "parent")
+    for link in registry.parents():
+        add(link.id, "parent", inherit=[axis for axis in AXES if axis in link.inherit])
+    personal = registry.personal_child_ids()
     for child in registry.declared_child_ids():
-        add(child, "child")
-    # An upstream declared by an ancestor is readable from here too, as the
-    # registry reads it (`FsProjectRegistry.declared_upstream_ids`).
-    for declarer in [here.id, *(a.id for a in registry.ancestors(here.id))]:
-        for upstream in registry.declared_upstream_ids(declarer):
-            add(upstream, "upstream")
+        add(child, "child", personal=child in personal)
     return rows
 
 
@@ -56,22 +59,16 @@ def _list(args: argparse.Namespace) -> int:
     root = find_project_root(Path.cwd())
     if root is None:
         raise BackendError(NO_PROJECT)
-    rows = connected(root)
+    from tcw.store.project import FsProjectRegistry
+    registry = FsProjectRegistry.open(root).require_valid()
+    rows = connected(root, registry)
     if args.json:
-        print_json("projects", rows)
+        order = registry.load_order()
+        print_json(None, {"projects": rows, "load-order": list(order.ids),
+                          "load-order-complete": not order.missing and not order.unreadable,
+                          "load-order-warning": order.warning})
         return codes.OK
     for row in rows:
         print(row["id"])
     return codes.OK
 
-
-def add_subparser(sub: argparse._SubParsersAction) -> None:
-    from tcw.cli_help import command, group
-    p = group(sub, NAME, help="the projects this one is connected to")
-    verbs = p.add_subparsers(dest="projects_verb", required=True)
-    p = command(verbs, "list", help="this project and its connected projects",
-                prints="one project ID per line, this project first, or --json",
-                writes="nothing", examples=["projects list", "projects list --json"])
-    p.add_argument("--json", action="store_true",
-                   help="print each project's relation, presence and path")
-    p.set_defaults(func=_list)

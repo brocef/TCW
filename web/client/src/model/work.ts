@@ -1,18 +1,19 @@
+import { parseFullId } from "./identifier"
 import type { JsonRecord, TBoard, TProject, TStageRow, WorkItem } from "./types"
 
 /** The stage filter's value for an item with no stage: a Jira ticket in a
  * status no stage maps to. Not a stage name, so it cannot collide with one. */
 export const NO_STAGE = "(no stage)"
 
-/** The folder of a slug (`project/folder`), or the text itself when bare. */
-export function folderOf(slug: string): string {
-    return slug.slice(slug.lastIndexOf("/") + 1)
+/** The folder of a work item's full identifier (`<project>.work/<folder>`),
+ * or the text itself when it is a bare folder name. */
+export function folderOf(fullId: string): string {
+    return parseFullId(fullId)?.idPath ?? fullId
 }
 
-/** The project of a slug, or `null` for a bare folder name. */
-export function projectOf(slug: string): string | null {
-    const slash = slug.indexOf("/")
-    return slash === -1 ? null : slug.slice(0, slash)
+/** The project of a full identifier, or `null` for a bare folder name. */
+export function projectOf(fullId: string): string | null {
+    return parseFullId(fullId)?.project ?? null
 }
 
 /** A person as the page shows them: the backend's display name when the
@@ -61,9 +62,10 @@ export function boardRows(board: TBoard): WorkItem[] {
         "title" in row
             ? row
             : {
-                  slug: row.slug,
+                  "full-id": row["full-id"],
+                  owner: row.owner,
                   path: row.path,
-                  title: folderOf(row.slug),
+                  title: folderOf(row["full-id"]),
                   stage: null,
                   created: "",
                   priority: null,
@@ -110,15 +112,22 @@ export function stageVerdict(
     return verdicts.find((entry) => entry.stage === stage)?.verdict
 }
 
-/** Whether `slug` names an item of this project. */
-export function isLocal(slug: string, project: TProject): boolean {
-    const owner = projectOf(slug)
+/** Whether a full identifier names an item of this project. */
+export function isLocal(fullId: string, project: TProject): boolean {
+    const owner = projectOf(fullId)
     return owner === null || owner === project.id
 }
 
-/** The sentence the stage line carries: the viewer never moves an item. */
-export function moveHint(slug: string): string {
-    return `Move it with \`tcw work advance ${slug}\`.`
+/** The sentence the stage line carries: the viewer never moves an item.
+ * Another project's item is moved in its own project, which refuses the
+ * move from here, so the command runs there with `tcw -C`. */
+export function moveHint(fullId: string, servedProject: string): string {
+    const owner = projectOf(fullId)
+    const there =
+        owner !== null && owner !== servedProject
+            ? `tcw -C tcw://${owner}.path/ `
+            : "tcw "
+    return `Move it with \`${there}work advance ${fullId}\`.`
 }
 
 /** The `verdict:` value in a round's front matter, or "" when unset. */

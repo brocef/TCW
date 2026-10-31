@@ -1,4 +1,4 @@
-import { useCallback } from "react"
+import { useCallback, useContext } from "react"
 import {
     Badge,
     Button,
@@ -18,15 +18,25 @@ import {
     referenceOptions,
     type TReferenceField,
 } from "../model/reference-search"
-import type { Axis, CapabilityDetail, TaxonomyDetail } from "../model/types"
+import type {
+    Axis,
+    CapabilityDetail,
+    CapabilityItem,
+    TaxonomyDetail,
+    TScopeProject,
+    TScopeStatus,
+} from "../model/types"
+import { parseFullId, routeKey } from "../model/identifier"
 import { ReferenceInput } from "./reference-input"
-import { LABELS } from "./route-utils"
+import { ProjectIdContext } from "./project-context"
+import { LABELS, idPathOf, inherited, pathFor } from "./route-utils"
 import {
     Errors,
     Field,
     Fields,
     Markdown,
     MarkdownEditor,
+    OwnedBy,
     SelectInput,
     TextInput,
 } from "./shared-components"
@@ -104,9 +114,12 @@ export function FacetPopover({
     value,
     onChange,
     display = (option: string) => option,
+    unavailable,
 }: {
     label: string
     options: readonly string[]
+    /** Why the options could not be read, shown in their place. */
+    unavailable?: string
     value: string[]
     onChange: (value: string[]) => void
     /** How an option reads: a stage as written, a person by name. */
@@ -126,7 +139,11 @@ export function FacetPopover({
                 width="180px"
             >
                 <Flex direction="column" gap="2">
-                    {options.length ? (
+                    {unavailable !== undefined ? (
+                        <Text className="facet-empty" color="gray" size="1">
+                            could not be read: {unavailable}
+                        </Text>
+                    ) : options.length ? (
                         options.map((option) => (
                             <Text
                                 as="label"
@@ -164,21 +181,12 @@ export function FacetPopover({
     )
 }
 
-/** An entry inherited from another project is read-only here: overriding
- * it is a deliberate act the command line offers. */
-function EditOrInherited({
-    origin,
-    onEdit,
-}: {
-    origin?: string
-    onEdit: () => void
-}) {
-    if (origin && origin !== "local")
-        return (
-            <Badge color="amber" title={`Edit it in project ${origin}`}>
-                inherited from {origin}
-            </Badge>
-        )
+/** Another project's object is read-only here, whether this project
+ * inherits it or not (TCW-113 Design 6.7): overriding an inherited one is a
+ * deliberate act the command line offers. */
+function EditOrOwned({ owner, onEdit }: { owner: string; onEdit: () => void }) {
+    const projectId = useContext(ProjectIdContext)
+    if (owner !== projectId) return <OwnedBy owner={owner} />
     return (
         <Button
             className="edit-btn"
@@ -188,6 +196,27 @@ function EditOrInherited({
         >
             Edit
         </Button>
+    )
+}
+
+/** What an entry overrides, as `show` prints it (TCW-112 Design 4.5), or
+ * that its inherited content could not be read. */
+function OverridesLine({
+    record,
+}: {
+    record: { overrides?: string | null; partial?: boolean }
+}) {
+    if (record.partial)
+        return (
+            <Text as="div" className="item-meta" color="amber" size="2">
+                partial: inherited content could not be read
+            </Text>
+        )
+    if (!record.overrides) return null
+    return (
+        <Text as="div" className="item-meta" color="gray" size="2">
+            overrides <code>{record.overrides}</code>
+        </Text>
     )
 }
 
@@ -207,21 +236,22 @@ export function DetailView({
                 <div className="detail-head">
                     <div>
                         <Heading as="h2" size="5">
-                            {term.name ?? term.slug}
+                            {term.name ?? idPathOf(term)}
                         </Heading>
                         <Text className="item-meta" color="gray" size="2">
-                            {term.qualified ?? term.slug}
+                            {term["full-id"]}
                         </Text>
+                        <OverridesLine record={term} />
                         <ModifiedAt value={term.modified} />
                     </div>
                     <Flex className="detail-actions" align="center" gap="2">
                         <Badge>{term.kind}</Badge>
-                        <EditOrInherited origin={term.origin} onEdit={onEdit} />
+                        <EditOrOwned owner={term.owner} onEdit={onEdit} />
                     </Flex>
                 </div>
                 <Fields>
                     <Field name="Kind" value={term.kind} />
-                    <Field name="Origin" value={term.origin} />
+                    <Field name="Owner" value={term.owner} />
                     <Field name="Parent" value={term.parent} />
                     <Field
                         name="Relates to"
@@ -245,19 +275,17 @@ export function DetailView({
             <div className="detail-head">
                 <div>
                     <Heading as="h2" size="5">
-                        {capability.name ?? capability.path}
+                        {capability.name ?? idPathOf(capability)}
                     </Heading>
                     <Text className="item-meta" color="gray" size="2">
-                        {capability.path}
+                        {capability["full-id"]}
                     </Text>
+                    <OverridesLine record={capability} />
                     <ModifiedAt value={capability.modified} />
                 </div>
                 <Flex className="detail-actions" align="center" gap="2">
                     <Badge>{capability.status}</Badge>
-                    <EditOrInherited
-                        origin={capability.origin}
-                        onEdit={onEdit}
-                    />
+                    <EditOrOwned owner={capability.owner} onEdit={onEdit} />
                 </Flex>
             </div>
             <Fields>
@@ -273,8 +301,88 @@ export function DetailView({
                     )
                 )}
             </Fields>
+            <StatusByProject
+                capability={capability}
+                projects={(detail as CapabilityDetail).projects}
+            />
             <Markdown source={capability.body ?? ""} resolveLinks />
         </>
+    )
+}
+
+/** Each status a capability path holds across the scope, with its
+ * projects (TCW-113 Design 6.9): those that inherit it marked, each that
+ * has an object of its own at the path linked to that object's page, and
+ * the projects that could not be read. Shown only under `down` and `all`,
+ * whose records carry `statuses`. */
+function StatusByProject({
+    capability,
+    projects,
+}: {
+    capability: CapabilityItem
+    projects?: TScopeProject[]
+}) {
+    const projectId = useContext(ProjectIdContext)
+    if (!capability.statuses) return null
+    // A project has an object of its own at this path when the object its
+    // view comes from is owned by it, whether or not that object sets the
+    // status; the record's other full identifiers (its own, the one it
+    // overrides, and those that override it) are used for the rest.
+    const own = new Map<string, string>()
+    for (const fullId of [
+        capability["full-id"],
+        capability.overrides,
+        ...(capability["overridden-by"] ?? []),
+        ...capability.statuses.map((entry) => entry["full-id"]),
+    ]) {
+        const owner = fullId ? parseFullId(fullId)?.project : undefined
+        if (owner && fullId) own.set(owner, fullId)
+    }
+    const byStatus = new Map<string, TScopeStatus[]>()
+    for (const entry of capability.statuses) {
+        const name = entry.status ?? "(no status)"
+        byStatus.set(name, [...(byStatus.get(name) ?? []), entry])
+    }
+    const unavailable = (projects ?? []).filter((p) => p.unavailable)
+    return (
+        <section className="status-by-project" aria-label="Status by project">
+            <Heading as="h3" size="3">
+                Status by project
+            </Heading>
+            <ul>
+                {[...byStatus].map(([status, entries]) => (
+                    <li key={status}>
+                        {status}:{" "}
+                        {entries.map((entry, index) => {
+                            const fullId = own.get(entry.project)
+                            const key = fullId && routeKey(fullId, projectId)
+                            return (
+                                <span key={entry.project}>
+                                    {index > 0 && ", "}
+                                    {key ? (
+                                        <a
+                                            href={pathFor("capabilities", key)}
+                                            data-nav-axis="capabilities"
+                                            data-nav-key={key}
+                                        >
+                                            {entry.project}
+                                        </a>
+                                    ) : (
+                                        entry.project
+                                    )}
+                                    {entry.inherited && " (inherited)"}
+                                </span>
+                            )
+                        })}
+                    </li>
+                ))}
+                {unavailable.length > 0 && (
+                    <li>
+                        unavailable: {unavailable.map((p) => p.id).join(", ")}
+                    </li>
+                )}
+            </ul>
+        </section>
     )
 }
 
@@ -346,6 +454,12 @@ export function EditorView({
                 )}
             </div>
             <div className="editor-section">Body</div>
+            {editor.mode === "core" && editor.bodyNote && (
+                <Text as="p" className="body-note" color="gray" size="2">
+                    The body shown on the page also holds attached documents or
+                    an inherited description, which this edit leaves unchanged.
+                </Text>
+            )}
             <MarkdownEditor
                 value={String(draft.body ?? "")}
                 onChange={(value) => setDraft("body", value)}
@@ -419,10 +533,12 @@ export function Conflict({
 function optionsFor(
     field: TReferenceField,
     data: Data,
+    projectId: string,
     current?: string,
     selected?: string[]
 ) {
     return referenceOptions(field, {
+        projectId,
         ...data,
         currentIdentifier: current,
         selected,
@@ -442,6 +558,7 @@ function TaxonomyFields({
     data: Data
     current?: string
 }) {
+    const projectId = useContext(ProjectIdContext)
     return (
         <>
             <TextInput
@@ -466,7 +583,12 @@ function TaxonomyFields({
                         label="Parent"
                         mode="refuse"
                         value={String(draft.parent ?? "")}
-                        options={optionsFor("taxonomy-parent", data, current)}
+                        options={optionsFor(
+                            "taxonomy-parent",
+                            data,
+                            projectId,
+                            current
+                        )}
                         onChange={(value) => setDraft("parent", value)}
                     />
                 </>
@@ -480,6 +602,7 @@ function TaxonomyFields({
                     options={optionsFor(
                         "taxonomy-relates",
                         data,
+                        projectId,
                         current,
                         (draft.relates_to as string[] | undefined) ?? []
                     )}
@@ -496,6 +619,7 @@ function TaxonomyFields({
                     options={optionsFor(
                         "taxonomy-vocabulary",
                         data,
+                        projectId,
                         current,
                         (draft.vocabulary as string[] | undefined) ?? []
                     )}
@@ -521,17 +645,18 @@ function CapabilityFields({
     scales: TCapabilityScales
     current?: string
 }) {
+    const projectId = useContext(ProjectIdContext)
     // One segment at a time, from the paths this project keeps; a new
     // segment is allowed.
     const pathSource = useCallback(
         async (text: string) =>
             pathSegments(
                 data.capabilities
-                    .filter((item) => (item.origin ?? "local") === "local")
-                    .map((item) => item.path),
+                    .filter((item) => !inherited(item, projectId))
+                    .map(idPathOf),
                 text
             ),
-        [data.capabilities]
+        [data.capabilities, projectId]
     )
     if (creating)
         return (
@@ -611,6 +736,7 @@ function CapabilityFields({
                         options={optionsFor(
                             config.field,
                             data,
+                            projectId,
                             current,
                             Array.isArray(fieldValue)
                                 ? fieldValue.map((item) =>

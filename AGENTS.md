@@ -15,7 +15,7 @@ This project keeps its items in Jira (the `TCW` project): each item's stage,
 request and comments are on its ticket, and its folder under `docs/work/`
 holds its other documents.
 
-The rules for *how* to do that work are bound to the lifecycle stages rather than
+The rules for _how_ to do that work are bound to the lifecycle stages rather than
 written here. Before working a stage, run
 **`tcw work stage prompt <stage> <item>`**: it prints TCW's own instructions for
 that stage composed with this repo's, and it behaves identically under Claude
@@ -24,19 +24,19 @@ moves the item to its next stage and runs the checks bound to that move;
 **`tcw work advance <item> --dry-run`** says whether the move would be allowed,
 and moves nothing.
 
-| Stage       | What this repo adds to TCW's own instructions                                                                                |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Stage       | What this repo adds to TCW's own instructions                                                                                                                                                                                                                                     |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `spec`      | [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) · [`docs/lifecycle/harness.md`](docs/lifecycle/harness.md) · the spec outline, [`spec.md`](docs/lifecycle/templates/spec.md) or, for an item tagged `bug`, [`spec-bug.md`](docs/lifecycle/templates/spec-bug.md) |
-| `plan`      | [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) — and the move into `plan` refuses until the spec is written |
-| `implement` | [`docs/lifecycle/implementation.md`](docs/lifecycle/implementation.md) · [`docs/lifecycle/harness.md`](docs/lifecycle/harness.md) — and the move into `implement` refuses until the spec and plan are written |
-| `review`    | [`docs/lifecycle/review.md`](docs/lifecycle/review.md): the suite run as CI runs it, and the documentation entries, before an accepted verdict |
-| `completed` | the move into `completed` runs `tcw validate`, and refuses unless it passes                                                 |
+| `plan`      | [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) — and the move into `plan` refuses until the spec is written                                                                                                                                                     |
+| `implement` | [`docs/lifecycle/implementation.md`](docs/lifecycle/implementation.md) · [`docs/lifecycle/harness.md`](docs/lifecycle/harness.md) — and the move into `implement` refuses until the spec and plan are written                                                                     |
+| `review`    | [`docs/lifecycle/review.md`](docs/lifecycle/review.md): the suite run as CI runs it, and the documentation entries, before an accepted verdict                                                                                                                                    |
+| `completed` | the move into `completed` runs `tcw validate`, and refuses unless it passes                                                                                                                                                                                                       |
 
 Every stage's instructions from `request` on start by asking for
 `git pull --ff-only`, and every move to a stage after `inbox` runs
 `docs/guide/examples/commit-item-after-move.sh`, which commits the item's
 folder when the move changed a file in it. The bindings are in
-`tcw-config.yaml`; `tcw work lifecycle` lists them.
+`.tcw/tcw-config.yaml`; `tcw work lifecycle` lists them.
 
 **Advance an item to `implement` before the first change to code.** As soon as
 its plan is written, `tcw work advance <item>` moves it from `plan` to
@@ -49,7 +49,7 @@ under modification, so its behavior is in flux: results are unreliable and it ca
 hang (`tcw work new` once blocked inside a capture script). As soon as a session
 starts editing `tcw/`, work the lifecycle by hand, and say so rather than
 silently alternating between the two: move each ticket in Jira itself, to the
-status of the stage it is going to (`work.stages` in `tcw-config.yaml` gives
+status of the stage it is going to (`work.stages` in `.tcw/tcw-config.yaml` gives
 each stage's status), and write the files in an item's folder directly. A hand
 move runs none of the checks or hooks bound to it — no `pre` checks and no
 commit — so do what they would have done yourself. A hand move that skips a
@@ -167,7 +167,7 @@ Run outputs are disposable and gitignored. The instrument is not.
 
 Before reporting any code change complete, invoke the `documentation-sync` skill
 to evaluate this project's documentation entries. They are **configuration, not
-prose**: they live in `tcw-config.yaml` under `work.documentation`, `tcw validate`
+prose**: they live in `.tcw/tcw-config.yaml` under `work.documentation`, `tcw validate`
 checks their shape, and `tcw work docs` prints them. `tcw work stage prompt plan` and
 `tcw work stage prompt implement` include them inline, so a plan should already name a
 task for every trigger expected to fire.

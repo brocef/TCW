@@ -1,0 +1,1 @@
+The file whose presence makes a folder an object, and which holds the object's properties: `tcw-taxonomy.yaml` for a term, `tcw-capability.yaml` for a capability, `tcw-work-item.yaml` for a work item. Its first line is `tcw-version`.

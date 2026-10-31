@@ -35,15 +35,16 @@ tests cannot check.
    with `tcw work comment <slug>`, as spec would.
 5. Record dependencies between items as blockers, not prose:
    `tcw work edit <slug> --blocked-by <ref>`.
-6. **Too large for one item?** Split it here: `tcw work new "<title>" --parent
-   <slug>` per part, its request on stdin; this item is the parent. A part for
-   another project: `tcw work new "<title>" --project <id>` (no `--parent`). A
-   ticket key printed instead of a slug means no item exists there yet: report
-   it. Otherwise, from inside that project, set `--parent` (a Jira project
-   takes only a ticket on its own site) and `--blocked-by` with `tcw work edit`,
-   then record TCW's uncommitted changes in that project's version control
-   before filing there again: until then a filing is refused, or its Jira
-   ticket stays in the inbox.
+6. **Too large for one item?** Split it here:
+   `tcw work new "<title>" --parent <slug>` per part, request on stdin. That
+   puts the part's folder inside the parent's folder (or says why not);
+   `--parent`, not the folder, is what makes it a part. A part for another
+   project is made in that project:
+   `tcw -C tcw://<id>.path/ work new "<title>" --parent <slug>` (its folder is
+   then made at the top of that project's store, and the command says so); set
+   `--blocked-by` the same way. When Jira cannot link the parent (an epic
+   kept in files, or on another Jira site), TCW records it in the part's
+   folder and says so, and Jira itself does not show it.
 7. **No placeholders.** "TBD", "add error handling", "as in step 3": a step
    nobody can carry out without asking you a question is not a step.
 8. **Self-review.** Re-read the plan against the spec: every acceptance

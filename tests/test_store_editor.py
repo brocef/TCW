@@ -17,10 +17,9 @@ from tcw.store.base import (
     TAXONOMY_EDITABLE_FIELDS, CapabilityDetail, StaleRevision, TermDetail,
 )
 from tcw.store.fs import (FsCapabilitiesStore, FsTaxonomyStore, _revision, _revision_multi, _atomic_write_all, _mkdir_owned, init, write_sentinel)
-# Federation setup is non-trivial and already written next door; the rollback
-# test that needs it belongs in this file, with the other fault-injection tests.
-from test_capabilities_federation import child_of
 from tcw.errors import TcwError
+from tests.projectfiles import write_config, write_manifest
+from tests.statefiles import CAPABILITY_STATE, TAXONOMY_STATE, read_state
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -161,7 +160,7 @@ def test_update_term_name_and_relatesto(tmp_path):
     detail = st.update_term("admin", name="Administrator",
                             relates_to=["user"])
     assert detail.term.name == "Administrator"
-    assert detail.term.relates_to == ["user"]
+    assert detail.term.relates_to == ["test-project.taxonomy/user"]   # stored in full
 
 
 def test_update_term_partial_unchanged(tmp_path):
@@ -185,11 +184,11 @@ def test_update_term_stale_revision(tmp_path):
     with pytest.raises(StaleRevision):
         st.update_term("admin", name="X", core_revision=old_rev)
 
-    assert st.get("admin").name == "Admin"  # unchanged
+    assert st.get_view("admin").name == "Admin"  # unchanged
 
 
 def test_update_term_refuses_inherited(tmp_path):
-    """Inherited terms cannot be updated."""
+    """An inherited term the project does not override cannot be updated."""
     shared = tmp_path / "shared"
     (shared / "docs" / "taxonomy").mkdir(parents=True)
     subprocess.run(["git", "init", "-q", str(shared)], check=True)
@@ -208,16 +207,13 @@ def test_update_term_refuses_inherited(tmp_path):
     subprocess.run(["git", "-C", str(cons), "config", "user.name", "t"],
                    check=True)
     write_sentinel(cons, "consumer")
-    (cons / "tcw-config.yaml").write_text(
-        "id: consumer\nprojects:\n  children:\n    shared: ../shared\n"
+    write_config(cons,
+        "id: consumer\nparents:\n- id: shared\n  inherit: [taxonomy]\n"
     )
-    (shared / "tcw-config.yaml").write_text(
-        "id: shared\nprojects:\n  parent:\n    consumer: ../consumer\n"
-    )
-    FsTaxonomyStore.open(cons).extends_add("shared")
+    write_manifest(cons, {"shared": "../shared"})
     st = FsTaxonomyStore.open(cons)
     with pytest.raises(TcwError, match="cannot update inherited"):
-        st.update_term("shared/widget", name="X")
+        st.update_term("shared.taxonomy/widget", name="X")
 
 
 def test_update_term_dangling_relatesto_rejected(tmp_path):
@@ -336,21 +332,17 @@ def test_add_invalid_status(tmp_path):
 
 
 def _federated(tmp_path) -> tuple[Path, Path]:
-    """(base, child) where child extends registered base, base
-    declaring a single `routes/login` capability."""
+    """(base, child) where child's parent is base, passing it capabilities,
+    base declaring a single `routes/login` capability."""
     base = _cap_node(tmp_path / "b")
     FsCapabilitiesStore.open(base).add("routes/login", name="Sign in",
                                        status="Supported", body="UPSTREAM.")
     child = _cap_node(tmp_path / "c")
-    (child / "tcw-config.yaml").write_text(
-        f"id: child-project\nprojects:\n  children:\n"
-        f"    base-project: {base}\n"
+    write_config(child,
+        "id: child-project\nparents:\n- id: base-project\n  inherit: [capabilities]\n"
     )
-    (base / "tcw-config.yaml").write_text(
-        f"id: base-project\nprojects:\n  parent:\n"
-        f"    child-project: {child}\n"
-    )
-    FsCapabilitiesStore.open(child).extends_add("base-project")
+    write_manifest(child, {"base-project": os.path.relpath(base, child)})
+    write_config(base, "id: base-project\n")
     return base, child
 
 
@@ -359,22 +351,24 @@ def test_update_capability_inherited_fields(tmp_path):
     st = FsCapabilitiesStore.open(child)
     detail = st.update_capability("routes/login", fields={"Status": "Missing"})
     assert detail.capability.status == "Missing"
-    assert detail.capability.origin == "base-project"
+    # The edit made the child's own override at the same path, so the child
+    # now owns the object there, and it overrides base's (TCW-112 Design 4.2).
+    assert detail.capability.owner == "child-project"
+    assert str(detail.capability.overrides) == "base-project.capabilities/routes/login"
+    assert detail.capability.name == "Sign in"            # inherited
     # Upstream untouched.
-    assert FsCapabilitiesStore.open(base).get("routes/login").status == "Supported"
+    assert FsCapabilitiesStore.open(base).get_view("routes/login").status == "Supported"
 
 
 def test_update_capability_inherited_matches_set(tmp_path):
     """The web path and the CLI path share the merge — same field, same file.
-    Each fixture mints its own upstream id, so compare against that id."""
+    The override holds only the field given: no name, no id, no pointer
+    (TCW-112 Design 4.2)."""
     def written(root: Path, write) -> dict:
         st = FsCapabilitiesStore.open(root)
         write(st)
-        meta = yaml.safe_load(
-            (root / "docs/capabilities/routes/login/meta.yaml").read_text())
-        upstream_id = st.get("routes/login").id
-        meta["overrides"] = meta["overrides"].replace(upstream_id, "<id>")
-        return meta
+        assert not (root / "docs/capabilities/routes/login/description.md").exists()
+        return read_state(root / "docs/capabilities/routes/login" / CAPABILITY_STATE)
 
     _, child = _federated(tmp_path)
     via_update = written(child, lambda st: st.update_capability(
@@ -384,7 +378,7 @@ def test_update_capability_inherited_matches_set(tmp_path):
     via_set = written(child2, lambda st: st.set("routes/login",
                                                 {"Status": "Missing"}))
 
-    assert via_update == via_set == {"overrides": "base-project/<id>", "Status": "Missing"}
+    assert via_update == via_set == {"Status": "Missing"}
 
 
 def test_update_capability_inherited_body(tmp_path):
@@ -395,22 +389,23 @@ def test_update_capability_inherited_body(tmp_path):
     assert "UPSTREAM" not in detail.capability.body
     assert (child / "docs/capabilities/routes/login/description.md").exists()
     # Upstream body untouched.
-    assert FsCapabilitiesStore.open(base).get("routes/login").body.strip() == "UPSTREAM."
+    assert FsCapabilitiesStore.open(base).get_view("routes/login").body.strip() == "UPSTREAM."
 
 
-def test_update_capability_inherited_body_cleared_drops_the_delta(tmp_path):
-    """An override's description.md is a body *delta*; an empty one means "no
-    delta" (that is what makes append-only overrides work). So clearing it drops
-    the file and re-inherits, rather than leaving an empty file that silently
-    means the same thing."""
+def test_update_capability_inherited_body_cleared_falls_back_to_the_inherited_one(
+        tmp_path):
+    """Clearing an override's body writes an empty declared description, which
+    adds no text, so the body shown falls back to the next member's
+    description (TCW-112 Design 2.3, 4.2)."""
     base, child = _federated(tmp_path)
     st = FsCapabilitiesStore.open(child)
     st.update_capability("routes/login", body="CHILD STORY.")
-    assert (child / "docs/capabilities/routes/login/description.md").exists()
+    description = child / "docs/capabilities/routes/login/description.md"
+    assert description.exists()
 
     detail = st.update_capability("routes/login", body=None)
     assert detail.capability.body.strip() == "UPSTREAM."          # re-inherited
-    assert not (child / "docs/capabilities/routes/login/description.md").exists()
+    assert description.read_text() == ""
     assert st.check() == []
     # The rest of the delta survives.
     st.update_capability("routes/login", fields={"Status": "Missing"})
@@ -456,12 +451,12 @@ def test_taxonomy_update_validation_no_partial_write(tmp_path):
     root = _tax_node(tmp_path)
     st = FsTaxonomyStore.open(root)
     st.add("Admin")
-    meta_before = (root / "docs/taxonomy/admin/meta.yaml").read_bytes()
+    meta_before = (root / "docs/taxonomy/admin/tcw-taxonomy.yaml").read_bytes()
 
     with pytest.raises(TcwError):
         st.update_term("admin", name="X", relates_to=["ghost"])
 
-    meta_after = (root / "docs/taxonomy/admin/meta.yaml").read_bytes()
+    meta_after = (root / "docs/taxonomy/admin/tcw-taxonomy.yaml").read_bytes()
     assert meta_before == meta_after
 
 
@@ -612,14 +607,14 @@ def test_write_node_failure_leaves_existing_node_untouched(tmp_path, monkeypatch
     st = FsTaxonomyStore.open(root)
     st.add("Admin", description="original body\n")
     d = root / "docs" / "taxonomy" / "admin"
-    meta_before = (d / "meta.yaml").read_bytes()
+    meta_before = (d / TAXONOMY_STATE).read_bytes()
     desc_before = (d / "description.md").read_bytes()
 
     _fail_writing(monkeypatch, "description.md")
     with pytest.raises(OSError):
         st.update_term("admin", name="Changed", description="new body\n")
 
-    assert (d / "meta.yaml").read_bytes() == meta_before
+    assert (d / TAXONOMY_STATE).read_bytes() == meta_before
     assert (d / "description.md").read_bytes() == desc_before
     assert list(root.rglob("*.tmp")) == []
 
@@ -645,14 +640,13 @@ def test_update_capability_failure_removes_override_it_materialized(tmp_path,
     directory that already "existed" and skips its own rollback — the guard has
     to sit at the caller that created it.
     """
-    base, child = child_of(tmp_path, {
-        "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
-    d = child / "docs" / "capabilities" / "moderation" / "report-content"
+    base, child = _federated(tmp_path)
+    d = child / "docs" / "capabilities" / "routes" / "login"
 
     _fail_writing(monkeypatch, "description.md")
     with pytest.raises(OSError) as excinfo:
         FsCapabilitiesStore.open(child).update_capability(
-            "moderation/report-content", body="override body\n")
+            "routes/login", body="override body\n")
 
     assert excinfo.value.errno == 28          # the injected error, not a rollback one
     assert not d.exists()
@@ -661,15 +655,14 @@ def test_update_capability_failure_removes_override_it_materialized(tmp_path,
 
 def test_set_failure_removes_override_it_materialized(tmp_path, monkeypatch):
     """`capabilities set` — the CLI path — materializes a fresh override too, and
-    writes only `meta.yaml`. A failed write must not leave the empty directory."""
-    base, child = child_of(tmp_path, {
-        "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
-    d = child / "docs" / "capabilities" / "moderation" / "report-content"
+    writes only `tcw-capability.yaml`. A failed write must not leave the empty directory."""
+    base, child = _federated(tmp_path)
+    d = child / "docs" / "capabilities" / "routes" / "login"
 
-    _fail_writing(monkeypatch, "meta.yaml")
+    _fail_writing(monkeypatch, CAPABILITY_STATE)
     with pytest.raises(OSError) as excinfo:
         FsCapabilitiesStore.open(child).set(
-            "moderation/report-content", {"Status": "Missing"})
+            "routes/login", {"Status": "Missing"})
 
     assert excinfo.value.errno == 28
     assert not d.exists()
@@ -786,15 +779,14 @@ def test_atomic_write_all_keeps_the_targets_mode(tmp_path):
 
 def test_the_body_clear_branch_rolls_back(tmp_path, monkeypatch):
     """`update_capability`'s body-clear branch deletes `description.md` and
-    writes `meta.yaml` into an override it materialized; a failed write leaves
+    writes `tcw-capability.yaml` into an override it materialized; a failed write leaves
     no folder behind."""
-    base, child = child_of(tmp_path, {
-        "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
-    d = child / "docs" / "capabilities" / "moderation" / "report-content"
+    base, child = _federated(tmp_path)
+    d = child / "docs" / "capabilities" / "routes" / "login"
 
-    _fail_writing(monkeypatch, "meta.yaml")
+    _fail_writing(monkeypatch, CAPABILITY_STATE)
     with pytest.raises(OSError):
         FsCapabilitiesStore.open(child).update_capability(
-            "moderation/report-content", body="")
+            "routes/login", body="")
 
     assert not d.exists()

@@ -69,7 +69,10 @@ def run_bindings(bindings: list[Binding], project_root: Path, env: dict[str, str
             continue
         source = ""
         file = getattr(binding.origin, "file", None)
-        if name_origin and file is not None:
+        variable = getattr(binding.origin, "variable", None)
+        if name_origin and variable is not None:
+            source = f" from {variable}"
+        elif name_origin and file is not None:
             source = f" from {shown(file)}"
         try:
             r = subprocess.run(

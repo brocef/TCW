@@ -1,0 +1,28 @@
+new:
+    - cli/name-a-projects-parents
+    - cli/list-a-projects-children
+    - cli/read-ancestors-in-one-load-order
+changed:
+    - cli/host-multiple-projects-in-one-repo
+    - cli/list-connected-projects
+    - cli/validate-a-project
+    - cli/rely-on-one-output-contract
+    - cli/override-the-team-configuration-for-myself
+    - cli/declare-a-connected-projects-home-repository
+    - cli/reference-a-tcw-object
+    - taxonomy/federate-shared-vocabulary
+    - capabilities/federate
+    - work/delegate-a-work-item-to-another-project
+    - web/editing
+removed:
+    - cli/read-from-an-upstream-project
+taxonomy:
+    new:
+        - parent-link
+        - load-order
+    changed:
+        - project
+        - project-registry
+        - personal-configuration
+    removed:
+        - upstream-project

@@ -10,9 +10,14 @@ import yaml
 from tcw.errors import BackendError, MovedWithoutNote, Refused, UsageError
 from tcw.work import fs_backend
 from tcw.work.backend import Query
-from tcw.work.config import MIGRATION_GUIDE, parse_work_config
+from tcw.work.config import parse_work_config
 from tcw.work.fs_backend import FsWorkBackend, read_all, work_store_problems
 from tcw.work.model import Changes, Slug
+from tests.statefiles import write_state, ITEM_STATE
+from tests.statefiles import read_state
+from tcw.project_files import version_line
+from tcw.cli import main
+from tests.work.projects import make_project, write_item as project_item
 
 TODAY = date(2026, 10, 2)
 
@@ -37,6 +42,20 @@ def work(tmp_path):
     return tmp_path / "work"
 
 
+@pytest.fixture
+def tcw_cli(monkeypatch, capsys):
+    """Run `tcw` in-process in a project; (exit code, stdout, stderr)."""
+    def run(argv, cwd):
+        monkeypatch.chdir(cwd)
+        try:
+            code = main(argv)
+        except SystemExit as stop:
+            code = stop.code if isinstance(stop.code, int) else 1
+        captured = capsys.readouterr()
+        return code, captured.out, captured.err
+    return run
+
+
 def backend_for(work, cfg=None, report=None, clock=None):
     return FsWorkBackend("tcw", work, cfg or config(),
                          report=report if report is not None else (lambda l: None),
@@ -53,13 +72,13 @@ def new(backend, title, request=None, stage="request", **props):
 
 
 def item_yaml(work, folder):
-    return (work / folder / "item.yaml").read_text()
+    return (work / folder / ITEM_STATE).read_text()
 
 
 def write_item(work, folder, data):
     (work / folder).mkdir(parents=True, exist_ok=True)
     text = data if isinstance(data, str) else yaml.safe_dump(data, sort_keys=False)
-    (work / folder / "item.yaml").write_text(text)
+    write_state(work / folder / ITEM_STATE, text)
 
 
 # -- AC 2: create ---------------------------------------------------------------
@@ -67,9 +86,9 @@ def write_item(work, folder, data):
 def test_create_writes_exactly_title_stage_priority(backend, work):
     item = new(backend, "Add a widget")
     assert item.slug == Slug("tcw", "2026-10-02-add-a-widget")
-    assert item_yaml(work, item.slug.folder) == (
+    assert item_yaml(work, item.slug.folder) == version_line() + (
         "title: Add a widget\nstage: request\npriority: medium\n")
-    assert sorted(p.name for p in (work / item.slug.folder).iterdir()) == ["item.yaml"]
+    assert sorted(p.name for p in (work / item.slug.folder).iterdir()) == [ITEM_STATE]
 
 
 def test_a_second_create_the_same_day_is_refused(backend, work):
@@ -87,11 +106,11 @@ def test_properties_are_written_in_order(backend, work):
     parent = new(backend, "parent")
     item = new(backend, "child", priority="high", effort="low",
                complexity="very-high", add_tags=("ui",), assignee="sam",
-               parent=parent.slug.folder, add_blocked_by=("other/x",))
-    assert item_yaml(work, item.slug.folder) == (
+               parent=parent.slug.folder, add_blocked_by=("other.work/x",))
+    assert item_yaml(work, item.slug.folder) == version_line() + (
         "title: child\nstage: request\npriority: high\neffort: low\n"
         "complexity: very-high\ntags:\n- ui\nassignee: sam\n"
-        f"parent: tcw/{parent.slug.folder}\nblocked-by:\n- other/x\n")
+        f"parent: tcw.work/{parent.slug.folder}\nblocked-by:\n- other.work/x\n")
 
 
 def test_create_validates_its_properties(backend, work):
@@ -152,7 +171,7 @@ def test_strict_reading(backend, work, text, key):
     write_item(work, "2026-10-01-x", text)
     with pytest.raises(BackendError) as error:
         backend.read("2026-10-01-x")
-    assert "item.yaml" in str(error.value)
+    assert ITEM_STATE in str(error.value)
     if key:
         assert key in str(error.value)
 
@@ -169,13 +188,26 @@ def test_an_absent_priority_reads_as_medium(backend, work):
     assert backend.read("2026-10-01-x").priority == "medium"
 
 
-def test_a_bare_reference_reads_as_this_project(backend, work):
+def test_a_stored_reference_is_a_full_identifier(backend, work):
     write_item(work, "2026-10-01-x", {"title": "t", "stage": "spec",
-                                      "parent": "2026-10-01-p",
-                                      "blocked-by": ["2026-10-01-q", "o/r"]})
+                                      "parent": "tcw.work/2026-10-01-p",
+                                      "blocked-by": ["tcw.work/2026-10-01-q", "o.work/r"]})
     item = backend.read("2026-10-01-x")
     assert item.parent == Slug("tcw", "2026-10-01-p")
     assert item.blocked_by == (Slug("tcw", "2026-10-01-q"), Slug("o", "r"))
+
+
+@pytest.mark.parametrize("key, value", [
+    ("parent", "2026-10-01-p"), ("parent", "tcw/2026-10-01-p"),
+    ("blocked-by", ["2026-10-01-q"]), ("blocked-by", ["o/r"])])
+def test_a_3x_reference_makes_the_item_unreadable_naming_tcw_migrate(backend, work,
+                                                                    key, value):
+    """A bare folder or `<project>/<folder>` was a 3.x reference (TCW-110
+    Design 5.2): reported where it is read, never read as this project's."""
+    write_item(work, "2026-10-01-x", {"title": "t", "stage": "spec", key: value})
+    with pytest.raises(BackendError) as caught:
+        backend.read("2026-10-01-x")
+    assert f"({key})" in str(caught.value) and "tcw migrate" in str(caught.value)
 
 
 def test_an_edit_keeps_a_stage_that_reads_as_none(backend, work):
@@ -238,7 +270,7 @@ def test_a_failed_replace_leaves_the_old_file(backend, work, monkeypatch):
     with pytest.raises(OSError):
         backend.update(item.slug.folder, Changes(priority="high"))
     assert item_yaml(work, item.slug.folder) == before
-    assert sorted(p.name for p in (work / item.slug.folder).iterdir()) == ["item.yaml"]
+    assert sorted(p.name for p in (work / item.slug.folder).iterdir()) == [ITEM_STATE]
 
 
 # -- AC 6: comments ----------------------------------------------------------------------
@@ -298,53 +330,87 @@ def test_a_note_that_cannot_be_written_leaves_the_move(backend, work):
 # -- AC 8: rename ---------------------------------------------------------------------------
 
 def test_rename_rewrites_references_and_reports_mentions(work):
+    # The backend's `move` writes the reference fields it owns and its own
+    # `id`, calls `before_folder`, and moves the folder last (TCW-114 Design
+    # 7.2). It no longer lists mentions: `tcw work rename` does, tested below.
     lines = []
     backend = backend_for(work, report=lines.append)
     a = new(backend, "A")
     write_item(work, "2026-10-01-b", {"title": "b", "stage": "verify",
-                                      "parent": f"tcw/{a.slug.folder}"})
+                                      "parent": str(a.slug)})
     write_item(work, "2026-10-01-c", {"title": "c", "stage": "spec",
-                                      "blocked-by": [a.slug.folder]})
-    spec = work / a.slug.folder / "spec" / "spec.md"
-    spec.parent.mkdir()
-    spec.write_text(f"intro\nsee {a.slug.folder}\n")
-
-    renamed = backend.rename(a.slug.folder, "new-words")
-    assert renamed.slug.folder == "2026-10-02-new-words"
-    b = yaml.safe_load(item_yaml(work, "2026-10-01-b"))
-    c = yaml.safe_load(item_yaml(work, "2026-10-01-c"))
-    assert b == {"title": "b", "stage": "verify", "priority": "medium",
-                 "parent": "tcw/2026-10-02-new-words"}
-    assert c["blocked-by"] == ["tcw/2026-10-02-new-words"]
-    new_spec = work / "2026-10-02-new-words" / "spec" / "spec.md"
-    assert any(line.startswith(f"{new_spec}:2:") and "not rewritten" in line
-               for line in lines)
+                                      "blocked-by": [str(a.slug)]})
+    seen = []
+    pairs = backend.move(a.slug.folder, "2026-10-02-new-words",
+                         lambda: seen.append((work / a.slug.folder).is_dir()))
+    assert seen == [True]                 # the folder had not moved yet
+    assert pairs == [(a.slug, Slug("tcw", "2026-10-02-new-words"))]
+    assert backend.read("2026-10-02-new-words").title == "A"
+    b = read_state(work / "2026-10-01-b" / ITEM_STATE)
+    c = read_state(work / "2026-10-01-c" / ITEM_STATE)
+    # The reference is rewritten in the text; nothing else is added.
+    assert b == {"title": "b", "stage": "verify",
+                 "parent": "tcw.work/2026-10-02-new-words"}
+    assert c["blocked-by"] == ["tcw.work/2026-10-02-new-words"]
+    assert any(line.startswith("moved ") for line in lines)
+    assert not any("not rewritten" in line for line in lines)
     assert not list(work.rglob("renames.yaml"))
 
 
-def test_rename_takes_a_full_name_with_the_same_date(backend):
-    item = new(backend, "A")
-    assert backend.rename(item.slug.folder, "2026-10-02-b").slug.folder == "2026-10-02-b"
+def test_a_rename_prints_each_mention_once(tcw_cli, tmp_path):
+    # Mentions are listed by `tcw work rename` after the move, one line per
+    # line of text that still names the old identifier (TCW-114 Design 5.8).
+    root = make_project(tmp_path, "p")
+    a = project_item(root, "2026-10-01-a", {"title": "a", "stage": "spec"})
+    (a / "spec").mkdir()
+    (a / "spec" / "spec.md").write_text("intro\nsee 2026-10-01-a\nand 2026-10-01-a\n")
+    code, out, err = tcw_cli(["work", "rename", "2026-10-01-a", "new-words"], root)
+    assert (code, out) == (0, "p.work/2026-10-01-a -> p.work/2026-10-01-new-words\n")
+    spec = root / "docs" / "work" / "2026-10-01-new-words" / "spec" / "spec.md"
+    for number in (2, 3):
+        mention = f"{spec}:{number}: names p.work/2026-10-01-a, not rewritten"
+        assert err.splitlines().count(mention) == 1, err
+
+
+def test_rename_takes_a_full_name_with_the_same_date(tcw_cli, tmp_path):
+    root = make_project(tmp_path, "p")
+    project_item(root, "2026-10-02-a", {"title": "a", "stage": "spec"})
+    code, out, _ = tcw_cli(["work", "rename", "2026-10-02-a", "2026-10-02-b"], root)
+    assert (code, out) == (0, "p.work/2026-10-02-a -> p.work/2026-10-02-b\n")
 
 
 @pytest.mark.parametrize("name", ["New Words", "2026-01-01-other", "a_b"])
-def test_rename_refuses_a_name_that_is_not_folder_shaped(backend, name):
-    with pytest.raises(UsageError):
-        backend.rename(new(backend, "A").slug.folder, name)
+def test_rename_refuses_a_name_that_is_not_folder_shaped(tcw_cli, tmp_path, name):
+    root = make_project(tmp_path, "p")
+    project_item(root, "2026-10-02-a", {"title": "a", "stage": "spec"})
+    code, out, err = tcw_cli(["work", "rename", "2026-10-02-a", name], root)
+    assert (code, out) == (2, "")
+    assert (root / "docs" / "work" / "2026-10-02-a").is_dir()
 
 
-def test_rename_to_an_existing_name_is_refused(backend):
+def test_move_refuses_a_new_last_part_with_another_date(backend, work):
     a = new(backend, "A")
-    new(backend, "B")
-    with pytest.raises(Refused):
-        backend.rename(a.slug.folder, "b")
+    with pytest.raises(UsageError, match="keeps the date 2026-10-02"):
+        backend.move(a.slug.folder, "2026-01-01-other", lambda: None)
+    assert (work / a.slug.folder).is_dir()
+
+
+def test_rename_to_an_existing_name_is_refused(tcw_cli, tmp_path):
+    root = make_project(tmp_path, "p")
+    project_item(root, "2026-10-02-a", {"title": "a", "stage": "spec"})
+    project_item(root, "2026-10-02-b", {"title": "b", "stage": "spec"})
+    code, out, err = tcw_cli(["work", "rename", "2026-10-02-a", "b"], root)
+    assert (code, out) == (3, "") and "already exists" in err
+    assert (root / "docs" / "work" / "2026-10-02-a").is_dir()
 
 
 def test_rename_refuses_with_an_unreadable_item_and_moves_nothing(backend, work):
     a = new(backend, "A")
     write_item(work, "2026-10-01-bad", "title: [x\n")
+    called = []
     with pytest.raises(BackendError, match="2026-10-01-bad"):
-        backend.rename(a.slug.folder, "new-words")
+        backend.move(a.slug.folder, "2026-10-02-new-words", lambda: called.append(1))
+    assert called == []
     assert (work / a.slug.folder).is_dir()
 
 
@@ -363,15 +429,20 @@ def test_work_store_problems(work):
     (work / ".gitkeep").write_text("")
 
     found = {(f.severity, os.path.basename(os.path.dirname(f.where))
-              if f.where.endswith("item.yaml") else os.path.basename(f.where)):
+              if f.where.endswith(ITEM_STATE) else os.path.basename(f.where)):
              f.message for f in work_store_problems(work, "tcw", cfg)}
     assert set(found) == {("error", "2026-10-01-bad"), ("error", "2026-10-01-lost"),
                           ("warning", "2026-10-01-tagged"), ("error", "inbox"),
                           ("warning", "dod.yaml")}
     assert "created" in found[("error", "2026-10-01-bad")]
     assert "'verify'" in found[("error", "2026-10-01-lost")]
-    assert MIGRATION_GUIDE in found[("error", "inbox")]
-    assert MIGRATION_GUIDE in found[("warning", "dod.yaml")]
+    # Since TCW-111 the store's shape is Design 2.6's: a stage name is
+    # reserved in the work store (row c), and a file in its root is part of
+    # no object (row d). The reserved name points a 2.x store to its guide.
+    assert found[("error", "inbox")] == ("'inbox' is reserved in the work store; see "
+                                         "docs/migration-guide-2.8-to-3.0.0.md for the "
+                                         "work store layout")
+    assert found[("warning", "dod.yaml")] == "is not part of any object"
     assert "gone" in found[("warning", "2026-10-01-tagged")]
 
 
@@ -380,6 +451,6 @@ def test_every_file_written_is_reported(work):
     backend = backend_for(work, report=lines.append)
     item = new(backend, "x", request="text")
     backend.comment(item.slug.folder, "hi")
-    assert any("item.yaml" in l for l in lines)
+    assert any(ITEM_STATE in l for l in lines)
     assert any("request.md" in l for l in lines)
     assert any("comments" in l for l in lines)

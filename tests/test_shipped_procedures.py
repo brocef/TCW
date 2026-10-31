@@ -123,3 +123,28 @@ def test_a_missing_or_empty_default_is_a_loud_failure(monkeypatch, make, word):
     assert "tcw/work/procedures" in message
     assert "stage" not in message
 
+
+
+# -- TCW-113 Design 7.1, AC 37: the audit covers the family ---------------------------
+
+
+def test_ac37_the_audit_starts_from_the_family_and_names_items_in_full():
+    text = load_builtins().procedures["audit-backlog"]
+    for wanted in ("tcw work list --scope down --json", "unavailable",
+                   "tcw work list --scope down --all --json",
+                   "tcw work show <full-id>"):
+        assert wanted in text, wanted
+    flat = " ".join(text.split())
+    assert not re.search(r"Start with `tcw work list`", flat)
+    assert not re.search(r"`tcw work list`(?! --)", flat)
+    for stale in ("tcw work show <slug>", "tcw work path <slug>",
+                  "tcw work discard <slug>"):
+        assert stale not in flat, stale
+
+
+def test_ac37_the_auditor_is_given_an_item_by_its_full_identifier():
+    text = (REPO / "agents/backlog-auditor.md").read_text(encoding="utf-8")
+    given = text.split("## What you are given", 1)[1].split("\n## ", 1)[0]
+    assert "full identifier" in given
+    assert "tcw work show <slug>" not in text
+    assert "tcw work show <full-id>" in text

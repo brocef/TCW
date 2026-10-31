@@ -14,7 +14,7 @@ Three variants, one seeder, so they cannot drift apart:
   `work.stages.<stage>.prompt` lists carrying nonce-bearing bindings, a qa
   binding saying a person decides the verdict, and a silenced postmortem.
 * **bare** (`--bare`) — the same code files committed to a repository that
-  does not use TCW yet: no `tcw init`, no items, no nonces.
+  does not use TCW yet: no `tcw project new`, no items, no nonces.
 
 Items are created with `tcw work new` and moved with `tcw work advance`, and
 every document is written to the path `tcw work path` prints, so the fixture
@@ -61,7 +61,7 @@ from pathlib import Path
 
 import yaml
 
-from tcw.store.fs import find_project_root
+from tcw.project_files import SENTINEL, find_marker
 
 PROJECT_ID = "demo-app"
 
@@ -496,7 +496,7 @@ def _merge_config(dest: Path, key: str, value) -> None:
     add` has already written a `work:` key, and a second one makes the whole file
     fail to parse with `duplicate key: 'work'`.
     """
-    config = dest / "tcw-config.yaml"
+    config = dest / SENTINEL
     doc = yaml.safe_load(config.read_text()) or {}
     doc.setdefault("work", {})[key] = value
     config.write_text(yaml.safe_dump(doc, sort_keys=False, width=100))
@@ -612,14 +612,16 @@ def refuse_bare_inside_a_project(dest: Path) -> None:
     """Raise `ValueError` when a bare fixture at `dest` would sit inside a TCW
     project.
 
-    `tcw` looks for `tcw-config.yaml` in every parent folder, so such a fixture
-    would quietly become part of the outer project. The runner calls this for
+    `tcw` looks for `.tcw/tcw-config.yaml` (or a 3.x `tcw-config.yaml`, which
+    it refuses) in every parent folder, so such a fixture would quietly become
+    part of the outer project, or be refused with it. The runner calls this for
     every bare arm before spawning anything; `seed()` calls it too.
     """
-    outer = find_project_root(dest.parent)
-    if outer is not None:
+    marker = find_marker(dest.parent)
+    if marker is not None:
+        outer, _ = marker
         raise ValueError(f"a bare fixture at {dest} would sit inside the TCW "
-                         f"project at {outer} (its tcw-config.yaml); seed it "
+                         f"project at {outer} (its {SENTINEL}); seed it "
                          f"outside any TCW project, e.g. `--out /tmp/...`")
 
 
@@ -665,7 +667,7 @@ def _seed_items(dest: Path) -> dict[str, str]:
     _document(dest, slug, "plan", CLOSEOUT_PLAN)
     _advance(dest, slug, "implement")
     _write_at(Path(_run(dest, "work", "path", slug)) / "capabilities.yaml",
-              "new:\n  - billing/download-invoice\n")
+              f"new:\n  - {PROJECT_ID}.capabilities/billing/download-invoice\n")
     billing = dest / "src/billing.py"
     billing.write_text(billing.read_text() + CLOSEOUT_CODE)
     _round(dest, slug, "implement", CLOSEOUT_ROUND)
@@ -696,7 +698,7 @@ def _seed_items(dest: Path) -> dict[str, str]:
     reports = dest / "src/reports.py"
     reports.write_text(reports.read_text().replace(QA_CODE_OLD, QA_CODE_NEW))
     _write_at(Path(_run(dest, "work", "path", slug)) / "capabilities.yaml",
-              "changed:\n  - reports/view\n")
+              f"changed:\n  - {PROJECT_ID}.capabilities/reports/view\n")
     _round(dest, slug, "implement", QA_ROUND)
     _advance(dest, slug, "review")
     _round(dest, slug, "review", QA_REVIEW_ROUND)
@@ -756,7 +758,7 @@ def seed(dest: Path, variant: str = "control") -> dict:
                               "items": {}, "stage_items": {}, "nonces": {}})
 
     # 2. Make it a TCW project.
-    _run(dest, "init", "--id", PROJECT_ID, "taxonomy", "capabilities", "work")
+    _run(dest, "project", "new", "--id", PROJECT_ID, "taxonomy", "capabilities", "work")
 
     # 3. Taxonomy — two nouns and one feature over one of them.
     _run(dest, "taxonomy", "add", "Invoice",

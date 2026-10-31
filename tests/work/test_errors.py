@@ -8,14 +8,15 @@ import pytest
 
 from tcw import exit as codes
 from tcw.errors import (
-    BackendError, MovedWithoutNote, NotFound, Refused, TcwError, Unreachable,
-    UsageError,
+    BackendError, InheritedUnavailable, MovedWithoutNote, NotFound, Refused, TcwError,
+    Unreachable, UsageError,
 )
 
 
 def test_the_exit_codes_are_the_spec_s_numbers():
     assert (codes.OK, codes.ERROR, codes.USAGE, codes.REFUSED, codes.NOT_FOUND,
-            codes.UNREACHABLE, codes.MOVED_WITH_PROBLEM) == (0, 1, 2, 3, 4, 5, 6)
+            codes.UNREACHABLE, codes.MOVED_WITH_PROBLEM,
+            codes.INHERITED_UNAVAILABLE) == (0, 1, 2, 3, 4, 5, 6, 7)
 
 
 @pytest.mark.parametrize("cls, code", [
@@ -25,6 +26,7 @@ def test_the_exit_codes_are_the_spec_s_numbers():
     (NotFound, codes.NOT_FOUND),
     (Unreachable, codes.UNREACHABLE),
     (MovedWithoutNote, codes.MOVED_WITH_PROBLEM),
+    (InheritedUnavailable, codes.INHERITED_UNAVAILABLE),
 ])
 def test_each_error_carries_its_code(cls, code):
     error = cls("message")
@@ -36,3 +38,9 @@ def test_each_error_carries_its_code(cls, code):
 def test_a_refusal_can_name_the_record_the_backend_already_made():
     assert Refused("stopped").name is None
     assert Refused("stopped", name="TCW-12").name == "TCW-12"
+
+
+def test_inherited_unavailable_is_seven_and_names_what_is_missing():
+    error = InheritedUnavailable("x", project="core", axis="taxonomy", reason="missing")
+    assert error.code == 7
+    assert (error.project, error.axis, error.reason) == ("core", "taxonomy", "missing")

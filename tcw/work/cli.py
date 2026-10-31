@@ -1,6 +1,6 @@
 """The `tcw work` commands on the 3.0 model (TCW-70 Design 7).
 
-Every stdout line is a full slug, a stage, a path, a record or composed text,
+Every stdout line is a full identifier, a stage, a path, a record or composed text,
 so a script can read it; everything said to a person goes to stderr. A failure
 is a `TcwError` carrying its exit code, which `tcw.cli.main` turns into
 `tcw work <command>: <message>` on stderr.
@@ -17,12 +17,15 @@ from pathlib import Path
 from tcw import exit as codes
 from tcw.errors import (NO_PROJECT, BackendError, ConfigError, NotFound, Refused,
                         UsageError)
+from tcw.ids import sort_input
 from tcw.output import print_json, wrote
+from tcw.scope import scope_options
+from tcw.ownership import check_owned
 from tcw.store.base import normalize_tag
 from tcw.store.fs import FsProjectRegistry, find_project_root
 from tcw.stdin import read_piped_stdin
 from tcw.work.advance import advance as advance_item, discard as discard_item
-from tcw.work.backend import Query, WorkBackend
+from tcw.work.backend import Query, WorkBackend, folder_disagreement
 from tcw.work.jira.backend import KEY, JiraBackend
 from tcw.work.jira.tickets import adopt, inbox, user_name
 from tcw.work.gates import project_reader
@@ -30,9 +33,11 @@ from tcw.work.model import (
     STAGES, UNSET, Changes, Slug, completion_stage, inbox_stage, stage as table_stage,
     start_stage,
 )
-from tcw.work.open import (delegate, open_backend, open_for_update, open_project,
-                           read_work_config)
+from tcw.work.open import (existing_item, external_stages_of, name_item, open_backend,
+                           project_facts, read_layered, read_work_config,
+                           resolve_work_input)
 from tcw.work.record import item_record, readable
+from tcw.work.scoped import COUNTED_ACROSS
 
 NAME = "work"
 
@@ -47,31 +52,47 @@ def project_root(here: Path | None = None) -> Path:
     return root
 
 
-def resolve_item(arg: str, here: Path | None = None
+def resolve_item(arg: str, here: Path | None = None, *, writing: bool = False
                  ) -> tuple[Slug, WorkBackend, Path]:
-    """The slug `arg` names, the backend that holds it, and this project's
-    root. A full slug or a bare folder name, matched exactly; another
-    project's slug opens that project for reading."""
+    """The item `arg` names, the backend that holds it, and this project's
+    root: a full identifier or its address, a folder name, or a tracker key,
+    alone or in a full identifier (TCW-110 Design 3.1). Another project's
+    item opens that project for reading.
+
+    `writing` is for a command that changes the item: the ownership check
+    (TCW-114 Design 1.1) is made on the project the text names before
+    anything of that project is opened, so a write naming another project's
+    item exits 3 whether or not that project can be read; text naming no
+    project is looked up here, and what it names is checked too."""
     root = project_root(here)
-    backend = open_backend(root)
-    if isinstance(backend, JiraBackend) and isinstance(arg, str) and KEY.fullmatch(arg):
-        # A ticket key typed where an item is named (TCW-71 Design 2.6).
-        folder = backend.lookup(arg)
-        if folder is None:
-            raise NotFound(f"no work item here carries the Jira key {arg}")
-        return Slug(backend.project, folder), backend, root
-    slug = Slug.parse(arg, backend.project)
-    if slug.project != backend.project:
-        backend = open_project(slug.project, root)
+    if writing:
+        found = sort_input(arg, "work", KEY)
+        if found.form in ("a", "c"):
+            check_owned(found.full_id, root)
+    slug, backend = resolve_work_input(arg, lambda: open_backend(root), root)
+    if writing:
+        check_owned(slug, root)
     return slug, backend, root
 
 
-def _own(slug: Slug, backend: WorkBackend, root: Path) -> WorkBackend:
-    """Refuse a write to another project's item."""
-    if slug.project != open_backend(root).project:
-        raise Refused(f"{slug} belongs to project '{slug.project}'; run the "
-                      f"command in that project")
-    return backend
+def _references(changes: Changes, backend: WorkBackend, root: Path) -> Changes:
+    """`changes` with each item it names (`--parent`, `--blocked-by`,
+    `--unblocked-by`) turned into that item's full identifier, read from its
+    owner, so what is stored is the folder the backend holds however the
+    item was typed (TCW-110 Design 3.3). A blocker being removed need not
+    exist any more: removing a reference to a deleted item is how it is
+    cleaned up."""
+    def named(text) -> Slug:
+        return existing_item(text, lambda: backend, root)[0]
+
+    def sorted_(text) -> Slug:
+        return resolve_work_input(text, lambda: backend, root)[0]
+    parent = changes.parent
+    if parent is not UNSET and parent is not None:
+        parent = named(parent)
+    return replace(changes, parent=parent,
+                   add_blocked_by=tuple(named(t) for t in changes.add_blocked_by),
+                   remove_blocked_by=tuple(sorted_(t) for t in changes.remove_blocked_by))
 
 
 def _me(backend: WorkBackend) -> str:
@@ -157,29 +178,79 @@ def creation_stage(backend: WorkBackend, stage: str | None) -> str:
 
 
 def new_item(backend: WorkBackend, title: str, changes: Changes, *,
-             stage: str | None, request: str | None):
-    """Create an item in this project, where `creation_stage` says. What
-    `new` and the web viewer both call."""
+             stage: str | None, request: str | None, nest: bool = True):
+    """Create an item in this project, where `creation_stage` says, and inside
+    its parent's folder unless `nest` is false (`--flat`) or the parent is not
+    an item of this project. What `new` and the web viewer both call."""
     return backend.create(title, changes, stage=creation_stage(backend, stage),
-                          request=request)
+                          request=request, nest=nest)
 
 
-def blocks_target(slug: Slug, target: Slug, backend: WorkBackend, root: Path):
-    """The backend holding `target` and the target as read, before `slug` is
-    added to its blocked-by (`edit --blocks`). Another project's item is
-    opened through `open_for_update`, which never creates anything; a refused
-    or missing target raises, having written nothing."""
-    if target == slug:
-        raise UsageError(f"{slug} cannot block itself")
-    other = backend if target.project == slug.project else \
-        open_for_update(target.project, root)
-    return other, other.read(target.folder)
+def _quoted(text: str) -> str:
+    """`text` as one shell word, for a command a message names."""
+    import shlex
+    return shlex.quote(text)
+
+
+def _blocks_removed(args) -> UsageError:
+    """TCW-114 Design 2.2's refusal of `--blocks`, naming the command that
+    records the link on the blocked item. The first target is read only to
+    word it: for another project's item the command runs in that project's
+    folder, found without changing the exit, and names this item by its full
+    identifier, since its folder name there would be one of that project's."""
+    from tcw.ids import IdError
+    from tcw.ownership import active_project_id
+    target = args.blocks[0]
+    blocker = args.slug
+    where = ""
+    try:
+        found = sort_input(target, "work", KEY)
+        owner = found.full_id.project if found.form in ("a", "c") else None
+    except IdError:
+        owner = None
+    if owner is not None:
+        folder = f"tcw://{owner}.path/"
+        blocker = "<full id>"
+        try:
+            blocker = _quoted(_full_input(args.slug))
+        except Exception:               # looking never changes the exit (2.2)
+            pass
+        try:
+            root = project_root()
+            if owner == active_project_id(root):
+                folder, blocker = None, _quoted(args.slug)
+            else:
+                from tcw.locate import Locator
+                locator = Locator.of(root)
+                folder = str(locator.owner_root(owner, named_by=locator.root).resolve())
+        except Exception:               # looking never changes the exit (2.2)
+            pass
+        where = f" -C {_quoted(folder)}" if folder else ""
+    else:
+        blocker = _quoted(blocker)
+    return UsageError(f"work edit --blocks is removed in TCW 4: record it on the "
+                      f"blocked item instead: tcw{where} work edit {_quoted(target)} "
+                      f"--blocked-by {blocker}")
+
+
+def _full_input(text: str) -> str:
+    """Command input naming this project's item, as text another project
+    reads the same way: a full identifier or an address as typed, and a
+    folder's id-path or a tracker key with this project's ID before it, which
+    the other project resolves in this one (TCW-110 Design 3.1). Its project's
+    configuration is read; no backend is opened."""
+    from tcw.ownership import active_project_id
+    found = sort_input(text, "work", KEY)
+    if found.form in ("a", "c"):
+        return text
+    return f"{active_project_id(project_root())}.work/{found.id_path or found.key}"
 
 
 # -- commands ----------------------------------------------------------------------------
 
 
-SLUG_HELP = "the item: its full slug, or its folder name"
+SLUG_HELP = ("the item: its full identifier (<project>.work/<id-path>), its "
+             "id-path (its folder's path in the work store), or its tracker key")
 PROPERTY_FLAGS = ("effort", "complexity", "tag", "assignee", "parent", "blocked_by")
 
 
@@ -189,45 +260,31 @@ def _new(args) -> int:
         raise UsageError(f"--stage accepts only {inbox_stage()}")
     if args.assign_me:
         _alone(args, "--assign-me")
+    if args.flat and not args.parent:
+        raise UsageError("--flat keeps a child's folder out of its parent's; "
+                         "give the parent with --parent")
     if args.project:
-        # Before the read of piped input, so a usage error never waits on it.
-        if args.project == FsProjectRegistry.open(root).current.id:
-            raise UsageError(f"--project {args.project} names this project; "
-                             f"leave --project out to create the item here")
-        if args.assign_me:
-            raise UsageError(f"--assign-me cannot be used with --project; "
-                             f"project '{args.project}' assigns its own items")
-        given = [f for f in PROPERTY_FLAGS if getattr(args, f) is not None]
-        if given:
-            flag = "--" + given[0].replace("_", "-")
-            raise UsageError(f"{flag} cannot be used with --project; only "
-                             f"--priority can. Set it in that project afterwards")
-        if args.stage is not None:
-            # Not "its inbox": a Jira-mode project's ticket waits in Jira
-            # for `tickets adopt` instead.
-            raise UsageError("--stage cannot be used with --project; only "
-                             "--priority can. An item created in another "
-                             "project starts where that project's intake puts it")
-    backend = None
-    if not args.project:
-        # Before the read of piped input too, so `--stage` refused in this
-        # project never waits on it. Opening the backend makes no request.
-        backend = open_backend(root)
-        creation_stage(backend, args.stage)   # before `--assign-me` asks who
+        # Before the read of piped input and before anything is opened, so
+        # the refusal never waits on either (TCW-114 Design 2.1).
+        raise UsageError(f"work new --project is removed in TCW 4: an item is created "
+                         f"in its own project; run tcw -C tcw://{args.project}.path/ "
+                         f"work new {_quoted(args.title)} --parent <full id>")
+    # Before the read of piped input too, so `--stage` refused in this
+    # project never waits on it. Opening the backend makes no request.
+    backend = open_backend(root)
+    creation_stage(backend, args.stage)   # before `--assign-me` asks who
     request = read_piped_stdin()
     request = request if request.strip() else None
-    if args.project:
-        print(delegate(args.project, args.title, request, args.priority,
-                       here=root, report=_say))
-        return codes.OK
     assignee = _me(backend) if args.assign_me else _optional(args.assignee)
     changes = Changes(
         priority=_optional(args.priority), effort=_optional(args.effort),
         complexity=_optional(args.complexity), assignee=assignee,
         parent=_optional(args.parent), add_tags=tuple(args.tag or ()),
         add_blocked_by=tuple(args.blocked_by or ()))
+    changes = _references(changes, backend, root)
     # A failure after creation carries the name; `tcw.cli.main` prints it.
-    item = new_item(backend, args.title, changes, stage=args.stage, request=request)
+    item = new_item(backend, args.title, changes, stage=args.stage, request=request,
+                    nest=not args.flat)
     print(item.slug)
     return codes.OK
 
@@ -238,16 +295,20 @@ def _list(args) -> int:
     if args.mine:
         _alone(args, "--mine")
     root = project_root()
+    covered = _covered(args, root)
     backend = open_backend(root)
-    assignee = _me(backend) if args.mine else args.assignee
+    listed_here = covered is None or covered.active in {m.id for m in covered.wanted()}
+    assignee = (_me(backend) if listed_here else None) if args.mine else args.assignee
     tags = frozenset(args.tag) if args.tag else None
     for tag in sorted(tags or ()):
         if tag not in backend.config.tags:
             _say(f"warning: tag '{tag}' is not in this project's registry")
-    parent = Slug.parse(args.parent, backend.project) if args.parent else None
+    parent = existing_item(args.parent, lambda: backend, root)[0] if args.parent else None
     query = Query(stages=frozenset(args.stage) if args.stage else None,
                   parent=parent, assignee=assignee, tags=tags,
                   all=args.all)
+    if covered is not None:
+        return _list_scope(args, covered, backend, query, assignee)
     items = backend.list(query)
     if args.json:
         every = _readable(backend)
@@ -256,6 +317,48 @@ def _list(args) -> int:
     for item in items:
         print(item.slug)
     return codes.OK
+
+
+def _list_scope(args, covered, backend: WorkBackend, query: Query,
+                assignee: str | None) -> int:
+    """`list` over the projects a scope covers (TCW-113 Design 3.1, 3.2):
+    each project's own items in scope order, `children` and `blocks`
+    computed across the scope (Design 3.3)."""
+    from tcw.config import effective
+    from tcw.work.scoped import list_scope
+    scoped = list_scope(covered, query, active=backend, active_assignee=assignee,
+                        mine=args.mine,
+                        me=lambda: effective(covered.root).user_name,
+                        need_every=args.json)
+    covered.warn("its work items are not listed", _say, besides=COUNTED_ACROSS)
+    if scoped.bad:
+        _say("warning: these items could not be read, so blocks and children "
+             "may be incomplete: " + ", ".join(scoped.bad))
+    if args.json:
+        print_json(None, {"items": [item_record(i, scoped.every, _layout(b))
+                                    for i, b in scoped.items()],
+                          **_projects(covered)})
+        return codes.OK
+    for item, _ in scoped.items():
+        print(item.slug)
+    return codes.OK
+
+
+def _covered(args, root: Path):
+    """The projects a list or show command covers, or None for today's
+    reading of the active project alone: `--scope own` with no
+    `--project`. A `--project` the scope does not cover is refused here,
+    before anything is read (Design 2.2)."""
+    if args.scope == "own" and args.project is None:
+        return None
+    from tcw.scope import cover
+    return cover(root, args.scope, args.project)
+
+
+def _projects(covered) -> dict:
+    """`projects` for a `--json` document, under a scope other than `own`."""
+    projects = covered.projects_json()
+    return {} if projects is None else {"projects": projects}
 
 
 def _stamp(at) -> str:
@@ -277,15 +380,39 @@ def _indented(text: str) -> list[str]:
 def _show(args) -> int:
     """The item's properties, its request and its comments, newest first: the
     whole item an agent needs to read (Design 1.9)."""
-    slug, backend, _ = resolve_item(args.slug)
+    root = project_root()
+    found = sort_input(args.slug, "work", KEY)
+    named = found.full_id.project if found.form in ("a", "c") else None
+    if args.project is not None and named is not None and named != args.project:
+        # Design 2.3: a full identifier names its own project's item.
+        from tcw.scope import not_its_project
+        raise not_its_project(args.slug, "an item", named, args.project)
+    covered = _covered(args, root)
+    active = None if covered is None else open_backend(root)
+    if covered is None or named is not None:
+        # A full identifier names that item wherever it is, outside any
+        # catch (Design 1.7, 3.4); the scope decides only `children` and
+        # `blocks`.
+        slug, backend, _ = resolve_item(args.slug)
+    else:
+        slug, backend = _show_in_scope(args.slug, found, covered, active)
     item = backend.read(slug.folder)
-    record = item_record(item, _readable(backend), _layout(backend))
+    if covered is None:
+        every = _readable(backend)
+    else:
+        from tcw.work.scoped import every_item
+        every, bad = every_item(covered, active, backend if named is not None else None)
+        covered.warn(COUNTED_ACROSS, _say)
+        if bad:
+            _say("warning: these items could not be read, so blocks and children "
+                 "may be incomplete: " + ", ".join(bad))
+    record = item_record(item, every, _layout(backend))
     request = backend.read_request(slug.folder)
     comments = backend.read_comments(slug.folder)
     if args.json:
         print_json(None, {"item": record, "request": request, "comments": [
             {"at": _stamp(c.at), "author": c.author, "text": c.text}
-            for c in comments]})
+            for c in comments], **({} if covered is None else _projects(covered))})
         return codes.OK
     lines = []
     for key, value in record.items():
@@ -311,12 +438,32 @@ def _show(args) -> int:
     return codes.OK
 
 
+def _show_in_scope(text: str, found, covered, active: WorkBackend
+                   ) -> tuple[Slug, WorkBackend]:
+    """The item a folder name or a ticket key names among the projects the
+    scope keeps (Design 3.4): exactly one, or not found, or a usage error
+    naming each."""
+    from tcw.work.scoped import find_in_scope
+    key = found.key if found.form == "b" else None
+    matches = find_in_scope(covered, text, active=active, key=key,
+                            id_path=None if key is not None else found.id_path)
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        raise NotFound(f"no work item {text} in --scope {covered.scope}, which covers "
+                       f"{', '.join(m.id for m in covered.wanted())}")
+    raise UsageError(f"'{text}' names {len(matches)} items in --scope {covered.scope}: "
+                     f"{', '.join(str(slug) for slug, _ in matches)}; name one by its "
+                     f"full identifier")
+
+
 def _path(args) -> int:
     if args.slug is None:
         if args.stage or args.next or args.handoff:
             raise UsageError("name an item first")
-        backend = open_backend(project_root())
-        print(backend.work_path)
+        # The work path is the project's own: no store is opened for it, so
+        # nothing the project inherits is read (TCW-109 Design 3.4).
+        print(project_facts(project_root()).path)
         return codes.OK
     slug, backend, _ = resolve_item(args.slug)
     backend.read(slug.folder)
@@ -326,9 +473,12 @@ def _path(args) -> int:
 
 
 def _edit(args) -> int:
+    if args.blocks:
+        # Before anything is opened (TCW-114 Design 2.2).
+        raise _blocks_removed(args)
     if args.assign_me:
         _alone(args, "--assign-me")
-    slug, backend, root = resolve_item(args.slug)
+    slug, backend, root = resolve_item(args.slug, writing=True)
     changes = Changes(
         title=_optional(args.title), priority=_optional(args.priority),
         effort=_optional(args.effort), complexity=_optional(args.complexity),
@@ -336,32 +486,27 @@ def _edit(args) -> int:
         add_tags=tuple(args.tag or ()), remove_tags=tuple(args.untag or ()),
         add_blocked_by=tuple(args.blocked_by or ()),
         remove_blocked_by=tuple(args.unblocked_by or ()))
-    targets = [Slug.parse(t, slug.project) for t in args.blocks or ()]
-    if changes == Changes() and not targets and not args.assign_me:
+    if changes == Changes() and not args.assign_me:
         raise UsageError("nothing to change; give at least one property flag")
-    own = _own(slug, backend, root)
+    own = backend
     own.read(slug.folder)
+    changes = _references(changes, own, root)
     if args.assign_me:
-        # Asked of this project's own backend, after `_own` has refused
-        # another project's item and the read has found it, and before
-        # anything is written.
+        # Asked of this project's own backend, after the ownership check
+        # has refused another project's item and the read has found it, and
+        # before anything is written.
         changes = replace(changes, assignee=_me(own))
-    # Every target is opened and read before anything is written, so a
-    # refused or missing one (exit 3 or 4) leaves every item as it was.
-    blocked = []
-    for target in targets:
-        other, _ = blocks_target(slug, target, backend, root)
-        blocked.append((other, target))
     if changes != Changes():
-        own.update(slug.folder, changes)
-    for other, target in blocked:
-        other.update(target.folder, Changes(add_blocked_by=(slug,)))
+        updated = own.update(slug.folder, changes)
+        if changes.parent is not UNSET:
+            # Changing a parent never moves a folder (TCW-111 Design 3.4).
+            if (warning := folder_disagreement(own, updated)):
+                print(f"warning: {warning}", file=sys.stderr)
     return codes.OK
 
 
 def _move(args, *, to=None, force=False, reason=None, dry_run=False) -> int:
-    slug, backend, root = resolve_item(args.slug)
-    _own(slug, backend, root)
+    slug, backend, root = resolve_item(args.slug, writing=True)
     reader = project_reader(root, FsProjectRegistry.open(root))
     outcome = advance_item(backend, backend.config, _layout(backend), reader, root,
                            slug, to=to, force=force, reason=reason,
@@ -385,27 +530,42 @@ def _advance(args) -> int:
 
 
 def _discard(args) -> int:
-    slug, backend, root = resolve_item(args.slug)
-    _own(slug, backend, root)
+    slug, backend, root = resolve_item(args.slug, writing=True)
     reader = project_reader(root, FsProjectRegistry.open(root))
     return _report(discard_item(backend, backend.config, _layout(backend), reader,
                                 root, slug, args.reason))
 
 
 def _comment(args) -> int:
-    slug, backend, root = resolve_item(args.slug)
+    slug, backend, root = resolve_item(args.slug, writing=True)
     text = read_piped_stdin()
     if not text.strip():
         raise UsageError("pipe the comment text on stdin")
-    _own(slug, backend, root).comment(slug.folder, text)
+    backend.comment(slug.folder, text)
     return codes.OK
+
+
+def _as_given(args, *words: str) -> str:
+    """The command as typed, for a stopped move's "run the same command
+    again" (TCW-114 Design 5.8)."""
+    import shlex
+    chdir = "".join(f" -C {shlex.quote(c)}" for c in getattr(args, "chdir", None) or [])
+    return f"tcw{chdir} " + " ".join(shlex.quote(w) for w in words)
 
 
 def _rename(args) -> int:
-    slug, backend, root = resolve_item(args.slug)
-    item = _own(slug, backend, root).rename(slug.folder, args.new_name)
-    print(item.slug)
-    return codes.OK
+    from tcw.move import move_object
+    command = _as_given(args, "work", "rename", args.slug, args.new_name)
+    return move_object("work", args.slug, new_name=args.new_name, command=command,
+                       as_json=args.json)
+
+
+def _move_item(args) -> int:
+    from tcw.move import move_object
+    where = ["--top"] if args.top else ["--into", args.into]
+    command = _as_given(args, "work", "move", args.slug, *where)
+    return move_object("work", args.slug, into=args.into, top=args.top,
+                       command=command, as_json=args.json)
 
 
 def _tickets_list(args) -> int:
@@ -434,30 +594,38 @@ def _tickets_adopt(args) -> int:
 
 
 def _prompt_target(args):
-    """`(backend, item, record, request, layout, root)` for a composed prompt:
-    the named item's, or this project's with no item."""
+    """`(config, external, project, item, record, request, layout, root)` for
+    a composed prompt: the named item's, or, with no item, this project's,
+    read without opening its store, so nothing it inherits is read (TCW-109
+    Design 3.4). `external` is the backend kind's stages whose record it
+    keeps, and `project` the ID of the project whose lists are composed."""
     if args.slug is None:
         root = project_root()
-        return open_backend(root), None, None, None, None, root
+        facts = project_facts(root)
+        config = facts.layered.work
+        return (config, external_stages_of(config), facts.project, None, None, None,
+                None, root)
     slug, backend, root = resolve_item(args.slug)
     item = backend.read(slug.folder)
     record = item_record(item, _readable(backend), _layout(backend))
-    return (backend, item, record, backend.read_request(slug.folder),
-            _layout(backend), root)
+    return (backend.config, backend.external_stages, backend.project, item, record,
+            backend.read_request(slug.folder), _layout(backend), root)
 
 
-def _personal_note(backend: WorkBackend, root: Path, key_path: tuple) -> None:
+def _personal_note(project: str, root: Path, key_path: tuple) -> None:
     """Say on stderr when a personal file set the list being composed (TCW-72
     Design 7.3). Only for the project the command acts on: another
     project's lists never come from this person's files."""
     from tcw.config import effective
     from tcw.output import shown
-    if backend.project != open_backend(root).project:
+    if project != project_facts(root).project:
         return
-    files = effective(root).personal_files(key_path)
-    if files:
+    config = effective(root)
+    named = [shown(f) for f in config.personal_files(key_path)]
+    named += config.personal_variables(key_path)
+    if named:
         _say("note: this prompt was changed by personal configuration: "
-             + ", ".join(shown(f) for f in files))
+             + ", ".join(named))
 
 
 def _print_resolution(res, label: str, no_exec: bool) -> int:
@@ -496,24 +664,24 @@ def _stage_prompt(args) -> int:
     if step.name == inbox_stage() and args.slug is not None:
         raise UsageError(f"'{step.name}' runs before an item exists and takes no "
                          f"work item; run it with no argument")
-    backend, item, record, request, layout, root = _prompt_target(args)
-    if step.name not in backend.config.enabled:
+    config, external, project, item, record, request, layout, root = _prompt_target(args)
+    if step.name not in config.enabled:
         _say(f"note: '{step.name}' is disabled in this project; printing its "
              f"instructions because you asked to read them")
     res = _resolved(lambda: stage_prompt(
-        backend.config, step.name, item=item, record=record, request=request,
+        config, step.name, item=item, record=record, request=request,
         layout=layout, project_root=root, execute=not args.no_exec))
-    _personal_note(backend, root, ("work", "stages", step.name, "prompt"))
+    _personal_note(project, root, ("work", "stages", step.name, "prompt"))
     label = f"stage {step.name}"
     if not args.no_exec and res.text:
         parts = [stage_header("<slug>"), res.text]
-        footer = stage_footer(step, backend.external_stages, "<slug>")
+        footer = stage_footer(step, external, "<slug>")
         if footer is not None:
             parts.append(footer)
         res.text = "\n\n".join(parts)
         if item is not None:
             # Every `<slug>` in the output names this item (TCW-74 Design
-            # 4.2): the same full slug hooks receive as TCW_SLUG.
+            # 4.2): the same full identifier hooks receive as TCW_SLUG.
             res.text = res.text.replace("<slug>", str(item.slug))
     return _print_resolution(res, label, args.no_exec)
 
@@ -533,12 +701,12 @@ def _procedure(args) -> int:
         print(filter_backend(packaged_text("procedures", args.procedure),
                              None).rstrip())
         return codes.OK
-    backend, item, record, request, layout, root = _prompt_target(args)
+    config, _, project, item, record, request, layout, root = _prompt_target(args)
     res = _resolved(lambda: procedure_prompt(
-        backend.config, args.procedure, item=item, record=record,
+        config, args.procedure, item=item, record=record,
         request=request, layout=layout, project_root=root,
         execute=not args.no_exec))
-    _personal_note(backend, root, ("work", "procedures", args.procedure))
+    _personal_note(project, root, ("work", "procedures", args.procedure))
     return _print_resolution(res, f"procedure {args.procedure}",
                              args.no_exec)
 
@@ -550,7 +718,7 @@ def _binding_json(b) -> dict:
     out: dict = {b.kind: True if b.kind == "builtin" else b.value}
     if b.when is not None:
         out["when"] = {k: list(v) for k, v in
-                       (("tags", b.when.tags), ("not_tags", b.when.not_tags)) if v}
+                       (("tags", b.when.tags), ("not-tags", b.when.not_tags)) if v}
     return out
 
 
@@ -563,8 +731,9 @@ def _phases(config, name: str) -> dict:
 
 def _lifecycle(args) -> int:
     """The stage table: every stage with its kind, whether this project enables
-    it, and its bindings (Design 2, decision 4)."""
-    config = open_backend(project_root()).config
+    it, and its bindings (Design 2, decision 4). The stages are the project's
+    own, so no store is opened (TCW-109 Design 3.4)."""
+    config = project_facts(project_root()).layered.work
     names = ([table_stage(args.stage).name] if args.stage is not None
              else [s.name for s in STAGES])
     if args.json:
@@ -593,7 +762,7 @@ def _lifecycle(args) -> int:
 
 
 def _docs(args) -> int:
-    entries = open_backend(project_root()).config.documentation
+    entries = project_facts(project_root()).layered.work.documentation
     if args.json:
         print_json(None, {"source": "config" if entries else "agent-guide",
                           "entries": [{"path": e.path, "trigger": e.trigger,
@@ -623,45 +792,87 @@ def _tags_list(args) -> int:
     return codes.OK
 
 
-def _write_tags(change) -> int:
-    """Rewrite `work.tags` in `tcw-config.yaml`, changing only its lines, and
-    name the file on stderr when it changed. Prints nothing on stdout."""
-    from tcw.store import config_edit
-    from tcw.store.fs import SENTINEL, _atomic_write_all
-    root = project_root()
-    registered = set(read_work_config(root).tags)
-    result = sorted(change(registered))
-    if set(result) != registered:
-        path = root / SENTINEL
+class _Tags:
+    """The tags of the project a tag command acts on (TCW-109 Design 6): the
+    merged list, which raises exit 7 or 1 when it cannot be used; the
+    project's own list in its shared file, and whether it holds an
+    `inherit: true` entry; and which tags reach it from another project."""
+
+    def __init__(self, root: Path):
+        from tcw.config import read_project_file
+        config = read_layered(root)
+        self.root = root
+        self.merged = set(config.work.tags)
+        own_id = config.sources[-1] if config.sources else None
+        raw, _ = read_project_file(root)
+        work = raw.get("work") if isinstance(raw, dict) else None
+        listed = work.get("tags") if isinstance(work, dict) else None
+        self.absent = not isinstance(listed, list)
+        entries = listed if isinstance(listed, list) else []
+        self.inherit = any(isinstance(e, dict) and e.get("inherit") is True
+                           for e in entries)
+        self.own = {normalize_tag(e) for e in entries if isinstance(e, str)}
+        self.has_source = len(config.sources) > 1
+        values = config.values.get("work", {}).get("tags") or []
+        self.inherited: dict[str, str] = {}
+        for i, value in enumerate(values):
+            origin = config.origins.get(("work", "tags", i))
+            if (isinstance(value, str) and origin is not None
+                    and origin.project not in (None, own_id)):
+                self.inherited[normalize_tag(value)] = origin.project
+
+    def write(self, own: set, inherit: bool) -> int:
+        """Rewrite `work.tags` in `tcw-config.yaml` as `own`, sorted, after an
+        `inherit: true` entry when `inherit`, changing only its lines, and
+        name the file on stderr when it changed. Prints nothing on stdout."""
+        from tcw.store import config_edit
+        from tcw.store.fs import SENTINEL, _atomic_write_all
+        path = self.root / SENTINEL
         try:
             text = config_edit.edit_text(path, config_edit.read_text(path),
                                          [config_edit.SetList("work", "tags",
-                                                              tuple(result))])
+                                                              tuple(sorted(own)),
+                                                              inherit=inherit)])
         except ValueError as error:
             raise BackendError(str(error)) from None
         if text is not None:
             _atomic_write_all([(path, text)])
             wrote(path)
-    return codes.OK
+        return codes.OK
 
 
 def _tags_add(args) -> int:
-    given = set(args.tag)
-    return _write_tags(lambda tags: tags | given)
+    """Add the tags not already registered to the project's own list. A
+    project with another source and no list of its own gets an `inherit:
+    true` entry first, so it keeps following its parents (TCW-109 Design
+    6.2)."""
+    tags = _Tags(project_root())
+    new = {normalize_tag(t) for t in args.tag} - tags.merged
+    if not new:
+        return codes.OK
+    return tags.write(tags.own | new, tags.inherit or (tags.absent and tags.has_source))
 
 
 def _tags_rm(args) -> int:
     """Refuse the whole call, writing nothing, when any tag given is not
-    registered: not found (4), naming each one (Design 2 decision 6)."""
-    given = set(args.tag)
-
-    def change(tags: set[str]) -> set[str]:
-        missing = sorted(given - tags)
-        if missing:
-            raise NotFound("no such tag" + ("s" if len(missing) > 1 else "")
-                           + ": " + ", ".join(f"'{t}'" for t in missing))
-        return tags - given
-    return _write_tags(change)
+    registered: not found (4), naming each one (Design 2 decision 6); or
+    when one would stay registered because a parent passes it: refused (3,
+    TCW-109 Design 6.3)."""
+    tags = _Tags(project_root())
+    given = {normalize_tag(t) for t in args.tag}
+    missing = sorted(given - tags.merged)
+    if missing:
+        raise NotFound("no such tag" + ("s" if len(missing) > 1 else "")
+                       + ": " + ", ".join(f"'{t}'" for t in missing))
+    if tags.absent or tags.inherit:
+        for tag in sorted(given):
+            if tag in tags.inherited:
+                raise Refused(f"tag '{tag}' is inherited from '{tags.inherited[tag]}'; "
+                              f"to drop it, list this project's tags under work.tags in "
+                              f".tcw/tcw-config.yaml without an 'inherit: true' entry")
+    if not given & tags.own:
+        return codes.OK
+    return tags.write(tags.own - given, tags.inherit)
 
 
 # -- the parser ------------------------------------------------------------------------------
@@ -679,18 +890,19 @@ def _properties(p: argparse.ArgumentParser, *, editing: bool) -> None:
     p.add_argument("--assignee", help=f"who the item is assigned to{clear}")
     p.add_argument("--assign-me", dest="assign_me", action="store_true",
                    help="assign it to you: user.name, or your Jira account")
-    p.add_argument("--parent", help=f"the item this one belongs under (a slug){clear}")
+    p.add_argument("--parent", help=f"the item this one belongs under (an item: its full "
+                        f"identifier or folder name){clear}")
     p.add_argument("--blocked-by", dest="blocked_by", action="append",
-                   help="an item that must finish first (a slug); repeat for more")
+                   help="an item that must finish first (an item: its full "
+                        "identifier or folder name); repeat for more")
     if editing:
         p.add_argument("--title", type=_nonempty, help="a new title")
         p.add_argument("--untag", type=_tag, action="append",
                        help="a tag to take off; repeat the option for more")
         p.add_argument("--unblocked-by", dest="unblocked_by", action="append",
                        help="an item to take off blocked-by; repeat for more")
-        p.add_argument("--blocks", action="append",
-                       help="add this item to another item's blocked-by; repeat "
-                            "for more")
+        # Removed in TCW 4; kept only to say so (TCW-114 Design 2.2).
+        p.add_argument("--blocks", action="append", help=argparse.SUPPRESS)
 
 
 def add_subparser(sub: argparse._SubParsersAction) -> None:
@@ -705,34 +917,44 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     p = command(cmds, "new", help="create an item; text piped on stdin says what it "
                                   "asks for",
-                prints="the new item's full slug (a ticket key when it stopped "
-                       "after creating a ticket)",
+                prints="the new item's full identifier (a ticket key when it "
+                       "stopped after creating a ticket)",
                 writes="the item, and in Jira mode its ticket",
                 examples=["new 'Refund a payment' --priority high < ask.md",
-                          "new 'Support SSO' --project platform --tag auth"])
+                          "new 'Support SSO' --parent planning.work/2026-10-01-sso "
+                          "--tag auth",
+                          "new 'Part' --parent 2026-10-01-epic --flat"])
     p.add_argument("title", help="the item's title; the folder name is made from it")
-    p.add_argument("--project", help="create it in this connected project instead")
+    # Removed in TCW 4; kept only to say so (TCW-114 Design 2.1).
+    p.add_argument("--project", help=argparse.SUPPRESS)
     p.add_argument("--stage", help=f"{inbox_stage()}, to start it there (filesystem "
                                    f"mode only)")
     _properties(p, editing=False)
+    p.add_argument("--flat", action="store_true",
+                   help="with --parent: make the folder at the top of the work "
+                        "folder, not inside the parent's; the parent is recorded "
+                        "all the same")
     p.set_defaults(func=_new)
 
     p = command(cmds, "list", help="list items",
-                prints="one full slug per line, or --json", writes="nothing",
+                prints="one full identifier per line, or --json", writes="nothing",
                 examples=["list", f"list --stage {start_stage()} --tag auth",
-                          "list --all --json"])
+                          "list --all --json", "list --scope down --json"])
     p.add_argument("--stage", action="append",
                    help=f"only items at this stage; repeat for more ({stages})")
     p.add_argument("--tag", type=_tag, action="append",
                    help="list items carrying this tag; repeat for any of several")
-    p.add_argument("--parent", help="only items under this item (a slug)")
+    p.add_argument("--parent", help="only items under this item (an item: its "
+                                   "full identifier or folder name)")
     p.add_argument("--assignee", help="only items assigned to this person")
     p.add_argument("--mine", action="store_true",
                    help="only items assigned to you: user.name, or your Jira account")
     p.add_argument("--all", action="store_true",
                    help="include items that have ended")
+    scope_options(p)
     p.add_argument("--json", action="store_true",
-                   help='print {"schema": 1, "items": [...]}')
+                   help='print {"schema": 2, "items": [...]}, and "projects" when '
+                        'the scope is not own')
     p.set_defaults(func=_list)
 
     p = command(cmds, "show", help="an item's record, what it asks for, and its "
@@ -740,11 +962,13 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                 prints="the item's properties, what it asks for and its comments, "
                        "newest first, or --json", writes="nothing",
                 examples=["show 2026-10-01-refund-a-payment",
-                          "show 2026-10-01-refund-a-payment --json"])
+                          "show 2026-10-01-refund-a-payment --json",
+                          "show 2026-10-01-refund-a-payment --scope down"])
     p.add_argument("slug", help=SLUG_HELP)
+    scope_options(p)
     p.add_argument("--json", action="store_true",
                    help="print one JSON object: the item, what it asks for, and "
-                        "its comments")
+                        "its comments, and \"projects\" when the scope is not own")
     p.set_defaults(func=_show)
 
     p = command(cmds, "path", help="a path in the work store",
@@ -802,13 +1026,38 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("slug", help=SLUG_HELP)
     p.set_defaults(func=_comment)
 
-    p = command(cmds, "rename", help="rename an item's folder",
-                prints="the item's new full slug", writes="the item's folder name",
+    p = command(cmds, "rename", help="rename an item's folder, and every item nested "
+                                     "in it",
+                prints="one `<old full id> -> <new full id>` line per identifier it "
+                       "changed, the item first",
+                writes="the item's folder name, the references that name it in this "
+                       "project, and in Jira each moved ticket's TCW Item",
                 examples=["rename 2026-10-01-refund-a-payment refund-an-order"])
     p.add_argument("slug", help=SLUG_HELP)
-    p.add_argument("new_name", help="the new words after the date, lower case "
+    p.add_argument("new_name", help="the new words after the date or key, lower case "
                                     "and hyphenated")
+    p.add_argument("--json", action="store_true",
+                   help="print the changed identifiers as JSON")
     p.set_defaults(func=_rename)
+
+    p = command(cmds, "move", help="move an item's folder into another folder, or to "
+                                   "the top; the items nested in it move with it",
+                prints="one `<old full id> -> <new full id>` line per identifier it "
+                       "changed, the item first",
+                writes="the item's folder place, the references that name it in this "
+                       "project, and in Jira each moved ticket's TCW Item",
+                examples=["move 2026-10-01-refund-a-payment --into 2026-09-01-payments",
+                          "move 2026-09-01-payments/2026-10-01-refund-a-payment --top"])
+    p.add_argument("slug", help=SLUG_HELP)
+    place = p.add_mutually_exclusive_group(required=True)
+    place.add_argument("--into", metavar="<id-path>",
+                       help="an item, or an organising folder (made when missing), "
+                            "to put the item's folder in")
+    place.add_argument("--top", action="store_true",
+                       help="put the item's folder at the top of the work folder")
+    p.add_argument("--json", action="store_true",
+                   help="print the changed identifiers as JSON")
+    p.set_defaults(func=_move_item)
 
     p = group(cmds, "stage", help="read a stage's instructions")
     verbs = p.add_subparsers(dest="stage_verb", required=True)
@@ -840,14 +1089,14 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                 examples=["lifecycle", f"lifecycle --stage {start_stage()} --json"])
     p.add_argument("--stage", help=f"one stage only ({stages})")
     p.add_argument("--json", action="store_true",
-                   help='print {"schema": 1, "hooks": {...}, "stages": [...]}')
+                   help='print {"schema": 2, "hooks": {...}, "stages": [...]}')
     p.set_defaults(func=_lifecycle)
 
     p = command(cmds, "docs", help="this project's documentation entries",
                 prints="the entries, or --json", writes="nothing",
                 examples=["docs", "docs --json"])
     p.add_argument("--json", action="store_true",
-                   help='print {"schema": 1, "source": ..., "entries": [...]}')
+                   help='print {"schema": 2, "source": ..., "entries": [...]}')
     p.set_defaults(func=_docs)
 
     p = group(cmds, "tags", help="this project's tag registry")
@@ -858,7 +1107,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     for verb, func, what in (("add", _tags_add, "register"),
                              ("rm", _tags_rm, "unregister")):
         p = command(verbs, verb, help=f"{what} one or more tags", prints="nothing",
-                    writes="tcw-config.yaml, named on stderr",
+                    writes=".tcw/tcw-config.yaml, named on stderr",
                     examples=[f"tags {verb} billing", f"tags {verb} billing auth"])
         p.add_argument("tag", nargs="+", type=_tag, help="a tag; one per argument")
         p.set_defaults(func=func)
@@ -870,10 +1119,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                 prints="one ticket key per line, or --json", writes="nothing",
                 examples=["tickets list", "tickets list --json"])
     p.add_argument("--json", action="store_true",
-                   help='print {"schema": 1, "tickets": [...]}')
+                   help='print {"schema": 2, "tickets": [...]}')
     p.set_defaults(func=_tickets_list)
     p = command(verbs, "adopt", help="make a ticket an item",
-                prints="the new item's full slug", writes="the item's folder, and "
+                prints="the new item's full identifier", writes="the item's folder, and "
                        "the ticket's TCW fields", examples=["tickets adopt TCW-42"])
     p.add_argument("key", help="the ticket's Jira key")
     p.set_defaults(func=_tickets_adopt)

@@ -104,10 +104,16 @@ test("the record Jira keeps is read-only, each part opening Jira", async ({
     await expect(comments.getByRole("textbox")).toHaveCount(0)
     // No Edit on the properties; a stage file's own Edit stays.
     await expect(page.locator(".detail-head .edit-btn")).toHaveCount(0)
-    // The stage Jira keeps says so, and links there.
+    // The stage Jira keeps says so, and links there. The tabs open on the
+    // item's own stage (spec), so the request's tab is chosen first.
+    await page.getByRole("tab", { name: "Request" }).click()
+    const panel = page.getByRole("tabpanel")
+    await expect(panel).toContainText(
+        "This project's backend keeps the request record."
+    )
     await expect(
-        page.getByText(/This project's backend keeps the/).first()
-    ).toBeVisible()
+        panel.getByRole("link", { name: "Open in Jira" })
+    ).toHaveAttribute("href", new RegExp(`^${SITE}/browse/`))
 })
 
 test("adopting an inbox ticket opens its new item", async ({ page }) => {

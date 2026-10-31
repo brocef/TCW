@@ -6,14 +6,28 @@ round of a stage that judges carries its verdict, chosen from a fixed list),
 and edit the item's declared ledger changes, `capabilities.yaml`, as six
 lists. A declaration the parser cannot read opens as plain text with the
 parser's message, so it can be fixed. In filesystem mode I also change the
-item's properties, add `blocks` links one at a time, and add comments; a
-comment is never edited. I create items, in this project or, with only a
-title, request text and priority, in a connected one. In Jira mode I adopt
+item's properties and add comments; a comment is never edited. I create items
+in this project only: the form offers no other project, since an item for
+another project is made there. Its blocked-by field may name an item of any
+project, and a value the backend records rather than links comes back with a
+warning. In Jira mode I adopt
 inbox tickets as items, which runs the request stage's `post` hooks as
 `tcw work tickets adopt` does.
 
-I create and edit taxonomy entries and capabilities. An inherited entry has no
-edit control: it is changed in the project that keeps it.
+I create and edit taxonomy entries and capabilities. My project's own
+override of an inherited one is editable like any other of its own, and the
+page says what it overrides. An object that belongs to another project, whether a
+taxonomy entry, a capability or a work item, is shown with whose it is and no
+control that changes it: no edit, comment, file or declaration editing. It is
+changed in the project that keeps it, and a write the app is sent for it is
+refused. Editing a
+capability's body changes only the capability's own description: the editor
+starts from that description, not from the body shown on the page, and says,
+when they differ, that the body shown also holds attached documents or an
+inherited description, which the edit leaves unchanged. Clearing the field
+leaves the capability with an empty description of its own, so the page falls
+back to the inherited one. When inherited content cannot be read, the request
+is answered with `503 Service Unavailable`.
 
 Every save carries the revision the page loaded, so a save over a change made
 elsewhere is refused and the page offers to load the current version. A save
@@ -30,3 +44,5 @@ round with no verdict, is saved and comes back with a warning.
 The web app never moves an item from one stage to another, and never changes
 git state. Each item page names the command that moves it,
 `tcw work advance <slug>`, and `tcw work discard` drops one.
+
+The new item form offers to put a new child's folder inside its parent's folder, unticked by default.

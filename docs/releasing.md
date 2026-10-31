@@ -12,6 +12,14 @@ python scripts/cut_version.py <patch|minor|major|X.Y.Z>
 git push origin main --tags
 ```
 
+When the version files already hold the version to release, as on a major
+version's branch whose files record the version its code writes, cut it by
+naming it: `python scripts/cut_version.py X.Y.Z`. The script then leaves the
+five version files alone, combines the entries, commits and tags. While the
+current version has no tag yet, `patch`, `minor` and `major` are refused,
+because they would skip that untagged version; naming a version that is
+already tagged is refused too.
+
 The `v*` tag triggers `.github/workflows/release.yml`, which runs the full test
 suite, checks that the tag matches the version in `pyproject.toml`, builds, and
 uploads to PyPI. There is no API token — PyPI mints a short-lived credential

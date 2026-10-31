@@ -1,0 +1,7 @@
+id: cap-4f0a61
+name: Read a file by the format version it records
+Status: Supported
+Subject:
+    - project
+    - format-version
+Feature: project-registry

@@ -8,6 +8,7 @@ import yaml
 
 from tcw.store.base import PROCEDURE_IDS
 from tcw.store.fs import init
+from tests.projectfiles import config_file, write_config_file
 
 REPO = Path(__file__).resolve().parent.parent
 ARGPARSE_REFUSAL = "invalid choice"
@@ -25,10 +26,10 @@ def _node(tmp_path: Path, name: str = "repo") -> Path:
 
 def _configure(root: Path, procedures) -> None:
     """Every test states its own `work.procedures`; there is no default here."""
-    cfg_path = root / "tcw-config.yaml"
+    cfg_path = config_file(root)
     cfg = yaml.safe_load(cfg_path.read_text()) or {}
     cfg.setdefault("work", {})["procedures"] = procedures
-    cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False))
+    write_config_file(cfg_path, yaml.safe_dump(cfg, sort_keys=False))
 
 
 def _run(root: Path, *args: str):

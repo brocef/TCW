@@ -18,18 +18,24 @@ import pytest
 
 from tcw.cli import build_parser
 
-# Design 2's 3.0 column, less `config show`, which TCW-72 adds with its own row.
+# Design 2's 3.0 column, less `config show`, which TCW-72 adds with its own row,
+# and less the four `extends` commands, which TCW 4.0 removes (TCW-112 Design 1),
+# with the five move commands TCW 4.0 adds (TCW-114 Design 5.1), and with
+# `migrate` (TCW-116 Design 1.1).
 SURFACE = {
-    "init", "provision", "validate", "serve", "projects list", "config show",
+    "validate", "serve", "migrate",
     "taxonomy list", "taxonomy add", "taxonomy show", "taxonomy path", "taxonomy rm",
-    "taxonomy search", "taxonomy extends add", "taxonomy extends rm",
+    "taxonomy search", "taxonomy rename", "taxonomy move",
     "capabilities list", "capabilities show", "capabilities path", "capabilities add",
     "capabilities set", "capabilities reset", "capabilities rm", "capabilities search",
-    "capabilities extends add", "capabilities extends rm", "capabilities drift",
+    "capabilities drift", "capabilities rename", "capabilities move",
     "work new", "work list", "work show", "work path", "work edit", "work advance",
-    "work discard", "work comment", "work rename", "work stage prompt",
+    "work discard", "work comment", "work rename", "work move", "work stage prompt",
     "work procedure", "work lifecycle", "work docs", "work tags list", "work tags add",
     "work tags rm", "work tickets list", "work tickets adopt",
+    # TCW 4.0's `tcw project` group (TCW-115 Design 1.1).
+    "project new", "project list", "project config", "project provision", "project path",
+    "project info",
 }
 
 REMOVED = {
@@ -38,6 +44,12 @@ REMOVED = {
     "work procedure prompt", "work inbox", "work tracker", "work start", "work submit",
     "work rework", "work complete", "work drop", "work delete", "work tombstone",
     "work scaffold", "work reconcile", "work delegate", "work escalate",
+    # TCW 4.0: the commands about a project itself are `tcw project`'s
+    # (TCW-115 Design 1.2).
+    "init", "provision", "projects", "projects list", "config", "config show",
+    # TCW 4.0: a project inherits from its parents (TCW-112 Design 1).
+    "taxonomy extends", "taxonomy extends add", "taxonomy extends rm",
+    "capabilities extends", "capabilities extends add", "capabilities extends rm",
     *(f"work stage {s}" for s in ("request", "spec", "plan", "implement", "review",
                                   "qa")),
 }
@@ -67,7 +79,7 @@ def leaves(commands):
 
 
 def test_the_surface_is_exactly_the_3_0_column(leaves):
-    assert len(SURFACE) == 43
+    assert len(SURFACE) == 47
     assert set(leaves) == SURFACE
 
 
@@ -136,7 +148,7 @@ def test_choices_are_shown_in_the_help(commands):
     assert not hidden, hidden
     with_choices = {name for name, parser, _, _ in commands for action in parser._actions
                     if action.choices and not isinstance(action, argparse._SubParsersAction)}
-    assert {"taxonomy add", "provision"} <= with_choices, with_choices
+    assert {"taxonomy add", "project provision"} <= with_choices, with_choices
     # The check sees a choice its help hides: a metavar replaces the `{a,b}`
     # list argparse would print, and the help text names neither.
     probe = argparse.ArgumentParser()
@@ -148,7 +160,7 @@ def test_top_level_help_carries_the_exit_codes_and_the_stream_rule(capsys):
     with pytest.raises(SystemExit):
         build_parser().parse_args(["--help"])
     text = capsys.readouterr().out
-    for code in range(7):
+    for code in range(8):
         assert re.search(rf"^\s+{code}\s", text, re.MULTILINE), code
     assert "stdout" in text and "stderr" in text
 
@@ -157,4 +169,4 @@ def test_the_walk_sees_the_whole_tree(commands):
     """Guards the walk: if it stopped descending, the tests above would pass by
     seeing nothing rather than by finding nothing."""
     names = {name for name, *_ in commands}
-    assert {"work", "work tags", "taxonomy extends", "work tags add"} <= names
+    assert {"work", "work tags", "work stage", "work tags add"} <= names

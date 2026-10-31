@@ -24,7 +24,9 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, unquote, urlparse
 
-from tcw.errors import BackendError, NotFound, Refused, TcwError, Unreachable, UsageError
+from tcw.config import command_span
+from tcw.errors import (BackendError, InheritedUnavailable, NotFound, Refused, TcwError,
+                        Unreachable, UsageError)
 from tcw.serve.services import Services
 from tcw.store.base import MultipleMatch, StaleRevision
 
@@ -87,6 +89,11 @@ def error_answer(error: BaseException) -> tuple[int, dict[str, Any]]:
         return HTTPStatus.CONFLICT, {"error": message, "code": "refused"}
     if isinstance(error, Unreachable):
         return HTTPStatus.SERVICE_UNAVAILABLE, {"error": message, "code": "unreachable"}
+    if isinstance(error, InheritedUnavailable):
+        # A project the served one inherits from is not readable here
+        # (TCW-112 Design 4.5).
+        return HTTPStatus.SERVICE_UNAVAILABLE, {"error": message,
+                                                "code": "inherited-unavailable"}
     if isinstance(error, TcwError):
         return HTTPStatus.INTERNAL_SERVER_ERROR, {"error": message, "code": "error"}
     # Anything else, a bare ValueError included, is not an answer TCW gives
@@ -191,14 +198,46 @@ Handler = Callable[[Request], tuple[int, Any]]
 
 
 @dataclass(frozen=True)
+class Written:
+    """An existing object a write route changes, and the end its refusal
+    adds, when it has one (TCW-114 Design 1.4)."""
+
+    full_id: Any
+    hint: str | None = None
+
+
+@dataclass(frozen=True)
 class Route:
+    """`writes`, set for every route that changes anything, answers the
+    existing objects a request changes; the router passes each to the
+    ownership check before the handler runs, so a route's own code never
+    calls it (TCW-114 Design 1.4). A route that only creates answers `[]`.
+    None is a read."""
+
     method: str
     pattern: re.Pattern
     handler: Handler
+    writes: "Callable[[Request], list[Written]] | None" = None
 
 
-def route(method: str, pattern: str, handler: Handler) -> Route:
-    return Route(method, re.compile(pattern), handler)
+def route(method: str, pattern: str, handler: Handler, *,
+          writes: "Callable[[Request], list[Written]] | None" = None) -> Route:
+    return Route(method, re.compile(pattern), handler, writes)
+
+
+def creates(request: "Request") -> list[Written]:
+    """The `writes` of a route that changes no existing object."""
+    return []
+
+
+def check_writes(route_: Route, request: "Request") -> None:
+    """Refuse, 403, a request that would change another project's object."""
+    from tcw.ownership import check_owned
+    for written in route_.writes(request) if route_.writes else ():
+        try:
+            check_owned(written.full_id, request.root, hint=written.hint)
+        except Refused as refused:
+            raise read_only(str(refused)) from None
 
 
 def _routes() -> list[Route]:
@@ -310,7 +349,11 @@ class TcwHandler(BaseHTTPRequestHandler):
         if found is None:
             raise not_found(f"no API route {method} {path}")
         request = Request(method, path, query, body, self.server, found[1])
-        status, value = found[0].handler(request)
+        # One request is one command (TCW-113 Design 3.5): a Jira search is
+        # made once for it, and kept for no other request (plan choice 10).
+        with command_span():
+            check_writes(found[0], request)
+            status, value = found[0].handler(request)
         self._send_json(status, value)
 
     def _json_body(self) -> dict[str, Any]:

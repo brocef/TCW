@@ -19,6 +19,7 @@ import yaml
 
 from tcw.cli import main
 from tests.work.projects import commit_all, make_project, write_item
+from tests.statefiles import ITEM_STATE
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "require_artifact.py"
 FOLDER = "2026-10-01-a"
@@ -49,7 +50,7 @@ def advance(root, monkeypatch, capsys):
 
 
 def stage(root):
-    item = root / "docs" / "work" / FOLDER / "item.yaml"
+    item = root / "docs" / "work" / FOLDER / ITEM_STATE
     return yaml.safe_load(item.read_text())["stage"]
 
 
@@ -76,7 +77,7 @@ def test_a_written_spec_lets_the_move_through(project, monkeypatch, capsys):
     code, out = advance(project, monkeypatch, capsys)
     assert code == 0, out.err
     assert stage(project) == "plan"
-    assert (project / "slug-seen.txt").read_text() == f"p/{FOLDER}"
+    assert (project / "slug-seen.txt").read_text() == f"p.work/{FOLDER}"
 
 
 def run_script(root, env):
@@ -92,9 +93,9 @@ def test_an_unset_slug_fails_closed(project):
 
 
 def test_an_unknown_slug_fails_closed(project):
-    r = run_script(project, {**os.environ, "TCW_SLUG": "p/2026-10-01-nothing"})
+    r = run_script(project, {**os.environ, "TCW_SLUG": "p.work/2026-10-01-nothing"})
     assert r.returncode == 1
-    assert "tcw work path p/2026-10-01-nothing spec failed" in r.stderr
+    assert "tcw work path p.work/2026-10-01-nothing spec failed" in r.stderr
 
 
 def test_the_script_names_no_2x_interface():

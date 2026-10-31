@@ -19,24 +19,17 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
 
-from tcw.errors import NotFound, UsageError
+import yaml
+
+from tcw.errors import NotFound, TcwError, UsageError
 from tcw.findings import Finding
+from tcw.ids import FullId
+from tcw.ownership import writes
+from tcw.project_files import follows_naming_rule
 
 
 class RefError(NotFound):
     """A reference could not be resolved cleanly."""
-
-
-class AmbiguousRef(UsageError, RefError):
-    """A bare reference matches more than one namespace — author must qualify.
-
-    Carries its own message: callers print `str(e)`, and the bare ref alone
-    ("x/thing") reads as noise rather than an explanation.
-    """
-
-    def __init__(self, ref: str):
-        self.ref = ref
-        super().__init__(f"ambiguous ref '{ref}' — qualify it with an alias prefix")
 
 
 class StaleRevision(Exception):
@@ -55,7 +48,7 @@ class StoreLocationUnusable(ValueError):
     existed. Rules 1 and 2 try a location and fall through when it does not work
     out, which is right for "there is no store there" and wrong for every other
     reason a store fails to open: a federation error in a project that also declares
-    a repository was reported as "not provisioned; run `tcw provision`", which
+    a repository was reported as "not provisioned; run `tcw project provision`", which
     then succeeded and left the store just as unopenable, because the real error
     had been swallowed two rules earlier.
 
@@ -86,7 +79,7 @@ class StoreDeclarationError(ValueError):
 
     It exists because `find_component_project` cannot otherwise tell "this config is wrong"
     from "this is not a project", and flattening the first to the second is what
-    answered a typo'd `repository` block with "run `tcw init`" — the one command
+    answered a typo'd `repository` block with "run `tcw project new`" — the one command
     that would scaffold a second, empty store beside the real one.
     """
 
@@ -120,6 +113,553 @@ class Project:
     locator: Any
 
 
+#: What a parent link can pass down (TCW-108 Design 1.2), in the order every
+#: list of them is printed.
+AXES = ("taxonomy", "capabilities", "config")
+
+
+@dataclass(frozen=True)
+class ParentLink:
+    """One entry of a project's `parents:`: the parent's ID, and the axes the
+    link passes down (a subset of `AXES`; all three for `inherit: all`)."""
+
+    id: str
+    inherit: frozenset = frozenset(AXES)
+
+
+@dataclass(frozen=True)
+class LoadOrder:
+    """A project's load order (TCW-108 Design 4): the project and every
+    ancestor, farthest first and the project itself last. `missing` holds the
+    IDs in `ids` that are not on this machine and `unreadable` those whose own
+    parent links could not be read; each is placed as a project with no
+    parents (Design 6.4). `warning` is Design 4.5's text when C3 found no
+    order and the depth-first order is used instead."""
+
+    ids: tuple
+    missing: tuple = ()
+    unreadable: tuple = ()
+    warning: str | None = None
+
+    @property
+    def complete(self) -> bool:
+        return not self.missing and not self.unreadable
+
+
+@dataclass(frozen=True)
+class SourceEntry:
+    """One project of a project's sources for an axis (TCW-109 Design 1.3):
+    its ID, its `Project` when it is on this machine, and its state, `here`,
+    `missing` (not on this machine) or `unreadable` (its own parent links, or
+    its whole shared file, could not be read)."""
+
+    id: str
+    project: Project | None
+    state: str
+
+
+#: What a list or show command covers (TCW-113 Design 1.2): the project
+#: alone, with its ancestors, with its descendants, or with both.
+SCOPES = ("own", "up", "down", "all")
+#: How a covered project is related to the project a command acts on.
+RELATIONS = ("ancestor", "current", "descendant")
+
+
+@dataclass(frozen=True)
+class ScopeMember:
+    """One project a scope covers, and how it is related to the project the
+    command acts on (one of `RELATIONS`)."""
+
+    id: str
+    relation: str
+
+
+#: The errors that make a covered project other than the active one
+#: unavailable to a command (TCW-113 Design 1.6), rather than ending it: the
+#: cases it expects are (a) the project is not on this machine, (b) its
+#: parent links cannot be read, (c) its own store is not provisioned here,
+#: declared wrongly or not usable, (d) a configuration key it reads is
+#: undecided or broken, (e) its view cannot be built, (f) its backend cannot
+#: answer or cannot name the person for `--mine`, (g) one of its records
+#: cannot be read, (h) one of its files is not valid YAML or cannot be read.
+#: A tuple cannot leave out `UsageError`, a `TcwError`, so a caller catches
+#: these and raises again whatever `is_unavailability` refuses.
+UNAVAILABILITY_ERRORS = (TcwError, StoreLocationUnusable, StoreDeclarationError,
+                         StoreNotProvisioned, yaml.YAMLError, OSError)
+
+
+def is_unavailability(error: BaseException) -> bool:
+    """Whether `error` makes a covered project unavailable (Design 1.6). A
+    usage error never does: the command's options are the same for every
+    project, so one raised while reading another project is an error in the
+    command. Anything not classified, a plain `ValueError` among them, may be
+    a fault in TCW rather than a fact about the project, so it ends the
+    command as it would anyway."""
+    return isinstance(error, UNAVAILABILITY_ERRORS) and not isinstance(error, UsageError)
+
+
+def _parents_of(project_id: str, links, absent: "set[str]") -> list[str]:
+    if project_id in absent:
+        return []
+    return [link.id for link in links.get(project_id, ())]
+
+
+def find_loop(links, read_order) -> list[str] | None:
+    """A loop through the parent links, as Design 4.7 prints it: the list
+    starts and ends with the loop's member that comes first in `read_order`,
+    each next one a parent of the one before, parents tried in listing
+    order. None when there is no loop."""
+    order = [*read_order, *(pid for pid in links if pid not in read_order)]
+    for start in order:
+        path = _path_back(start, links)
+        if path is not None:
+            return path
+    return None
+
+
+def _path_back(start: str, links) -> list[str] | None:
+    """The first path, depth-first in listing order, from `start` up its
+    parent links back to `start`."""
+    path = [start]
+    visited: set[str] = set()
+
+    def climb(pid: str) -> bool:
+        for parent in _parents_of(pid, links, set()):
+            if parent == start:
+                path.append(start)
+                return True
+            if parent in visited:
+                continue
+            visited.add(parent)
+            path.append(parent)
+            if climb(parent):
+                return True
+            path.pop()
+        return False
+
+    return path if climb(start) else None
+
+
+def loop_message(loop: list[str]) -> str:
+    return "loop in parents: " + " -> ".join(loop)
+
+
+def load_order_of(project_id: str, links, *, missing=frozenset(),
+                  unreadable=frozenset()) -> LoadOrder:
+    """`project_id`'s load order from its parent links (Design 4): C3 over
+    the parent lists reversed, so that the last listed parent wins (4.1);
+    when any merge made on the way fails, the depth-first order instead (4.4),
+    with the warning of 4.5 naming the first merge to fail, and the one
+    project's parents in a new order that would let C3 succeed, when there is
+    one. A project in `missing` or `unreadable` is placed as one with no
+    parents (6.4), and one `links` does not hold has none either.
+
+    Store-neutral: given each project's links and which projects are not
+    available, any registry can call it. Raises `ValueError` on a loop, which
+    the caller reports with `find_loop` (Design 4.7)."""
+    absent = set(missing) | set(unreadable)
+    found, failure = _c3(project_id, links, absent)
+    warning = None
+    if found is None:
+        where, heads = failure
+        ids = _depth_first(project_id, links, absent)
+        named = ", ".join(f"'{head}'" for head in heads)
+        fix = _reordered(project_id, links, absent, [where, *reversed(ids)])
+        if fix is None:
+            how = ": reorder the lists that disagree"
+        else:
+            how = (f", and listing the parents of '{fix[0]}' as {', '.join(fix[1])} "
+                   f"instead gives an order that keeps every other project's own order")
+        warning = (f"load order: no order keeps every project's own order of parents "
+                   f"(at '{where}': {named} cannot be placed); using depth-first order "
+                   f"{', '.join(ids)}; the order of each project's parents: list sets "
+                   f"the load order{how}; to choose a configuration value yourself, set "
+                   f"the value in '{project_id}' itself, which loads last and wins")
+    else:
+        ids = tuple(reversed(found))
+    return LoadOrder(ids=ids,
+                     missing=tuple(pid for pid in ids if pid in missing),
+                     unreadable=tuple(pid for pid in ids if pid in unreadable),
+                     warning=warning)
+
+
+def _c3(project_id: str, links, absent: "set[str]"):
+    """`(R(project_id), None)`, the order with the winner first, or `(None,
+    (where, heads))` for the first merge to fail. Each project's merge after
+    all of its parents', the parents taken in listing order (Design 4.5)."""
+    resolved: dict[str, list[str]] = {}
+    in_progress: set[str] = set()
+    failure: list[tuple[str, list[str]]] = []
+
+    def resolve(pid: str) -> list[str] | None:
+        if pid in resolved:
+            return resolved[pid]
+        if pid in in_progress:
+            raise ValueError(f"loop in parents through '{pid}'")
+        in_progress.add(pid)
+        parents = _parents_of(pid, links, absent)
+        for parent in parents:
+            if resolve(parent) is None:
+                return None
+        merged = _merge([list(resolved[p]) for p in reversed(parents)]
+                        + [list(reversed(parents))])
+        in_progress.discard(pid)
+        if isinstance(merged, tuple):
+            failure.append((pid, merged[1]))
+            return None
+        resolved[pid] = [pid, *merged]
+        return resolved[pid]
+
+    found = resolve(project_id)
+    return found, (failure[0] if found is None else None)
+
+
+#: The most parents one project may have for `_reordered` to try every
+#: order of them (6! = 720 orders).
+_MOST_REORDERED = 6
+
+
+def _reordered(project_id: str, links, absent: "set[str]", candidates: list[str]):
+    """The first project of `candidates` (each tried once) whose parents, in
+    some other order, let C3 order `project_id`, with that order; None when
+    no one project's list can be reordered so."""
+    from itertools import permutations
+    tried: set[str] = set()
+    for pid in candidates:
+        if pid in tried or pid in absent:
+            continue
+        tried.add(pid)
+        own = list(links.get(pid, ()))
+        if not 1 < len(own) <= _MOST_REORDERED:
+            continue
+        for perm in permutations(own):
+            if list(perm) == own:
+                continue
+            trial = dict(links)
+            trial[pid] = list(perm)
+            try:
+                if _c3(project_id, trial, absent)[0] is not None:
+                    return pid, [link.id for link in perm]
+            except ValueError:
+                continue
+    return None
+
+
+def _merge(lists: list[list[str]]):
+    """C3's merge of `lists`: the merged list, or `(None, heads)` when no
+    list's first project can be taken, `heads` being the distinct first
+    projects left, in the order of the lists."""
+    result: list[str] = []
+    while any(lists):
+        for candidate in (lst[0] for lst in lists if lst):
+            if not any(candidate in lst[1:] for lst in lists):
+                break
+        else:
+            heads: list[str] = []
+            for lst in lists:
+                if lst and lst[0] not in heads:
+                    heads.append(lst[0])
+            return None, heads
+        result.append(candidate)
+        lists = [[pid for pid in lst if pid != candidate] for lst in lists]
+    return result
+
+
+def _depth_first(project_id: str, links, absent: "set[str]") -> tuple[str, ...]:
+    """Design 4.4: each parent in listing order, its own ancestors placed
+    first, skipping a project already placed; the project last."""
+    placed: list[str] = []
+
+    def place(pid: str, depth: int) -> None:
+        if depth > len(links) + 1:
+            raise ValueError(f"loop in parents through '{pid}'")
+        for parent in _parents_of(pid, links, absent):
+            if parent not in placed:
+                place(parent, depth + 1)
+        if pid not in placed:
+            placed.append(pid)
+
+    place(project_id, 0)
+    return tuple(placed)
+
+
+def passing(axis: str, project_id: str, links, *, absent=frozenset()) -> set[str]:
+    """The projects that pass `axis` to `project_id` (Design 5.1): the
+    project itself, and every project some chain of parent links from it
+    reaches with `axis` in the `inherit` of every link. Nothing is passed
+    through a project in `absent`, whose own links are unknown."""
+    found = {project_id}
+    frontier = [project_id]
+    while frontier:
+        pid = frontier.pop()
+        if pid in absent:
+            continue
+        for link in links.get(pid, ()):
+            if axis in link.inherit and link.id not in found:
+                found.add(link.id)
+                frontier.append(link.id)
+    return found
+
+
+# ── Combining an object over its sources (TCW-112 Design 2) ─────────────────
+
+
+@dataclass(frozen=True)
+class Declaration:
+    """One project's own declaration of an object at one id-path (TCW-112
+    Design 2.2, 2.3): its fields, and its description, a text (possibly
+    empty) or None when it declares none. A store keeps "declared empty"
+    and "not declared" apart, because completeness tells them apart."""
+
+    fields: dict
+    description: str | None = None
+
+
+@dataclass(frozen=True)
+class Unused:
+    """A declarer whose object the active project does not use (Design 2.5):
+    `winner` is the chain member that took its place, and `warned` whether
+    the clash is still warned about."""
+
+    project: str
+    winner: str
+    warned: bool
+
+
+@dataclass(frozen=True)
+class Combined:
+    """The object at one id-path as one project sees it (Design 2.1-2.5).
+
+    `chain` holds the project IDs whose declarations make it, nearest first,
+    so `chain[0]` owns it and `chain[1]`, when there is one, is the object it
+    overrides. `declared_by` names, for each key in `fields` and for
+    `description`, the project whose declaration supplied it, so a store can
+    read what that key names (attached documents) from that project.
+    `unreadable` is a chain member whose declaration could not be read, in
+    which case nothing was combined."""
+
+    chain: tuple
+    fields: dict
+    description: str | None = None
+    declared_by: dict = field(default_factory=dict)
+    unused: tuple = ()
+    unreadable: str | None = None
+
+    @property
+    def owner(self) -> str:
+        return self.chain[0]
+
+    @property
+    def overrides(self) -> str | None:
+        return self.chain[1] if len(self.chain) > 1 else None
+
+
+#: The keys of a state file that belong to the file, never combined.
+_FILE_KEYS = frozenset({"tcw-version", "id"})
+
+
+def missing_parts(declaration: Declaration, axis: str) -> list[str]:
+    """What a declaration lacks to be complete on its own (Design 6.1):
+    a `name`, for a capability a `Status`, and a declared description,
+    possibly empty. Empty when it is complete."""
+    missing = [key for key in ("name", *(("Status",) if axis == "capabilities" else ()))
+               if declaration.fields.get(key) is None]
+    if declaration.description is None:
+        missing.append("description")
+    return missing
+
+
+def combine(declarers, passes, *, axis: str, unreadable=frozenset()) -> Combined | None:
+    """The object at one id-path in the active project's view (Design 2.1-2.5).
+
+    `declarers` is `(project ID, Declaration)` for every source of the
+    active project that has an object of its own at the id-path, in the
+    active project's load order; `passes(a, b)` says whether project `a`
+    passes the axis to project `b`. `unreadable` holds declarers whose
+    declaration could not be read: the chain is still found, since only who
+    declares is needed for it. None when nothing declares the path.
+
+    Reads no file and knows no folder, so every kind of store combines by
+    this one rule (Design 2.6)."""
+    declarers = list(declarers)
+    if not declarers:
+        return None
+    order = [pid for pid, _ in declarers]
+    position = {pid: i for i, pid in enumerate(order)}
+    declared = dict(declarers)
+    chain = [order[-1]]
+    while True:
+        current = chain[-1]
+        nearer = next((pid for pid in reversed(order[:position[current]])
+                       if passes(pid, current)), None)
+        if nearer is None:
+            break
+        chain.append(nearer)
+    in_chain = set(chain)
+    unused = []
+    for pid in order:
+        if pid in in_chain:
+            continue
+        winner = min((m for m in chain if position[m] > position[pid]),
+                     key=position.__getitem__)
+        decided = any(position[m] > position[winner] and passes(pid, m)
+                      and m not in unreadable and not missing_parts(declared[m], axis)
+                      for m in chain)
+        unused.append(Unused(pid, winner, not decided))
+    blocked = next((pid for pid in chain if pid in unreadable), None)
+    if blocked is not None:
+        return Combined(tuple(chain), {}, None, {}, tuple(unused), blocked)
+    fields: dict = {}
+    declared_by: dict = {}
+    for pid in reversed(chain):
+        for key, value in declared[pid].fields.items():
+            if key in _FILE_KEYS:
+                continue
+            if value is None:
+                fields.pop(key, None)
+                declared_by.pop(key, None)
+            else:
+                fields[key] = value
+                declared_by[key] = pid
+    description = None
+    for pid in chain:
+        text = declared[pid].description
+        if text is not None and text.strip():
+            description = text
+            declared_by["description"] = pid
+            break
+    return Combined(tuple(chain), fields, description, declared_by, tuple(unused))
+
+
+# ---------------------------------------------------------------------------
+# The rows of a scope (TCW-113 Design 4.1-4.7, 4.10): one function any store
+# uses, given plain data, reading no file.
+
+
+@dataclass(frozen=True)
+class ScopeObject:
+    """One scope object at an id-path (Design 4.1): its full identifier, as
+    its owner sees it, and the object its record says it overrides."""
+    full_id: FullId
+    overrides: FullId | None = None
+
+
+@dataclass(frozen=True)
+class ProjectView:
+    """One covered project's answer at an id-path, for `statuses` (Design
+    4.6): the full identifier of its view object there (its chain's first
+    member's), or None; that object's combined Status; and whether the
+    project's own object there sets Status."""
+    project: str
+    view_object: FullId | None
+    status: str | None = None
+    sets_status: bool = False
+
+
+@dataclass(frozen=True)
+class ScopeRow:
+    """One row of a listing under `down` or `all` (Design 4.3): the object
+    shown, every object of its group, `statuses` (None for taxonomy), and
+    for each object of the group the scope objects that override it, in
+    their owners' scope order (Design 4.7)."""
+    shown: FullId
+    group: frozenset[FullId]
+    statuses: list[dict] | None
+    overridden_by: dict[FullId, list[FullId]]
+
+
+def scope_rows(id_path: str, *, order: list[str], own: list[ScopeObject],
+               v: ScopeObject | None, chain: list[FullId],
+               views: list[ProjectView] | None) -> list[ScopeRow]:
+    """The rows at `id_path` under `down` or `all`. `order` is the scope
+    order of project IDs; `own` the descendants' own objects at the id-path;
+    `v` is `V(X)` (`P`'s own object under `down`, its view object under
+    `all`), or None; `chain` the objects `P`'s view combined there, under
+    `all` only; `views` each covered project's `ProjectView` that is not
+    unavailable, in scope order, for capabilities, or None for taxonomy.
+
+    Groups (Design 4.2): an object joins the object it overrides when that
+    is a scope object, and `V(X)`'s group also holds its chain. A row shows
+    `V(X)` when its group holds it, else the group's one object that
+    overrides no other of the group (Design 4.3). Rows come in their shown
+    objects' owners' scope order."""
+    place = {pid: i for i, pid in enumerate(order)}
+    objects = ([v] if v is not None else []) + list(own)
+    # Each object's link towards its group's representative: a union-find
+    # over the scope objects and, under `all`, V(X)'s chain.
+    towards: dict[FullId, FullId] = {o.full_id: o.full_id for o in objects}
+    if v is not None:
+        for member in chain:
+            towards.setdefault(member, member)
+
+    def first(fid: FullId) -> FullId:
+        while towards[fid] != fid:
+            towards[fid] = towards[towards[fid]]
+            fid = towards[fid]
+        return fid
+
+    def join(a: FullId, b: FullId) -> None:
+        towards[first(a)] = first(b)
+
+    for o in objects:
+        if o.overrides is not None and o.overrides in towards:
+            join(o.full_id, o.overrides)
+    if v is not None:
+        for member in chain:
+            join(member, v.full_id)
+    groups: dict[FullId, list[FullId]] = {}
+    for fid in towards:
+        groups.setdefault(first(fid), []).append(fid)
+    rows = []
+    for listed in groups.values():
+        members = frozenset(listed)
+        if v is not None and v.full_id in members:
+            shown = v.full_id
+        else:
+            [shown] = [o.full_id for o in objects if o.full_id in members
+                       and (o.overrides is None or o.overrides not in members)]
+        overridden_by = {
+            member: sorted((o.full_id for o in objects if o.overrides == member),
+                           key=lambda f: place.get(f.project, len(place)))
+            for member in members}
+        statuses = None if views is None else [
+            {"project": view.project, "status": view.status,
+             "inherited": not view.sets_status, "full-id": str(view.view_object)}
+            for view in views if view.view_object in members]
+        rows.append(ScopeRow(shown, members, statuses, overridden_by))
+    rows.sort(key=lambda row: place.get(row.shown.project, len(place)))
+    return rows
+
+
+def row_order(rows: list, order: list[str], shown=lambda row: row.shown) -> list:
+    """Design 4.4's order: by id-path, compared folder name by folder name,
+    then by the shown object's owner's place in scope order (`order`).
+    `shown` gives a row's full identifier."""
+    place = {pid: i for i, pid in enumerate(order)}
+    return sorted(rows, key=lambda row: (tuple(shown(row).parts),
+                                         place.get(shown(row).project, len(place))))
+
+
+def text_matches(name: str, body: str, query: str) -> bool:
+    """`search`'s one rule: the query, ignoring case, is part of the name or
+    of the body."""
+    q = query.lower()
+    return q in name.lower() or q in body.lower()
+
+
+_COMPLETE = {"capabilities": "a name, a Status and a description",
+             "taxonomy": "a name and a description"}
+
+
+def clash_warning(axis: str, id_path: str, unused: str, winner: str, project: str) -> str:
+    """Design 2.5's warning for an unused declarer."""
+    return (f"{axis} {id_path}: '{unused}' and '{winner}' each have an object at this "
+            f"path, and neither inherits it from the other; '{project}' uses the one "
+            f"from '{winner}', which comes later in its load order, and nothing from "
+            f"'{unused}''s; to choose for yourself, give '{project}' a complete object "
+            f"of its own at {id_path} ({_COMPLETE[axis]}), holding every field you want")
+
+
 @dataclass(frozen=True)
 class UnreachableProject:
     """A connected project that is declared here but not available here.
@@ -139,7 +679,16 @@ class UnreachableProject:
     id: str
     locator: Any
     declared_in: Any = ""
-    declaration: "RepositoryDeclaration | None" = None
+    # The rendered "not on this machine" message (TCW-107 Design 6.2), the
+    # manifest holding the entry that decided where the project is (None when
+    # no entry decided), and the repository that entry gives. Presentation
+    # only, like `declared_in`. `remedy` is the message's part after its first
+    # colon, kept on its own so a message quoting it (TCW-108 Design 6.2)
+    # never parses `message`.
+    message: str = ""
+    decided_by: Any = None
+    repository: str | None = None
+    remedy: str = ""
 
 
 @dataclass(frozen=True)
@@ -189,49 +738,152 @@ class ProjectRegistry(ABC):
     def current(self) -> Project:
         """The project from which this registry was opened."""
 
-    def declared_parent_id(self, project_id: str | None = None) -> str | None:
-        """The id of the declared parent, whether or not this store can reach it.
+    @abstractmethod
+    def parents(self, project_id: str | None = None) -> list[ParentLink]:
+        """The project's declared parent links, in listing order, whether or
+        not each parent is on this machine (TCW-108 Design 1, 3.2). Empty for
+        a project with none, for one whose own links could not be read, and
+        for one not on this machine."""
 
-        `parent()` answers with a `Project`, so it can only answer for a project
-        this store actually has — which made every "declared but not here"
-        relation indistinguishable from "never declared", the one thing
-        `UnreachableProject` exists to prevent. The id is known from the
-        declaration alone, so it is answerable either way.
+    def link_state(self, project_id: str) -> str:
+        """`here`, `missing` (not on this machine) or `unreadable` (on this
+        machine, its own parent links could not be read, Design 6.6). The
+        default is right for a store with no unreadable state."""
+        return "here" if self.get(project_id) is not None else "missing"
 
-        The default is the reachable answer, which is correct for a store that
-        always sees the whole graph.
-        """
-        parent = self.parent(project_id)
-        return None if parent is None else parent.id
+    def load_order(self, project_id: str | None = None, *,
+                   root: Any = None) -> LoadOrder:
+        """The project's load order (Design 4), computed from the declared
+        links alone by `load_order_of`, so every store orders a family the
+        same way. Raises `ProjectGraphError` on a loop (Design 4.7). `root`
+        is where the caller holds a project outside the family, for a store
+        that finds projects by folder; this default does not need it."""
+        from tcw.errors import ProjectGraphError
+        start = project_id or self.current.id
+        links: dict[str, list[ParentLink]] = {}
+        missing: set[str] = set()
+        unreadable: set[str] = set()
+        pending = [start]
+        while pending:
+            pid = pending.pop()
+            if pid in links or pid in missing or pid in unreadable:
+                continue
+            state = self.link_state(pid)
+            if state == "missing":
+                missing.add(pid)
+            elif state == "unreadable":
+                unreadable.add(pid)
+            else:
+                links[pid] = self.parents(pid)
+                pending.extend(link.id for link in reversed(links[pid]))
+        try:
+            return load_order_of(start, links, missing=missing, unreadable=unreadable)
+        except ValueError:
+            raise ProjectGraphError(loop_message(find_loop(links, [start]))) from None
+
+    def sources(self, axis: str, project_id: str | None = None) -> list[Project]:
+        """The projects whose `axis` reaches the project (Design 5.2): its load
+        order keeping only those that pass `axis` to it (Design 5.1), in the
+        same order, ending with the project itself.
+
+        Raises `InheritedUnavailable` (Design 6.2) for the first project in
+        the load order that would pass `axis` and is not on this machine, or
+        whose own parent links could not be read, since what reaches the
+        project is then unknown. A project that passes nothing for `axis`
+        never stops it, whatever its state."""
+        entries = self.source_entries(axis, project_id)
+        for entry in entries:
+            if entry.state != "here":
+                raise self.unavailable(entries[-1].id, entry.id, axis)
+        return [entry.project for entry in entries]
+
+    def source_entries(self, axis: str, project_id: str | None = None, *,
+                       root: Any = None) -> list[SourceEntry]:
+        """`sources` without raising (TCW-109 Design 1.3): every project of
+        the load order that passes `axis`, in order and ending with the
+        project, each with its state, so a caller that needs to know what a
+        gap could have set can carry on past it."""
+        order = (self.load_order(project_id) if root is None
+                 else self.load_order(project_id, root=root))
+        passes = self.passing_in(order, axis)
+        entries: list[SourceEntry] = []
+        for pid in order.ids:
+            if pid not in passes:
+                continue
+            if pid in order.missing:
+                entries.append(SourceEntry(pid, None, "missing"))
+            elif pid in order.unreadable:
+                entries.append(SourceEntry(pid, None, "unreadable"))
+            else:
+                entries.append(SourceEntry(pid, self.order_project(pid), "here"))
+        return entries
+
+    def passing_in(self, order: LoadOrder, axis: str) -> set[str]:
+        """The IDs of `order` that pass `axis` to its project (Design 5.1),
+        nothing being passed through a project missing or unreadable."""
+        absent = frozenset({*order.missing, *order.unreadable})
+        links = {pid: self.parents(pid) for pid in order.ids if pid not in absent}
+        return passing(axis, order.ids[-1], links, absent=absent)
+
+    def inherited_unavailable(self, order: LoadOrder, axis: str, project_id: str):
+        """Design 6.2's error for `project_id`, missing or unreadable, which
+        would pass `axis` to the project of `order`."""
+        return self.unavailable(order.ids[-1], project_id, axis,
+                                missing=project_id in order.missing)
+
+    def unavailable(self, project_id: str, gap_id: str, axis: str, *,
+                    subject: str | None = None, missing: bool | None = None,
+                    store_message: str | None = None):
+        """Design 6.2's error: `gap_id`, missing or unreadable, would pass
+        `axis` to `project_id`. The one place its messages are built.
+        `subject` stands for the axis in the message (TCW-109 passes
+        `configuration (work.tags)`); `missing` says which of the two it is
+        when the caller knows, else `link_state` does. `store_message`, when
+        given, is the third case (TCW-112 Design 1.3): `gap_id` is here and
+        readable, but its store for `axis` cannot be opened, and this is
+        that store's own message."""
+        from tcw.errors import InheritedUnavailable
+        words = subject or axis
+        if store_message is not None:
+            return InheritedUnavailable(
+                f"'{project_id}' inherits its {words} from project '{gap_id}', whose "
+                f"{words} store cannot be read here: {store_message}",
+                project=gap_id, axis=axis, reason="store", detail=store_message)
+        if missing is None:
+            missing = self.link_state(gap_id) == "missing"
+        if missing:
+            return InheritedUnavailable(
+                f"'{project_id}' inherits its {words} from project '{gap_id}', which "
+                f"is not on this machine: {self.absent_note(gap_id)}",
+                project=gap_id, axis=axis, reason="missing")
+        return InheritedUnavailable(
+            f"'{project_id}' inherits its {words} through project '{gap_id}', whose "
+            f"parents could not be read: {self.link_problem(gap_id)}",
+            project=gap_id, axis=axis, reason="unreadable")
+
+    def order_project(self, project_id: str) -> Project:
+        """The `Project` for an ID of a load order that is available here. A
+        store whose load orders reach projects outside the family overrides
+        this; the default answers for the family."""
+        project = self.get(project_id)
+        if project is None:
+            raise KeyError(project_id)
+        return project
+
+    def absent_note(self, project_id: str) -> str:
+        """What to do about a project not on this machine, for Design 6.2's
+        first message, after its colon."""
+        return f"project '{project_id}' is not available here"
+
+    def link_problem(self, project_id: str) -> str | None:
+        """The problem that left a project's own parent links unknown (Design
+        6.6), naming its file and key, or None."""
+        return None
 
     def declared_child_ids(self, project_id: str | None = None) -> list[str]:
-        """The ids of the declared children, reachable or not. See
-        `declared_parent_id`."""
+        """The IDs of the declared children, on this machine or not: the
+        committed list, then the personal list's additions (Design 2.1)."""
         return [child.id for child in self.children(project_id)]
-
-    def declared_upstream_ids(self, project_id: str | None = None) -> list[str]:
-        """The ids of the declared upstream projects, reachable or not.
-
-        An upstream is a project this one reads from — its taxonomy, its
-        capabilities, its work items by reference — and never writes to, and
-        which does not name this project back. It is neither parent nor child,
-        so no walk over those relations reaches it. A registry that keeps no
-        such relation has none."""
-        return []
-
-    def read_only_reason(self, project_id: str,
-                         from_id: str | None = None) -> str | None:
-        """Why `from_id` (default: the current project) may not write to
-        `project_id`, or None when it may.
-
-        **The one place the write rule lives.** A project is writable from a
-        project only when the project reaches it by `parent` and `children`
-        connections alone, each followed as declared by the project it starts
-        from. Anything else the graph holds was reached across an upstream
-        connection and is read-only there — however many projects declare it, and
-        from whichever side of the family it is named. A registry with no
-        upstream relation has nothing read-only."""
-        return None
 
     def warnings(self) -> list[str]:
         """Graph facts worth saying that are neither defects nor unreachable
@@ -269,31 +921,70 @@ class ProjectRegistry(ABC):
         """Return a connected project by canonical ID."""
 
     @abstractmethod
-    def parent(self, project_id: str | None = None) -> Project | None:
-        """Return the direct parent of a project, if any."""
-
-    @abstractmethod
     def children(self, project_id: str | None = None) -> list[Project]:
         """Return the direct children of a project."""
 
     @abstractmethod
     def ancestors(self, project_id: str | None = None) -> list[Project]:
-        """Return direct parent first, then the remaining ancestors."""
+        """The project's load order without the project itself, farthest
+        first, keeping those on this machine."""
 
     @abstractmethod
     def descendants(self, project_id: str | None = None) -> list[Project]:
-        """Return every descendant in deterministic depth-first order."""
+        """The projects below this one through listed children, breadth
+        first, those on this machine."""
+
+    def scope_members(self, scope: str, project_id: str | None = None
+                      ) -> list[ScopeMember]:
+        """The projects `scope` covers for the project (TCW-113 Design 1.3),
+        in scope order (Design 1.4): its ancestors in its load order,
+        farthest first, missing ones included; the project; its descendants
+        breadth first over each one's declared children, a listed child not
+        on this machine included and its own children, which nothing here
+        can know, not. `own` asks the registry nothing.
+
+        `inherit` never narrows what a scope covers: every ancestor is
+        covered whatever its link passes (TCW-108 Design 5.3), and only what
+        is read from it depends on that. A sibling, an ancestor's other
+        descendants and a descendant's other parents are never covered."""
+        start = project_id or self.current.id
+        if scope not in SCOPES:
+            raise UsageError(f"--scope must be one of {', '.join(SCOPES)}, not '{scope}'")
+        if scope == "own":
+            return [ScopeMember(start, "current")]
+        found: list[ScopeMember] = []
+        if scope in ("up", "all"):
+            found += [ScopeMember(pid, "ancestor")
+                      for pid in self.load_order(project_id).ids[:-1]]
+        found.append(ScopeMember(start, "current"))
+        if scope in ("down", "all"):
+            seen = {start}
+            queue = [start]
+            while queue:
+                pid = queue.pop(0)
+                for child in self.declared_child_ids(pid):
+                    if child in seen:
+                        continue
+                    seen.add(child)
+                    found.append(ScopeMember(child, "descendant"))
+                    if self.get(child) is not None:
+                        queue.append(child)
+        return found
+
+    def covering_scope(self, project_id: str, active_id: str | None = None) -> str | None:
+        """The first of `up`, `down` and `all` that covers `project_id` for
+        the project `active_id` (the current one when not given), or None
+        when none does, as for a sibling (Design 2.2)."""
+        for scope in ("up", "down", "all"):
+            if any(m.id == project_id for m in self.scope_members(scope, active_id)):
+                return scope
+        return None
 
     @abstractmethod
     def projects(self) -> list["Project"]:
-        """Every project in the graph, the current one included.
-
-        Deliberately not `current + ancestors + descendants`: a graph is not a
-        line, and that triple omits a sibling, a sibling of an ancestor, and
-        anything else reached by a shape nobody enumerated. A caller asking
-        "what does this checkout have" wants the set, and reconstructing it from
-        relations is how the set silently loses a member.
-        """
+        """The family: the current project, its ancestors and its
+        descendants (Design 3.3). Never a sibling, nor a project read only
+        to answer a lookup or another project's load order."""
 
     @abstractmethod
     def check(self) -> "list[Finding]":
@@ -325,7 +1016,14 @@ class Term:
     """A taxonomy entry: a vocabulary term or feature addressed by its path.
 
     `slug` is the identity (path from the taxonomy root, e.g. `admin/permission`).
-    `origin` is `"local"` or the `extends` alias the term was resolved through.
+    `owner` is the ID of the project that declares it, the first member of its
+    chain (TCW-112 Design 2.4), and `full_id` its full identifier (TCW-110
+    Design 1.4). `origin` is `"local"` when the owner is the project of the
+    store that read it, else the owner's ID; it is the stores' own field,
+    never printed. `overrides` is the full identifier of the object it
+    overrides, the chain's second member, or None. `partial` is True for a
+    record read from the owner's own declaration alone, without its inherited
+    content (TCW-112 Design 3.4), when whether it overrides one is not known.
     """
     slug: str
     name: str
@@ -336,47 +1034,122 @@ class Term:
     attachments: list[str] = field(default_factory=list)
     origin: str = "local"
     modified: str = ""
+    owner: str = ""
+    # The object this one belongs under (TCW-111 Design 3.1): a full
+    # identifier, or the text as written when it is not one, which `check`
+    # reports; None when the state file names no parent.
+    parent: "FullId | str | None" = None
+    overrides: "FullId | None" = None
+    partial: bool = False
 
     @property
-    def qualified(self) -> str:
-        """Slug prefixed with its origin alias (`shared/Some/Term`); bare when local."""
-        return self.slug if self.origin == "local" else f"{self.origin}/{self.slug}"
+    def full_id(self) -> FullId:
+        return FullId(self.owner, "taxonomy", self.slug)
 
 
 class TaxonomyStore(ABC):
-    """The taxonomy axis: a forest of terms, optionally federated via `extends`.
+    """The taxonomy axis: a forest of terms, inherited from the projects that
+    pass it through the parent links (TCW-112 Design 1), each id-path's object
+    combined over them (Design 2).
 
     Errors, by the class `tcw` turns into its exit code (TCW-73 Design 4):
-    `NotFound` (4) when the entry or `extends` ID named does not exist;
+    `NotFound` (4) when the entry named does not exist;
     `UsageError` (2) when the input itself is wrong (a bad ID or path, a kind,
     Status or field outside the list, a reference that does not resolve or is
     ambiguous, a project nothing registers); `Refused` (3) when the input is
-    fine but the store's state forbids it (the name is taken, the entry is
-    inherited, has nested entries or is still referenced, the `extends` entry
-    already exists); `BackendError` (1) for a fault reading back what was
-    written. An adapter for another kind of store raises the same classes.
+    fine but the store's state forbids it (the name is taken, the entry
+    belongs to another project, has nested entries or is still referenced);
+    `BackendError` (1) for a fault reading back what was written;
+    `InheritedUnavailable` (7) when an operation needs inherited content that
+    cannot be read here (TCW-112 Design 3.5). An adapter for another kind of
+    store raises the same classes.
     """
 
     @abstractmethod
     def list_all(self, local_only: bool = False) -> list[Term]:
-        """All terms (local + inherited), each flagged by `origin`."""
+        """The project's view, each id-path once as its combined term (TCW-112
+        Design 3.2); with `local_only`, the terms the project owns, its
+        overrides included."""
 
     @abstractmethod
-    def get(self, ref: str) -> Term | None:
-        """Resolve a reference (B.6) to a term, or None if it resolves to nothing.
+    def own_paths(self) -> list[str]:
+        """The id-paths of the project's own terms. Reads no other project."""
 
-        Raises `AmbiguousRef` when a bare ref matches multiple extended taxonomies.
-        """
+    @abstractmethod
+    def has_own(self, slug: str) -> bool:
+        """Whether the project has a term of its own at `slug`, every folder
+        spelled exactly as given. Reads no other project."""
 
+    @abstractmethod
+    def declaration(self, slug: str) -> Term | None:
+        """The project's own term at `slug` read from its own declaration
+        alone, marked `partial` (TCW-112 Design 3.4), or None. Reads no other
+        project."""
+
+    @abstractmethod
+    def get_local(self, slug: str) -> Term | None:
+        """The project's own term at the id-path `slug` as the project sees
+        it, combined over its sources (TCW-112 Design 3.1), or None when the
+        project has no term of its own there."""
+
+    @abstractmethod
+    def get_view(self, slug: str) -> Term | None:
+        """The term at id-path `slug` in the project's view (TCW-112 Design
+        3.1 form d), named by its chain's first member, or None."""
+
+    @abstractmethod
+    def chain(self, slug: str) -> list[FullId]:
+        """Design 2.1's chain at `slug`, nearest first; empty when nothing
+        has a term there."""
+
+    @abstractmethod
+    def inherited_at(self, slug: str) -> FullId | None:
+        """Design 2.7: the full identifier of the inherited term at `slug`,
+        the first member of the path's chain that is not the project, or
+        None."""
+
+    @abstractmethod
+    def view_warnings(self, slugs=None) -> list[str]:
+        """Design 2.5's warnings for the given id-paths, or the whole view,
+        ordered by id-path and then by the unused project's place in the load
+        order."""
+
+    @abstractmethod
+    def removal_target(self, target: "FullId | str") -> FullId:
+        """The project's own full identifier `rm` removes for `target` (an
+        id-path or a full identifier). Another project's full identifier is
+        refused before anything is read; an id-path the view shows as another
+        project's is refused; nothing there is `NotFound` (TCW-112 Design
+        4.4)."""
+
+    @writes
     @abstractmethod
     def add(self, name: str, slug: str | None = None, parent: str | None = None,
             description: str = "", kind: str = "Vocabulary",
-            vocabulary: list[str] | None = None) -> Term:
-        """Create a local term under `parent` (root by default). Refuse a collision."""
+            vocabulary: list[str] | None = None, *, flat: bool = False,
+            report=None) -> Term:
+        """Create a local term with `parent` (TCW-111 Design 3.3): command
+        input naming a term, written as its full identifier; the folder is
+        made inside the parent's when it is a term of this project's own
+        store and `flat` is false, else at the root, with a line to `report`
+        when the parent is not this project's own (TCW-118). A store that
+        keeps no folders ignores `flat`. Refuse a collision."""
 
+    @writes
     @abstractmethod
-    def remove(self, ref: str) -> None:
-        """Remove a local term, writing nothing when refused. Raise `ValueError`
+    def move(self, id_path: str, new_id_path: str, before_folder,
+             *, report=None) -> list:
+        """Give the object, and every object nested in its folder, a new
+        id-path (TCW-114 Design 8): call `before_folder`, which rewrites the
+        repository's references, then move the folder or records. Returns
+        the `(old, new)` full identifiers, the object first. The store writes
+        nothing else: references live in repository files in both modes."""
+
+    @writes
+    @abstractmethod
+    def remove(self, ref: "FullId | str") -> None:
+        """Remove a local term, writing nothing when refused. `ref` is a full
+        identifier, or text read as command input is (TCW-110 Design 3.1). Raise `ValueError`
         when nothing resolves, the term is inherited, another term is nested under
         it, another local term's `relatesTo` or `vocabulary` still resolves to it,
         or a local capability's `Subject` or `Feature` does — including when the
@@ -393,23 +1166,14 @@ class TaxonomyStore(ABC):
         """Validate the taxonomy, optionally limited to one object."""
 
     @abstractmethod
-    def extends_add(self, project_id: str) -> None:
-        """Explicitly inherit the taxonomy of a connected project."""
-
-    @abstractmethod
-    def extends_remove(self, project_id: str) -> None:
-        """Drop an inherited project ID. Refuse if it isn't present."""
-
-    @abstractmethod
-    def get_term_detail(self, ref: str) -> "TermDetail" | None:
-        """Resolve a reference to its term plus a core revision token.
-
-        Returns ``None`` when the ref resolves to nothing (same as ``get``).
-        Raises ``AmbiguousRef`` on collisions.
+    def get_term_detail(self, ref: "FullId | str") -> "TermDetail" | None:
+        """The term `ref` names (a full identifier, or command input) plus a
+        core revision token. Returns ``None`` when it names nothing.
         """
 
+    @writes
     @abstractmethod
-    def update_term(self, ref: str, *,
+    def update_term(self, ref: "FullId | str", *,
                     name: Any = _UNSET,
                     description: Any = _UNSET,
                     relates_to: Any = _UNSET,
@@ -442,9 +1206,13 @@ class TermDetail:
 
 @dataclass
 class CapabilityDetail:
-    """A single capability entry with its core revision token."""
+    """A single capability entry with its core revision token, and the
+    declared description of its owner's own declaration (TCW-112 Design 4.5),
+    trimmed of leading and trailing white space as the combined body uses it,
+    or None when the owner declares none: what a web edit of the body edits."""
     capability: Capability
     core_revision: str = ""
+    declared_description: str | None = None
 
 
 # ── Capabilities (Phase 3) ───────────────────────────────────────────────────
@@ -464,18 +1232,28 @@ CAP_FIELDS = {
 # work item's `capabilities.yaml`. A record still carrying one is a check error
 # naming the migration guide.
 RETIRED_CAP_FIELDS = {"Planning doc", "Tracker"}
-# The 2.x name of the `projects` key in `tcw-config.yaml` (TCW-73 Design 9.3):
-# a config error naming the migration guide, never read.
+# The 2.x name of the 3.x `projects` key in `tcw-config.yaml` (TCW-73 Design
+# 9.3): refused before every command, never read.
 RETIRED_PROJECTS_KEY = "connected-projects"
+# The keys that once named other projects, which TCW 4.0 refuses (TCW-108
+# Design 3.5): parent links are `parents:` and `children:`.
+REMOVED_LINK_KEYS = ("projects", RETIRED_PROJECTS_KEY)
 MIGRATION_GUIDE = "docs/migration-guide-2.8-to-3.0.0.md"  # removed keys and fields
 
 
-def retired_key_problem(config: object) -> str | None:
-    """The config error for a `tcw-config.yaml` mapping that still holds the 2.x
-    `connected-projects` key, or None. One wording wherever it is reported."""
-    if isinstance(config, dict) and RETIRED_PROJECTS_KEY in config:
-        return (f"the key '{RETIRED_PROJECTS_KEY}' was renamed to 'projects' in "
-                f"TCW 3.0 — see {MIGRATION_GUIDE}")
+def retired_key_problem(config: object,
+                        keys: tuple[str, ...] = REMOVED_LINK_KEYS) -> str | None:
+    """The problem for a `tcw-config.yaml` mapping that still holds a key that
+    once named other projects (the 3.x `projects`, the 2.x
+    `connected-projects`), or None (TCW-108 Design 3.5). One wording wherever
+    it is reported."""
+    if not isinstance(config, dict):
+        return None
+    for key in keys:
+        if key in config:
+            return (f"'{key}' is not a TCW 4.0 key: name parents under 'parents:' "
+                    f"and children under 'children:', by ID, and say where projects "
+                    f"are in .tcw/tcw-manifest.yaml")
     return None
 
 
@@ -484,95 +1262,169 @@ class Capability:
     """A single user-story capability, addressed by its folder path.
 
     `path` is the identity (path from the capabilities root, e.g.
-    `auth/providers/github`). `id` is an opaque, immutable stable id — the
-    durable key an override or a `tcw://` reference points at. `origin` is
-    `"local"` or the `extends` alias the capability was resolved through.
+    `auth/providers/github`), and the only one: TCW 4.0 has no opaque `id`
+    (TCW-112 Design 5). `owner`, `full_id`, `origin`, `overrides` and
+    `partial` are as for `Term`.
     `fields` holds the locked metadata vocabulary (`CAP_FIELDS`); `Subject` may
     be a list of taxonomy slugs.
     """
     path: str
     name: str
-    id: str = ""
     fields: dict[str, Any] = field(default_factory=dict)
     body: str = ""
     origin: str = "local"
     modified: str = ""
+    owner: str = ""
+    # As `Term.parent` (TCW-111 Design 3.1).
+    parent: "FullId | str | None" = None
+    overrides: "FullId | None" = None
+    partial: bool = False
 
     @property
     def status(self) -> str | None:
         return self.fields.get("Status")
 
     @property
-    def qualified(self) -> str:
-        """Path prefixed with its origin alias (`shared/auth/login`); bare when local."""
-        return self.path if self.origin == "local" else f"{self.origin}/{self.path}"
+    def full_id(self) -> FullId:
+        return FullId(self.owner, "capabilities", self.path)
 
 
 class CapabilitiesStore(ABC):
-    """The capabilities axis: a bounded tree of user-story entries, optionally
-    federated via `extends`.
+    """The capabilities axis: a bounded tree of user-story entries, inherited
+    and combined as the taxonomy is (TCW-112 Design 1, 2).
 
     Deliberately near-identical to `TaxonomyStore` — both are bounded trees of
     body + named-fields + named-attachments entries on the shared tree-store core.
 
     Errors, by the class `tcw` turns into its exit code (TCW-73 Design 4):
-    `NotFound` (4) when the entry or `extends` ID named does not exist;
+    `NotFound` (4) when the entry named does not exist;
     `UsageError` (2) when the input itself is wrong (a bad ID or path, a kind,
     Status or field outside the list, a reference that does not resolve or is
     ambiguous, a project nothing registers); `Refused` (3) when the input is
-    fine but the store's state forbids it (the name is taken, the entry is
-    inherited, has nested entries or is still referenced, the `extends` entry
-    already exists); `BackendError` (1) for a fault reading back what was
-    written. An adapter for another kind of store raises the same classes.
+    fine but the store's state forbids it (the name is taken or inherited,
+    the entry belongs to another project, has nested entries or is still
+    referenced); `BackendError` (1) for a fault reading back what was
+    written; `InheritedUnavailable` (7) as for `TaxonomyStore`. An adapter
+    for another kind of store raises the same classes.
     """
 
     @abstractmethod
     def list_all(self, status: str | None = None, namespace: str | None = None,
                  local_only: bool = False) -> list[Capability]:
-        """All capabilities (local + inherited), each flagged by `origin`."""
+        """The project's view, each id-path once as its combined capability;
+        with `local_only`, the capabilities the project owns, its overrides
+        included (TCW-112 Design 3.2)."""
 
     @abstractmethod
-    def get(self, identifier: str) -> Capability | None:
-        """Resolve a path (A.6) to its capability, or None. Raises `AmbiguousRef`
-        when a bare ref matches multiple extended stores."""
+    def own_paths(self) -> list[str]:
+        """As `TaxonomyStore.own_paths`."""
 
+    @abstractmethod
+    def has_own(self, path: str) -> bool:
+        """As `TaxonomyStore.has_own`."""
+
+    @abstractmethod
+    def declaration(self, path: str) -> Capability | None:
+        """As `TaxonomyStore.declaration`."""
+
+    @abstractmethod
+    def get_local(self, path: str) -> Capability | None:
+        """As `TaxonomyStore.get_local`."""
+
+    @abstractmethod
+    def get_view(self, path: str) -> Capability | None:
+        """As `TaxonomyStore.get_view`."""
+
+    @abstractmethod
+    def chain(self, path: str) -> list[FullId]:
+        """As `TaxonomyStore.chain`."""
+
+    @abstractmethod
+    def inherited_at(self, path: str) -> FullId | None:
+        """As `TaxonomyStore.inherited_at`."""
+
+    @abstractmethod
+    def view_warnings(self, paths=None) -> list[str]:
+        """As `TaxonomyStore.view_warnings`."""
+
+    @abstractmethod
+    def removal_target(self, target: "FullId | str") -> FullId:
+        """As `TaxonomyStore.removal_target`."""
+
+    @abstractmethod
+    def override_target(self, target: "FullId | str") -> FullId:
+        """The project's own full identifier `set` and `reset` write for
+        `target` (TCW-112 choice 9): an id-path, the project's own full
+        identifier where it has an object, or the full identifier of any
+        object in that id-path's chain. A project that is not one of the
+        project's sources is refused before anything is read; another
+        project's object not in the chain is refused with Design 4.2's
+        message; nothing there is `NotFound`."""
+
+    @writes
     @abstractmethod
     def add(self, identifier: str, name: str | None = None, status: str = "Missing",
-            body: str = "", fields: dict[str, Any] | None = None) -> Capability:
-        """Create a local capability folder at `identifier` (a path). Refuse a
-        collision. `fields` are validated as `set` validates them, before
+            body: str = "", fields: dict[str, Any] | None = None,
+            parent: str | None = None, *, flat: bool = False,
+            report=None) -> Capability:
+        """Create a local capability folder at `identifier` (a path), with
+        `parent` (command input naming a capability) written as its full
+        identifier when given. With a parent of this project's own and `flat`
+        false, `identifier` is read inside the parent's folder unless it
+        already starts with the parent's path and `/`, and then must be one
+        part, else `UsageError`; with a parent that is
+        not, it is the whole path, and a line says so to `report` (TCW-118).
+        Refuse a collision. `fields` are validated as `set` validates them, before
         anything is written, so a create carrying a bad field writes nothing."""
 
+    @writes
     @abstractmethod
-    def remove(self, identifier: str) -> None:
-        """Delete the local capability at `identifier`, writing nothing when
-        refused. Raise `AmbiguousRef` when a bare ref matches multiple extended
-        stores, and `ValueError` when:
+    def move(self, id_path: str, new_id_path: str, before_folder,
+             *, report=None) -> list:
+        """Give the object, and every object nested in its folder, a new
+        id-path (TCW-114 Design 8): call `before_folder`, which rewrites the
+        repository's references, then move the folder or records. Returns
+        the `(old, new)` full identifiers, the object first. The store writes
+        nothing else: references live in repository files in both modes."""
 
-        - nothing resolves;
-        - the capability is inherited, overridden locally or not (an override
-          is dropped with `reset`, never with `remove`);
-        - another capability or override is nested under its path;
-        - another local capability or override still references it through
+    @writes
+    @abstractmethod
+    def remove(self, identifier: "FullId | str") -> None:
+        """Delete the project's own capability `identifier` names
+        (`removal_target`), an override included, writing nothing when
+        refused (TCW-112 Design 4.4). Raise `ValueError` when:
+
+        - nothing resolves, or it belongs to another project;
+        - another capability is nested under its path;
+        - another of the project's capabilities still references it through
           `Superseded by`, `Blocked by`, `Roles` or `When`.
 
         Refusing rather than cascading is the contract: a delete never takes a
         second capability with it or leaves a reference pointing at nothing.
-        Never mutates an extended store."""
+        Never changes another project's store."""
 
+    @writes
     @abstractmethod
-    def reset(self, identifier: str) -> None:
-        """Drop the local override at `identifier`, re-inheriting the upstream
-        capability verbatim. Raise `ValueError` when there is no override (a
-        standalone local capability is not an override — the `remove` operation,
-        driven by `tcw capabilities rm`, deletes it; a bare
-        inherited path has nothing to drop), or `AmbiguousRef` when a bare ref
-        matches multiple extended stores. Never mutates an extended store."""
+    def reset(self, identifier: "FullId | str") -> None:
+        """Remove the project's own capability at the id-path `identifier`
+        names (`override_target`) when it overrides one, so the path shows
+        the inherited capability again (TCW-112 Design 4.3). Raise
+        `ValueError` when it overrides nothing (`remove` deletes it), when
+        the project has none there, when anything is nested under it, or
+        while another of the project's own objects names it. Never changes
+        another project's store."""
 
+    @writes
     @abstractmethod
-    def set(self, identifier: str, fields: dict[str, Any]) -> Capability:
-        """Update/insert metadata fields on the capability at `identifier`;
-        return it. Keys must be in CAP_FIELDS; a Status value must be in
+    def set(self, identifier: "FullId | str", fields: dict[str, Any],
+            parent: str | None = None) -> Capability:
+        """Update/insert metadata fields on the project's own capability at
+        the id-path `identifier` names (`override_target`), writing a new one
+        holding only the fields given when the project only inherits it
+        (TCW-112 Design 4.2); return the capability as the project then sees
+        it. `parent`, when given, is command input naming a capability, or
+        `''` to clear it. A field given as None is written as an explicit
+        null. Keys must be in CAP_FIELDS; a Status value must be in
         CAP_STATUSES. `Subject` accepts a list (or a comma string). Other
         field-value semantics are `check`'s job (Spec 3)."""
 
@@ -582,10 +1434,10 @@ class CapabilitiesStore(ABC):
 
     @abstractmethod
     def unreviewed_inherited(self) -> list["Capability"]:
-        """Inherited capabilities whose Status is the master's default — never
-        locally ruled on (no local override that sets Status). The 'unreviewed'
-        half of drift: distinguishes an echoed master default from a local
-        decision. Empty when nothing is federated."""
+        """Inherited capabilities never ruled on here: the project has no
+        object of its own at the id-path, or has one that sets no `Status`
+        (TCW-112 Design 7.2). The 'unreviewed' half of drift. Empty when
+        nothing is inherited."""
 
     @abstractmethod
     def check(self, taxonomy: "TaxonomyStore | None" = None,
@@ -594,12 +1446,13 @@ class CapabilitiesStore(ABC):
         (cross-component) Subject/Feature refs, as error findings."""
 
     @abstractmethod
-    def get_capability_detail(self, identifier: str) -> "CapabilityDetail" | None:
-        """Resolve a path to its capability plus a revision token.
-        Returns ``None`` for dangling identifiers."""
+    def get_capability_detail(self, identifier: "FullId | str") -> "CapabilityDetail" | None:
+        """The capability `identifier` names plus a revision token.
+        Returns ``None`` when it names nothing."""
 
+    @writes
     @abstractmethod
-    def update_capability(self, identifier: str, *,
+    def update_capability(self, identifier: "FullId | str", *,
                           body: Any = _UNSET,
                           fields: Any = _UNSET,
                           core_revision: str | None = None) -> "CapabilityDetail":
@@ -612,14 +1465,6 @@ class CapabilitiesStore(ABC):
 
         Returns the updated ``CapabilityDetail`` with a fresh revision.
         """
-
-    @abstractmethod
-    def extends_add(self, project_id: str) -> None:
-        """Explicitly inherit capabilities from a connected project."""
-
-    @abstractmethod
-    def extends_remove(self, project_id: str) -> None:
-        """Drop an inherited project ID. Refuse if it isn't present."""
 
 
 # ── Work (Phase 5) ───────────────────────────────────────────────────────────
@@ -694,30 +1539,6 @@ class RepositoryDeclaration:
     ref: str | None = None
     path: str = ""
     checkout: str | None = None
-
-
-@dataclass(frozen=True)
-class ConnectedProject:
-    """One `projects` entry: where a project is, and where it comes from.
-
-    Both halves are optional individually and one of them is required. `locator`
-    is the adapter locator the entry has always been — a path, for the filesystem
-    adapter. `repository` says how a machine that does not have the project can
-    obtain it, and is exactly the declaration a component store takes, because
-    "where does this come from" is the same question either way.
-
-    The two are a ladder, not alternatives: the locator answers when it can, and
-    the declaration answers only when it cannot. A project already here is never
-    fetched.
-    """
-
-    id: str
-    locator: str | None = None
-    repository: "RepositoryDeclaration | None" = None
-    # The entry's optional `jira` block, kept unparsed: the store layer imports
-    # nothing from `tcw.work`, and the Jira backend checks its shape when
-    # delegation reads it (TCW-71).
-    jira: Any = field(default=None, compare=False, hash=False)
 
 
 @dataclass(frozen=True)
@@ -815,7 +1636,7 @@ def parse_repository_declaration(
         return None, [f"{where}: expected a mapping, got {type(raw).__name__}"]
 
     known = {"url", "ref", "path", "checkout"}
-    unknown = set(raw) - known
+    unknown = {k for k in set(raw) - known if follows_naming_rule(k)}
     if unknown:
         problems.append(f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
                         f"expected {', '.join(repr(k) for k in sorted(known))}")
@@ -862,60 +1683,6 @@ def parse_repository_declaration(
                                  checkout=checkout), problems
 
 
-def parse_connected_entry(
-    project_id: str, raw: Any, where: str
-) -> tuple["ConnectedProject | None", list[str]]:
-    """Parse one `projects` entry into a `ConnectedProject` plus problems.
-
-    Two accepted forms, and the first must never stop working:
-
-        child-id: ../child                      # a bare locator, as always
-        child-id:
-            path: ../child                      # optional
-            repository: {url: ..., ref: ...}    # optional
-
-    Pure, filesystem-free, and fails closed like `parse_repository_declaration`
-    — which it delegates the `repository` half to wholesale, so a malformed
-    declaration reads the same here as it does under `work.repository` rather
-    than growing a second vocabulary of error messages.
-
-    An entry naming neither is refused. It would be a project that cannot be
-    found and cannot be obtained, which is not a state worth representing.
-    """
-    problems: list[str] = []
-    if isinstance(raw, str):
-        if not raw.strip():
-            return None, [f"{where}: locator must be a nonempty string"]
-        return ConnectedProject(id=project_id, locator=raw), problems
-    if not isinstance(raw, dict):
-        return None, [f"{where}: expected a locator string or a mapping, "
-                      f"got {type(raw).__name__}"]
-
-    known = {"path", "repository", "jira"}
-    unknown = set(raw) - known
-    if unknown:
-        problems.append(f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
-                        f"expected {', '.join(repr(k) for k in sorted(known))}")
-
-    locator = raw.get("path")
-    if locator is not None and (not isinstance(locator, str) or not locator.strip()):
-        problems.append(f"{where}.path: expected a non-empty string")
-        locator = None
-
-    declaration = None
-    if "repository" in raw:
-        declaration, declaration_problems = parse_repository_declaration(
-            raw.get("repository"), f"{where}.repository")
-        problems.extend(declaration_problems)
-
-    if locator is None and declaration is None and not problems:
-        problems.append(f"{where}: needs 'path', 'repository', or both")
-    if problems:
-        return None, problems
-    return ConnectedProject(id=project_id, locator=locator,
-                            repository=declaration, jira=raw.get("jira")), problems
-
-
 def parse_documentation_entries(raw: Any) -> tuple[list["DocEntry"], list[str]]:
     """Parse a `work.documentation` list into entries plus a problem list.
 
@@ -955,7 +1722,8 @@ def parse_documentation_entries(raw: Any) -> tuple[list["DocEntry"], list[str]]:
                             f"got {type(item).__name__}")
             continue
 
-        unknown = set(item) - {"path", "trigger", "description"}
+        unknown = {k for k in set(item) - {"path", "trigger", "description"}
+                   if follows_naming_rule(k)}
         if unknown:
             problems.append(f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
                             f"expected 'path', 'trigger', 'description'")

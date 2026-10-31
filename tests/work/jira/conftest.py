@@ -13,8 +13,10 @@ import yaml
 
 from tcw.cli import main
 from tcw.work.open import open_backend
+from tests.fullids import wid
 from tests.work.jira.fake import FIELDS, SITE, FakeJira
 from tests.work.projects import make_project
+from tests.statefiles import write_state, ITEM_STATE
 
 EMAIL_ENV, TOKEN_ENV = "TCW_TEST_JIRA_EMAIL", "TCW_TEST_JIRA_TOKEN"
 ME = "acct-dev"
@@ -65,13 +67,23 @@ class JiraProject:
                                   **values)
         name = f"{ticket.key}-{words}"
         ticket.custom[FIELDS["TCW Project"]] = project_id or self.id
-        ticket.custom[FIELDS["TCW Item"]] = item or f"{self.id}/{name}"
+        ticket.custom[FIELDS["TCW Item"]] = item or wid(self.id, name)
         if folder:
             path = self.work / name
             path.mkdir(parents=True)
-            (path / "item.yaml").write_text(
+            write_state(path / ITEM_STATE,
                 yaml.safe_dump({"ticket": f"{self.fake.site}/browse/{ticket.key}"}))
         return ticket.key, name
+
+
+def key_folder(work: Path, name: str, site: str = SITE) -> Path:
+    """An item folder in a Jira-mode work path, holding its state file: since
+    TCW-111 a key-named folder with no state file is no item (Design 6.1)."""
+    path = work / name
+    path.mkdir(parents=True, exist_ok=True)
+    key = "-".join(name.rpartition("/")[2].split("-")[:2])
+    write_state(path / ITEM_STATE, f"ticket: {site}/browse/{key}\n")
+    return path
 
 
 @pytest.fixture

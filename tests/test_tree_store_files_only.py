@@ -1,4 +1,4 @@
-"""Taxonomy and capabilities commands, and `tcw init`, write files and touch
+"""Taxonomy and capabilities commands, and `tcw project new`, write files and touch
 nothing in git (TCW-73 Design 8.1, 8.2, 8.5; AC 17).
 
 Inside a repository the commit, the refs and the index are the same before
@@ -12,6 +12,7 @@ import pytest
 
 from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
+from tests.statefiles import CAPABILITY_STATE
 
 WRITES = [
     ["taxonomy", "add", "Payment"],
@@ -59,7 +60,7 @@ def repository(tmp_path):
 def test_init_and_every_write_leave_git_alone(repository, monkeypatch, capsys):
     before = git_state(repository)
     assert run(repository, monkeypatch,
-               ["init", "--id", "repo", "taxonomy", "capabilities"]) == 0
+               ["project", "new", "--id", "repo", "taxonomy", "capabilities"]) == 0
     assert git_state(repository) == before
     for argv in WRITES:
         assert run(repository, monkeypatch, argv) == 0, (argv, capsys.readouterr().err)
@@ -69,14 +70,14 @@ def test_init_and_every_write_leave_git_alone(repository, monkeypatch, capsys):
 def test_the_same_commands_work_outside_a_repository(tmp_path, monkeypatch, capsys):
     root = tmp_path / "plain"
     root.mkdir()
-    assert run(root, monkeypatch, ["init", "--id", "plain", "taxonomy", "capabilities"]) == 0
+    assert run(root, monkeypatch, ["project", "new", "--id", "plain", "taxonomy", "capabilities"]) == 0
     for argv in WRITES:
         assert run(root, monkeypatch, argv) == 0, (argv, capsys.readouterr().err)
     assert not (root / ".git").exists()
 
 
 def test_rm_removes_a_term_git_never_saw(repository, monkeypatch, capsys):
-    assert run(repository, monkeypatch, ["init", "--id", "repo", "taxonomy"]) == 0
+    assert run(repository, monkeypatch, ["project", "new", "--id", "repo", "taxonomy"]) == 0
     assert run(repository, monkeypatch, ["taxonomy", "add", "Loose"]) == 0
     (repository / "docs" / "taxonomy" / "loose" / ".DS_Store").write_text("")
     (repository / "docs" / "taxonomy" / "loose" / "notes.md").write_text("mine\n")
@@ -85,7 +86,7 @@ def test_rm_removes_a_term_git_never_saw(repository, monkeypatch, capsys):
 
 
 def test_a_nested_term_still_refuses_the_removal(repository, monkeypatch, capsys):
-    assert run(repository, monkeypatch, ["init", "--id", "repo", "taxonomy"]) == 0
+    assert run(repository, monkeypatch, ["project", "new", "--id", "repo", "taxonomy"]) == 0
     store = FsTaxonomyStore.open(repository)
     store.add("Admin")
     store.add("Permission", parent="admin")
@@ -100,10 +101,11 @@ def test_the_store_records_what_it_changed(repository):
     store = FsCapabilitiesStore.open(repository)
     store.add("billing/refund", status="Missing")
     root = store.root
-    assert store.changed == [("wrote", root / "billing" / "refund" / "meta.yaml"),
+    assert store.changed == [("wrote", root / "billing" / "refund" / CAPABILITY_STATE),
                              ("wrote", root / "billing" / "refund" / "description.md")]
     store.changed.clear()
     store.remove("billing/refund")
     assert sorted(store.changed) == [
+        ("removed", root / "billing"),
         ("removed", root / "billing" / "refund" / "description.md"),
-        ("removed", root / "billing" / "refund" / "meta.yaml")]
+        ("removed", root / "billing" / "refund" / CAPABILITY_STATE)]

@@ -10,6 +10,7 @@ the code under test never learns the difference.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -24,13 +25,15 @@ from tcw.store.base import (
 from tcw.cli import main
 from tcw.store import checkouts, fs
 from tcw.store.fs import (STORE_CLASSES, FsCapabilitiesStore, FsStoreProvisioner, FsTaxonomyStore, WorkLocation, init)
+from tcw.store.project import FsProjectRegistry
 from tcw.validate import validate
 
 
 WHERE = "work.repository"
 
 
-from nodeconfig import declare_extends, set_component_key
+from nodeconfig import set_component_key
+from tests.projectfiles import config_file, write_config, write_config_file, write_manifest
 
 
 def _repo(path: Path) -> Path:
@@ -46,10 +49,10 @@ def _repo(path: Path) -> Path:
 
 
 def _write_config(project_root: Path, **work: object) -> None:
-    path = project_root / "tcw-config.yaml"
+    path = config_file(project_root)
     config = yaml.safe_load(path.read_text()) or {}
     config.setdefault("work", {}).update(work)
-    path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(config, sort_keys=False))
 
 
 # ── the declaration parser ───────────────────────────────────────────────────
@@ -401,7 +404,7 @@ def test_a_store_already_here_wins_over_the_declaration(tmp_path):
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
     here = _local_store(_repo(tmp_path / "orchestrator-local") / "stores" / "corelib")
-    _write_config(code, path=str(here),
+    _write_config(code, path=os.path.relpath(here, code),
                   repository={"url": str(_remote_with_store(tmp_path)),
                               "path": "docs/work/corelib"})
 
@@ -444,20 +447,19 @@ def _flat_workspace(tmp_path, monkeypatch, *, component="work",
     init([component], code, "core")
     url = url if url is not None else "https://github.invalid/acme/orchestration.git"
 
-    (orchestration / "tcw-config.yaml").write_text(
-        f"id: orchestration\nprojects:\n  children:\n    core: {code}\n")
-    config = yaml.safe_load((code / "tcw-config.yaml").read_text()) or {}
+    write_config(orchestration, "id: orchestration\nchildren:\n- core\n")
+    write_manifest(orchestration, {"core": os.path.relpath(code, orchestration)})
+    config = yaml.safe_load((code / ".tcw/tcw-config.yaml").read_text()) or {}
     config.setdefault(component, {}).update({
         "path": configured_path,
         "repository": {"url": url, "ref": ref, "path": inner},
     })
-    config["projects"] = {
-        "parent": {"orchestration": {
-            "path": "../orchestrator",          # right for the nested layout, wrong here
-            "repository": {"url": url, "ref": ref},
-        }}
-    }
-    (code / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+    config["parents"] = ["orchestration"]
+    write_config(code, yaml.safe_dump(config, sort_keys=False))
+    write_manifest(code, {"orchestration": {
+        "path": "../orchestrator",              # right for the nested layout, wrong here
+        "repository": f"{url}#{ref}",
+    }})
 
     monkeypatch.setenv("TCW_PROJECT_ORCHESTRATION", str(orchestration))
     return code, orchestration, store
@@ -480,6 +482,98 @@ def test_a_ref_mismatch_does_not_stop_the_registry_rung(tmp_path, monkeypatch, c
     assert "ref" not in capsys.readouterr().err
 
 
+APP_URL = "https://github.invalid/acme/app.git"
+
+
+def _project(root: Path, project_id: str, *, parent=(), upstream=(), children=()) -> Path:
+    """`project_id` at `root`, naming `parent` as parents that pass every axis,
+    `upstream` as parents that pass none, and `children`, all by ID only."""
+    data: dict = {"id": project_id}
+    parents = [*parent, *({"id": i, "inherit": "none"} for i in upstream)]
+    if parents:
+        data["parents"] = parents
+    if children:
+        data["children"] = list(children)
+    write_config(root, yaml.safe_dump(data, sort_keys=False))
+    return root.resolve()
+
+
+def _store_in_app(tmp_path: Path) -> tuple[Path, Path]:
+    """`core`, whose work store lives in the repository `APP_URL`, and a
+    checkout of that repository at `app-repo` holding the project `server` at
+    `apps/server` and the store at `docs/work/core`."""
+    checkout = tmp_path / "app-repo"
+    server = _project(checkout / "apps" / "server", "server")
+    store = _local_store(checkout / "docs" / "work" / "core")
+    core = _repo(tmp_path / "core")
+    init(["work"], core, "core")
+    _write_config(core, path="../absent",
+                  repository={"url": APP_URL, "path": "docs/work/core"})
+    config = yaml.safe_load(config_file(core).read_text())
+    config["parents"] = [{"id": "server", "inherit": "none"}]
+    write_config(core, yaml.safe_dump(config, sort_keys=False))
+    write_manifest(core, {"server": {"path": "../app-repo/apps/server",
+                                     "repository": f"{APP_URL}#main",
+                                     "subfolder": "apps/server"}})
+    return core, store
+
+
+def test_ac22_the_subfolder_is_removed_from_the_found_folder(tmp_path):
+    core, store = _store_in_app(tmp_path)
+    assert FsProjectRegistry.open(core).checkout_of(APP_URL) == (tmp_path / "app-repo").resolve()
+    assert WorkLocation.open(core).root == store.resolve()
+
+
+def test_ac22_a_found_folder_not_ending_in_the_subfolder_gives_no_answer(
+        tmp_path, monkeypatch):
+    core, _store = _store_in_app(tmp_path)
+    elsewhere = _project(tmp_path / "elsewhere" / "srv", "server")
+    monkeypatch.setenv("TCW_PROJECT_SERVER", str(elsewhere))
+    registry = FsProjectRegistry.open(core)
+    assert registry.found("server") == {"by": "variable", "name": "TCW_PROJECT_SERVER"}
+    assert registry.checkout_of(APP_URL) is None
+    # The store then resolves as it would with no match: with neither the
+    # checkout nor the cache holding it, it is not provisioned here.
+    with pytest.raises(StoreNotProvisioned) as found_elsewhere:
+        WorkLocation.open(core)
+    monkeypatch.delenv("TCW_PROJECT_SERVER")
+    write_manifest(core, {"server": "../app-repo/apps/server"})
+    assert FsProjectRegistry.open(core).checkout_of(APP_URL) is None
+    with pytest.raises(StoreNotProvisioned) as no_match:
+        WorkLocation.open(core)
+    assert str(found_elsewhere.value) == str(no_match.value)
+
+
+def test_ac22_the_rung_reads_manifests_in_the_lookups_order(tmp_path):
+    """Design 6.4: the active project's manifests, then its ancestors', then
+    its descendants'; the first matching entry for a found project answers."""
+    top = _project(tmp_path / "top", "top", children=["mid"])
+    mid = _project(tmp_path / "top" / "mid", "mid", parent=["top"], children=["kid"],
+                   upstream=["x", "y"])
+    kid = _project(tmp_path / "top" / "mid" / "kid", "kid", parent=["mid"])
+    x = _project(tmp_path / "x", "x")
+    y = _project(tmp_path / "y", "y")
+    write_manifest(top, {"mid": "mid", "x": {"path": "../x",
+                                             "repository": f"{APP_URL}#main"}})
+    write_manifest(mid, {"kid": "kid", "top": ".."})
+    write_manifest(kid, {"mid": "..",
+                         "y": {"path": "../../../y", "repository": f"{APP_URL}#main"}})
+    assert FsProjectRegistry.open(mid).checkout_of(APP_URL) == x
+    write_manifest(mid, {"y": {"path": "../../y", "repository": f"{APP_URL}#main"}})
+    assert FsProjectRegistry.open(mid).checkout_of(APP_URL) == y
+    assert FsProjectRegistry.open(kid).checkout_of(APP_URL) == y
+
+
+def test_ac22_an_entry_for_a_project_not_found_is_passed_over(tmp_path):
+    """An entry matching the URL whose project is not on this machine gives
+    no answer; the next matching entry does."""
+    app = _project(tmp_path / "app", "app", upstream=["gone", "lib"])
+    lib = _project(tmp_path / "lib", "lib")
+    write_manifest(app, {"gone": {"path": "../gone", "repository": f"{APP_URL}#main"},
+                         "lib": {"path": "../lib", "repository": f"{APP_URL}#main"}})
+    assert FsProjectRegistry.open(app).checkout_of(APP_URL) == lib
+
+
 def test_provision_reports_a_registry_resolved_store_as_available(
     tmp_path, monkeypatch, capsys,
 ):
@@ -489,7 +583,7 @@ def test_provision_reports_a_registry_resolved_store_as_available(
     monkeypatch.chdir(code)
     calls = _count_git(monkeypatch)
 
-    assert main(["provision"]) == 0
+    assert main(["project", "provision"]) == 0
 
     assert "already available" in capsys.readouterr().err
     assert not any("clone" in argv or "fetch" in argv for argv in calls), calls
@@ -506,13 +600,13 @@ def test_provision_reports_a_local_store_without_contacting_the_remote(
     remote = _remote_with_store(tmp_path)
     _write_config(
         code,
-        path=str(here),
+        path=os.path.relpath(here, code),
         repository={"url": str(remote), "path": "docs/work/corelib"},
     )
     monkeypatch.chdir(code)
 
     calls = _count_git(monkeypatch)
-    assert main(["provision"]) == 0
+    assert main(["project", "provision"]) == 0
 
     assert "already available" in capsys.readouterr().err
     assert not any("clone" in argv or "fetch" in argv for argv in calls), calls
@@ -563,8 +657,8 @@ def _declared_but_malformed(tmp_path: Path) -> Path:
 def test_a_malformed_declaration_never_misdirects_to_tcw_init(tmp_path, monkeypatch,
                                                               capsys, argv):
     """Stated as the property, not an enumeration: a node that declares a home
-    repository must never be answered with "run `tcw init`", however broken the
-    declaration is. `tcw init` there would scaffold a second, empty store beside
+    repository must never be answered with "run `tcw project new`", however broken the
+    declaration is. `tcw project new` there would scaffold a second, empty store beside
     the real one — the worst advice available, and the reason this feature exists.
 
     `tcw validate` already reported the bad line; every work command flattened it
@@ -576,7 +670,7 @@ def test_a_malformed_declaration_never_misdirects_to_tcw_init(tmp_path, monkeypa
 
     err = capsys.readouterr().err
     assert "no tcw work node here" not in err
-    assert "tcw init" not in err
+    assert "tcw project new" not in err
     assert "work.repository.url" in err, err
 
 
@@ -589,7 +683,7 @@ def test_a_misconfigured_sibling_node_does_not_break_a_topology_listing(tmp_path
 
 def test_the_board_no_longer_misdirects_to_tcw_init(tmp_path, monkeypatch, capsys):
     """The reported symptom. `tcw work list` used to answer a declared-but-absent
-    store with "run `tcw init`" — advice that would scaffold a second, empty
+    store with "run `tcw project new`" — advice that would scaffold a second, empty
     store beside the real one."""
     monkeypatch.chdir(_declared_but_absent(tmp_path))
 
@@ -597,9 +691,9 @@ def test_the_board_no_longer_misdirects_to_tcw_init(tmp_path, monkeypatch, capsy
 
     err = capsys.readouterr().err
     assert "no tcw work node here" not in err
-    assert "tcw init" not in err
+    assert "tcw project new" not in err
     assert "https://example.invalid/orchestrator.git" in err
-    assert "tcw provision" in err
+    assert "tcw project provision" in err
 
 
 @pytest.mark.parametrize("argv", [
@@ -613,12 +707,12 @@ def test_every_work_command_says_the_same_actionable_thing(tmp_path, monkeypatch
     monkeypatch.chdir(_declared_but_absent(tmp_path))
 
     assert main(argv) == 1
-    assert "tcw provision" in capsys.readouterr().err
+    assert "tcw project provision" in capsys.readouterr().err
 
 
 def test_an_absent_node_still_gets_the_tcw_init_advice(tmp_path, monkeypatch, capsys):
     """The other answer must not be lost: somewhere that is not a node at all is
-    exactly what `tcw init` fixes."""
+    exactly what `tcw project new` fixes."""
     plain = tmp_path / "not-a-node"
     plain.mkdir()
     monkeypatch.chdir(plain)
@@ -632,7 +726,7 @@ def test_validate_reports_the_declared_store_rather_than_a_dead_path(tmp_path, c
 
     problems = [str(f) for f in validate(code)]
 
-    assert any("tcw provision" in p for p in problems), problems
+    assert any("tcw project provision" in p for p in problems), problems
     assert not any("is not a directory" in p for p in problems), problems
 
 
@@ -649,21 +743,29 @@ def test_a_parent_still_lists_its_topology_when_a_child_is_unprovisioned(tmp_pat
     _write_config(child, repository={"url": "https://example.invalid/o.git"})
 
     for root, key, other in ((parent, "children", "child-project"),
-                             (child, "parent", "parent-project")):
-        path = root / "tcw-config.yaml"
+                             (child, "parents", "parent-project")):
+        path = config_file(root)
         config = yaml.safe_load(path.read_text())
-        config["projects"] = {key: {other: f"../{other.split('-')[0]}"}}
-        path.write_text(yaml.safe_dump(config, sort_keys=False))
+        config[key] = [other]
+        write_config_file(path, yaml.safe_dump(config, sort_keys=False))
+        write_manifest(root, {other: f"../{other.split('-')[0]}"})
 
     monkeypatch.chdir(parent)
-    assert main(["projects", "list"]) == 0
+    assert main(["project", "list"]) == 0
 
     # A registered child is listed even when its store is not usable here:
     # omitting it made a project with children read as having none.
     assert capsys.readouterr().out.split() == ["parent-project", "child-project"]
 
 
-# ── the `tcw provision` verb ─────────────────────────────────────────────────
+# ── the `tcw project provision` verb ─────────────────────────────────────────────────
+
+def test_provision_refresh_is_a_usage_error(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit) as stop:
+        main(["project", "provision", "--refresh"])
+    assert stop.value.code == 2
+
 
 def _declared_against(tmp_path: Path, remote: Path, **repository) -> Path:
     """A node declaring `remote` as its work store's home, with no local store."""
@@ -687,7 +789,7 @@ def test_provision_then_the_board_works(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(_declared_against(tmp_path, remote))
 
     assert main(["work", "list"]) == 1                      # before
-    assert main(["provision"]) == 0
+    assert main(["project", "provision"]) == 0
     capsys.readouterr()
     assert main(["work", "list"]) == 0                      # after
 
@@ -700,7 +802,7 @@ def test_provision_names_the_remote_before_contacting_it(tmp_path, monkeypatch, 
     remote = _remote_with_store(tmp_path)
     monkeypatch.chdir(_declared_against(tmp_path, remote))
 
-    assert main(["provision"]) == 0
+    assert main(["project", "provision"]) == 0
 
     out = capsys.readouterr().err
     assert str(remote) in out
@@ -710,11 +812,11 @@ def test_provision_names_the_remote_before_contacting_it(tmp_path, monkeypatch, 
 def test_a_second_provision_reports_available_and_contacts_nothing(tmp_path,
                                                                    monkeypatch, capsys):
     monkeypatch.chdir(_declared_against(tmp_path, _remote_with_store(tmp_path)))
-    assert main(["provision"]) == 0
+    assert main(["project", "provision"]) == 0
     capsys.readouterr()
 
     calls = _count_git(monkeypatch)
-    assert main(["provision"]) == 0
+    assert main(["project", "provision"]) == 0
 
     assert "already available" in capsys.readouterr().err
     assert calls == []
@@ -725,7 +827,7 @@ def test_a_dry_run_from_the_cli_contacts_nothing(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(code)
 
     calls = _count_git(monkeypatch)
-    assert main(["provision", "--dry-run"]) == 0
+    assert main(["project", "provision", "--dry-run"]) == 0
 
     assert "would obtain" in capsys.readouterr().err
     assert calls == []
@@ -737,8 +839,8 @@ def test_a_node_declaring_nothing_says_so_and_succeeds(tmp_path, monkeypatch, ca
     init(["work"], code, "corelib")
     monkeypatch.chdir(code)
 
-    assert main(["provision"]) == 0
-    assert "Nothing to provision" in capsys.readouterr().err
+    assert main(["project", "provision"]) == 0
+    assert "no store to fetch" in capsys.readouterr().err
 
 
 def test_a_malformed_declaration_refuses_rather_than_doing_nothing(tmp_path,
@@ -750,7 +852,7 @@ def test_a_malformed_declaration_refuses_rather_than_doing_nothing(tmp_path,
     _write_config(code, repository={"path": "docs/work/corelib"})     # no url
     monkeypatch.chdir(code)
 
-    assert main(["provision"]) == 1
+    assert main(["project", "provision"]) == 1
     assert "work.repository.url" in capsys.readouterr().err
 
 
@@ -765,38 +867,38 @@ def test_a_config_that_cannot_be_parsed_is_an_error_not_nothing(tmp_path, monkey
     provision" and succeeded."""
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
-    (code / "tcw-config.yaml").write_text(broken)
+    write_config(code, broken)
     monkeypatch.chdir(code)
 
-    assert main(["provision"]) == 1
+    assert main(["project", "provision"]) == 1
     err = capsys.readouterr().err
-    assert err.startswith("tcw provision: malformed "), err
-    assert f"{code.name}/tcw-config.yaml: " in err, err
+    assert err.startswith("tcw project provision: malformed "), err
+    assert f"{code.name}/.tcw/tcw-config.yaml: " in err, err
     assert words in err and "Traceback" not in err, err
-    assert "Nothing to provision" not in err, err
+    assert "no store to fetch" not in err, err
 
 
-@pytest.mark.parametrize("command", [["provision"], ["init"]])
+@pytest.mark.parametrize("command", [["project", "provision"], ["project", "new"]])
 def test_a_config_that_is_not_utf_8_is_named(tmp_path, monkeypatch, capsys, command):
     """Pre-freeze clean-up, final fixes: the codec's own words named no
     file. The shared reader names it, and the file is left as it was."""
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
     broken = b"id: corelib\n# caf\xe9\n"
-    (code / "tcw-config.yaml").write_bytes(broken)
+    write_config(code, broken)
     monkeypatch.chdir(code)
 
     assert main(command) == 1
     err = capsys.readouterr().err
-    assert err == (f"tcw {command[0]}: {code / 'tcw-config.yaml'}: is not valid "
+    assert err == (f"tcw {' '.join(command)}: {code / '.tcw/tcw-config.yaml'}: is not valid "
                    f"UTF-8 text (byte 0xe9 at position 17)\n"), err
-    assert (code / "tcw-config.yaml").read_bytes() == broken
+    assert (code / ".tcw/tcw-config.yaml").read_bytes() == broken
 
 
 def test_a_failure_exits_non_zero_and_names_the_cause(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(_declared_against(tmp_path, tmp_path / "no-such-repository"))
 
-    assert main(["provision"]) == 1
+    assert main(["project", "provision"]) == 1
     assert "git clone failed" in capsys.readouterr().err
 
 
@@ -805,8 +907,8 @@ def test_provision_outside_a_project_says_so(tmp_path, monkeypatch, capsys):
     plain.mkdir()
     monkeypatch.chdir(plain)
 
-    assert main(["provision"]) == 1
-    assert "tcw provision: no TCW project here" in capsys.readouterr().err
+    assert main(["project", "provision"]) == 1
+    assert "tcw project provision: no TCW project here" in capsys.readouterr().err
 
 
 def test_limiting_to_undeclared_work_is_a_no_op(tmp_path, monkeypatch, capsys):
@@ -814,15 +916,15 @@ def test_limiting_to_undeclared_work_is_a_no_op(tmp_path, monkeypatch, capsys):
     init(["work"], code, "corelib")
     monkeypatch.chdir(code)
 
-    assert main(["provision", "--component", "work"]) == 0
-    assert "Nothing to provision" in capsys.readouterr().err
+    assert main(["project", "provision", "--component", "work"]) == 0
+    assert "no store to fetch" in capsys.readouterr().err
 
 
 # ── nothing else reaches the network ─────────────────────────────────────────
 
 @pytest.mark.parametrize("argv", [
     ["work", "list"], ["work", "show", "an-item"], ["work", "path"],
-    ["projects", "list"], ["work", "docs"], ["validate"],
+    ["project", "list"], ["work", "docs"], ["validate"],
 ])
 def test_no_read_command_provisions_implicitly(tmp_path, monkeypatch, capsys, argv):
     """A repository's config can name a URL. Nothing but the provisioning verb
@@ -837,7 +939,7 @@ def test_no_read_command_provisions_implicitly(tmp_path, monkeypatch, capsys, ar
     subprocess.run(["git", "-C", str(remote), "commit", "-qm", "item"], check=True)
     code = _declared_against(tmp_path, remote)
     monkeypatch.chdir(code)
-    assert main(["provision"]) == 0
+    assert main(["project", "provision"]) == 0
     capsys.readouterr()
 
     def explode(self, *args, **kwargs):
@@ -932,16 +1034,16 @@ def test_every_component_is_exposed_now_that_its_adapter_exists(
     remote = _remote_with_tree(tmp_path, inner="trees/taxonomy")
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
-    config_path = code / "tcw-config.yaml"
+    config_path = config_file(code)
     config = yaml.safe_load(config_path.read_text())
     config["taxonomy"] = {
         "repository": {"url": str(remote), "path": "trees/taxonomy",
                        "checkout": str(tmp_path / "co")}
     }
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
-    assert main(["provision", "--component", "taxonomy"]) == 0
+    assert main(["project", "provision", "--component", "taxonomy"]) == 0
 
     assert (tmp_path / "co" / "trees" / "taxonomy").is_dir()
     assert "taxonomy: obtained" in capsys.readouterr().err
@@ -954,7 +1056,7 @@ def test_an_unknown_component_is_still_refused(tmp_path, monkeypatch):
     """Widening the tuple is not opening it."""
     monkeypatch.chdir(_repo(tmp_path / "code"))
     with pytest.raises(SystemExit):
-        main(["provision", "--component", "nonsense"])
+        main(["project", "provision", "--component", "nonsense"])
 
 
 def test_validate_reports_a_malformed_declaration_when_the_store_is_absent(tmp_path):
@@ -1040,10 +1142,10 @@ def _tree_node(tmp_path: Path, component: str = "taxonomy", **section) -> Path:
     """A node with `component` configured however the case needs."""
     code = _repo(tmp_path / "code")
     init([component], code, "corelib")
-    path = code / "tcw-config.yaml"
+    path = config_file(code)
     config = yaml.safe_load(path.read_text()) or {}
     config.setdefault(component, {}).update(section)
-    path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(config, sort_keys=False))
     return code
 
 
@@ -1073,7 +1175,8 @@ def test_a_configured_tree_path_is_followed(tmp_path):
     """Criterion 6's other half: the new local locator actually works."""
     elsewhere = tmp_path / "trees" / "taxonomy"
     elsewhere.mkdir(parents=True)
-    code = _tree_node(tmp_path, "taxonomy", path=str(elsewhere))
+    code = _tree_node(tmp_path, "taxonomy",
+                      path=os.path.relpath(elsewhere, tmp_path / "code"))
 
     assert FsTaxonomyStore.open(code).root == elsewhere.resolve()
 
@@ -1090,7 +1193,7 @@ def test_a_declared_tree_store_that_is_absent_says_so(tmp_path):
         FsTaxonomyStore.open(code)
 
     assert "taxonomy store is declared" in str(caught.value)
-    assert "tcw provision" in str(caught.value)
+    assert "tcw project provision" in str(caught.value)
 
 
 def test_a_provisioned_tree_store_resolves(tmp_path):
@@ -1113,7 +1216,7 @@ def test_a_local_tree_store_wins_over_a_declaration(tmp_path):
     """Criterion 4 per component. A declaration is a fallback, never an override."""
     here = tmp_path / "trees" / "taxonomy"
     here.mkdir(parents=True)
-    code = _tree_node(tmp_path, "taxonomy", path=str(here),
+    code = _tree_node(tmp_path, "taxonomy", path=os.path.relpath(here, tmp_path / "code"),
                       repository={"url": "https://example.invalid/orchestrator.git",
                                   "path": "trees/taxonomy"})
 
@@ -1137,7 +1240,7 @@ def test_a_malformed_tree_declaration_names_the_line(tmp_path):
 # Criteria 1 and 9 are properties over a command surface, so they are asserted
 # across that surface rather than at one call site. Child A shipped criterion 1
 # holding for `tcw work list` while a malformed declaration still sent every
-# work command to `tcw init`; the parametrization is what makes that shape of
+# work command to `tcw project new`; the parametrization is what makes that shape of
 # defect impossible to repeat here.
 
 TREE_COMMANDS = [
@@ -1156,7 +1259,7 @@ def _tree_component(argv) -> str:
 def test_a_declared_tree_store_is_never_reported_as_an_absent_component(
         tmp_path, monkeypatch, capsys, argv):
     """Criterion 1. The node is right in front of the command and says where its
-    store comes from; answering "no tcw <component> node here — run `tcw init`"
+    store comes from; answering "no tcw <component> node here — run `tcw project new`"
     would point the user at the one action that makes things worse."""
     component = _tree_component(argv)
     code = _tree_node(tmp_path, component,
@@ -1169,9 +1272,9 @@ def test_a_declared_tree_store_is_never_reported_as_an_absent_component(
 
     err = capsys.readouterr().err
     assert "no tcw" not in err, err
-    assert "tcw init" not in err, err
+    assert "tcw project new" not in err, err
     assert "https://example.invalid/orchestrator.git" in err, err
-    assert "tcw provision" in err, err
+    assert "tcw project provision" in err, err
 
 
 @pytest.mark.parametrize("argv", TREE_COMMANDS)
@@ -1188,7 +1291,7 @@ def test_a_malformed_tree_declaration_names_the_line_from_every_command(
 
     err = capsys.readouterr().err
     assert "no tcw" not in err, err
-    assert "tcw init" not in err, err
+    assert "tcw project new" not in err, err
     assert f"{component}.repository.url" in err, err
 
 
@@ -1217,20 +1320,20 @@ def test_a_declared_tree_store_is_found_even_with_no_local_component_folder(
     component = _tree_component(argv)
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")            # the component is deliberately absent
-    path = code / "tcw-config.yaml"
+    path = config_file(code)
     config = yaml.safe_load(path.read_text()) or {}
     config[component] = {"repository": {"url": "https://example.invalid/orchestrator.git",
                                         "path": f"trees/{component}"}}
-    path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
     assert main(argv) == 1
 
     err = capsys.readouterr().err
     assert "no tcw" not in err, err
-    assert "tcw init" not in err, err
+    assert "tcw project new" not in err, err
     assert "https://example.invalid/orchestrator.git" in err, err
-    assert "tcw provision" in err, err
+    assert "tcw project provision" in err, err
 
 
 @pytest.mark.parametrize("component", ["taxonomy", "capabilities"])
@@ -1249,9 +1352,9 @@ def test_validate_reports_a_declared_tree_store_rather_than_aborting(
     assert main(["validate"]) == 1
 
     out = capsys.readouterr().out
-    assert f"error: tcw-config.yaml: {component}: " in out, out
+    assert f"error: .tcw/tcw-config.yaml: {component}: " in out, out
     assert "has not been provisioned here" in out, out
-    assert "tcw provision" in out, out
+    assert "tcw project provision" in out, out
 
 
 # ── the provisioning verb, across components ────────────────────────────────
@@ -1268,7 +1371,7 @@ def test_provision_obtains_a_declared_tree_store(tmp_path, monkeypatch, capsys,
                                   "checkout": str(checkout)})
     monkeypatch.chdir(code)
 
-    assert main(["provision", "--component", component]) == 0
+    assert main(["project", "provision", "--component", component]) == 0
 
     assert (checkout / "trees" / component).is_dir()
     assert main([component, "path"]) == 0
@@ -1291,7 +1394,7 @@ def test_a_local_store_wins_at_the_command_for_every_component(
     else:
         here = tmp_path / "local" / component
         here.mkdir(parents=True)
-    code = _tree_node(tmp_path, component, path=str(here),
+    code = _tree_node(tmp_path, component, path=os.path.relpath(here, tmp_path / "code"),
                       repository={"url": str(remote), "path": "trees/thing",
                                   "checkout": str(tmp_path / "co")})
     monkeypatch.chdir(code)
@@ -1300,7 +1403,7 @@ def test_a_local_store_wins_at_the_command_for_every_component(
     monkeypatch.setattr(fs.FsStoreProvisioner, "_run",
                         lambda self, argv, **kw: calls.append(list(argv)))
 
-    assert main(["provision", "--component", component]) == 0
+    assert main(["project", "provision", "--component", component]) == 0
 
     assert calls == [], calls
     assert "already available" in capsys.readouterr().err
@@ -1316,16 +1419,16 @@ def test_each_declared_component_is_provisioned_independently(tmp_path, monkeypa
                       path="../nowhere/taxonomy",
                       repository={"url": str(good), "path": "trees/taxonomy",
                                   "checkout": str(tmp_path / "co-good")})
-    path = code / "tcw-config.yaml"
+    path = config_file(code)
     config = yaml.safe_load(path.read_text())
     config["capabilities"] = {
         "path": "../nowhere/capabilities",
         "repository": {"url": str(good), "path": "trees/not-here",
                        "checkout": str(tmp_path / "co-bad")}}
-    path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
-    assert main(["provision"]) == 1
+    assert main(["project", "provision"]) == 1
 
     captured = capsys.readouterr()
     assert (tmp_path / "co-good" / "trees" / "taxonomy").is_dir()
@@ -1343,12 +1446,12 @@ def test_init_scaffolds_a_tree_store_at_a_configured_location(tmp_path, monkeypa
     monkeypatch.chdir(code)
     elsewhere = tmp_path / "trees" / component
 
-    assert main(["init", "--id", "corelib", f"--{component}-path", str(elsewhere),
-                 component]) == 0
+    assert main(["project", "new", "--id", "corelib", f"--{component}-path",
+                 f"../trees/{component}", component]) == 0
 
     assert elsewhere.is_dir()
-    assert yaml.safe_load((code / "tcw-config.yaml").read_text())[component]["path"] \
-        == str(elsewhere)
+    assert yaml.safe_load((code / ".tcw/tcw-config.yaml").read_text())[component]["path"] \
+        == f"../trees/{component}"
     assert STORE_CLASSES[component].open(code).root == elsewhere.resolve()
 
 
@@ -1359,7 +1462,7 @@ def test_a_malformed_tree_declaration_is_named_with_or_without_a_configured_path
     """Criterion 9, finally tested as the property it was written as.
 
     The earlier cases all set `<component>.path`, and passed. Without one the
-    same config answered "no tcw taxonomy node here — run `tcw init`": a
+    same config answered "no tcw taxonomy node here — run `tcw project new`": a
     malformed declaration parses to `(None, problems)`, so the ladder saw no
     declaration, took rule 4, and a tree store's rule 4 validates nothing and
     cannot fail — so the problems were dropped on a path that never raised.
@@ -1373,17 +1476,17 @@ def test_a_malformed_tree_declaration_is_named_with_or_without_a_configured_path
         section["path"] = f"../orchestrator/trees/{component}"
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
-    config_path = code / "tcw-config.yaml"
+    config_path = config_file(code)
     config = yaml.safe_load(config_path.read_text()) or {}
     config[component] = section
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
     assert main(argv) == 1
 
     err = capsys.readouterr().err
     assert "no tcw" not in err, err
-    assert "tcw init" not in err, err
+    assert "tcw project new" not in err, err
     assert f"{component}.repository.url" in err, err
 
 
@@ -1395,549 +1498,40 @@ def test_a_usable_local_tree_still_masks_an_unused_malformed_declaration(
     nobody needs is malformed — the contract the work store already holds."""
     code = _repo(tmp_path / "code")
     init([component], code, "corelib")          # the default tree exists
-    config_path = code / "tcw-config.yaml"
+    config_path = config_file(code)
     config = yaml.safe_load(config_path.read_text()) or {}
     config[component] = {"repository": {"ref": "main"}}
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
     assert main([component, "list"]) == 0
-
-
-# ── provisioning a connected project ─────────────────────────────────────────
-
-
-def _node_repo(path: Path, project_id: str, connected: dict | None = None) -> Path:
-    """A committed git repository holding one tcw node."""
-    _repo(path)
-    init(["work"], path, project_id)
-    if connected:
-        config_path = path / "tcw-config.yaml"
-        config = yaml.safe_load(config_path.read_text()) or {}
-        config["projects"] = connected
-        config_path.write_text(yaml.safe_dump(config, sort_keys=False))
-    subprocess.run(["git", "-C", str(path), "add", "-A"], check=True)
-    subprocess.run(["git", "-C", str(path), "commit", "-qm", "node"], check=True)
-    return path
-
-
-def test_a_declared_connected_project_is_obtained(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-    away = _node_repo(tmp_path / "away", "away-project",
-                      {"parent": {"here-project": "../here"}})
-    here = _node_repo(
-        tmp_path / "here", "here-project",
-        {"children": {"away-project": {"path": "../away-not-here",
-                                       "repository": {"url": str(away), "ref": "main"}}}},
-    )
-    monkeypatch.chdir(here)
-
-    assert main(["provision", "--dry-run"]) == 0
-    planned = capsys.readouterr().err
-    assert str(away) in planned and "would obtain" in planned
-
-    assert main(["provision"]) == 0
-    assert "obtained" in capsys.readouterr().err
-
-    from tcw.store.project import FsProjectRegistry
-    registry = FsProjectRegistry.open(here)
-    registry.require_valid()
-    assert [c.id for c in registry.children()] == ["away-project"]
-
-    assert main(["provision"]) == 0
-    assert "already available" in capsys.readouterr().err
-
-
-def test_provisioning_follows_a_declaration_inside_an_obtained_node(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-    c = _node_repo(tmp_path / "c", "c-project",
-                   {"parent": {"b-project": "../b"}})
-    b = _node_repo(
-        tmp_path / "b", "b-project",
-        {"parent": {"a-project": "../a"},
-         "children": {"c-project": {"path": "../c-not-here",
-                                    "repository": {"url": str(c), "ref": "main"}}}},
-    )
-    a = _node_repo(
-        tmp_path / "a", "a-project",
-        {"children": {"b-project": {"path": "../b-not-here",
-                                    "repository": {"url": str(b), "ref": "main"}}}},
-    )
-    monkeypatch.chdir(a)
-
-    assert main(["provision", "--dry-run"]) == 0
-    planned = capsys.readouterr().err
-    assert str(b) in planned
-    assert "cannot be listed until it is obtained" in planned
-    # `c` is two hops away, behind a node this run has not fetched.
-    assert "c-project" not in planned
-
-    assert main(["provision"]) == 0
-    out = capsys.readouterr().err
-    assert "b-project" in out and "c-project" in out
-
-
-def test_two_entries_naming_one_repository_share_a_working_copy(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-    away = _node_repo(tmp_path / "away", "away-project")
-    declaration = {"url": str(away), "ref": "main"}
-    here = _node_repo(
-        tmp_path / "here", "here-project",
-        {"parent": {"away-project": {"path": "../away-not-here",
-                                     "repository": dict(declaration)}},
-         "children": {"away-project": {"path": "../away-not-here",
-                                       "repository": dict(declaration)}}},
-    )
-    monkeypatch.chdir(here)
-    assert main(["provision"]) == 0
-    cache = tmp_path / "cache" / "tcw" / "stores"
-    assert len(list(cache.iterdir())) == 1
-
-
-def test_a_repository_with_no_node_at_the_declared_path_is_refused(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-    away = _repo(tmp_path / "away")
-    (away / "README.md").write_text("no node here\n")
-    subprocess.run(["git", "-C", str(away), "add", "-A"], check=True)
-    subprocess.run(["git", "-C", str(away), "commit", "-qm", "init"], check=True)
-    here = _node_repo(
-        tmp_path / "here", "here-project",
-        {"children": {"away-project": {"path": "../away-not-here",
-                                       "repository": {"url": str(away), "ref": "main"}}}},
-    )
-    monkeypatch.chdir(here)
-    assert main(["provision"]) == 1
-    assert "has no TCW project at" in capsys.readouterr().err
-    assert not (tmp_path / "cache" / "tcw" / "stores").exists() or not list(
-        (tmp_path / "cache" / "tcw" / "stores").iterdir())
-
-
-def test_an_occupied_checkout_is_refused_before_any_fetch(tmp_path, monkeypatch, capsys):
-    away = _node_repo(tmp_path / "away", "away-project")
-    squatter = _repo(tmp_path / "squatter")
-    (squatter / "f").write_text("x")
-    subprocess.run(["git", "-C", str(squatter), "add", "-A"], check=True)
-    subprocess.run(["git", "-C", str(squatter), "commit", "-qm", "init"], check=True)
-    here = _node_repo(
-        tmp_path / "here", "here-project",
-        {"children": {"away-project": {
-            "path": "../away-not-here",
-            "repository": {"url": str(away), "ref": "main",
-                           "checkout": str(squatter)}}}},
-    )
-    monkeypatch.chdir(here)
-    assert main(["provision"]) == 1
-    assert (squatter / "f").read_text() == "x"
-
-
-def test_a_malformed_connected_declaration_refuses_and_names_the_line(tmp_path, monkeypatch, capsys):
-    here = _node_repo(
-        tmp_path / "here", "here-project",
-        {"children": {"away-project": {"repository": {"ref": "main"}}}},
-    )
-    monkeypatch.chdir(here)
-    assert main(["provision"]) == 1
-    assert "url: expected a non-empty string" in capsys.readouterr().err
-
-
-def test_a_declaration_on_a_sibling_is_followed_from_anywhere_in_the_graph(
-    tmp_path, monkeypatch, capsys
-):
-    """The declaring node is often not the one you are standing in.
-
-    In a monorepo the edge out to another repository belongs to whichever
-    package knows about it; running `tcw provision` from a sibling must still
-    obtain it.
-    """
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-    away = _node_repo(tmp_path / "away", "away-project",
-                      {"children": {"knower-project": "nested/knower"}})
-    repo_root = _repo(tmp_path / "mono")
-    knower = tmp_path / "mono" / "knower"
-    standing = tmp_path / "mono" / "standing"
-    knower.mkdir(parents=True)
-    standing.mkdir(parents=True)
-    init(["work"], knower, "knower-project")
-    init(["work"], standing, "standing-project")
-    (knower / "tcw-config.yaml").write_text(yaml.safe_dump({
-        "id": "knower-project",
-        "projects": {
-            "parent": {"away-project": {"path": "../../away-not-here",
-                                        "repository": {"url": str(away), "ref": "main"}}},
-            "children": {"standing-project": "../standing"},
-        },
-    }, sort_keys=False))
-    (standing / "tcw-config.yaml").write_text(yaml.safe_dump({
-        "id": "standing-project",
-        "projects": {"parent": {"knower-project": "../knower"}},
-    }, sort_keys=False))
-    assert repo_root.exists()
-
-    monkeypatch.chdir(standing)
-    assert main(["provision"]) == 0
-    out = capsys.readouterr().err
-    assert "away-project" in out and "obtained" in out
-
-
-def test_a_project_the_checkout_already_has_is_not_fetched(tmp_path, monkeypatch, capsys):
-    """An ancestor declares where a project comes from; that project is you.
-
-    Declarations live on whichever node knows about an edge, so an ancestor
-    routinely names a repository the caller is standing inside. Obtaining it
-    would clone the current repository a second time and put two nodes in the
-    graph under one id.
-    """
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-    absent = _node_repo(tmp_path / "absent", "absent-project",
-                        {"parent": {"away-project": "../away"}})
-    here = _node_repo(tmp_path / "here", "here-project",
-                      {"parent": {"away-project": "../away-not-here"}})
-    away = _node_repo(
-        tmp_path / "away", "away-project",
-        {"children": {
-            # One the caller has, one it does not.
-            "here-project": {"path": "../here-not-here",
-                             "repository": {"url": str(here), "ref": "main"}},
-            "absent-project": {"path": "../absent-not-here",
-                               "repository": {"url": str(absent), "ref": "main"}},
-        }},
-    )
-    # Point `here` at the real `away` remote now that it exists.
-    cfg = yaml.safe_load((here / "tcw-config.yaml").read_text())
-    cfg["projects"]["parent"]["away-project"] = {
-        "path": "../away-not-here",
-        "repository": {"url": str(away), "ref": "main"},
-    }
-    (here / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
-    subprocess.run(["git", "-C", str(here), "commit", "-aqm", "declare"], check=True)
-
-    monkeypatch.chdir(here)
-    assert main(["provision"]) == 0
-    out = capsys.readouterr().err
-    assert "here-project: already available" in out
-    assert "absent-project" in out and "obtained" in out
-
-    # And again as a plan, now that the declaring node is here to be read —
-    # which is the shape the real reproduction had.
-    assert main(["provision", "--dry-run"]) == 0
-    planned = capsys.readouterr().err
-    assert "here-project: already available" in planned
-    assert "here-project: would obtain" not in planned
-
-    cache = tmp_path / "cache" / "tcw" / "stores"
-    names = sorted(p.name for p in cache.iterdir())
-    assert not any("here" in n for n in names), names
-    assert len(names) == 2, names          # away + absent, never a second `here`
-
-
-def _cache_suffix(url: str) -> str:
-    from tcw.store.base import RepositoryDeclaration
-    from tcw.store.checkouts import _cache_key
-    return _cache_key(RepositoryDeclaration(url=url, ref="main")).rsplit("-", 1)[1]
-
-
-def test_a_sibling_of_an_ancestor_is_recognised_as_already_here(tmp_path, monkeypatch, capsys):
-    """The shape a workspace actually has.
-
-    An earlier version of the skip enumerated current/ancestors/descendants and
-    missed this: a project that is a child of the caller's grandparent is present
-    and in the graph, and a machine holding every repository still planned a
-    clone of it.
-    """
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-    workspace = _repo(tmp_path / "ws")
-    sibling = tmp_path / "ws" / "sibling"
-    middle = tmp_path / "ws" / "mono"
-    leaf = tmp_path / "ws" / "mono" / "pkg"
-    for d in (sibling, middle, leaf):
-        d.mkdir(parents=True)
-    init(["work"], sibling, "sibling-project")
-    init(["work"], middle, "middle-project")
-    init(["work"], leaf, "leaf-project")
-    absent = _node_repo(tmp_path / "absent", "absent-project",
-                        {"parent": {"top-project": "../ws"}})
-
-    (workspace / "tcw-config.yaml").write_text(yaml.safe_dump({
-        "id": "top-project",
-        "projects": {"children": {
-            # Both declared with a repository, as a workspace root would be.
-            "sibling-project": {"path": "sibling",
-                                "repository": {"url": str(sibling), "ref": "main"}},
-            "middle-project": "mono",
-            "absent-project": {"path": "../absent-not-here",
-                               "repository": {"url": str(absent), "ref": "main"}},
-        }},
-    }, sort_keys=False))
-    for path, doc in (
-        (middle, {"id": "middle-project", "projects": {
-            "parent": {"top-project": ".."},
-            "children": {"leaf-project": "pkg"}}}),
-        (leaf, {"id": "leaf-project", "projects": {
-            "parent": {"middle-project": ".."}}}),
-        (sibling, {"id": "sibling-project", "projects": {
-            "parent": {"top-project": ".."}}}),
-    ):
-        existing = yaml.safe_load((path / "tcw-config.yaml").read_text()) or {}
-        existing.update(doc)
-        (path / "tcw-config.yaml").write_text(yaml.safe_dump(existing, sort_keys=False))
-
-    monkeypatch.chdir(leaf)
-    assert main(["provision", "--dry-run"]) == 0
-    planned = capsys.readouterr().err
-    assert "sibling-project: already available" in planned
-    assert "sibling-project: would obtain" not in planned
-    assert "absent-project: would obtain" in planned
-
-    assert main(["provision"]) == 0
-    out = capsys.readouterr().err
-    assert "sibling-project: already available" in out
-    assert "absent-project" in out and "obtained" in out
-    # One working copy — the genuinely absent project — and nothing for the
-    # sibling. (The directory names embed the test name, so a substring check
-    # for "sibling" would match either way.)
-    names = sorted(p.name for p in (tmp_path / "cache" / "tcw" / "stores").iterdir())
-    assert len(names) == 1, names
-    assert names[0].endswith(_cache_suffix(str(absent))), names
-
-
-def test_provision_refresh_is_a_usage_error(tmp_path, monkeypatch, capsys):
-    monkeypatch.chdir(tmp_path)
-    with pytest.raises(SystemExit) as stop:
-        main(["provision", "--refresh"])
-    assert stop.value.code == 2
-
-
-def test_a_present_project_is_still_read_for_its_own_declarations(tmp_path,
-                                                                  monkeypatch,
-                                                                  capsys):
-    """Not fetching a project is no reason to stop reading it.
-
-    The skip that stops `tcw provision` re-cloning a project the checkout has
-    also stopped the walk reading that project's declarations, so a repository
-    two hops out disappeared from provisioning precisely when the one hop
-    between was already in place — the steady state, and the only state a
-    workspace is usually in.
-    """
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-    far = _node_repo(tmp_path / "far", "far-project",
-                     {"parent": {"middle-project": "../middle"}})
-    middle = _node_repo(
-        tmp_path / "middle", "middle-project",
-        {"parent": {"top-project": "../top"},
-         "children": {"far-project": {"path": "../far-not-here",
-                                      "repository": {"url": str(far), "ref": "main"}}}},
-    )
-    top = _repo(tmp_path / "top")
-    init(["work"], top, "top-project")
-    (top / "tcw-config.yaml").write_text(yaml.safe_dump({
-        "id": "top-project",
-        "projects": {"children": {
-            # `middle` is present on disk *and* declared. It used to be skipped
-            # and never read, so `far` was invisible.
-            "middle-project": {"path": str(middle),
-                               "repository": {"url": str(middle), "ref": "main"}},
-        }},
-    }, sort_keys=False))
-
-    monkeypatch.chdir(top)
-    assert main(["provision"]) == 0
-    out = capsys.readouterr().err
-    assert "middle-project: already available" in out
-    assert "far-project" in out and "obtained" in out
-
-
-def test_dry_run_does_not_call_a_planned_obtain_already_available(tmp_path,
-                                                                  monkeypatch,
-                                                                  capsys):
-    """Dry-run output is what a user reads to decide whether to run for real."""
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-    away = _node_repo(tmp_path / "away", "away-project",
-                      {"parent": {"here-project": "../here"}})
-    declaration = {"url": str(away), "ref": "main"}
-    here = _node_repo(
-        tmp_path / "here", "here-project",
-        # Two declarations of one project, which is what a parent and a
-        # grandparent both naming it looks like.
-        {"parent": {"away-project": {"path": "../away-not-here",
-                                     "repository": dict(declaration)}},
-         "children": {"away-project": {"path": "../away-not-here",
-                                       "repository": dict(declaration)}}},
-    )
-    monkeypatch.chdir(here)
-    assert main(["provision", "--dry-run"]) == 0
-    planned = capsys.readouterr().err
-    assert "away-project: would obtain" in planned
-    assert "away-project: already available" not in planned
-    assert not (tmp_path / "cache").exists()
 
 
 # ── what falls through the ladder, and what must not ─────────────────────────
 
 def test_a_federation_error_is_not_reported_as_unprovisioned(tmp_path):
     """Rules 1 and 2 swallowed every `ValueError`, so a store that was present
-    and failed to open was answered with `tcw provision` — which then succeeded
+    and failed to open was answered with `tcw project provision` — which then succeeded
     and left the store exactly as unopenable."""
     node = _repo(tmp_path / "node")
     init(["capabilities"], node, "node-project")
     _write_config(node, retain={"completed": True})     # unrelated; keeps shape
-    config_path = node / "tcw-config.yaml"
+    config_path = config_file(node)
     config = yaml.safe_load(config_path.read_text())
     config["capabilities"] = {
         "repository": {"url": "https://example.invalid/ledger.git"},
     }
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
-    # A store that is right here, and whose own config is wrong.
-    declare_extends(node, "capabilities",
-        "extends:\n  nope: ../somewhere\n")               # the legacy map form
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
+    # A store that is right here, and whose own config is wrong: it still
+    # holds the key TCW 4.0 removed, written here on purpose.
+    set_component_key(node, "capabilities", "extends", ["nope"])
 
     with pytest.raises(ValueError) as excinfo:
         FsCapabilitiesStore.open(node)
     message = str(excinfo.value)
-    assert "legacy extends map is unsupported" in message
-    assert "tcw provision" not in message
+    assert "'capabilities.extends' was removed in TCW 4.0" in message
+    assert "tcw project provision" not in message
     assert not isinstance(excinfo.value, StoreNotProvisioned)
-
-
-# ── a declaration this machine cannot turn into a path ──────────────────────
-
-def test_an_unresolvable_checkout_is_a_declaration_error_not_a_crash(tmp_path):
-    """`Path.expanduser()` raises `RuntimeError` — not `ValueError`, not
-    `OSError` — for a `~name` naming no user, and this runs during the graph
-    load on every command. A single such value put a raw traceback out of
-    `tcw validate` and `tcw work list`, from a value the parser accepted."""
-    from tcw.store.project import FsProjectRegistry
-
-    node = _repo(tmp_path / "node")
-    init(["work"], node, "node-project")
-    config_path = node / "tcw-config.yaml"
-    config = yaml.safe_load(config_path.read_text())
-    config["projects"] = {
-        "children": {
-            "away-project": {
-                "path": "../away",
-                "repository": {"url": "https://example.invalid/a.git",
-                               "checkout": "~nosuchuser12345/away"},
-            }
-        }
-    }
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
-
-    problems = [str(f) for f in FsProjectRegistry.open(node).check()]          # must not raise
-    assert any("repository.checkout" in problem for problem in problems), problems
-    assert any("nosuchuser12345" in problem for problem in problems), problems
-    assert validate(node)                                    # reported, not a traceback
-
-
-def test_a_declaration_error_on_an_obtained_node_fails_the_run(tmp_path,
-                                                               monkeypatch,
-                                                               capsys):
-    """The same malformed declaration exits 1 on the starting graph and used to
-    exit 0 when it was found on a node obtained during the walk, so a CI step
-    gated on `tcw provision` read the second as success."""
-    remote = _repo(tmp_path / "remote")
-    init(["work"], remote, "remote-project")
-    config_path = remote / "tcw-config.yaml"
-    config = yaml.safe_load(config_path.read_text())
-    config["projects"] = {
-        "children": {"far-project": {"path": "../far",
-                                     "repository": {"path": "docs/work"}}}
-    }
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
-    subprocess.run(["git", "-C", str(remote), "add", "-A"], check=True)
-    subprocess.run(["git", "-C", str(remote), "commit", "-qm", "graph"], check=True)
-
-    node = _repo(tmp_path / "node")
-    init(["work"], node, "node-project")
-    config_path = node / "tcw-config.yaml"
-    config = yaml.safe_load(config_path.read_text())
-    config["projects"] = {
-        "parent": {"remote-project": {"path": "../absent",
-                                      "repository": {"url": str(remote)}}}
-    }
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
-
-    monkeypatch.chdir(node)
-    assert main(["provision"]) == 1
-    assert "repository.url" in capsys.readouterr().err
-
-
-# ── `extends` is written to the node's config, in the node's repository ──────
-
-def _federation_pair(tmp_path: Path, *, taxonomy_path: str | None) -> tuple[Path, Path]:
-    """`(consumer, source)`, connected, with the consumer's tree wherever the
-    caller says. `taxonomy_path` has **no default**: where the tree lives is the
-    axis this pair exists to vary, and a default would decide it silently."""
-    source = _repo(tmp_path / "source")
-    (source / "docs" / "taxonomy" / "argument").mkdir(parents=True)
-    (source / "docs" / "taxonomy" / "argument" / "meta.yaml").write_text("name: Argument\n")
-    (source / "docs" / "taxonomy" / "argument" / "description.md").write_text("")
-    (source / "tcw-config.yaml").write_text(
-        "id: source\nprojects:\n  parent:\n    consumer: ../consumer\n")
-
-    consumer = _repo(tmp_path / "consumer")
-    config = "id: consumer\nprojects:\n  children:\n    source: ../source\n"
-    if taxonomy_path is not None:
-        config += f"taxonomy:\n  path: {taxonomy_path}\n"
-    (consumer / "tcw-config.yaml").write_text(config)
-    if taxonomy_path is None:
-        (consumer / "docs" / "taxonomy").mkdir(parents=True)
-    return consumer, source
-
-
-def _porcelain(repo_root: Path) -> str:
-    return subprocess.run(["git", "-C", str(repo_root), "status", "--porcelain"],
-                          capture_output=True, text=True, check=True).stdout.strip()
-
-
-def test_extends_add_writes_the_key_and_no_file_inside_the_store(tmp_path):
-    """Spec criterion 3. Other keys keep their parsed values — not their bytes:
-    the sentinel is re-rendered, as `tcw work tags add` has always re-rendered it."""
-    consumer, _ = _federation_pair(tmp_path, taxonomy_path=None)
-    _write_config(consumer, tags=["demo"])
-
-    FsTaxonomyStore.open(consumer).extends_add("source")
-
-    config = yaml.safe_load((consumer / "tcw-config.yaml").read_text())
-    assert config["taxonomy"]["extends"] == ["source"]
-    assert config["id"] == "consumer"
-    assert config["work"]["tags"] == ["demo"]
-    assert config["projects"] == {"children": {"source": "../source"}}
-    assert not (consumer / "docs" / "taxonomy" / "config.yaml").exists()
-
-    FsTaxonomyStore.open(consumer).extends_remove("source")
-    config = yaml.safe_load((consumer / "tcw-config.yaml").read_text())
-    # The whole section goes, not just the key: this node configured nothing
-    # else under `taxonomy`, so removing the last `extends` must leave the file
-    # as it was rather than growing an empty `taxonomy: {}`. Asserting only
-    # `"extends" not in ...` passes either way and pins nothing.
-    assert "taxonomy" not in config
-
-
-def test_extends_add_writes_the_nodes_config_and_touches_neither_repository(tmp_path):
-    """`tcw-config.yaml` belongs to the node; the tree can be in a different
-    repository. Since TCW-73 neither is staged: the node's config is written
-    and both indexes stay as they were."""
-    store_repo = _repo(tmp_path / "store-repo")
-    (store_repo / "taxonomy").mkdir(parents=True)
-    consumer, _ = _federation_pair(tmp_path, taxonomy_path=str(store_repo / "taxonomy"))
-
-    assert fs.git_root(consumer) != fs.git_root(store_repo / "taxonomy")
-
-    FsTaxonomyStore.open(consumer).extends_add("source")
-
-    staged = subprocess.run(["git", "-C", str(consumer), "diff", "--cached", "--name-only"],
-                            capture_output=True, text=True, check=True).stdout.split()
-    assert staged == []
-    assert _porcelain(store_repo) == ""
-
-    # `taxonomy.path` shares the section `extends` is written into, and losing it
-    # would point the store back at a `docs/taxonomy` that is not there — the
-    # user's tree appears to vanish on an unrelated command. Spec criterion 3
-    # names this key, and the sibling-key half of that criterion is asserted in
-    # the test above, whose fixture deliberately has no `taxonomy.path` at all.
-    config = yaml.safe_load((consumer / "tcw-config.yaml").read_text())
-    assert config["taxonomy"]["path"] == str(store_repo / "taxonomy")
-    assert config["taxonomy"]["extends"] == ["source"]
 
 
 # ── a leftover pre-2.5.0 config file in a provisioned tree ───────────────────
@@ -1977,43 +1571,49 @@ def test_an_unprovisioned_declared_tree_now_fails_validate(tmp_path):
                        "path": "trees/taxonomy"})
 
     problems = [p for p in map(str, validate(code))
-                if p.startswith("error: tcw-config.yaml: taxonomy: ")]
+                if p.startswith("error: .tcw/tcw-config.yaml: taxonomy: ")]
     assert len(problems) == 1, problems
-    assert "tcw provision" in problems[0], problems
+    assert "tcw project provision" in problems[0], problems
 
 
 # ── A store that fails to open is not "no node here" ─────────────────────────
 # spec: 2026-09-21-let-a-broken-extends-reach-the-user-instead-of-find-node-answering-no-node-here
+# Since TCW 4.0 a project inherits from its parents, and the `extends` key is
+# refused (TCW-112 Design 1); both failures below still reach the user.
 
-def _broken_extends(tmp_path: Path, component: str, extends: str) -> Path:
+def _node(tmp_path: Path, component: str, extra: str) -> Path:
     node = _repo(tmp_path / "node")
     init([component], node, "node")
-    config = node / "tcw-config.yaml"
-    config.write_text(config.read_text() + f"{component}:\n  extends: [{extends}]\n")
+    config = config_file(node)
+    write_config_file(config, config.read_text() + extra)
     return node
 
 
 def _assert_reports_not_no_node(err: str, component: str, *expected: str) -> None:
     assert f"no tcw {component} node here" not in err, err
-    assert "tcw init" not in err, err
+    assert "tcw project new" not in err, err
     for text in expected:
         assert text in err, err
 
 
 @pytest.mark.parametrize("component", ["taxonomy", "capabilities"])
-def test_an_unreachable_extends_reaches_the_user(tmp_path, monkeypatch, capsys, component):
-    node = _broken_extends(tmp_path, component, "ghost")
+def test_a_parent_not_on_this_machine_reaches_the_user(tmp_path, monkeypatch, capsys,
+                                                       component):
+    node = _node(tmp_path, component, "parents:\n- ghost\n")
     monkeypatch.chdir(node)
-    assert main([component, "list"]) == 1
-    _assert_reports_not_no_node(capsys.readouterr().err, component, "ghost")
+    assert main([component, "list", "--scope", "up"]) == 7
+    _assert_reports_not_no_node(capsys.readouterr().err, component, "ghost",
+                                "not on this machine")
 
 
 @pytest.mark.parametrize("component", ["taxonomy", "capabilities"])
-def test_a_store_extending_itself_reaches_the_user(tmp_path, monkeypatch, capsys, component):
-    node = _broken_extends(tmp_path, component, "node")
+def test_the_removed_extends_key_reaches_the_user(tmp_path, monkeypatch, capsys,
+                                                  component):
+    node = _node(tmp_path, component, f"{component}:\n  extends: [node]\n")
     monkeypatch.chdir(node)
     assert main([component, "list"]) == 1
-    _assert_reports_not_no_node(capsys.readouterr().err, component, "cannot extend itself")
+    _assert_reports_not_no_node(capsys.readouterr().err, component,
+                                f"'{component}.extends' was removed in TCW 4.0")
 
 
 def test_a_node_without_a_work_store_still_says_so(tmp_path, monkeypatch, capsys):
@@ -2037,7 +1637,7 @@ def test_procedure_prompt_reports_an_empty_work_path(tmp_path, monkeypatch, caps
     reason to fall back to the built-in text."""
     node = _repo(tmp_path / "node")
     init(["taxonomy"], node, "node")
-    (node / "tcw-config.yaml").write_text("id: node\nwork:\n  path: ''\n")
+    write_config(node, "id: node\nwork:\n  path: ''\n")
     monkeypatch.chdir(node)
     assert main(["work", "procedure", "unattended-work"]) == 1
     out = capsys.readouterr()
@@ -2110,7 +1710,7 @@ def test_the_current_repositorys_ssh_command_does_not_turn_batch_mode_off(monkey
 
 
 REPO = Path(__file__).resolve().parents[1]
-#: Every document that says `tcw provision` does not ask (B2).
+#: Every document that says `tcw project provision` does not ask (B2).
 NOT_ASKING = [
     "docs/guide/multi-repo.md", "skills/setup/references/project.md",
     "docs/capabilities/cli/provision-declared-stores/description.md",
@@ -2167,3 +1767,91 @@ def test_with_real_git_a_command_line_ssh_command_is_kept(monkeypatch, tmp_path)
     monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.sshCommand")
     monkeypatch.setenv("GIT_CONFIG_VALUE_0", "ssh -i command-line")
     assert "GIT_SSH_COMMAND" not in fs._no_prompt_env()
+
+
+# -- TCW-115 Step 11: the store clone's argv, and git's location variables ------------
+
+def _recorded_obtain(tmp_path, monkeypatch, **repository):
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    remote = _remote_with_store(tmp_path)
+    calls = []
+    real = FsStoreProvisioner._run
+
+    def recording(self, argv):
+        calls.append(list(argv))
+        return real(self, argv)
+    monkeypatch.setattr(FsStoreProvisioner, "_run", recording)
+    provisioner = _provisioner(tmp_path, code, remote, **repository)
+    return provisioner, calls, str(remote)
+
+
+def test_the_store_clone_puts_a_separator_before_the_url_and_after_the_ref(
+        tmp_path, monkeypatch):
+    provisioner, calls, url = _recorded_obtain(tmp_path, monkeypatch, ref="main")
+    assert provisioner.ensure_available().action == "obtained"
+    clone, checkout = calls
+    assert clone[:5] == ["git", "clone", "--quiet", "--", url], clone
+    assert checkout[:2] == ["git", "-C"]
+    assert checkout[3:] == ["checkout", "--quiet", "main", "--"], checkout
+
+
+def test_a_store_ref_naming_a_file_and_no_branch_fails(tmp_path, monkeypatch):
+    provisioner, _, _ = _recorded_obtain(tmp_path, monkeypatch,
+                                         ref="docs/work/corelib/inbox/.gitkeep")
+    with pytest.raises(ValueError, match="git checkout failed"):
+        provisioner.ensure_available()
+
+
+def _other_repository(tmp_path: Path) -> Path:
+    other = _repo(tmp_path / "other")
+    (other / "f").write_text("x\n")
+    subprocess.run(["git", "-C", str(other), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(other), "commit", "-qm", "one"], check=True)
+    subprocess.run(["git", "-C", str(other), "checkout", "-qb", "side"], check=True)
+    return other
+
+
+def test_a_store_clone_ignores_git_dir_and_git_index_file(tmp_path, monkeypatch):
+    other = _other_repository(tmp_path)
+    index_before = (other / ".git" / "index").read_bytes()
+    provisioner, _, _ = _recorded_obtain(tmp_path, monkeypatch, ref="main")
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(other / ".git" / "index"))
+    assert provisioner.ensure_available().action == "obtained"
+    assert (other / ".git" / "HEAD").read_text() == "ref: refs/heads/side\n"
+    assert (other / ".git" / "index").read_bytes() == index_before
+
+
+def test_every_git_call_drops_the_location_variables_and_keeps_the_rest(monkeypatch):
+    seen = {}
+
+    def run(argv, **kwargs):
+        seen.update(kwargs["env"])
+        return subprocess.CompletedProcess(argv, 0, "", "")
+    monkeypatch.setattr(fs.subprocess, "run", run)
+    fs._git(["git", "status"], env={"GIT_DIR": "x", "KEEP": "1"})
+    assert seen == {"KEEP": "1"}
+
+
+def test_finding_a_worktree_ignores_git_dir(tmp_path, monkeypatch):
+    from tcw.store.project import worktree_anchors
+    main = _repo(tmp_path / "main")
+    (main / "f").write_text("")
+    subprocess.run(["git", "-C", str(main), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(main), "commit", "-qm", "one"], check=True)
+    subprocess.run(["git", "-C", str(main), "worktree", "add", "-q", "-b", "w",
+                    str(tmp_path / "linked")], check=True)
+    alone = tmp_path / "alone"
+    alone.mkdir()
+    monkeypatch.setenv("GIT_DIR", str(tmp_path / "linked" / ".git"))
+    assert worktree_anchors(alone) is None
+
+
+def test_the_location_variables_are_the_ones_git_names():
+    from tcw.store.project import GIT_LOCATION_VARIABLES
+    done = subprocess.run(["git", "rev-parse", "--local-env-vars"], capture_output=True,
+                          text=True, check=True, stdin=subprocess.DEVNULL)
+    named = set(done.stdout.split()) - {"GIT_CONFIG", "GIT_CONFIG_PARAMETERS",
+                                        "GIT_CONFIG_COUNT"}
+    assert named <= set(GIT_LOCATION_VARIABLES), named - set(GIT_LOCATION_VARIABLES)

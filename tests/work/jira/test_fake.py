@@ -183,6 +183,51 @@ def test_drop_before_the_next_write_does_not_apply_it(client, fake):
     assert fake.tickets[key].summary == "again"
 
 
+def test_the_nth_later_edit_fails_and_changes_nothing(client, fake):
+    key = create(client)
+    fake.fail_edit(2)
+    client.edit_issue(key, {"summary": "first"})
+    with pytest.raises(jira.TrackerError):
+        client.edit_issue(key, {"summary": "second"})
+    assert fake.tickets[key].summary == "first"
+    client.edit_issue(key, {"summary": "third"})              # only that one
+    assert fake.tickets[key].summary == "third"
+
+
+def test_a_failed_edit_can_leave_the_site_unreachable(client, fake):
+    key = create(client)
+    fake.fail_edit(1, then_unreachable=True)
+    with pytest.raises(jira.TrackerUnavailable):
+        client.edit_issue(key, {"summary": "lost"})
+    with pytest.raises(jira.TrackerUnavailable):
+        client.issue(key)
+    assert fake.tickets[key].summary == "T"
+
+
+def test_a_hook_runs_before_each_request(client, fake):
+    key = create(client)
+    seen = []
+
+    def change(method, path):
+        seen.append((method, path))
+        if method == "PUT":
+            fake.tickets[key].summary = "changed first"
+    fake.before_request(change)
+    client.issue(key)
+    client.edit_issue(key, {"labels": ["x"]})
+    assert [m for m, _ in seen] == ["GET", "PUT"]
+    assert fake.tickets[key].summary == "changed first"
+
+
+def test_a_hidden_ticket_is_not_found_or_searched(client, fake):
+    key = create(client, **{ITEM: "tcw/x"})
+    other = create(client, **{ITEM: "tcw/y"})
+    fake.hide(key)
+    with pytest.raises(jira.TrackerNotFound):
+        client.issue(key)
+    assert [i["key"] for i in client.search(jql.item_query("TCW", ITEM), [])] == [other]
+
+
 def test_drop_after_the_next_comment_adds_it(client, fake):
     key = create(client)
     fake.drop_after_next_comment()

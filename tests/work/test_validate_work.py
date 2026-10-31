@@ -5,9 +5,10 @@ key, never how the line is laid out."""
 import pytest
 
 from tcw.store.fs import FsProjectRegistry
-from tcw.validate import _shared_work_paths, _work_findings
-from tcw.work.config import MIGRATION_GUIDE
+from tcw.locate import Locator
+from tcw.validate import _store_overlaps, _work_findings
 from tests.work.projects import commit_all, connect, make_project, write_item
+from tests.statefiles import ITEM_STATE
 
 TAGS = {"tags": ["ui"]}
 
@@ -30,7 +31,7 @@ def test_a_clean_store_has_no_findings(tmp_path):
 def test_three_warnings_and_no_error(tmp_path):
     p = make_project(tmp_path, "p", config=TAGS)
     write_item(p, "2026-10-01-blocked", {"title": "b", "stage": "request",
-                                        "blocked-by": ["2026-10-01-nothing"]})
+                                        "blocked-by": ["p.work/2026-10-01-nothing"]})
     ahead = write_item(p, "2026-10-01-ahead", {"title": "c", "stage": "plan"})
     (ahead / "request").mkdir()
     (ahead / "request" / "request.md").write_text("Do it.\n")
@@ -45,7 +46,7 @@ def test_three_warnings_and_no_error(tmp_path):
     assert "2026-10-01-nothing" in where["2026-10-01-blocked"]
     assert "stage" in where["2026-10-01-ahead"] and "spec" in where["2026-10-01-ahead"]
     assert "unregistered" in where["2026-10-01-tagged"]
-    assert all(f.where.endswith("item.yaml") for f in warnings)
+    assert all(f.where.endswith(ITEM_STATE) for f in warnings)
 
 
 def test_references_into_other_projects(tmp_path):
@@ -54,17 +55,19 @@ def test_references_into_other_projects(tmp_path):
     connect(p, q, "children")
     connect(q, p, "parent")
     write_item(p, "2026-10-01-a", {"title": "a", "stage": "request",
-                                  "blocked-by": ["q/2026-10-01-x",
-                                                 "nobody/2026-10-01-y"]})
+                                  "blocked-by": ["q.work/2026-10-01-x",
+                                                 "nobody.work/2026-10-01-y"]})
     import shutil
     shutil.rmtree(q)
     found, _ = findings(p)
-    assert by_severity(found, "error") == []
     [unresolved] = by_severity(found, "unresolved")
-    assert "q/2026-10-01-x" in unresolved.message
+    assert "q.work/2026-10-01-x" in unresolved.message
     assert "blocked-by" in unresolved.message
-    [missing] = by_severity(found, "warning")
-    assert "nobody/2026-10-01-y" in missing.message
+    # TCW-110 Design 6.3: an ID nothing knows is an error naming the reference.
+    [unknown] = by_severity(found, "error")
+    assert "nobody.work/2026-10-01-y" in unknown.message
+    assert "check the spelling" in unknown.message
+    assert by_severity(found, "warning") == []
 
 
 def test_a_reference_found_in_another_project_is_fine(tmp_path):
@@ -74,16 +77,30 @@ def test_a_reference_found_in_another_project_is_fine(tmp_path):
     connect(q, p, "parent")
     write_item(q, "2026-10-01-x", {"title": "x", "stage": "discarded"})
     write_item(p, "2026-10-01-a", {"title": "a", "stage": "request",
-                                  "parent": "q/2026-10-01-x"})
+                                  "parent": "q.work/2026-10-01-x"})
     assert findings(p) == ([], None)
 
 
-def test_an_inbox_folder_names_the_guide(tmp_path):
+GUIDE = "see docs/migration-guide-2.8-to-3.0.0.md for the work store layout"
+
+
+def test_an_inbox_folder_is_a_reserved_name(tmp_path):
+    """Since TCW-111 a stage name is reserved in the work store (Design 2.4,
+    row c). A 2.x store is the one that fills the work store with stage
+    folders, so the finding still points to the 2.8-to-3.0 guide."""
     p = make_project(tmp_path, "p")
     (p / "docs" / "work" / "inbox").mkdir()
     [error] = by_severity(findings(p)[0], "error")
     assert error.where.endswith("inbox")
-    assert MIGRATION_GUIDE in error.message
+    assert error.message == f"'inbox' is reserved in the work store; {GUIDE}"
+
+
+def test_a_2x_item_under_a_stage_folder_names_the_guide(tmp_path, capsys, monkeypatch):
+    p = make_project(tmp_path, "p")
+    (p / "docs" / "work" / "inbox" / "x").mkdir(parents=True)
+    code, text = run_validate(capsys, monkeypatch, p)
+    assert code == 1
+    assert "docs/migration-guide-2.8-to-3.0.0.md" in text, text
 
 
 def test_a_bad_capabilities_file_on_an_unfinished_item_fails(tmp_path):
@@ -109,16 +126,16 @@ def test_one_unreadable_item_does_not_hide_the_rest(tmp_path):
     p = make_project(tmp_path, "p")
     write_item(p, "2026-10-01-bad", "title: [x\n")
     write_item(p, "2026-10-01-blocked", {"title": "b", "stage": "request",
-                                        "blocked-by": ["2026-10-01-nothing"]})
+                                        "blocked-by": ["p.work/2026-10-01-nothing"]})
     folder = write_item(p, "2026-10-01-caps", {"title": "c", "stage": "request"})
     (folder / "capabilities.yaml").write_text("added: [x/y]\n")
     found, note = findings(p)
     paths = {f.where for f in found}
-    assert any(w.endswith("2026-10-01-bad/item.yaml") for w in paths)
-    assert any(w.endswith("2026-10-01-blocked/item.yaml") for w in paths)
+    assert any(w.endswith("2026-10-01-bad/tcw-work-item.yaml") for w in paths)
+    assert any(w.endswith("2026-10-01-blocked/tcw-work-item.yaml") for w in paths)
     assert any(w.endswith("2026-10-01-caps/capabilities.yaml") for w in paths)
     assert len(by_severity(found, "error")) == 2
-    assert "2026-10-01-bad/item.yaml" in note
+    assert "2026-10-01-bad/tcw-work-item.yaml" in note
 
 
 def test_a_config_error_is_one_finding(tmp_path):
@@ -136,9 +153,10 @@ def test_two_projects_with_one_work_path(tmp_path):
     q = make_project(tmp_path, "q", config={"path": "../p/docs/work"})
     connect(p, q, "children")
     connect(q, p, "parent")
-    [finding] = _shared_work_paths(FsProjectRegistry.open(p))
+    [finding] = _store_overlaps(Locator.of(p))
     line = str(finding)
-    assert "'p'" in line and "'q'" in line
+    assert "the work store of project 'q'" in line and "the work store of project 'p'" \
+        in line and "is the same folder as" in line
     assert str((p / "docs" / "work").resolve()) in line
 
 
@@ -147,7 +165,7 @@ def test_distinct_work_paths_are_fine(tmp_path):
     q = make_project(tmp_path, "q")
     connect(p, q, "children")
     connect(q, p, "parent")
-    assert _shared_work_paths(FsProjectRegistry.open(p)) == []
+    assert _store_overlaps(Locator.of(p)) == []
 
 
 # -- through the command (AC 15) ------------------------------------------------------
@@ -166,16 +184,16 @@ def test_validate_counts_only_errors(tmp_path, capsys, monkeypatch):
                                        "tags": ["unregistered"]})
     code, text = run_validate(capsys, monkeypatch, p)
     assert code == 0, text
-    assert "warning:" in text and "2026-10-01-tagged/item.yaml" in text
+    assert "warning:" in text and "2026-10-01-tagged/tcw-work-item.yaml" in text
     write_item(p, "2026-10-01-bad", {"title": "b", "stage": "request",
                                     "created": "2026-10-01"})
     code, text = run_validate(capsys, monkeypatch, p)
     assert code == 1
-    assert "2026-10-01-bad/item.yaml" in text and "created" in text
+    assert "2026-10-01-bad/tcw-work-item.yaml" in text and "created" in text
 
 
-def test_validate_names_the_guide_for_a_status_folder(tmp_path, capsys, monkeypatch):
+def test_validate_reports_a_status_folder_as_reserved(tmp_path, capsys, monkeypatch):
     p = make_project(tmp_path, "p")
     (p / "docs" / "work" / "inbox").mkdir()
     code, text = run_validate(capsys, monkeypatch, p)
-    assert code == 1 and MIGRATION_GUIDE in text
+    assert code == 1 and "'inbox' is reserved in the work store" in text

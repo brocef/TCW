@@ -82,14 +82,20 @@ trap 'if [ -f "$root/scripts/check_versions.sh" ]; then bash "$root/scripts/chec
 
 [ -f "$root/tcw/__init__.py" ] || exit 0
 
+# The install takes the release whose version is the plugin's own, so a plugin
+# update brings the matching CLI and holding the plugin back holds the CLI
+# back. Without a version to pin there is nothing to install: an unpinned
+# install would take whatever PyPI holds newest.
+version="$(sed -n 's/^__version__ = "\([0-9][0-9.]*\)"$/\1/p' "$root/tcw/__init__.py" | head -n 1)"
+[ -n "$version" ] || exit 0
+
 # 2. Steady state: the plugin has not changed since we last installed, and `tcw`
-#    is on PATH. The sentinel is a trigger token for a plugin-version change and
-#    nothing more — it is *not* evidence about which `tcw-cli` PyPI resolved to,
-#    which floats. `pipx upgrade tcw-cli` is how a user moves ahead of this.
-#    Cheapest check first: the install decision costs one `cmp` and one
-#    `command -v`, with no network. The version check on exit (above) still
-#    starts one interpreter every session, for `tcw --version`, capped at about
-#    3 seconds.
+#    is on PATH. The sentinel is a trigger token for a plugin-version change,
+#    and since the install is pinned to the plugin's version it also says which
+#    `tcw-cli` was asked for. Cheapest check first: the install decision costs
+#    one `cmp` and one `command -v`, with no network. The version check on exit
+#    (above) still starts one interpreter every session, for `tcw --version`,
+#    capped at about 3 seconds.
 if [ -n "$sentinel" ] && [ -f "$sentinel" ] &&
     cmp -s "$sentinel" "$root/tcw/__init__.py" &&
     command -v tcw >/dev/null 2>&1; then
@@ -111,13 +117,14 @@ command -v pipx >/dev/null 2>&1 || exit 0
 #    failure leaves the sentinel stale, so the next session retries with no state
 #    to clean up. One line on failure, and it does not try to tell a network
 #    outage from a missing release apart: the remedy is the same either way,
-#    and naming it beats naming a cause that would be a guess.
-if pipx install --force tcw-cli >/dev/null 2>&1; then
+#    and naming it beats naming a cause that would be a guess. A version not on
+#    PyPI yet fails the same way, and the next session tries again.
+if pipx install --force "tcw-cli==$version" >/dev/null 2>&1; then
     if [ -n "$sentinel" ]; then
         mkdir -p "$(dirname "$sentinel")" 2>/dev/null &&
             cp "$root/tcw/__init__.py" "$sentinel"
     fi
 else
-    echo "tcw: automatic install of tcw-cli from PyPI failed (offline?) — install it by hand with 'pipx install tcw-cli'."
+    echo "tcw: automatic install of tcw-cli from PyPI failed (offline?) — install it by hand with 'pipx install tcw-cli==$version'."
 fi
 exit 0

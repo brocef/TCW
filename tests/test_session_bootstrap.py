@@ -196,9 +196,66 @@ def test_failed_install_prints_one_line_and_retries_next_time(tmp_path):
     assert r.returncode == 0, "a failure must not surface as a hook error"
     assert r.stderr == "", "SessionStart shows the agent stdout, not stderr"
     lines = r.stdout.splitlines()
-    assert len(lines) == 1 and "pipx install tcw-cli" in lines[0], r.stdout
+    assert len(lines) == 1 and "pipx install tcw-cli==9.9.9" in lines[0], r.stdout
     assert sentinel.read_text() == '__version__ = "0.0.1"\n', "a stale sentinel is what forces the retry"
-    assert log.read_text().strip().endswith("tcw-cli")
+    assert log.read_text().strip().endswith("tcw-cli==9.9.9")
+
+
+def test_install_pins_the_plugin_version(tmp_path):
+    """The install asks for the release whose version is the plugin's own, so
+    holding the plugin back holds the CLI back."""
+    root = _clone(tmp_path, "9.9.9")
+    sentinel = tmp_path / "installed-version"
+    bindir = tmp_path / "bin"
+    log = tmp_path / "pipx.log"
+    _recording_pipx(bindir, log, installs=bindir / "tcw")
+
+    r = _run(root, sentinel, bindir)
+
+    assert (r.returncode, r.stdout) == (0, ""), r
+    assert log.read_text() == "install --force tcw-cli==9.9.9\n"
+    assert sentinel.read_bytes() == (root / "tcw" / "__init__.py").read_bytes()
+
+
+def test_failed_pinned_install_names_the_version_and_retries(tmp_path):
+    """A version not on PyPI yet fails like an outage: one line naming the
+    pinned command, the sentinel left stale, and the next session tries again."""
+    root = _clone(tmp_path, "9.9.9")
+    sentinel = tmp_path / "installed-version"
+    sentinel.write_text('__version__ = "0.0.1"\n')
+    bindir = tmp_path / "bin"
+    owner = _stub(bindir, "python3.11", "exit 1\n")  # a plain install: replaceable
+    _stub(bindir, "tcw", "exit 0\n", shebang=f"#!{owner}")
+    log = tmp_path / "pipx.log"
+    _recording_pipx(bindir, log, rc=1)
+
+    r = _run(root, sentinel, bindir)
+
+    assert r.returncode == 0
+    lines = r.stdout.splitlines()
+    assert len(lines) == 1 and "pipx install tcw-cli==9.9.9" in lines[0], r.stdout
+    assert sentinel.read_text() == '__version__ = "0.0.1"\n'
+
+    _run(root, sentinel, bindir)
+
+    assert log.read_text().splitlines() == ["install --force tcw-cli==9.9.9"] * 2
+
+
+def test_no_version_line_installs_nothing(tmp_path):
+    """Without a version to pin, nothing is installed: an unpinned install
+    would take whatever PyPI holds newest."""
+    root = _clone(tmp_path)
+    (root / "tcw" / "__init__.py").write_text("x = 1\n")
+    sentinel = tmp_path / "installed-version"
+    bindir = tmp_path / "bin"
+    log = tmp_path / "pipx.log"
+    _recording_pipx(bindir, log, installs=bindir / "tcw")
+
+    r = _run(root, sentinel, bindir)
+
+    assert (r.returncode, r.stdout) == (0, ""), r
+    assert not log.exists()
+    assert not sentinel.exists()
 
 
 def test_successful_install_writes_the_sentinel_then_goes_quiet(tmp_path):
@@ -212,7 +269,7 @@ def test_successful_install_writes_the_sentinel_then_goes_quiet(tmp_path):
 
     assert first.returncode == 0
     assert first.stdout == ""
-    assert log.read_text().strip() == "install --force tcw-cli"
+    assert log.read_text().strip() == "install --force tcw-cli==9.9.9"
     assert sentinel.read_bytes() == (root / "tcw" / "__init__.py").read_bytes()
 
     second = _run(root, sentinel, bindir)
@@ -365,7 +422,7 @@ def test_successful_install_is_compared_after_the_install(tmp_path):
     r = _run(root, sentinel, bindir)
 
     assert (r.returncode, r.stdout, r.stderr) == (0, "", "")
-    assert log.read_text().strip() == "install --force tcw-cli"
+    assert log.read_text().strip() == "install --force tcw-cli==2.4.0"
     assert sentinel.read_bytes() == (root / "tcw" / "__init__.py").read_bytes()
 
 
@@ -382,7 +439,7 @@ def test_failed_install_prints_both_lines(tmp_path):
 
     _assert_warning(r, "2.5.0", "2.4.0")
     lines = r.stdout.splitlines()
-    assert "pipx install tcw-cli" in lines[0] and lines[1].startswith(WARNING), r.stdout
+    assert "pipx install tcw-cli==2.4.0" in lines[0] and lines[1].startswith(WARNING), r.stdout
     assert sentinel.read_text() == '__version__ = "0.0.1"\n'
 
 

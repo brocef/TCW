@@ -15,6 +15,8 @@ import pytest
 from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tests.work.projects import make_project
+from tests.projectfiles import config_file, write_config_file, write_manifest
+from tests.statefiles import write_state, CAPABILITY_STATE
 
 
 @pytest.fixture
@@ -46,17 +48,17 @@ def thing(project, run):
 
 def test_add_prints_the_path_and_names_its_files(project, run):
     code, out, err = run(project, "capabilities", "add", "ns/do-a-thing", stdin="Body.\n")
-    assert (code, out) == (0, "ns/do-a-thing\n")
-    assert "wrote docs/capabilities/ns/do-a-thing/meta.yaml" in err.splitlines()
-    assert "Body." in FsCapabilitiesStore.open(project).get("ns/do-a-thing").body
+    assert (code, out) == (0, "fx.capabilities/ns/do-a-thing\n")
+    assert "wrote docs/capabilities/ns/do-a-thing/tcw-capability.yaml" in err.splitlines()
+    assert "Body." in FsCapabilitiesStore.open(project).get_view("ns/do-a-thing").body
 
 
 def test_set_prints_nothing(thing, run):
     code, out, err = run(thing, "capabilities", "set", "ns/do-a-thing",
                          "--status", "Supported")
     assert (code, out) == (0, "")
-    assert err.splitlines() == ["wrote docs/capabilities/ns/do-a-thing/meta.yaml"]
-    assert FsCapabilitiesStore.open(thing).get("ns/do-a-thing").status == "Supported"
+    assert err.splitlines() == ["wrote docs/capabilities/ns/do-a-thing/tcw-capability.yaml"]
+    assert FsCapabilitiesStore.open(thing).get_view("ns/do-a-thing").status == "Supported"
 
 
 def test_an_unknown_subject_is_a_usage_error(thing, run):
@@ -70,7 +72,8 @@ def test_a_comma_in_a_field_value_sets_a_list(thing, run):
     taxonomy.add("B")
     code, _, err = run(thing, "capabilities", "set", "ns/do-a-thing", "--field", "Subject=a,b")
     assert code == 0, err
-    assert "Subject: a, b" in run(thing, "capabilities", "show", "ns/do-a-thing")[1]
+    assert "Subject: fx.taxonomy/a, fx.taxonomy/b" in \
+        run(thing, "capabilities", "show", "ns/do-a-thing")[1]
 
 
 @pytest.mark.parametrize("fields", [
@@ -97,29 +100,34 @@ def test_show_of_nothing_is_not_found(project, run):
 
 
 def test_rm_names_each_file_it_removed(thing, run):
+    """And the organising folder `ns/`, which the removal left empty."""
     code, out, err = run(thing, "capabilities", "rm", "ns/do-a-thing")
     assert (code, out) == (0, "")
     assert sorted(err.splitlines()) == [
+        "removed docs/capabilities/ns",
         "removed docs/capabilities/ns/do-a-thing/description.md",
-        "removed docs/capabilities/ns/do-a-thing/meta.yaml"]
+        "removed docs/capabilities/ns/do-a-thing/tcw-capability.yaml"]
 
 
 def test_list_and_search_print_one_path_per_line(thing, run):
     run(thing, "capabilities", "add", "ns/other", stdin="findme\n")
-    assert run(thing, "capabilities", "list")[1] == "ns/do-a-thing\nns/other\n"
-    assert run(thing, "capabilities", "list", "--local")[1] == "ns/do-a-thing\nns/other\n"
-    assert run(thing, "capabilities", "search", "findme")[1] == "ns/other\n"
+    both = "fx.capabilities/ns/do-a-thing\nfx.capabilities/ns/other\n"
+    assert run(thing, "capabilities", "list")[1] == both
+    assert run(thing, "capabilities", "list")[1] == both
+    assert run(thing, "capabilities", "search", "findme")[1] == "fx.capabilities/ns/other\n"
     data = json.loads(run(thing, "capabilities", "list", "--json")[1])
-    assert data["schema"] == 1
-    assert data["capabilities"][0] == {"path": "ns/do-a-thing", "name": "Do A Thing",
-                                       "status": "Missing", "origin": "local"}
+    assert data["schema"] == 2
+    assert data["capabilities"][0] == {"full-id": "fx.capabilities/ns/do-a-thing",
+                                       "owner": "fx", "parent": None,
+                                       "overrides": None,
+                                       "name": "Do A Thing", "status": "Missing"}
     shown = json.loads(run(thing, "capabilities", "show", "ns/do-a-thing", "--json")[1])
     assert shown["capability"]["fields"]["Status"] == "Missing"
 
 
 def test_a_record_carrying_a_retired_field_is_a_check_error(thing):
-    meta = thing / "docs" / "capabilities" / "ns" / "do-a-thing" / "meta.yaml"
-    meta.write_text(meta.read_text() + "Planning doc: docs/plan/x.md\nTracker: X-1\n")
+    meta = thing / "docs" / "capabilities" / "ns" / "do-a-thing" / CAPABILITY_STATE
+    write_state(meta, meta.read_text() + "Planning doc: docs/plan/x.md\nTracker: X-1\n")
     findings = FsCapabilitiesStore.open(thing).check()
     retired = [f for f in findings if "migration-guide-2.8-to-3.0.0.md" in f.message]
     assert {f.severity for f in retired} == {"error"} and len(retired) == 2, findings
@@ -144,14 +152,14 @@ def overridden(tmp_path, project, run):
     up = make_project(tmp_path, "up")
     init(["taxonomy", "capabilities"], up, "up")
     assert run(up, "capabilities", "add", "auth/login")[0] == 0
-    path = project / "tcw-config.yaml"
+    path = config_file(project)
     document = yaml.safe_load(path.read_text())
-    document["projects"] = {"upstream": {"up": "../up"}}
-    path.write_text(yaml.safe_dump(document))
-    assert run(project, "capabilities", "extends", "add", "up")[0] == 0
+    document["parents"] = [{"id": "up", "inherit": ["capabilities"]}]
+    write_config_file(path, yaml.safe_dump(document))
+    write_manifest(project, {"up": "../up"})
     assert run(project, "capabilities", "set", "auth/login", "--status", "Missing")[0] == 0
     store = FsCapabilitiesStore.open(project)
-    [(folder, _)] = store._override_index().values()
+    folder = store.root / "auth" / "login"          # the override is at the same path
     nested = folder.relative_to(store.root).as_posix() + "/nested"
     assert run(project, "capabilities", "add", nested)[0] == 0
     return project, folder, store.root / nested
@@ -164,7 +172,7 @@ def test_reset_refuses_a_capability_nested_under_the_override(overridden, run):
     store_root = FsCapabilitiesStore.open(project).root
     assert f"nested under its override: {nested.relative_to(store_root).as_posix()}" in err
     assert "`tcw capabilities rm`" in err and "`tcw capabilities reset`" in err
-    assert (folder / "meta.yaml").is_file() and (nested / "meta.yaml").is_file()
+    assert (folder / CAPABILITY_STATE).is_file() and (nested / CAPABILITY_STATE).is_file()
 
 
 def test_reset_goes_ahead_once_the_nested_capability_is_gone(overridden, run):

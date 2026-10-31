@@ -1,12 +1,13 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { ThemeProvider } from "../theme"
-import { fakeFetch } from "../test-fixtures"
+import { capability, fakeFetch } from "../test-fixtures"
 import { DeclarationSection } from "./declaration-form"
 
 const references = {
+    projectId: "p",
     work: [],
     taxonomy: [],
-    capabilities: [{ path: "web/editing", name: "Editing" }],
+    capabilities: [capability("web/editing", { name: "Editing" })],
 }
 
 function renderSection(editable = true, onSaved = vi.fn()) {
@@ -33,7 +34,11 @@ test("the six lists save in one request, and the form says comments go", async (
                 revision: "r1",
                 present: true,
                 problem: null,
-                capabilities: { new: ["web/new"], changed: [], removed: [] },
+                capabilities: {
+                    new: ["p.capabilities/web/new"],
+                    changed: [],
+                    removed: [],
+                },
                 taxonomy: { new: [], changed: [], removed: [] },
             },
         ],
@@ -41,7 +46,9 @@ test("the six lists save in one request, and the form says comments go", async (
     ])
     globalThis.fetch = fetch as unknown as typeof globalThis.fetch
     const onSaved = renderSection()
-    expect(await screen.findByText("web/new")).toBeInTheDocument()
+    expect(
+        await screen.findByText("p.capabilities/web/new")
+    ).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Edit" }))
     expect(
         screen.getByText(
@@ -52,7 +59,10 @@ test("the six lists save in one request, and the form says comments go", async (
     const changed = screen.getByRole("combobox", {
         name: "Capabilities: changed",
     })
-    fireEvent.change(changed, { target: { value: "web/editing" } })
+    // A `capabilities.yaml` entry is the full identifier (TCW-110 Design 5.1).
+    fireEvent.change(changed, {
+        target: { value: "p.capabilities/web/editing" },
+    })
     fireEvent.keyDown(changed, { key: "Escape" })
     fireEvent.keyDown(changed, { key: "Enter" })
     fireEvent.click(screen.getByRole("button", { name: "Save" }))
@@ -61,8 +71,8 @@ test("the six lists save in one request, and the form says comments go", async (
     expect(put.path).toBe("/api/work/x/declaration")
     expect(put.body).toEqual({
         capabilities: {
-            new: ["web/new"],
-            changed: ["web/editing"],
+            new: ["p.capabilities/web/new"],
+            changed: ["p.capabilities/web/editing"],
             removed: [],
         },
         taxonomy: { new: [], changed: [], removed: [] },

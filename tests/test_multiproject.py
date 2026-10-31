@@ -1,14 +1,11 @@
 import subprocess
 from pathlib import Path
 
-import yaml
-
 from tcw.store.fs import (
     FsCapabilitiesStore, FsTaxonomyStore, find_component_project, init,
 )
 
-
-from nodeconfig import declare_extends
+from tests.projectfiles import write_config, write_manifest
 
 
 def _monorepo(tmp_path: Path) -> Path:
@@ -19,39 +16,32 @@ def _monorepo(tmp_path: Path) -> Path:
         root = tmp_path / name
         root.mkdir()
         init(["taxonomy", "capabilities"], root, name)
-    (tmp_path / "project-b" / "tcw-config.yaml").write_text(
-        "id: project-b\nprojects:\n  children:\n"
-        "    project-a: ../project-a\n"
+    # project-b inherits project-a's taxonomy: project-a is project-b's
+    # parent passing that axis.
+    write_config(tmp_path / "project-b",
+        "id: project-b\nparents:\n- {id: project-a, inherit: [taxonomy]}\n"
     )
-    (tmp_path / "project-a" / "tcw-config.yaml").write_text(
-        "id: project-a\nprojects:\n  parent:\n"
-        "    project-b: ../project-b\n"
-    )
+    write_manifest(tmp_path / "project-b", {"project-a": "../project-a"})
+    write_config(tmp_path / "project-a", "id: project-a\n")
     return tmp_path
 
 
-def _extend_b_onto_a(repo: Path) -> None:
-    declare_extends(repo / "project-b", "taxonomy",
-        yaml.safe_dump({"extends": ["project-a"]}))
-
-
-def test_extends_resolves_across_sibling_subfolders(tmp_path):
+def test_inheritance_resolves_across_sibling_subfolders(tmp_path):
     repo = _monorepo(tmp_path)
     FsTaxonomyStore.open(repo / "project-a").add("Account")
-    _extend_b_onto_a(repo)
     node = find_component_project("taxonomy", repo / "project-b")     # detection finds project-b
     assert node == (repo / "project-b").resolve()
-    term = FsTaxonomyStore.open(node).get("project-a/account")
+    term = FsTaxonomyStore.open(node).get_view("account")
     assert term is not None and term.name == "Account"
+    assert str(term.full_id) == "project-a.taxonomy/account"
 
 
 def test_capabilities_check_resolves_sibling_taxonomy(tmp_path):
     repo = _monorepo(tmp_path)
     FsTaxonomyStore.open(repo / "project-a").add("Account")
-    _extend_b_onto_a(repo)
     caps = FsCapabilitiesStore.open(repo / "project-b")
     caps.add("orders", "Place an order")
-    caps.set("orders", {"Subject": "project-a/account"})
+    caps.set("orders", {"Subject": "project-a.taxonomy/account"})
     node = find_component_project("capabilities", repo / "project-b")
     tax = FsTaxonomyStore.open(node)
     assert FsCapabilitiesStore.open(node).check(taxonomy=tax) == []
@@ -86,18 +76,18 @@ def _routing_graph(tmp_path):
     write_sentinel(b, "b-project")
     init(["work"], c, "c-project")
 
-    def config(path, doc):
-        (path / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
+    def config(path, doc, where):
+        write_config(path, yaml.safe_dump(doc, sort_keys=False))
+        write_manifest(path, where)
 
-    a_doc = yaml.safe_load((a / "tcw-config.yaml").read_text())
-    a_doc["projects"] = {"children": {"b-project": "b"}}
-    config(a, a_doc)
-    config(b, {"id": "b-project",
-               "projects": {"parent": {"a-project": ".."},
-                                      "children": {"c-project": "c"}}})
-    c_doc = yaml.safe_load((c / "tcw-config.yaml").read_text())
-    c_doc["projects"] = {"parent": {"b-project": ".."}}
-    config(c, c_doc)
+    a_doc = yaml.safe_load((a / ".tcw/tcw-config.yaml").read_text())
+    a_doc["children"] = ["b-project"]
+    config(a, a_doc, {"b-project": "b"})
+    config(b, {"id": "b-project", "parents": ["a-project"], "children": ["c-project"]},
+           {"a-project": "..", "c-project": "c"})
+    c_doc = yaml.safe_load((c / ".tcw/tcw-config.yaml").read_text())
+    c_doc["parents"] = ["b-project"]
+    config(c, c_doc, {"b-project": ".."})
     return a, b, c
 
 
@@ -110,12 +100,12 @@ def test_a_routing_node_is_a_legal_graph(tmp_path):
 
 
 def _projects(monkeypatch, capsys, where):
-    """`tcw projects list --json` run in `where`, as `{id: relation}`."""
+    """`tcw project list --json` run in `where`, as `{id: relation}`."""
     import json
     from tcw.cli import main
 
     monkeypatch.chdir(where)
-    assert main(["projects", "list", "--json"]) == 0
+    assert main(["project", "list", "--json"]) == 0
     return {p["id"]: p["relation"] for p in json.loads(capsys.readouterr().out)["projects"]}
 
 
@@ -147,16 +137,18 @@ def _child_missing_its_parent(tmp_path):
     subprocess.run(["git", "-C", str(child), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(child), "config", "user.name", "t"], check=True)
     init(["work"], child, "child-project")
-    doc = yaml.safe_load((child / "tcw-config.yaml").read_text())
-    doc["projects"] = {"parent": {"away-project": str(tmp_path / "away")}}
-    (child / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
+    doc = yaml.safe_load((child / ".tcw/tcw-config.yaml").read_text())
+    doc["parents"] = ["away-project"]
+    write_config(child, yaml.safe_dump(doc, sort_keys=False))
+    write_manifest(child, {"away-project": "../away"})
     return child
 
 
 def test_nodes_names_a_parent_this_checkout_does_not_have(tmp_path, monkeypatch,
                                                           capsys):
     """It printed `(none — root)` for a config that plainly names a parent —
-    the confusion `child_projects`' own comment forbids and README promises against."""
+    the confusion that a project nothing declares and one declared but absent
+    must never look alike, which README promises against."""
     from tcw.cli import main
 
     child = _child_missing_its_parent(tmp_path)
@@ -176,9 +168,10 @@ def test_nodes_names_a_child_this_checkout_does_not_have(tmp_path, monkeypatch,
     subprocess.run(["git", "-C", str(parent), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(parent), "config", "user.name", "t"], check=True)
     init(["work"], parent, "parent-project")
-    doc = yaml.safe_load((parent / "tcw-config.yaml").read_text())
-    doc["projects"] = {"children": {"away-project": str(tmp_path / "away")}}
-    (parent / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
+    doc = yaml.safe_load((parent / ".tcw/tcw-config.yaml").read_text())
+    doc["children"] = ["away-project"]
+    write_config(parent, yaml.safe_dump(doc, sort_keys=False))
+    write_manifest(parent, {"away-project": "../away"})
 
     assert _projects(monkeypatch, capsys, parent)["away-project"] == "child"
 

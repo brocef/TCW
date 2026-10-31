@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import {
     Badge,
     Button,
@@ -8,7 +8,8 @@ import {
     Heading,
     Text,
 } from "@radix-ui/themes"
-import { isUnavailable } from "../model/api"
+import { isUnavailable, requestJson } from "../model/api"
+import { fullIdText, objectAddress } from "../model/identifier"
 import {
     folderOf,
     isLocal,
@@ -25,7 +26,14 @@ import type {
     WorkItem,
 } from "../model/types"
 import { CreatedAt } from "./modified-at"
-import { Field, Fields, Markdown } from "./shared-components"
+import { pathFor } from "./route-utils"
+import {
+    Field,
+    Fields,
+    Markdown,
+    OwnedBy,
+    type TResolution,
+} from "./shared-components"
 import { WorkDocumentTabs, type TNewFileKind } from "./work-document-tabs"
 
 /** A part the backend could not give: its message, and Retry. */
@@ -50,9 +58,10 @@ export function Unavailable({
     )
 }
 
-/** A work item named by its slug: a link that opens it when it is in this
- * project, and a labelled name that does not navigate when it is another
- * project's, which this page does not serve. */
+/** A work item named by its full identifier: a link that opens it. Another
+ * project's item is asked of the link resolver the Markdown links use, and
+ * opens at the key it answers (TCW-113 Design 6.4, 6.7); one whose project
+ * is not on this machine stays a labelled name that does not navigate. */
 export function SlugLink({
     slug,
     project,
@@ -61,7 +70,23 @@ export function SlugLink({
     project: TProject
 }) {
     const folder = folderOf(slug)
-    if (isLocal(slug, project))
+    const local = isLocal(slug, project)
+    const [target, setTarget] = useState<string | null>(null)
+    useEffect(() => {
+        if (local) return
+        let stale = false
+        const uri = objectAddress(slug)
+        void requestJson<Record<string, TResolution>>("/api/resolve", "POST", {
+            uris: [uri],
+        }).then((result) => {
+            const found = result.data?.[uri]
+            if (!stale && found?.ok && found.key) setTarget(found.key)
+        })
+        return () => {
+            stale = true
+        }
+    }, [slug, local])
+    if (local)
         return (
             <a
                 href={`/work/${encodeURIComponent(folder)}`}
@@ -72,6 +97,16 @@ export function SlugLink({
             </a>
         )
     const owner = projectOf(slug) ?? ""
+    if (target)
+        return (
+            <a
+                href={pathFor("work", target)}
+                data-nav-axis="work"
+                data-nav-key={target}
+            >
+                {folder} <Badge color="amber">{owner}</Badge>
+            </a>
+        )
     return (
         <span
             className="tcw-other-project-name"
@@ -217,12 +252,14 @@ export type TWorkPageEditing = {
     onEditProperties?: () => void
     onEditFile?: (stage: string, path: string) => void
     onNewFile?: (stage: string, kind: TNewFileKind) => void
-    /** Below the properties: adding `blocks` links. */
-    blocksForm?: ReactNode
     /** Below the comments: the box that adds one. */
     commentBox?: ReactNode
     /** The declaration file's section. */
     declaration?: ReactNode
+    /** The stage whose tab opens, when it is not the item's own: the stage
+     * of the file the page was last left to edit, so that coming back from
+     * the editor shows that file. */
+    openStage?: string
 }
 
 /** A work item's page: title, folder, stage, properties, the request when the
@@ -242,7 +279,8 @@ export function WorkPage({
     editing?: TWorkPageEditing
 }) {
     const item = isUnavailable(detail.item) ? null : detail.item
-    const slug = item?.slug ?? `${project.id}/${detail.folder}`
+    const slug =
+        item?.["full-id"] ?? fullIdText(project.id, "work", detail.folder)
     return (
         <>
             <div className="detail-head">
@@ -256,6 +294,9 @@ export function WorkPage({
                     {item && <CreatedAt value={item.created} />}
                 </div>
                 <Flex className="detail-actions" align="center" gap="2">
+                    {item && item.owner !== project.id && (
+                        <OwnedBy owner={item.owner} />
+                    )}
                     {detail.link && (
                         <Button asChild variant="soft">
                             <a
@@ -289,7 +330,7 @@ export function WorkPage({
                 <>
                     <Text as="p" className="stage-line" size="2">
                         Stage: <strong>{item!.stage ?? "no stage"}</strong>.{" "}
-                        <StageHint slug={slug} />
+                        <StageHint slug={slug} project={project.id} />
                     </Text>
                     <Properties
                         item={item!}
@@ -298,7 +339,6 @@ export function WorkPage({
                     />
                 </>
             )}
-            {editing.blocksForm}
             {detail.warnings.length > 0 && (
                 <Callout.Root color="amber" role="status">
                     <Callout.Text>
@@ -329,7 +369,7 @@ export function WorkPage({
                 key={detail.folder}
                 project={project}
                 detail={detail}
-                current={item?.stage ?? null}
+                current={editing.openStage ?? item?.stage ?? null}
                 readFile={readFile}
                 onEditFile={editing.onEditFile}
                 onNewFile={editing.onNewFile}
@@ -347,9 +387,10 @@ export function WorkPage({
     )
 }
 
-/** "Move it with `tcw work advance <slug>`.", the command in code type. */
-function StageHint({ slug }: { slug: string }) {
-    const [before, command, after] = moveHint(slug).split("`")
+/** "Move it with `tcw work advance <slug>`.", the command in code type;
+ * for another project's item, the `tcw -C` form that runs it there. */
+function StageHint({ slug, project }: { slug: string; project: string }) {
+    const [before, command, after] = moveHint(slug, project).split("`")
     return (
         <>
             {before}

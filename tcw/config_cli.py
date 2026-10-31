@@ -1,5 +1,6 @@
-"""`tcw config show [--origin]` — the configuration a command in this project
-actually runs with, every layer merged (TCW-72 Design 8).
+"""`tcw project config [--origin]` — the configuration a command in this
+project actually runs with, every layer merged (TCW-72 Design 8; TCW-115
+Design 4), registered by `tcw/project_cli.py`.
 
 The output is YAML that reads back as the merged values, except that a
 value under a key ending in `-env` that is not shaped like an environment
@@ -24,8 +25,6 @@ from typing import Any
 
 from tcw import exit as codes
 from tcw.errors import NO_PROJECT, BackendError, ConfigError
-
-NAME = "config"
 
 #: A string YAML reads back as itself when written bare: no quoting needed.
 _PLAIN = re.compile(r"[A-Za-z0-9_./][A-Za-z0-9_./ -]*")
@@ -110,6 +109,35 @@ def _packaged(path: tuple) -> str | None:
     return None
 
 
+def origin_label(origin, root: Path | None, active_id: str | None) -> str:
+    """Where a value came from, in the one shape of TCW-115 Design 4.2:
+    `<project>, <layer> <file>`, `<project>, environment <NAME>`, or
+    `built-in`. `<file>` is relative to `root`, the active project's, when it
+    is inside it. A layer that names no project, the user-wide file among
+    them, is the active project's (Design 4.2). `tcw project info` prints the
+    same label in parentheses (Design 4.3)."""
+    from tcw.config import shown_in
+    if origin.layer == "built-in":
+        return "built-in"
+    project = origin.project or active_id
+    if origin.variable is not None:
+        return f"{project}, environment {origin.variable}"
+    if origin.file is None:
+        return f"{project}, {origin.layer}"
+    return f"{project}, {origin.layer} {shown_in(origin.file, root)}"
+
+
+def origin_json(origin, active_id: str | None) -> dict:
+    """`origin_label` as JSON (TCW-115 Design 4.3), the file absolute."""
+    if origin.layer == "built-in":
+        return {"layer": "built-in"}
+    project = origin.project or active_id
+    if origin.variable is not None:
+        return {"project": project, "layer": "environment", "variable": origin.variable}
+    return {"project": project, "layer": origin.layer,
+            "file": None if origin.file is None else str(Path(origin.file).absolute())}
+
+
 class _Writer:
     def __init__(self, config, *, origin: bool):
         self.config = config
@@ -117,9 +145,8 @@ class _Writer:
         self.lines: list[str] = []
 
     def comment(self, path: tuple, value: Any) -> str:
-        """What follows a value: its layer with `--origin`; the packaged file
+        """What follows a value: its origin with `--origin`; the packaged file
         for a built-in entry always."""
-        from tcw.config import shown_in
         packaged = (_packaged(path) if isinstance(value, dict)
                     and value.get("builtin") is True else None)
         parts = []
@@ -128,10 +155,8 @@ class _Writer:
             if found is None and path and isinstance(path[-1], int):
                 found = self.config.origins.get(path[:-1])
             if found is not None:
-                parts.append(found.layer if found.file is None
-                             or found.layer == "project"
-                             else f"{found.layer}: "
-                                  f"{shown_in(found.file, self.config.root)}")
+                own = self.config.sources[-1] if self.config.sources else None
+                parts.append(origin_label(found, self.config.root, own))
         if packaged:
             parts.append(packaged)
         return f"  # {', '.join(parts)}" if parts else ""
@@ -214,7 +239,14 @@ def _set_aside(config) -> list[str]:
         for s in settings:
             hidden = s.key_path and str(s.key_path[-1]).endswith("-env")
             value = HIDDEN if hidden else _flow(_masked(s.value))
-            where = shown_in(s.file, config.root) if s.file is not None else ""
+            if s.file is not None:
+                where = shown_in(s.file, config.root)
+            elif s.variable is not None:
+                # A value from an override variable has no file: name the
+                # variable, as the values' own comments do.
+                where = f"environment {s.variable}"
+            else:
+                where = ""
             lines.append(f"# {kind}: {dotted(s.key_path)}: {value} "
                          f"({s.reason}, {where})")
     return lines
@@ -261,27 +293,23 @@ def _show(args: argparse.Namespace) -> int:
     # project file that cannot be read leaves nothing to print.
     if config.problems and (not args.origin or config.unreadable):
         raise ConfigError(config.problems)
+    # A key the project inherits that cannot be used: what would be printed
+    # is not the configuration commands run with, so nothing is (TCW-109
+    # Design 7.1). The first undecided key stops it, exit 7; else the first
+    # broken one, exit 1.
+    from tcw.config import INHERITED_KEYS
+    from tcw.errors import InheritedUnavailable
+    errors = [config.withheld[key].error() for key in INHERITED_KEYS
+              if key in config.withheld]
+    for error in errors:
+        if isinstance(error, InheritedUnavailable):
+            raise error
+    if errors:
+        raise errors[0]
     sys.stdout.write(render(config, origin=args.origin))
     if config.problems:
         for problem in config.problems:
-            print(f"tcw config show: {problem}", file=sys.stderr)
+            print(f"{args._command}: {problem}", file=sys.stderr)
         return codes.ERROR
     return codes.OK
 
-
-def add_subparser(sub: argparse._SubParsersAction) -> None:
-    from tcw.cli_help import command, group
-    p = group(sub, NAME, help="the configuration this project runs with")
-    verbs = p.add_subparsers(dest="config_verb", required=True)
-    p = command(verbs, "show",
-                help="the effective configuration: TCW's defaults, "
-                     "tcw-config.yaml and your personal files, merged",
-                prints="the effective configuration as YAML; with --origin, where "
-                       "each value came from",
-                writes="nothing",
-                examples=["config show", "config show --origin"])
-    p.add_argument("--origin", action="store_true",
-                   help="name the layer of every value, and list what your "
-                        "personal files set that was not used; prints even when "
-                        "something is wrong")
-    p.set_defaults(own_config=True, func=_show)

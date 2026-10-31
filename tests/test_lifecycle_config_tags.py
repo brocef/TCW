@@ -8,6 +8,7 @@ import yaml
 
 from tcw.cli import main
 from tcw.store.fs import init
+from tests.projectfiles import config_file, write_config_file
 
 
 def node(tmp_path: Path, work: dict) -> Path:
@@ -17,10 +18,10 @@ def node(tmp_path: Path, work: dict) -> Path:
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
     init(["work"], root, "node")
-    config = root / "tcw-config.yaml"
+    config = config_file(root)
     data = yaml.safe_load(config.read_text()) or {}
     data["work"] = {**(data.get("work") or {}), **work}
-    config.write_text(yaml.safe_dump(data, sort_keys=False))
+    write_config_file(config, yaml.safe_dump(data, sort_keys=False))
     return root
 
 

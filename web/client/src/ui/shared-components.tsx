@@ -8,6 +8,7 @@ import {
     type ReactNode,
 } from "react"
 import {
+    Badge,
     Button,
     Callout,
     Card,
@@ -28,6 +29,7 @@ import { marked } from "marked"
 import { requestJson } from "../model/api"
 import { rankReferenceOptions, typedLink } from "../model/reference-search"
 import { LinkContext } from "./link-context"
+import { ProjectIdContext } from "./project-context"
 import type {
     Axis,
     AxisItem,
@@ -36,14 +38,16 @@ import type {
     TreeNode,
     WorkItem,
 } from "../model/types"
+import { statusSummary } from "../model/scope"
 import { personName } from "../model/work"
 import { CreatedAt, ModifiedAt } from "./modified-at"
 import { useThemePreference } from "../theme-context"
 import { parseThemePreference } from "../theme-preference"
-import { itemKey, itemTitle, pathFor } from "./route-utils"
+import { inherited, itemKey, itemTitle, pathFor } from "./route-utils"
 import { beginResize } from "./ui-state"
 
-type Resolution = {
+/** What `POST /api/resolve` answers for one `tcw://` link. */
+export type TResolution = {
     ok: boolean
     axis?: Axis
     key?: string
@@ -124,7 +128,7 @@ export function Markdown({
         // response then finds nothing left to repair, because that pass already
         // stripped their hrefs.
         let superseded = false
-        void requestJson<Record<string, Resolution>>("/api/resolve", "POST", {
+        void requestJson<Record<string, TResolution>>("/api/resolve", "POST", {
             uris,
         }).then((result) => {
             if (superseded) return
@@ -172,6 +176,16 @@ export function Markdown({
             className="body"
             dangerouslySetInnerHTML={{ __html: html }}
         />
+    )
+}
+
+/** The badge of another project's object, on its page and its row
+ * (TCW-113 Design 6.7). */
+export function OwnedBy({ owner }: { owner: string }) {
+    return (
+        <Badge color="amber" title={`Edit it in project ${owner}`}>
+            owned by {owner}
+        </Badge>
     )
 }
 
@@ -263,6 +277,7 @@ export function Tree<T extends AxisItem>({
     rowClass?: (item: T) => string
     people?: Record<string, string>
 }) {
+    const projectId = useContext(ProjectIdContext)
     const renderNodes = (
         current: Array<TreeNode<T>>,
         depth: number
@@ -271,7 +286,9 @@ export function Tree<T extends AxisItem>({
             {current.map((node) => {
                 const hasChildren = node.children.length > 0
                 const isExpanded = expanded.has(node.path)
-                const key = node.item ? itemKey(axis, node.item) : node.path
+                const key = node.item
+                    ? itemKey(axis, node.item, projectId)
+                    : node.path
                 return (
                     <div className="tree-node" key={node.path} role="none">
                         <div className="tree-row" role="none">
@@ -327,7 +344,7 @@ export function Tree<T extends AxisItem>({
                                         <Tooltip
                                             content={
                                                 <span className="copy-slug-tooltip">
-                                                    Copy slug
+                                                    Copy full identifier
                                                 </span>
                                             }
                                         >
@@ -335,11 +352,12 @@ export function Tree<T extends AxisItem>({
                                                 className="copy-slug"
                                                 variant="ghost"
                                                 type="button"
-                                                aria-label="Copy slug to clipboard"
+                                                aria-label="Copy full identifier to clipboard"
                                                 onClick={() =>
                                                     void navigator.clipboard.writeText(
-                                                        (node.item as WorkItem)
-                                                            .slug
+                                                        (node.item as WorkItem)[
+                                                            "full-id"
+                                                        ]
                                                     )
                                                 }
                                             >
@@ -383,6 +401,7 @@ export function ItemMeta({
     item: AxisItem
     people?: Record<string, string>
 }) {
+    const projectId = useContext(ProjectIdContext)
     if (axis === "work") {
         const work = item as WorkItem
         if (work.unread)
@@ -394,6 +413,12 @@ export function ItemMeta({
         return (
             <div>
                 <span className="work-status">{work.stage ?? "no stage"}</span>
+                {work.owner !== projectId && (
+                    <>
+                        {" "}
+                        <OwnedBy owner={work.owner} />
+                    </>
+                )}
                 {[
                     work.priority && `priority ${work.priority}`,
                     work.assignee && personName(work.assignee, people),
@@ -411,7 +436,13 @@ export function ItemMeta({
         return (
             <div>
                 <div>
-                    {[term.kind, term.origin].filter(Boolean).join(" · ")}
+                    {term.kind}
+                    {inherited(term, projectId) && (
+                        <>
+                            {" "}
+                            <OwnedBy owner={term.owner} />
+                        </>
+                    )}
                 </div>
                 <ModifiedAt value={term.modified} />
             </div>
@@ -420,12 +451,17 @@ export function ItemMeta({
     const capability = item as CapabilityItem
     return (
         <div>
-            {[
-                capability.status,
-                capability.origin !== "local" && capability.origin,
-            ]
-                .filter(Boolean)
-                .join(" · ")}
+            {/* Under `down` and `all`, each project's status, counted
+                (TCW-113 Design 6.9). */}
+            {capability.statuses
+                ? statusSummary(capability.statuses)
+                : capability.status}
+            {inherited(capability, projectId) && (
+                <>
+                    {" "}
+                    <OwnedBy owner={capability.owner} />
+                </>
+            )}
             <ModifiedAt value={capability.modified} />
         </div>
     )

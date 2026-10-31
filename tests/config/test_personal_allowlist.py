@@ -44,7 +44,7 @@ def test_a_shared_key_in_a_personal_file_is_one_problem(personal, key, value):
     config = load_config(personal.root)
     lines = problem_lines(config)
     assert len(lines) == 1, lines
-    assert lines[0].startswith(f"tcw-config.local.yaml: {key}: "), lines
+    assert lines[0].startswith(f".tcw/tcw-config.local.yaml: {key}: "), lines
     assert [s.key_path for s in config.refused] == [tuple(key.split("."))]
 
 
@@ -56,7 +56,7 @@ def test_a_refused_value_is_not_merged(personal):
 def test_the_stages_mapping_must_be_a_mapping(personal):
     personal.local({"work": {"stages": ["a"]}})
     lines = problem_lines(load_config(personal.root))
-    assert lines == ["tcw-config.local.yaml: work.stages: must be a mapping"]
+    assert lines == [".tcw/tcw-config.local.yaml: work.stages: must be a mapping"]
 
 
 def test_the_overridable_keys_are_accepted(personal):
@@ -92,7 +92,7 @@ def test_a_credential_name_that_is_not_a_name_is_reported_without_its_value(pers
     lines = problem_lines(load_config(personal.root))
     assert len(lines) == 1, lines
     assert lines[0].startswith(
-        "tcw-config.local.yaml: work.jira.credentials.token-env: ")
+        ".tcw/tcw-config.local.yaml: work.jira.credentials.token-env: ")
     assert "abc def/123" not in lines[0]
 
 
@@ -100,8 +100,8 @@ def test_user_in_the_project_file_is_a_problem(personal):
     personal.project({"user": {"name": "a"}})
     config = load_config(personal.root)
     lines = problem_lines(config)
-    assert len(lines) == 1 and lines[0].startswith("tcw-config.yaml: user: ")
-    assert "tcw-config.local.yaml" in lines[0]
+    assert len(lines) == 1 and lines[0].startswith(".tcw/tcw-config.yaml: user: ")
+    assert ".tcw/tcw-config.local.yaml" in lines[0]
     assert str(personal.user_file) in lines[0]
     assert config.user_name is None
 

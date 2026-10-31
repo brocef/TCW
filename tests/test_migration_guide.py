@@ -1052,6 +1052,52 @@ from tests.test_documented_cli_surface import _check, _invocations, tree  # noqa
 # with the reason it is named there.
 TWO_X_SPANS: dict[str, str] = {}
 
+# 3.0 commands this guide names that a later release removed, each with the
+# release and the reason. The guide describes the move to 3.0 and is not
+# rewritten for later releases.
+REMOVED_AFTER_3_0: dict[str, str] = {
+    "tcw capabilities extends add <id>":
+        "removed in TCW 4.0: a project inherits from its parents (TCW-112 Design 1)",
+    "tcw capabilities extends rm <id>":
+        "removed in TCW 4.0: a project inherits from its parents (TCW-112 Design 1)",
+    "tcw work new <title> --project <id>":
+        "the --project option of tcw work new is removed in TCW 4.0: an item is made in "
+        "its own project, with tcw -C (TCW-114 Design 2.1)",
+    "tcw work new <title> [--project <id>] [--stage inbox] [--priority <name>] [--effort] [--complexity] [--tag] [--assignee] [--assign-me] [--parent] [--blocked-by]":
+        "the --project option of tcw work new is removed in TCW 4.0: an item is made in "
+        "its own project, with tcw -C (TCW-114 Design 2.1)",
+    "tcw work new --project":
+        "the --project option of tcw work new is removed in TCW 4.0: an item is made in "
+        "its own project, with tcw -C (TCW-114 Design 2.1)",
+    "tcw work new --project <id> --stage <stage>":
+        "the --project option of tcw work new is removed in TCW 4.0: an item is made in "
+        "its own project, with tcw -C (TCW-114 Design 2.1)",
+    "tcw work edit <slug> [--title] [--priority <name>] [--effort] [--complexity] [--tag] [--untag] [--assignee] [--assign-me] [--parent] [--blocked-by] [--unblocked-by] [--blocks]":
+        "the --blocks option of tcw work edit is removed in TCW 4.0: the relation is "
+        "recorded on the blocked item, with --blocked-by (TCW-114 Design 2.2)",
+    "tcw capabilities list --local":
+        "the --local option of list is removed in TCW 4.0: --scope own, the default, "
+        "lists only the project's own capabilities (TCW-113 Design 5.1)",
+    "tcw provision":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+    "tcw init":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+    "tcw init [<axis>…] --id <id>":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+    "tcw provision [--component <axis>] [--dry-run]":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+    "tcw projects list [--json]":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+    "tcw init <axis>":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+    "tcw init work":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+    "tcw config show [--origin]":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+    "tcw config show":
+        "moved into tcw project in TCW 4.0 (TCW-115 Design 1.2)",
+}
+
 
 def _without_first_cells(text: str) -> str:
     """The guide with each table row's first cell emptied: that column names 2.x
@@ -1063,7 +1109,7 @@ def _without_first_cells(text: str) -> str:
 def test_every_command_outside_a_first_column_parses_on_3_0(tree):
     problems = []
     for span in _invocations(_without_first_cells(GUIDE)):
-        if span in TWO_X_SPANS:
+        if span in TWO_X_SPANS or span in REMOVED_AFTER_3_0:
             continue
         if (problem := _check(span, tree)) is not None:
             problems.append(f"`{span}`: {problem}")

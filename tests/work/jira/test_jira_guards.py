@@ -85,11 +85,12 @@ def test_create_rename_and_adopt_leave_git_alone(jira_project, tcw):
     before = state()
     backend = jira_project.backend()
     made = backend.create("Made here", Changes(), stage="request", request=None)
-    renamed = backend.rename(made.slug.folder, "renamed")
+    key = "-".join(made.slug.folder.split("-", 2)[:2])
+    [(_, renamed)] = backend.move(made.slug.folder, f"{key}-renamed", lambda: None)
     plain = jira_project.fake.ticket("Plain")
     assert tcw(["tickets", "adopt", plain.key], root).code == 0
     assert state() == before
     status = sorted(git(root, "status", "--porcelain", "--untracked-files=normal")
                     .splitlines())
-    assert status == [f"?? docs/work/{renamed.slug.folder}/",
+    assert status == [f"?? docs/work/{renamed.folder}/",
                       f"?? docs/work/{plain.key}-plain/"]

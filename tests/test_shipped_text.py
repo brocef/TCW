@@ -19,7 +19,7 @@ from tcw.cli import build_parser
 from tcw.store.base import PROCEDURE_IDS
 from tcw.work.layout import front_matter
 from tcw.work.model import STAGES
-from tests.doc_vocabulary import PATTERNS, scan
+from tests.doc_vocabulary import PATTERNS, scan, chdir_problem, without_chdir
 from tests.test_documented_cli_surface import INVOCATION, _invocations
 
 REPO = Path(__file__).resolve().parent.parent
@@ -43,6 +43,12 @@ GIT_ALLOWED = {
         "git worktree of the project":
             "a fact: a linked worktree has no copy of the untracked personal file "
             "(TCW-75 spec, Design 6; TCW-72 spec, Risks)",
+    },
+    "skills/configure/references/projects.md": {
+        "`<url>#<branch>`":
+            "the written shape of a manifest entry's `repository` value "
+            "(`tcw/store/manifest.py:42-58`), not an instruction to run git "
+            "(TCW-117 Design 5.4 (a))",
     },
     "skills/configure/references/stores.md": {
         "opened from a linked worktree":
@@ -69,7 +75,7 @@ EXTRA_PATTERNS = (
 VOCABULARY_ALLOWED: dict[str, dict[str, str]] = {
     "skills/configure/references/personal.md": {
         "- builtin: true  # built-in, tcw/work/prompts/spec.md":
-            "`tcw config show` prints it for a built-in entry (review decision R8)",
+            "`tcw project config` prints it for a built-in entry (review decision R8)",
     },
 }
 
@@ -283,6 +289,9 @@ def _placeholder(token: str) -> bool:
 def command_problem(span: str) -> str | None:
     """What is wrong with one documented `tcw …` invocation, or None."""
     tokens = span[INVOCATION.search(span).end():].split()
+    if (problem := chdir_problem(tokens)) is not None:
+        return problem
+    tokens = without_chdir(tokens)
     parser, path = build_parser(), ["tcw"]
     rest = tokens
     for i, token in enumerate(tokens):
@@ -327,6 +336,8 @@ def test_every_command_named_in_shipped_text_exists(doc):
     ("tcw work procedure prompt pause-work", "no such procedure: prompt"),
     ("tcw work stage prompt verify <slug>", "no stage with a prompt: verify"),
     ("tcw work list --status active", "no such flag: --status on tcw work list"),
+    ("tcw -C <its folder> work list",
+     "tcw -C takes one token as its target, not a phrase: folder>"),
 ])
 def test_the_command_check_sees_each_mistake(span, problem):
     assert command_problem(span) == problem
@@ -335,8 +346,10 @@ def test_the_command_check_sees_each_mistake(span, problem):
 @pytest.mark.parametrize("span", [
     "tcw work procedure <id>", "tcw work procedure pause-work",
     "tcw work stage prompt review <slug>", "tcw work stage prompt <stage> <slug>",
-    'tcw work new "<title>" --project <id>', "tcw work path <slug> qa --next",
+    "tcw work path <slug> qa --next",
     "tcw capabilities add <path> \"<Name>\" --status Supported",
+    'tcw -C tcw://<id>.path/ work new "<title>" --parent <slug> --flat',
+    "tcw -C <folder> -C <folder> work list",
 ])
 def test_the_command_check_accepts_real_commands(span):
     assert command_problem(span) is None
@@ -406,3 +419,50 @@ def test_the_capabilities_skill_changes_records_with_the_code():
     assert all("--status" in l for l in adds), \
         [l for l in adds if "--status" not in l]
     assert any("--status Supported" in l for l in adds)
+
+
+# -- TCW-115 AC 4: no file of the CLI names a removed command ----------------------
+
+REMOVED_COMMAND = re.compile(r"\btcw (init|projects|config show|provision)\b")
+
+# Swept for a removed command: the CLI's code and packaged files, the eval
+# harness, the scripts and the test fixtures. The web app's build output is
+# generated, and the one exception is the table that names each removed
+# command to point at its replacement (TCW-115 Design 1.2).
+SWEPT = ("tcw", "evals", "scripts", "tests/fixtures")
+
+
+def _removed_command_namers() -> list[str]:
+    found = []
+    for top in SWEPT:
+        for path in sorted((REPO / top).rglob("*")):
+            relative = path.relative_to(REPO).as_posix()
+            if not path.is_file() or relative.startswith("tcw/serve/dist/") \
+                    or "__pycache__" in path.parts:
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            if relative == "tcw/cli_suggest.py":
+                start = text.index("REMOVED_COMMANDS: dict[str, str] = {")
+                text = text[:start] + text[text.index("}", start):]
+            found += [f"{relative}:{number}: {line.strip()}"
+                      for number, line in enumerate(text.splitlines(), 1)
+                      if REMOVED_COMMAND.search(line)]
+    return found
+
+
+def test_no_file_of_the_cli_names_a_removed_command():
+    found = _removed_command_namers()
+    assert not found, "\n".join(["these name a removed command:", *found])
+
+
+@pytest.mark.parametrize("text, names", [
+    ("run `tcw provision` to obtain it", True), ("tcw init --id x", True),
+    ("`tcw projects list`", True), ("tcw config show --origin", True),
+    ("tcw provisioning", False), ("tcw initial", False), ("tcw config", False),
+    ("tcw project provision", False),
+])
+def test_the_removed_command_scan_sees_each_name(text, names):
+    assert bool(REMOVED_COMMAND.search(text)) is names

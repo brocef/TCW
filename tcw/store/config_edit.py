@@ -34,12 +34,14 @@ from its documentation, and each pinned by a test in `tests/test_config_edit.py`
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+from tcw.project_files import VERSION_KEY, version_line
 from tcw.store.yaml_source import load as _load_named_yaml
 
 
@@ -49,11 +51,23 @@ class ConfigEditRefused(ValueError):
     one-line `tcw <cmd>: …` error."""
 
 
+#: Stands for a list's leading `inherit: true` entry among its plain values
+#: (TCW-109 Design 6.2): a string no YAML scalar can be.
+INHERIT = "\x00inherit"
+
+
 @dataclass(frozen=True)
 class SetList:
+    """Set `<section>.<key>` to the list of `values`; with `inherit`, after
+    one leading `inherit: true` entry."""
     section: str
     key: str
     values: tuple[str, ...]
+    inherit: bool = False
+
+    @property
+    def entries(self) -> tuple[str, ...]:
+        return (INHERIT, *self.values) if self.inherit else tuple(self.values)
 
 
 @dataclass(frozen=True)
@@ -75,7 +89,35 @@ class SetId:
     value: str
 
 
-Edit = SetList | SetScalar | Remove | SetId
+@dataclass(frozen=True)
+class RenameKey:
+    """Rename the key at `path` to `new`, keeping its value and its place
+    (TCW-116 Design 2.8). `path` runs from the top of the file: a string
+    for a mapping key, a number for a list entry. A key an alias reaches
+    from two paths is the same key, renamed once."""
+    path: tuple[str | int, ...]
+    new: str
+
+
+@dataclass(frozen=True)
+class RemoveTop:
+    """Remove the top-level `key` and the whole block under it. The comments
+    on the block's own lines go with it; `edit_text` lists them in its
+    `dropped` argument, for the caller to report."""
+    key: str
+
+
+@dataclass(frozen=True)
+class SetTop:
+    """Set the top-level `key` to `value`, which may be a list or mapping of
+    any depth. A new key goes after the top-level key `after` when the file
+    has it, else at the end of the file."""
+    key: str
+    value: object
+    after: str | None = None
+
+
+Edit = SetList | SetScalar | Remove | SetId | RenameKey | RemoveTop | SetTop
 
 
 @dataclass(frozen=True)
@@ -100,12 +142,48 @@ def read_text(path: Path) -> str | None:
         return handle.read()
 
 
+def _walk(data, path):
+    """The value at `path` in parsed data, or None when it is not there."""
+    for part in path:
+        if isinstance(part, int):
+            if not isinstance(data, list) or not -len(data) <= part < len(data):
+                return None
+            data = data[part]
+        else:
+            if not isinstance(data, dict) or part not in data:
+                return None
+            data = data[part]
+    return data
+
+
+def _renamed(mapping, edit: RenameKey) -> None:
+    """Rename in place, so that every alias of the mapping sees it."""
+    parent = _walk(mapping, edit.path[:-1])
+    old = edit.path[-1]
+    if not isinstance(parent, dict) or old not in parent or edit.new in parent:
+        return
+    items = [(edit.new if k == old else k, v) for k, v in parent.items()]
+    parent.clear()
+    for key, value in items:
+        parent[key] = value
+
+
 def intended(mapping: dict, edits: list[Edit]) -> dict:
     """`mapping` with `edits` applied — what the file must parse to afterwards."""
-    out = dict(mapping)
+    out = copy.deepcopy(mapping) if any(isinstance(e, RenameKey) for e in edits) \
+        else dict(mapping)
     for edit in edits:
         if isinstance(edit, SetId):
             out["id"] = edit.value
+            continue
+        if isinstance(edit, RenameKey):
+            _renamed(out, edit)
+            continue
+        if isinstance(edit, RemoveTop):
+            out.pop(edit.key, None)
+            continue
+        if isinstance(edit, SetTop):
+            out[edit.key] = copy.deepcopy(edit.value)
             continue
         section = out.get(edit.section)
         section = dict(section) if isinstance(section, dict) else {}
@@ -116,31 +194,60 @@ def intended(mapping: dict, edits: list[Edit]) -> dict:
             else:
                 out.pop(edit.section, None)
             continue
-        section[edit.key] = (list(edit.values) if isinstance(edit, SetList)
+        section[edit.key] = (([{"inherit": True}] if edit.inherit else [])
+                             + list(edit.values) if isinstance(edit, SetList)
                              else edit.value)
         out[edit.section] = section
     return out
 
 
-def edit_text(path: Path, text: str | None, edits: list[Edit]) -> str | None:
+def _dotted(path) -> str:
+    return "".join(f"[{p}]" if isinstance(p, int) else (f".{p}" if i else str(p))
+                   for i, p in enumerate(path))
+
+
+def edit_text(path: Path, text: str | None, edits: list[Edit], *,
+              versioned: bool = False, dropped: list[str] | None = None) -> str | None:
     """The new file text, or None when the edits change nothing.
 
     `path` only names the file in a refusal. `text` is what `read_text` returned.
+    With `versioned`, a file without a top-level `tcw-version` gets
+    `version_line()` as its first line (TCW-116 Design 2.8). The comments a
+    `RemoveTop` takes with its block are appended to `dropped`.
     """
     if text is None or not text.lstrip("\ufeff").strip():
         target = intended({}, edits)
         if not target:
-            return None
-        return yaml.safe_dump(target, sort_keys=False, allow_unicode=True)
+            return version_line() if versioned else None
+        # A file TCW creates records the version that wrote it, first
+        # (TCW-106 Design 3.1).
+        return version_line() + yaml.safe_dump(target, sort_keys=False,
+                                               allow_unicode=True)
     mapping = _load(text, path)
     if not isinstance(mapping, dict):
         mapping = {}
+    for edit in edits:
+        if isinstance(edit, RenameKey):
+            parent = _walk(mapping, edit.path[:-1])
+            has_old = isinstance(parent, dict) and edit.path[-1] in parent
+            has_new = isinstance(parent, dict) and edit.new in parent
+            if has_old == has_new:
+                why = (f"both `{_dotted(edit.path)}` and `{edit.new}` are written"
+                       if has_old else f"`{_dotted(edit.path)}` is not written in the file")
+                raise ConfigEditRefused(f"{path}: cannot rename {_dotted(edit.path)} "
+                                        f"({why}); {_instruction(edit, None, mapping)}")
     target = intended(mapping, edits)
+    version = None
+    if versioned and VERSION_KEY not in mapping:
+        version = version_line()
+        target = {**yaml.safe_load(version), **target}
     if target == mapping:
         return None
     doc = _Document(text)
     replacements: list[_Replacement] = []
     allowed: set[int] = set()
+    if version is not None:
+        replacements.append(_Replacement(doc.bom, doc.bom, version.replace("\n", doc.nl)))
     root = doc.root
     if root is not None and doc.is_null(root) and root.start_mark.index != root.end_mark.index:
         # A document that is only `~` or `null`: that token goes, the keys follow.
@@ -152,7 +259,7 @@ def edit_text(path: Path, text: str | None, edits: list[Edit]) -> str | None:
             made, ok = doc.plan(edit, mapping)
         except _Refuse as why:
             raise ConfigEditRefused(_message(path, edit, doc, mapping, str(why))) from None
-        replacements += made
+        replacements += [r for r in made if r not in replacements]   # an alias's twin
         allowed |= ok
     replacements.sort(key=lambda r: (r.start, r.end))
     for before, after in zip(replacements, replacements[1:]):
@@ -161,8 +268,14 @@ def edit_text(path: Path, text: str | None, edits: list[Edit]) -> str | None:
                                              "two changes overlap"))
     new = _assemble(text, replacements)
     _verify(path, text, new, replacements, allowed, target,
-            instruction="; and ".join(_instruction(e, doc, mapping) for e in edits),
-            headline="cannot " + ", ".join(_what(e, mapping) for e in edits))
+            instruction="; and ".join(_instruction(e, doc, mapping) for e in edits)
+            or "edit it by hand",
+            headline="cannot " + (", ".join(_what(e, mapping) for e in edits)
+                                  or "add tcw-version"))
+    if dropped is not None:
+        for r in replacements:
+            dropped += [doc.text[c:doc.line_end(c)] for c in doc.comments_in(r.start, r.end)
+                        if c in allowed]
     return new
 
 
@@ -194,6 +307,10 @@ class _Document:
         tokens = list(yaml.scan(text))
         self.anchors = [t.start_mark.index for t in tokens
                         if isinstance(t, yaml.AnchorToken)]
+        self.anchor_names = {t.start_mark.index: t.value for t in tokens
+                             if isinstance(t, yaml.AnchorToken)}
+        self.aliases = [(t.start_mark.index, t.value) for t in tokens
+                        if isinstance(t, yaml.AliasToken)]
         scalars = [(t.start_mark.index, t.end_mark.index) for t in tokens
                    if isinstance(t, yaml.ScalarToken)]
         self.comments = [m.start() for m in re.finditer("#", text)
@@ -294,6 +411,8 @@ class _Document:
 
     @staticmethod
     def scalar(value: str, flow: bool = False) -> str:
+        if value == INHERIT:
+            return "{inherit: true}" if flow else "inherit: true"
         plain = value and not (flow and any(c in value for c in ",[]{}"))
         if plain:
             try:
@@ -311,10 +430,10 @@ class _Document:
         pad = " " * key_column
         if isinstance(edit, SetScalar):
             return [f"{pad}{edit.key}: {self.scalar(edit.value)}"]
-        if not edit.values:
+        if not edit.entries:
             return [f"{pad}{edit.key}: []"]
         dash = " " * (key_column + unit)
-        return [f"{pad}{edit.key}:"] + [f"{dash}- {self.scalar(v)}" for v in edit.values]
+        return [f"{pad}{edit.key}:"] + [f"{dash}- {self.scalar(v)}" for v in edit.entries]
 
     # -- planning one edit --
 
@@ -322,6 +441,12 @@ class _Document:
         pairs = self.pairs()
         if isinstance(edit, SetId):
             return self.plan_id(edit, pairs), set()
+        if isinstance(edit, RenameKey):
+            return self.plan_rename(edit), set()
+        if isinstance(edit, RemoveTop):
+            return self.plan_remove_top(edit, pairs)
+        if isinstance(edit, SetTop):
+            return self.plan_set_top(edit, pairs), set()
         found = self.find(pairs, edit.section)
         if found is None:
             if isinstance(edit, Remove):
@@ -381,7 +506,7 @@ class _Document:
                                  self.scalar(edit.value))], set()
         if not isinstance(v, yaml.SequenceNode):
             raise _Refuse(f"`{edit.section}.{edit.key}` is not a list")
-        return self.plan_list(k, v, list(edit.values))
+        return self.plan_list(k, v, list(edit.entries))
 
     @staticmethod
     def is_null(node) -> bool:
@@ -421,11 +546,93 @@ class _Document:
             return [_Replacement(v.start_mark.index, v.end_mark.index,
                                  self.scalar(edit.value))]
         line = f"id: {self.scalar(edit.value)}"
-        if pairs:
-            at = self.line_start(pairs[0][0].start_mark.index)
+        # Above the first key, except that `tcw-version` stays the first line
+        # (TCW-106 Design 3.1): the id then goes above the key after it.
+        rest = [pair for pair in pairs if pair[0].value != VERSION_KEY] \
+            if pairs and pairs[0][0].value == VERSION_KEY else pairs
+        if rest:
+            at = self.line_start(rest[0][0].start_mark.index)
             return [_Replacement(at, at, line + self.nl)]
         at, lead = self.document_end()
         return [_Replacement(at, at, lead + line + self.nl)]
+
+    def plan_rename(self, edit: RenameKey) -> list[_Replacement]:
+        """The key's own characters, its quoting kept."""
+        held = self.root
+        for part in edit.path[:-1]:
+            if isinstance(part, int):
+                if not isinstance(held, yaml.SequenceNode) or \
+                        not -len(held.value) <= part < len(held.value):
+                    raise _Refuse(f"`{_dotted(edit.path)}` is not written in the file")
+                held = held.value[part]
+            else:
+                if not isinstance(held, yaml.MappingNode):
+                    raise _Refuse(f"`{_dotted(edit.path)}` is not written in the file")
+                found = self.find(held.value, part)
+                if found is None:
+                    raise _Refuse(f"`{_dotted(edit.path)}` is not written in the file")
+                held = found[1]
+        if not isinstance(held, yaml.MappingNode):
+            raise _Refuse(f"`{_dotted(edit.path[:-1])}` is not a mapping")
+        found = self.find(held.value, edit.path[-1])
+        if found is None:
+            raise _Refuse(f"`{_dotted(edit.path)}` is not written in the file")
+        key = found[0]
+        if key.style == "'":
+            new = "'" + edit.new.replace("'", "''") + "'"
+        elif key.style == '"':
+            new = json.dumps(edit.new, ensure_ascii=False)
+        else:
+            new = self.scalar(edit.new)
+        return [_Replacement(key.start_mark.index, key.end_mark.index, new)]
+
+    def block_span(self, k, v) -> tuple[int, int]:
+        """From the start of key `k`'s line to the end of its value's last line."""
+        return (self.line_start(k.start_mark.index),
+                self.next_line(max(self.end_of(v), k.end_mark.index) - 1))
+
+    def plan_remove_top(self, edit: RemoveTop, pairs) -> tuple[list[_Replacement], set[int]]:
+        """The key's whole block. Its comments may go; an anchor it defines
+        may go only when nothing outside the block refers to it."""
+        found = self.find(pairs, edit.key)
+        if found is None:
+            raise _Refuse(f"`{edit.key}` is not written in the file")
+        k, v = found
+        if self.is_alias(k, v):
+            raise _Refuse(f"`{edit.key}` is an alias")
+        start, end = self.block_span(k, v)
+        defined = {at: name for at, name in self.anchor_names.items() if start <= at < end}
+        for at, name in self.aliases:
+            if name in defined.values() and not start <= at < end:
+                raise _Refuse(f"`{edit.key}` defines the anchor `&{name}`, which a key "
+                              f"outside it refers to")
+        return [_Replacement(start, end, "")], set(self.comments_in(start, end)) | set(defined)
+
+    def render_top(self, key: str, value) -> str:
+        """`key: value` in TCW's usual block style, in the file's line breaks."""
+        text = yaml.safe_dump({key: value}, sort_keys=False, allow_unicode=True,
+                              default_flow_style=False, width=float("inf"))
+        return text.replace("\n", self.nl)
+
+    def plan_set_top(self, edit: SetTop, pairs) -> list[_Replacement]:
+        block = self.render_top(edit.key, edit.value)
+        found = self.find(pairs, edit.key)
+        if found is not None:
+            k, v = found
+            start, end = self.block_span(k, v)
+            if self.is_alias(k, v) or self.comments_in(start, end):
+                raise _Refuse(f"`{edit.key}` is already written, with comments or an alias")
+            if end == len(self.text) and not self.text.endswith("\n"):
+                block = block[:-len(self.nl)]
+            return [_Replacement(start, end, block)]
+        anchor = self.find(pairs, edit.after) if edit.after else None
+        if anchor is None:
+            at, lead = self.document_end()
+            return [_Replacement(at, at, lead + block)]
+        at = self.block_span(*anchor)[1]
+        if at == len(self.text) and not self.text.endswith("\n"):
+            return [_Replacement(at, at, self.nl + block)]
+        return [_Replacement(at, at, block)]
 
     def plan_remove(self, sk, sv, k, v) -> tuple[list[_Replacement], set[int]]:
         """Delete the key's lines, and the section's line when it is left empty.
@@ -446,11 +653,35 @@ class _Document:
             made.insert(0, _Replacement(s_start, s_end, ""))
         return made, allowed
 
+    @staticmethod
+    def is_inherit(entry) -> bool:
+        """A list entry that is exactly `inherit: true`."""
+        return (isinstance(entry, yaml.MappingNode) and len(entry.value) == 1
+                and isinstance(entry.value[0][0], yaml.ScalarNode)
+                and entry.value[0][0].value == "inherit"
+                and isinstance(entry.value[0][1], yaml.ScalarNode)
+                and entry.value[0][1].tag == "tag:yaml.org,2002:bool"
+                and entry.value[0][1].value.lower() == "true")
+
+    @classmethod
+    def token(cls, entry) -> str:
+        return INHERIT if cls.is_inherit(entry) else entry.value
+
+    @classmethod
+    def last_line(cls, entry) -> int:
+        """The line an entry ends on: a block mapping's own end mark is on the
+        next line, so an `inherit: true` entry ends where its value does."""
+        if isinstance(entry, yaml.MappingNode):
+            return entry.value[-1][1].end_mark.line
+        return entry.end_mark.line
+
     def plan_list(self, k, v, new: list[str]) -> tuple[list[_Replacement], set[int]]:
         items = v.value
-        if any(not isinstance(i, yaml.ScalarNode) for i in items):
+        if any(not isinstance(i, yaml.ScalarNode) for i in items[1:]) or (
+                items and not isinstance(items[0], yaml.ScalarNode)
+                and not self.is_inherit(items[0])):
             raise _Refuse("the list holds something other than plain values")
-        old = [i.value for i in items]
+        old = [self.token(i) for i in items]
         shared_old = [x for x in old if x in new]
         shared_new = [x for x in new if x in old]
         incremental = (len(set(old)) == len(old) and len(set(new)) == len(new)
@@ -462,7 +693,7 @@ class _Document:
                     raise _Refuse("the list spans several lines and holds comments")
                 return [_Replacement(start, end, self.flow_list(new))], set()
             return [self.replace_flow(v, new)], set()
-        if any(i.start_mark.line != i.end_mark.line for i in items):
+        if any(i.start_mark.line != self.last_line(i) for i in items):
             raise _Refuse("an item of the list spans more than one line")
         prefixes = [self.text[self.line_start(i.start_mark.index):i.start_mark.index]
                     for i in items]
@@ -486,7 +717,7 @@ class _Document:
         made, allowed = [], set()
         by_value = dict(zip(old, items))
         for item in items:
-            if item.value not in new:
+            if self.token(item) not in new:
                 s = self.line_start(item.start_mark.index)
                 e = self.next_line(item.start_mark.index)
                 made.append(_Replacement(s, e, ""))
@@ -517,7 +748,8 @@ class _Document:
         items = v.value
         if not new:
             return _Replacement(start, end, "[]")
-        spelled = {i.value: self.text[i.start_mark.index:i.end_mark.index] for i in items}
+        spelled = {self.token(i): self.text[i.start_mark.index:i.end_mark.index]
+                   for i in items}
         if items:
             head = self.text[start:items[0].start_mark.index]
             tail = self.text[items[-1].end_mark.index:end]
@@ -559,7 +791,7 @@ def _verify(path: Path, original: str, new: str, replacements: list[_Replacement
         refuse("text outside the change would differ")
     doc = _Document(original)
     for r in replacements:
-        if any(r.start <= a < r.end for a in doc.anchors):
+        if any(r.start <= a < r.end and a not in allowed for a in doc.anchors):
             # Setting the value by hand would break the aliases the same way.
             refuse("the change would edit an anchor that other keys may refer to",
                    "first change the aliases (`*name`) that refer to it into plain "
@@ -578,8 +810,10 @@ def _verify(path: Path, original: str, new: str, replacements: list[_Replacement
 # ── messages ────────────────────────────────────────────────────────────────
 
 def _flow(edit) -> str:
+    if isinstance(edit, SetTop):
+        return json.dumps(edit.value, ensure_ascii=False)
     if isinstance(edit, SetList):
-        return _Document.flow_list(edit.values)
+        return _Document.flow_list(edit.entries)
     return _Document.scalar(edit.value, flow=True)
 
 
@@ -597,7 +831,14 @@ def _section_shape(doc: _Document, section: str) -> str:
     return "block" if doc.is_null(value) else "other"
 
 
-def _instruction(edit: Edit, doc: _Document, mapping: dict) -> str:
+def _instruction(edit: Edit, doc: _Document | None, mapping: dict) -> str:
+    if isinstance(edit, RenameKey):
+        return (f"edit it by hand: rename the key `{_dotted(edit.path)}` to "
+                f"`{edit.new}`, keeping its value")
+    if isinstance(edit, RemoveTop):
+        return f"edit it by hand: delete the top-level `{edit.key}` key and everything under it"
+    if isinstance(edit, SetTop):
+        return f"edit it by hand: set the top-level key `{edit.key}` to `{_flow(edit)}`"
     if isinstance(edit, SetId):
         return f"edit it by hand so it has the top-level key `id: {_Document.scalar(edit.value)}`"
     shape = _section_shape(doc, edit.section)
@@ -630,6 +871,12 @@ def _what(edit: Edit, mapping: dict) -> str:
     """'add taxonomy.extends', 'remove work.tags', 'set id' — for a headline."""
     if isinstance(edit, SetId):
         return "set id"
+    if isinstance(edit, RenameKey):
+        return f"rename {_dotted(edit.path)}"
+    if isinstance(edit, RemoveTop):
+        return f"remove {edit.key}"
+    if isinstance(edit, SetTop):
+        return f"{'change' if edit.key in mapping else 'add'} {edit.key}"
     section = mapping.get(edit.section)
     present = isinstance(section, dict) and edit.key in section
     verb = "remove" if isinstance(edit, Remove) else ("change" if present else "add")

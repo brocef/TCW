@@ -9,25 +9,42 @@ from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
 from http import HTTPStatus
-from typing import Any
+from typing import Any, Callable
 
+from tcw.errors import NotFound, TcwError, UsageError
 from tcw.findings import Finding
-from tcw.refs import resolve_tcw_ref
-from tcw.serve.server import Request, not_found, read_only, route, usage
-from tcw.store.base import AmbiguousRef
+from tcw.ids import MalformedId, identity, inherited_keys, parent_text, sort_input
+from tcw.ids import parse_address
+from tcw.locate import UNRESOLVED, find_tree
+from tcw.refs import resolve_address
+from tcw.serve.server import (Request, Written, creates, not_found, route, usage)
+from tcw.store.base import Capability, Term
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
+from tcw.tree_scope import (active_store, capability_detail, list_document, listing,
+                            scope_keys, show_row, term_detail)
 from tcw.validate import ValidationTarget, validate
 
-# tcw:// axis letter -> the client's axis word (the client parses no TCW references).
-AXIS_WORD = {"T": "taxonomy", "C": "capabilities", "W": "work"}
 # At most this many links per /api/resolve request (a rendered page's links).
 RESOLVE_MAX_URIS = 256
 
 
 def jsonable(value: Any) -> Any:
+    if isinstance(value, (Term, Capability)):
+        # Named by its full identifier and owner (TCW-110 Design 4.5); the
+        # path, the store's own `origin` and the owner field it came from
+        # are not sent.
+        # `parent` as text, never its parts; then `overrides` or `partial`,
+        # as the CLI's records carry them (TCW-112 Design 3.3, 3.4).
+        rest = {k: v for k, v in asdict(value).items()
+                if k not in ("slug", "path", "origin", "parent", "overrides", "partial")}
+        data = {**identity(value.full_id), "parent": parent_text(value.parent),
+                **inherited_keys(value), **rest}
+        if isinstance(value, Capability):
+            data["status"] = value.status
+        return jsonable(data)
     if is_dataclass(value):
         data = asdict(value)
-        for attr in ("ref", "status", "qualified"):
+        for attr in ("ref", "status"):
             if attr not in data and hasattr(value, attr):
                 data[attr] = getattr(value, attr)
         return data
@@ -36,6 +53,60 @@ def jsonable(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(k): jsonable(v) for k, v in value.items()}
     return value
+
+
+def scope_of(request: Request):
+    """The projects a read route covers (TCW-113 Design 6.1): its `scope`
+    query parameter, `own` when absent, and its `project`, each read as
+    `--scope` and `--project` are. `cover` is called once, so the request
+    has one `Locator` and one registry (plan choice 4). A value the CLI
+    refuses answers 400 `usage` with the CLI's message."""
+    from tcw.scope import cover
+    scope = (request.query.get("scope") or ["own"])[-1] or "own"
+    project = (request.query.get("project") or [""])[-1] or None
+    try:
+        return cover(request.root, scope, project)
+    except UsageError as error:
+        raise usage(str(error)) from None
+
+
+def _quiet(line: str) -> None:
+    """A warning the CLI prints on standard error: the server's answer
+    carries what the page shows, `projects` among it, and prints nothing."""
+
+
+def _listed(request: Request, axis: str, **filters):
+    """A list answer (Design 6.2): the records `tcw <axis> list --json`
+    prints for the same scope, in the same order, each beside the server's
+    other fields of that object (plan choice 9), and `projects` when the
+    scope is not `own`."""
+    covered = scope_of(request)
+    read = listing(covered, axis, say=_quiet, **filters)
+    return HTTPStatus.OK, list_document(covered, axis, read, extra=jsonable)
+
+
+def _shown(request: Request, axis: str):
+    """The row a detail route's key names under its scope (Design 4.8), the
+    detail read from the owner's store, and `projects` for the answer. The
+    served store reads another project's object through the request's
+    `Locator` (`_owner_store`), so `coreRevision` and `declaredDescription`
+    are the owner's (TCW-112 AC 44)."""
+    from tcw.errors import UnknownProject
+    covered = scope_of(request)
+    try:
+        row = show_row(covered, axis, request.param(1))
+    except UnknownProject as error:
+        # A mistyped project in a URL is not found, not a server fault
+        # (Design 6.4).
+        raise not_found(str(error)) from None
+    store = active_store(covered, axis)
+    read = store.get_term_detail if axis == "taxonomy" else store.get_capability_detail
+    detail = read(row.obj.full_id)
+    if detail is None:
+        noun = "term" if axis == "taxonomy" else "capability"
+        raise not_found(f"no such {noun}: {request.param(1)}")
+    projects = covered.projects_json()
+    return row, detail, {} if projects is None else {"projects": projects}
 
 
 def finding_record(finding: Finding) -> dict[str, str]:
@@ -64,19 +135,65 @@ def _capabilities(request: Request) -> FsCapabilitiesStore:
     return FsCapabilitiesStore.open(request.root)
 
 
+def OVERRIDE_HINT(id_path: str) -> str:
+    """The end of the refusal of an inherited capability's edit: the page
+    edits only this project's own objects, and the CLI makes an override."""
+    return (f"; or override it in this project with `tcw capabilities set "
+            f"{id_path} --field <name>=<value>`")
+
+
+def _route_target(store: FsTaxonomyStore | FsCapabilitiesStore, key: str):
+    """The entry a route key names, read as command input is (TCW-112 Design
+    3.1): this project's id-path, or a full identifier, which names its
+    owner's own object. An entry of a project this one does not inherit
+    from is not served here."""
+    found = find_tree(store, key)          # a usage error is 400, not found 404
+    if found.owner != store.project_id and found.owner not in {
+            entry.id for entry in store.locator.registry.source_entries(store.COMPONENT)}:
+        raise not_found(f"{found.full_id} belongs to project '{found.owner}', "
+                        f"which this project does not inherit from")
+    return found
+
+
+def _written(open_store: Callable[[Request], Any], namespace: str,
+             hint: Callable[[str], str] | None = None):
+    """The `writes` of a route that edits the object its key names
+    (TCW-114 Design 1.4). A full identifier is answered as written, before
+    any store is read, so another project's object is refused whether or
+    not that project can be read (Design 1.1); an id-path is found in the
+    served project's view, where it may name an inherited object. `hint`
+    gives the refusal's end from the object's id-path, for an object of a
+    project the served one inherits from, which is the only kind it can
+    override."""
+    def writes(request: Request) -> list[Written]:
+        key = request.param(1)
+        try:
+            found = sort_input(key, namespace)
+        except MalformedId:
+            return []                   # the handler's own lookup answers it
+        store = open_store(request)
+        if found.form in ("a", "c"):
+            full_id = found.full_id
+        else:
+            full_id = find_tree(store, key).full_id
+        sources = {entry.id for entry in store.locator.registry.source_entries(namespace)}
+        end = hint(full_id.id_path) if hint and full_id.project in sources else None
+        return [Written(full_id, end)]
+    return writes
+
+
 # -- taxonomy ---------------------------------------------------------------------
 
 
 def list_terms(request: Request):
-    return HTTPStatus.OK, jsonable(_taxonomy(request).list_all())
+    return _listed(request, "taxonomy")
 
 
 def get_term(request: Request):
-    detail = _taxonomy(request).get_term_detail(request.param(1))
-    if detail is None:
-        raise not_found(f"no such term: {request.param(1)}")
-    return HTTPStatus.OK, {"term": jsonable(detail.term),
-                           "coreRevision": detail.core_revision}
+    row, detail, projects = _shown(request, "taxonomy")
+    return HTTPStatus.OK, {"term": {**jsonable(detail.term), **term_detail(row.obj),
+                                    **scope_keys(row)},
+                           "coreRevision": detail.core_revision, **projects}
 
 
 def create_term(request: Request):
@@ -84,18 +201,35 @@ def create_term(request: Request):
     name = request.field("name", required=False, default="")
     if not name:
         raise usage("name is required")
+    parent = request.field("parent", required=False)
+    # A parent that cannot hold the folder is said as a warning on the parent,
+    # as a work item's create says it (TCW-118 decision 5).
+    notes: list[dict] = []
+
+    def note(line: str) -> None:
+        notes.append({"severity": "warning", "where": "parent", "message": line})
     with request.lock:
+        if parent:
+            # A parent naming nothing is a bad field in the request, not a
+            # missing resource: 400, as every other refused value is.
+            try:
+                store.find_parent(parent)
+            except NotFound as missing:
+                raise usage(f"parent: {missing}") from None
         term = store.add(name=name, slug=request.field("slug", required=False),
-                         parent=request.field("parent", required=False),
+                         parent=parent,
                          description=request.field("description", required=False,
                                                    default=""),
-                         kind=request.field("kind", required=False, default="Vocabulary"),
-                         vocabulary=request.field("vocabulary", list, required=False))
+                         kind=request.field("kind", required=False),
+                         vocabulary=request.field("vocabulary", list, required=False),
+                         report=note)
         detail = store.get_term_detail(term.slug)
     response = {"term": jsonable(term),
                 "coreRevision": detail.core_revision if detail else ""}
-    return HTTPStatus.CREATED, checked(response, request,
-                                       ValidationTarget("taxonomy", term.slug))
+    response = checked(response, request, ValidationTarget("taxonomy", term.slug))
+    if notes:
+        response["warnings"] = notes + response.get("warnings", [])
+    return HTTPStatus.CREATED, response
 
 
 TERM_FIELDS = {"name": "name", "description": "description", "kind": "kind",
@@ -113,12 +247,9 @@ def update_term(request: Request):
     # it was read; the client always sends the `coreRevision` it last read.
     changes["core_revision"] = request.field("revision")
     store = _taxonomy(request)
-    found = store.get(request.param(1))
-    if found is not None and found.origin != "local":
-        raise read_only(f"{found.qualified} is inherited from '{found.origin}'; "
-                        f"change it there")
+    found = _route_target(store, request.param(1))
     with request.lock:
-        detail = store.update_term(request.param(1), **changes)
+        detail = store.update_term(found.full_id, **changes)
     response = {"term": jsonable(detail.term), "coreRevision": detail.core_revision}
     return HTTPStatus.OK, checked(response, request,
                                   ValidationTarget("taxonomy", detail.term.slug))
@@ -139,23 +270,33 @@ def _subjects_are_vocabulary(request: Request, fields: dict) -> None:
     for ref in subjects if isinstance(subjects, list) else str(subjects).split(","):
         ref = str(ref).strip()
         try:
-            term = taxonomy.get(ref)
-        except AmbiguousRef:
+            # Read as the store reads it before storing its full identifier.
+            term = find_tree(taxonomy, ref)
+        except TcwError:
             continue                    # the store's own message names it
-        if term is not None and term.kind != "Vocabulary":
+        if term.kind != "Vocabulary":
             raise usage(f"Subject: {ref} is a {term.kind}, not a vocabulary entry")
 
 
 def list_capabilities(request: Request):
-    return HTTPStatus.OK, jsonable(_capabilities(request).list_all())
+    return _listed(request, "capabilities")
 
 
 def get_capability(request: Request):
-    detail = _capabilities(request).get_capability_detail(request.param(1))
-    if detail is None:
-        raise not_found(f"no such capability: {request.param(1)}")
-    return HTTPStatus.OK, {"capability": jsonable(detail.capability),
-                           "coreRevision": detail.core_revision}
+    row, detail, projects = _shown(request, "capabilities")
+    answer = _capability_answer(detail)
+    answer["capability"] = {**answer["capability"], **capability_detail(row.obj),
+                            **scope_keys(row)}
+    return HTTPStatus.OK, {**answer, **projects}
+
+
+def _capability_answer(detail) -> dict:
+    """A capability detail as the web app reads it: the record, its
+    revision, and the owner's declared description, which the editor edits
+    instead of the combined body (TCW-112 Design 4.5)."""
+    return {"capability": jsonable(detail.capability),
+            "coreRevision": detail.core_revision,
+            "declaredDescription": detail.declared_description}
 
 
 def create_capability(request: Request):
@@ -172,8 +313,7 @@ def create_capability(request: Request):
                   body=request.field("body", required=False, default=""),
                   fields=fields)
         detail = store.get_capability_detail(path)
-    response = {"capability": jsonable(detail.capability),
-                "coreRevision": detail.core_revision}
+    response = _capability_answer(detail)
     return HTTPStatus.CREATED, checked(response, request,
                                        ValidationTarget("capabilities", path))
 
@@ -189,17 +329,12 @@ def update_capability(request: Request):
     # it was read; the client always sends the `coreRevision` it last read.
     changes["core_revision"] = request.field("revision")
     store = _capabilities(request)
-    found = store.get(request.param(1))
-    if found is not None and found.origin != "local":
-        raise read_only(f"{found.qualified} is inherited from '{found.origin}'; "
-                        f"change it there, or override it in this project with "
-                        f"`tcw capabilities set {found.qualified} --field <name>=<value>`")
+    found = _route_target(store, request.param(1))
     if fields:
         _subjects_are_vocabulary(request, fields)
     with request.lock:
-        detail = store.update_capability(request.param(1), **changes)
-    response = {"capability": jsonable(detail.capability),
-                "coreRevision": detail.core_revision}
+        detail = store.update_capability(found.full_id, **changes)
+    response = _capability_answer(detail)
     return HTTPStatus.OK, checked(response, request,
                                   ValidationTarget("capabilities", detail.capability.path))
 
@@ -210,9 +345,11 @@ def update_capability(request: Request):
 def resolve(request: Request):
     """Each `tcw://` link's target, or why it has none. `reason` is one of
     `unresolved` (with `detail`), `archived` (with `detail` and
-    `resolution`) and `other-project` (with `project`): a sound reference to
-    another project's item, drawn as a labelled link that does not
-    navigate, since this server shows one project."""
+    `resolution`) and `other-project` (with `project`): a link to a project
+    that is not on this machine, drawn as a labelled link that does not
+    navigate. A link to another project's object that is there answers `ok`
+    with its full identifier as `key`, the route key that reads it from its
+    owner (TCW-113 Design 6.4)."""
     uris = request.body.get("uris")
     if not isinstance(uris, list):
         raise usage("uris must be a list")
@@ -220,9 +357,16 @@ def resolve(request: Request):
     for uri in uris[:RESOLVE_MAX_URIS]:
         if not isinstance(uri, str):
             continue
-        found = resolve_tcw_ref(request.root, uri)
-        if not found.ok:
+        found = resolve_address(request.root, uri)
+        if not found.ok and found.outcome == UNRESOLVED:
+            result[uri] = {"ok": False, "reason": "other-project",
+                           "project": parse_address(uri).project}
+        elif not found.ok:
             result[uri] = {"ok": False, "reason": "unresolved", "detail": found.reason}
+        elif found.folder:
+            # A sound folder address, drawn inert: the app shows objects.
+            result[uri] = {"ok": False, "reason": "unresolved",
+                           "detail": f"{uri} names a folder, not an object"}
         elif found.archived:
             detail = f"{found.key} is resolved work; its documents are no longer " \
                      f"in the tree"
@@ -231,12 +375,8 @@ def resolve(request: Request):
                          f"documents are no longer in the tree"
             result[uri] = {"ok": False, "reason": "archived", "detail": detail,
                            "resolution": found.resolution}
-        elif found.project:
-            result[uri] = {"ok": False, "reason": "other-project",
-                           "project": found.project}
         else:
-            result[uri] = {"ok": True, "axis": AXIS_WORD.get(found.axis),
-                           "key": found.key}
+            result[uri] = {"ok": True, "axis": found.namespace, "key": found.key}
     return HTTPStatus.OK, result
 
 
@@ -244,11 +384,13 @@ ONE = r"/([^/]+)"
 ROUTES = [
     route("GET", r"/api/taxonomy", list_terms),
     route("GET", r"/api/taxonomy" + ONE, get_term),
-    route("POST", r"/api/taxonomy", create_term),
-    route("PATCH", r"/api/taxonomy" + ONE, update_term),
+    route("POST", r"/api/taxonomy", create_term, writes=creates),
+    route("PATCH", r"/api/taxonomy" + ONE, update_term,
+          writes=_written(_taxonomy, "taxonomy")),
     route("GET", r"/api/capabilities", list_capabilities),
     route("GET", r"/api/capabilities" + ONE, get_capability),
-    route("POST", r"/api/capabilities", create_capability),
-    route("PATCH", r"/api/capabilities" + ONE, update_capability),
+    route("POST", r"/api/capabilities", create_capability, writes=creates),
+    route("PATCH", r"/api/capabilities" + ONE, update_capability,
+          writes=_written(_capabilities, "capabilities", OVERRIDE_HINT)),
     route("POST", r"/api/resolve", resolve),
 ]

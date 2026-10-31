@@ -19,6 +19,7 @@ from tcw.work.resolve import (
     generate_payload, packaged_text, procedure_prompt, stage_header,
     stage_prompt, substitute_request,
 )
+from tests.projectfiles import write_config
 
 
 def config(**work):
@@ -32,7 +33,7 @@ def loaded(root: Path):
     the layered loader, which is what puts TCW's own text in each list
     (TCW-72 Design 3.3)."""
     from tcw.config import load_config
-    (root / "tcw-config.yaml").write_text("id: p\n")
+    write_config(root, "id: p\n")
     layered = load_config(root)
     assert layered.problems == [], layered.problems
     return layered.work
@@ -119,7 +120,7 @@ def make_item(tmp_path, tags=()):
 def test_when_filters_by_tags(tmp_path):
     cfg = config(tags=["ui", "api"], stages={"spec": {"prompt": [
         {"blob": "UI only.", "when": {"tags": ["ui"]}},
-        {"blob": "Not API.", "when": {"not_tags": ["api"]}}]}})
+        {"blob": "Not API.", "when": {"not-tags": ["api"]}}]}})
     _, ui_item, _ = make_item(tmp_path / "a", tags=("ui",))
     _, api_item, _ = make_item(tmp_path / "b", tags=("api",))
     assert compose(cfg, "spec", tmp_path, item=ui_item) == "UI only.\n\nNot API."
@@ -171,7 +172,7 @@ def test_a_generate_binding_gets_the_record_request_and_environment(
 
     payload = json.loads((out / "stdin.json").read_text())
     assert set(payload) == {"schema", "item", "request", "hook"}
-    assert payload["schema"] == 1
+    assert payload["schema"] == 2
     assert payload["item"] == record
     assert payload["request"] == "The request.\n"
     assert payload["hook"] == {"role": "prompt", "kind": "generate", "id": "spec",
@@ -216,6 +217,6 @@ def test_planning_runs_nothing(tmp_path, monkeypatch):
 
 
 def test_the_header_names_advance_dry_run():
-    header = stage_header("p/2026-10-02-x")
-    assert "tcw work advance p/2026-10-02-x --dry-run" in header
+    header = stage_header("p.work/2026-10-02-x")
+    assert "tcw work advance p.work/2026-10-02-x --dry-run" in header
     assert "stage gate" not in header
