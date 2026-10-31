@@ -1504,16 +1504,21 @@ class FsProjectRegistry(ProjectRegistry):
         return None
 
     def _search_conflict(self, project_id: str, asker: Path, decided: _Answer,
-                         matches: list[Path]) -> str | None:
+                         matches: list[Path], manifest_read: bool = False) -> str | None:
         """The recorded problem when the search from `asker` finds
         `project_id` in another folder than the manifest entry that decided
-        `decided` places it, or None (Design 3.4, decided 2026-10-23)."""
+        `decided` places it, or None (Design 3.4, decided 2026-10-23).
+        `manifest_read`: the lookup reads the entry's folder, so a match at
+        the same place in another checkout of the same repository agrees
+        with it; where the search's folder is the one read, it never does,
+        or the main checkout's copy would be read with no error."""
         placed = decided.folder or decided.entry_folder
         if decided.entry is None or placed is None:
             return None
         for match in matches:
             if (self._identity(match) != self._identity(placed)
-                    and not _same_place_in_two_checkouts(match, placed)):
+                    and not (manifest_read
+                             and _same_place_in_two_checkouts(match, placed))):
                 return self._recorded(
                     decided.entry.file,
                     f"'{project_id}' is found at {match} by the search from {asker}, "
@@ -2059,7 +2064,8 @@ class FsProjectRegistry(ProjectRegistry):
                     # Another project's manifest decided: the search from the
                     # asking project must not disagree (Design 3.4).
                     conflict = self._search_conflict(
-                        project_id, named_by, answer, self._searched(project_id, named_by))
+                        project_id, named_by, answer, self._searched(project_id, named_by),
+                        manifest_read=True)
                     return answer if conflict is None else _Answer(
                         problem=conflict, named=True)
         matches, problems = _search(self, project_id, named_by)
