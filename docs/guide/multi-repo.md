@@ -263,7 +263,7 @@ the naming project finds; when the two disagree, the lookup is an error
 saying which folder each gives, and an entry in the naming project's own
 personal manifest settles it. A main checkout and a linked worktree of one
 repository (or two of its linked worktrees), with the project at the same
-place in each, do not disagree, as separate clones still do: from a linked worktree
+place in each, do not disagree (two separate clones still do): from a linked worktree
 the search finds a sibling repository's project beside the main checkout,
 while a manifest, read as written, may place it in that repository's own
 worktree beside this one, and then the manifest's folder is the one read.
