@@ -11,3 +11,11 @@ gate 2: go be203d5141255eeefd13af5229aacb242dbb7331
 
 Covers Steps 20 and 21 on TCWTEST, Step 23 (4.0 as this machine's shared tcw) and Steps 24-25
 (58 tickets' TCW Item converted on the live TCW board). Next: Step 20.
+
+2026-11-02T17:01:46Z, under gate 2: Step 20's scenario passed, but its validate --remote check
+failed on 45 leftover 3.x tickets on TCWTEST (TCWTEST-4 to 79, from earlier 3.x live runs). The user chose:
+> Convert them with 4.0 (Recommended)
+
+Done on TCWTEST only: a throwaway 3.0.2 project tcw-test-live in tcwtest-cleanup/, then 4.0's
+tcw migrate, which edited TCW Item on exactly those 45 tickets (dry-run.txt, migrate.txt). Not counted
+as a 4.0 defect. Step 20 is run again unchanged; the first run's output is live-scenario-1.txt.
