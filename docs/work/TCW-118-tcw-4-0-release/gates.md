@@ -19,3 +19,12 @@ failed on 45 leftover 3.x tickets on TCWTEST (TCWTEST-4 to 79, from earlier 3.x 
 Done on TCWTEST only: a throwaway 3.0.2 project tcw-test-live in tcwtest-cleanup/, then 4.0's
 tcw migrate, which edited TCW Item on exactly those 45 tickets (dry-run.txt, migrate.txt). Not counted
 as a 4.0 defect. Step 20 is run again unchanged; the first run's output is live-scenario-1.txt.
+
+gate 2: go be203d5141255eeefd13af5229aacb242dbb7331
+2026-11-03T14:42:32Z
+> It's fine, continue
+
+Step 22. The rehearsal sent no email: the API account is the user's own Jira account and was the only
+watcher of TCWTEST-211 to 213 (step-21-record.md). On the live TCW board a second account watches 12
+tickets, two of them (TCW-68, TCW-76) among Step 24's 58, so it may get up to two emails. The user
+accepted that. The index lag showed no stale lines, so Step 25 needs no extra wait. Next: Step 23.
