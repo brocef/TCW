@@ -485,6 +485,217 @@ def test_a_separate_clone_beside_the_worktree_still_disagrees(tmp_path):
     assert found.code != 0 and "is found at" in found.err, found
 
 
+# -- A copy kept inside the main checkout it was made from ------------------------------
+#
+# Claude Code keeps its worktrees at `.claude/worktrees/<name>`, inside the main
+# checkout. Looking from where a worktree is, the search does not climb into
+# the main checkout of a linked worktree kept inside it, nor into the folders
+# between them that belong to that main checkout's repository: they are the
+# copy's original, on another branch (TCW-120).
+
+EMPTY_MANIFEST = "tcw-version: 4.0.0\nprojects: {}\n"
+
+
+def _main_with_a_child(base: Path, *, root_3x: bool = False,
+                       child_3x: str | None = None) -> tuple[Path, Path]:
+    """Repository X at `base/MAIN` (project `r`, a manifest placing `p` at
+    `p`) holding repository Y at `MAIN/p` (project `p`, naming nothing),
+    each committed on `main`. `root_3x` makes X's `main` branch 3.x (a root
+    `tcw-config.yaml`, no `.tcw/`); `child_3x` is Y's root `tcw-config.yaml`,
+    written in place of its 4.0 files."""
+    main = base / "MAIN"
+    main.mkdir(parents=True)
+    if root_3x:
+        (main / "tcw-config.yaml").write_text("id: r\n")
+    else:
+        proj(main, "r")
+        write_manifest(main, {"p": "p"})
+    (main / ".gitignore").write_text("/p/\n/.claude/\n/.worktrees/\n")
+    child = main / "p"
+    child.mkdir()
+    if child_3x is not None:
+        (child / "tcw-config.yaml").write_text(child_3x)
+    else:
+        proj(child, "p")
+        write_manifest(child, EMPTY_MANIFEST)
+    for repo in (main, child):
+        git(repo, "init", "-q", "-b", "main")
+        _commit_all(repo)
+    return main.resolve(), child.resolve()
+
+
+def _copy(main: Path, child_main: Path, at: Path, *, child_at: str = "p"
+          ) -> tuple[Path, Path]:
+    """X's linked worktree at `at` and Y's at `at / child_at`."""
+    w = _linked(main, at)
+    return w, _linked(child_main, w / child_at)
+
+
+def _migrate_branch(w: Path) -> None:
+    """X's linked worktree `w` moved to 4.0 on its own branch."""
+    (w / "tcw-config.yaml").unlink()
+    proj(w, "r")
+    write_manifest(w, {"p": "p"})
+    _commit_all(w)
+
+
+def _prints(cwd: Path, expected: Path, *argv: str) -> None:
+    """`tcw <argv>` from `cwd` prints `expected` alone and exits 0."""
+    ran = tcw(cwd, *argv)
+    assert ran.code == 0, ran
+    assert ran.out == f"{expected}\n", ran
+
+
+def test_a_copy_kept_inside_its_own_main_checkout_finds_the_root_in_the_copy(tmp_path):
+    """Spec case 1, AC 1: the copy's `r`, not "declared by more than one
+    folder" naming the copy and MAIN."""
+    main, child = _main_with_a_child(tmp_path)
+    w, wp = _copy(main, child, main / ".claude" / "worktrees" / "w")
+    ran = tcw(wp, "project", "path", "r")
+    assert (ran.code, ran.out, ran.err) == (0, f"{w}\n", ""), ran
+
+
+def test_a_copy_kept_inside_a_3x_main_checkout_finds_the_root_in_the_copy(tmp_path):
+    """Spec case 2, AC 2: MAIN's branch is 3.x, the copy's is 4.0; MAIN is
+    not read, so it is not reported as needing `tcw migrate`."""
+    main, child = _main_with_a_child(tmp_path, root_3x=True)
+    w, wp = _copy(main, child, main / ".claude" / "worktrees" / "w")
+    _migrate_branch(w)
+    ran = tcw(wp, "project", "path", "r")
+    assert ran.code == 0 and ran.out == f"{w}\n", ran
+    assert "tcw migrate" not in ran.err, ran
+
+
+def test_a_copy_kept_outside_its_main_checkout_finds_the_root_in_the_copy(tmp_path):
+    """Spec case 3, AC 3 (a control: it passes today)."""
+    main, child = _main_with_a_child(tmp_path)
+    w, wp = _copy(main, child, tmp_path / "elsewhere" / "w")
+    _prints(wp, w, "project", "path", "r")
+
+
+def test_a_worktree_in_a_linked_worktree_inside_its_main_checkout_finds_the_root_there(
+        tmp_path):
+    """Spec case 4, AC 4: Y's main checkout is beside MAIN, so the worktree
+    is no copy, yet its first round's climb no longer reaches MAIN."""
+    main, _ = _main_with_a_child(tmp_path)
+    ymain = proj(tmp_path / "ymain", "p")
+    write_manifest(ymain, EMPTY_MANIFEST)
+    git(ymain, "init", "-q", "-b", "main")
+    _commit_all(ymain)
+    w = _linked(main, main / ".claude" / "worktrees" / "w")
+    wp = _linked(ymain, w / ".worktrees" / "p")
+    _prints(wp, w, "project", "path", "r")
+
+
+def _repo(folder: Path, project_id: str, ignore: str, **relations) -> Path:
+    """`folder` made a repository holding project `project_id`, ignoring
+    `ignore`, committed on `main`."""
+    root = proj(folder, project_id, **relations)
+    (root / ".gitignore").write_text(ignore)
+    git(root, "init", "-q", "-b", "main")
+    _commit_all(root)
+    return root
+
+
+def test_a_copy_three_deep_finds_the_outermost_root_in_the_copy(tmp_path):
+    """Spec case 5, AC 5: Z holds X holds Y; the copy is Z's linked worktree
+    inside Z's main checkout, and the walk reaches it past X's worktree."""
+    zm = _repo(tmp_path / "ZM", "z", "/x/\n/.claude/\n")
+    xm = _repo(zm / "x", "x", "/y/\n")
+    ym = _repo(xm / "y", "y", "")
+    w = _linked(zm, zm / ".claude" / "worktrees" / "w")
+    _linked(xm, w / "x")
+    wy = _linked(ym, w / "x" / "y")
+    _prints(wy, w, "project", "path", "z")
+
+
+def test_a_clone_between_the_worktrees_does_not_hide_the_outer_one(tmp_path):
+    """Spec case 7, AC 5a: a plain repository at `zw/x` lies between Y's
+    worktree and Z's linked worktree `zw`; the walk does not stop at it."""
+    zm = _repo(tmp_path / "ZM", "z", "/.claude/\n")
+    zw = _linked(zm, zm / ".claude" / "worktrees" / "zw")
+    _repo(zw / "x", "x", "/.worktrees/\n")
+    ym = _repo(tmp_path / "ymain", "y", "")
+    wy = _linked(ym, zw / "x" / ".worktrees" / "y")
+    _prints(wy, zw, "project", "path", "z")
+
+
+def test_a_related_projects_search_inside_the_copy_finds_the_root_in_the_copy(tmp_path):
+    """Spec case 8, AC 5b: X is a monorepo whose child `s` names `r`; the
+    search for `r` is made from the copy's `s`, outside the active
+    project's worktree, and it too keeps out of MAIN."""
+    main = proj(tmp_path / "MAIN", "r")
+    write_manifest(main, {"p": "p"})
+    proj(main / "s", "s", parent=["r"])
+    (main / ".gitignore").write_text("/p/\n/.claude/\n")
+    git(main, "init", "-q", "-b", "main")
+    _commit_all(main)
+    child = proj(main / "p", "p", parent=["s"])
+    write_manifest(child, {"s": "../s"})
+    git(child, "init", "-q", "-b", "main")
+    _commit_all(child)
+    w, wp = _copy(main, child, main / ".claude" / "worktrees" / "w")
+    _prints(wp, w, "project", "path", "r")
+    listed_ = tcw(wp, "project", "list")
+    assert listed_.code == 0, listed_
+
+
+def test_a_clone_kept_in_a_copy_inside_its_main_checkout_finds_the_root_in_the_copy(
+        tmp_path):
+    """Spec case 9, AC 5c: the active project is a plain repository, with
+    no worktree of its own, kept in WS's linked worktree inside WS."""
+    ws = _repo(tmp_path / "WS", "ws", "/x/\n/.claude/\n")
+    w = _linked(ws, ws / ".claude" / "worktrees" / "w")
+    x = _repo(w / "x", "x", "")
+    _prints(x, w, "project", "path", "ws")
+
+
+def test_a_separate_repository_between_the_copy_and_its_main_checkout_is_still_searched(
+        tmp_path):
+    """Spec case 10, AC 5d: `MAIN/tools` is a repository of its own, and the
+    copy is kept inside it. It lies between the copy and MAIN but is not
+    MAIN's repository, so it is still searched; MAIN is not."""
+    main = _repo(tmp_path / "MAIN", "r", "/p/\n/tools/\n")
+    tools = _repo(main / "tools", "tools", "/wt/\n")
+    child = _repo(main / "p", "p", "")
+    w, wp = _copy(main, child, tools / "wt" / "w")
+    _prints(wp, tools, "project", "path", "tools")
+    _prints(wp, w, "project", "path", "r")
+
+
+def test_a_project_above_the_main_checkout_is_still_found_from_the_copy(tmp_path):
+    """AC 5e: the folders above MAIN stay in the climb, so a project at the
+    folder holding MAIN, declared nowhere else, is found from the copy."""
+    above = proj(tmp_path, "o")
+    main, child = _main_with_a_child(tmp_path)
+    _, wp = _copy(main, child, main / ".claude" / "worktrees" / "w")
+    _prints(wp, above, "project", "path", "o")
+
+
+def test_a_copy_inside_its_main_checkout_lacking_the_root_does_not_find_the_mains(
+        tmp_path):
+    """Spec case 6, AC 6: with `r` removed from the copy's working folder,
+    MAIN's `r` is not read in its place: the answer is "not found", as
+    `test_nested_worktrees_lacking_a_sibling_do_not_find_the_real_one`
+    has it for a copy kept elsewhere."""
+    main, child = _main_with_a_child(tmp_path)
+    w, wp = _copy(main, child, main / ".claude" / "worktrees" / "w")
+    (w / ".tcw" / "tcw-config.yaml").unlink()
+    ran = tcw(wp, "project", "path", "r")
+    assert ran.code != 0 and ran.out == "", ran
+    assert str(main) not in (ran.out + ran.err).replace(str(w), ""), ran
+    assert "no project with ID 'r' is known or found" in ran.err, ran
+
+
+def test_a_worktree_in_a_main_checkouts_worktrees_folder_finds_that_checkouts_project(
+        tmp_path):
+    """AC 9 (a control): Y's worktree kept in X's *main* checkout, with no
+    linked worktree of X around it, still finds MAIN's `r`."""
+    main, child = _main_with_a_child(tmp_path)
+    wp = _linked(child, main / ".worktrees" / "p")
+    _prints(wp, main, "project", "path", "r")
+
+
 # -- A store path whose store declares a repository -------------------------------------
 #
 # `<component>.path` sits beside `<component>.repository`, so a path read as

@@ -547,6 +547,9 @@ also run `tcw` by hand ([`lifecycle/harness.md`](lifecycle/harness.md)).
 
 **Seen.** Contributors to TCW use git worktrees, with a virtual environment
 per worktree ([`CLAUDE.md`](../CLAUDE.md), "Working in a git worktree").
+Claude Code keeps the worktrees it makes at `.claude/worktrees/<name>`, inside
+the main checkout, and a copy of several nested repositories is made there as
+linked worktrees one inside another.
 **Expected**: a project worked on from two machines, and CI checking out a
 fresh clone.
 
@@ -568,6 +571,15 @@ fresh clone.
   first, before the manifest that places it was read, the two are still
   reported (`_same_place_in_two_checkouts` in `tcw/store/project.py`;
   `tests/test_manifest_worktree.py`).
+- Looking from where a worktree is, the search does not climb into the main
+  checkout of a linked worktree kept inside that main checkout, nor into the
+  folders between the two that belong to the main checkout's repository: it
+  goes on above that main checkout, and a separate repository kept between
+  them is still looked in. This holds for a project kept anywhere inside such
+  a worktree, however deep, whichever project's search it is, so a copy kept
+  in `.claude/worktrees/<name>` finds its own projects once rather than also
+  finding the main checkout's on another branch (TCW-120; `search_rounds` in
+  `tcw/store/project.py`; `tests/test_manifest_worktree.py`).
 - A fresh clone in CI has no related projects and no credentials.
   `tcw validate` there must run without them, and report what it could not
   check rather than failing for that reason (TCW-14 asks for this as a gate).

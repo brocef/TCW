@@ -8,10 +8,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+
 from tcw.migrate import family
 from tcw.migrate.family import read_family
 from tests.projectfiles import write_manifest
-from tests.test_manifest_worktree import _commit_all, _linked, _repository, _siblings, git, proj
+from tests.test_manifest_worktree import (_commit_all, _copy, _linked, _main_with_a_child,
+                                         _repository, _siblings, git, proj)
 from tests.test_project_files_cli import personal_env, tcw
 
 
@@ -96,3 +99,32 @@ def test_a_related_projects_search_reads_the_active_projects_worktree(tmp_path):
     found = read_family(r1, "r1", {"id": "r1", "projects": {"parent": {"r2": str(r2)}}})
     found._walk_to("\0")
     assert found.place("r3").how == "absent", found.place("r3")
+
+
+def test_a_copy_kept_inside_its_own_main_checkout_predicts_the_copys_root(tmp_path):
+    """TCW-120 spec case 1, AC 7: the prediction from Y's worktree in the copy
+    is the copy's `r` alone, as the runtime's; from Y's main checkout it is
+    MAIN's."""
+    main, child = _main_with_a_child(tmp_path)
+    w, wp = _copy(main, child, main / ".claude" / "worktrees" / "w")
+    ran = tcw(wp, "project", "path", "r")
+    assert ran.code == 0 and ran.out.strip() == str(w), ran
+    assert family.search_4(wp, "r") == [w]
+    assert family.search_4(child, "r") == [main]
+
+
+def test_migrating_a_copy_inside_its_main_checkout_writes_what_the_main_checkout_writes(
+        tmp_path):
+    """TCW-120 AC 7: with Y on 3.x in both checkouts, naming `r` at `..`, a
+    run in the copy leaves the entry out, as the run in the main checkout
+    does, since each finds `r` at the folder the entry names alone."""
+    main, child = _main_with_a_child(
+        tmp_path, child_3x="id: p\nprojects:\n  parent:\n    r: ..\n")
+    _, wp = _copy(main, child, main / ".claude" / "worktrees" / "w")
+    for folder in (wp, child):
+        ran = tcw(folder, "migrate", "--no-jira")
+        assert ran.code == 0, ran
+        manifest = folder / ".tcw" / "tcw-manifest.yaml"
+        projects = (yaml.safe_load(manifest.read_text()) or {}).get("projects") or {} \
+            if manifest.is_file() else {}
+        assert "r" not in projects, (folder, manifest.read_text())
