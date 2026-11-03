@@ -40,3 +40,9 @@ docs/use-cases.md (the review's S-4 requirement). The request said the go covers
 says so, and asked for "gate 3 go" if they were happy with this, including that change. Covers: the
 tag's push, the upload's confirmation, then at once 3.x and main pushed, and later pushes to main
 touching only TCW-118's and TCW-99's folders. Next: Step 37.
+
+issue 24: approved 325d2a99ae208527397bd22add797c76b798213b7b0bd0ede2af88aa22c9993f
+2026-11-03T18:29:44Z
+> approve issue 24, and delete the merge clone
+
+Step 42. The text is ~/.tcw-4.0-release/issue-24.md, shown to the user in full before this answer.
