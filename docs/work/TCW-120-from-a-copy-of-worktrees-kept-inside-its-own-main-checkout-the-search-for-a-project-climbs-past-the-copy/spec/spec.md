@@ -71,6 +71,12 @@ same way today:
    layout with `w/.tcw/tcw-config.yaml` deleted from the working folder:
    `project path r` prints `BASE/MAIN`, exit 0. It reads the main checkout
    the copy was made from, which the guide says a copy never does.
+7. **A clone in between.** Z's main checkout `ZM`, Z's linked worktree
+   `ZM/.claude/worktrees/zw`, a plain clone of X (a main checkout) at
+   `zw/x`, and Y's linked worktree at `zw/x/.worktrees/y` (Y's main
+   checkout elsewhere). `project path z` from there: "project 'z' is
+   declared by more than one folder near this one: ZM/.claude/worktrees/zw
+   and ZM", exit 1.
 
 For contrast, Y's linked worktree kept directly in X's *main* checkout
 (`BASE/MAIN/.worktrees/p`, no linked worktree of X involved) prints
@@ -137,7 +143,11 @@ round's climb is the same unfiltered `list(named_by.parents)`.
 Nor is it limited to the nearest checkout holding the worktree (case 5):
 `:391` asks only about `top.parent`'s checkout (`w/x`, whose main checkout
 `ZM/x` is not above `w/x/y`), while the folder that is climbed into, `ZM`, is
-the main checkout of the linked worktree one level further out.
+the main checkout of the linked worktree one level further out. And the
+checkout in between need not be a linked worktree (case 7). When a plain
+clone is kept in a linked worktree, `worktree_anchors(top.parent)` (`:391`)
+answers None, because the clone is a main checkout. The linked worktree
+around the clone is then never seen.
 
 The folder the climb should not reach is always the same kind: **the main
 checkout of a linked worktree that encloses the asking project, together
@@ -182,7 +192,8 @@ lookups agree.
    the main checkout of a linked worktree enclosing the project, or lies
    between that linked worktree and its main checkout, when the linked
    worktree is stored inside its main checkout. This holds for every such
-   linked worktree, however far out, not only the nearest.
+   linked worktree, however far out and whatever checkouts lie between, not
+   only the nearest.
 2. The climb then goes on above that main checkout, as it would from the
    copy kept anywhere else.
 3. `tcw migrate`'s prediction (`search_4`) gives the same answer, so
@@ -218,12 +229,15 @@ read as written, in both places it is returned. That is the copy's only
 round (`:393`) and the first of the two rounds otherwise (`:394`):
 
 1. Starting from the folder holding the active worktree (`top.parent`), find
-   each linked worktree that encloses it, nearest first. Ask
-   `worktree_anchors` of the folder; when it gives `(T, M)`, that is one;
-   ask again from `T.parent`; stop when it gives None. Each answer's `T` is
-   strictly above the last, so this ends. `worktree_anchors` is cached per
-   folder (`:85-97`), so the nearest one costs nothing new; each further
-   level is one `git rev-parse`.
+   each git checkout that encloses it, nearest first, main or linked. Ask git
+   for the checkout's top folder `T` and, when it is a linked worktree, its
+   main checkout `M`. Then ask again from `T.parent`, and stop at a folder
+   in no checkout. A main checkout does not stop the walk: case 7 has one
+   between the asking project and the linked worktree whose main checkout is
+   climbed into. Each `T` is strictly above the last, so the walk ends. The
+   answers are cached per folder, as `worktree_anchors` (`:85-97`) and
+   `_repository_of` (`:418-432`) cache theirs, so each level costs at most
+   one `git rev-parse` per command.
 2. For each `(T, M)` with `T` inside `M` (`_below(T, M)` is not None), leave
    out of the climb every folder `F` that encloses `T` without being `T`,
    and is `M` or inside it. These are the folders reached only because `T` is
@@ -314,6 +328,9 @@ is exactly X followed by a newline.
    `MAIN/.claude/worktrees/w` and exits 0.
 5. **Three deep** (case 5): `tcw -C ZM/.claude/worktrees/w/x/y project path
    z` prints `ZM/.claude/worktrees/w` and exits 0.
+5a. **A clone in between** (case 7): `tcw -C
+   ZM/.claude/worktrees/zw/x/.worktrees/y project path z` prints
+   `ZM/.claude/worktrees/zw` and exits 0.
 6. **A copy lacking the project does not find the original's.** The
    reported layout with `r`'s configuration removed from `w` (deleted from
    the working folder only): `project path r` exits non-zero and prints
@@ -346,8 +363,8 @@ is exactly X followed by a newline.
     `docs/changelogs/upcoming/` and a `docs/release-notes/upcoming/` file,
     each named by this item's folder name, describe the fix.
 
-Criteria 1, 2, 4, 5, 6 and the `tcw migrate` half of 7 were run on the tree
-today as reproduction cases 1, 2, 4, 5 and 6 above, and fail. Criteria 3 and
+Criteria 1, 2, 4, 5, 5a, 6 and the `tcw migrate` half of 7 were run on the
+tree today, as reproduction cases 1, 2, 4, 5, 7 and 6 above, and fail. Criteria 3 and
 9 were run and pass. The `search_4` half of 7 was run in case 1's layout and
 returns `[MAIN/.claude/worktrees/w, MAIN]` today.
 
