@@ -544,3 +544,126 @@ and lasts as long as their review and test take; the shared `tcw` stays 3.0.2
 until gate 2's go; from 5.5 until the user's own setups are migrated, this
 machine's `tcw` is 4.0 and refuses every 3.x project except to migrate it;
 and the window also holds gate 3.
+
+## Steps 12 to 17 — the release candidate, eight runs
+
+Added by the dispatching session from the release folder's records
+(`~/.tcw-4.0-release/`, with each run's outputs in `run<n>/`). M0 was
+`64042c2b` throughout. Each run merged V into a fresh clone of M0
+(`~/tcw-4.0-merge`, push address `no-push`), migrated it, ran the suite and
+validate, made one migration commit A, and built the acceptance tarball. A
+run was repeated whenever a fix landed on `v4` after an evaluator finding or
+a review; every run passed its own checks.
+
+| Run | V | A | Suite (passed, skipped) | Why there was another run |
+| --- | --- | --- | --- | --- |
+| 1 | `0c7fa555` | `d7ded0ef` | — | fixes landed on `v4` (`run1/`) |
+| 2 | `a7cf8dd9` | `34a03e6b` | — | fixes landed on `v4` (`run2/`) |
+| 3 | `f8781350` | `b2e408ea` | — | evaluator findings, and the 4.0 / 5.0 split (`run3/`) |
+| 4 | `e0eb8773` | `6b5eaf43` | 8255, 113 | children's folders inside their parents' |
+| 5 | `f2e421f9` | `97e142fb` | 8280, 113 | a combined review's finding (a stale manifest entry); guide findings |
+| 6 | `727b5ab2` | `292d0750` | 8289, 113 | an evaluator finding: a 3.x copy in a sibling worktree |
+| 7 | `ab391d05` | `0281b9f4` | 8291, 113 | an evaluator finding: a sibling repository's project in its own worktree |
+| 8 | `f6a61093` | `be203d51` | 8295, 113 | none: accepted at gate 1 |
+
+Run 8, in full in `run8/phase-b-record.md`: the merge `aa989a43` (750 files,
+126725 insertions, 13872 deletions) with no conflict; the dry run
+`would change: 296 files written, 3 moved, 231 deleted; 58 tickets edited`;
+Step 15's hand fixes the same as runs 2 to 7 (eight `tcw://C/` references in
+five capability descriptions, and two sentences in `add-a-term`); the suite
+`8295 passed, 113 skipped`; validate `0 errors, 0 warnings, 0 unresolved`;
+no private name in `git diff --cached M0`; A's change `411 files changed,
+1361 insertions(+), 1342 deletions(-)`, as in every run; the tarball sha256
+`d80b20f552a7b76276dc2a37c4da233d51f2f55db867d0b768c3ff70407b6404`, its
+acceptance checks passed. Every difference from run 7 is explained by the
+four commits between their Vs. Nothing was pushed or written to Jira.
+
+The evaluators: one on a family of six projects of the user's own, one on a
+family of 38 repositories of a team's. Both passed candidate 8, the second
+after rerunning its 20 sibling lookups and a clean `tcw validate`.
+
+## Step 18 — gate 1
+
+2026-10-31T22:04:48Z, the user: "Gate 1 go", for A `be203d51`. Recorded in
+`resources/gates.md` and committed on the merge clone's `main` (`6a596236`).
+
+## Step 19 — gate 2
+
+2026-10-31T23:11:47Z, the user: "gate 2 go", covering Steps 20 to 25.
+Committed as `0f36f2ee`.
+
+## Step 20 — the live scenario on `TCWTEST`
+
+The first run's scenario passed (search lag 0.8s for a new ticket, 0.2s for
+a ticket just given a TCW Item), but its `validate --remote` exited 1 with 45
+errors: tickets TCWTEST-4 to 79, left with 3.x `TCW Item` values by earlier
+3.x live runs, not by 4.0 (`live-scenario-1.txt`). The user chose to convert
+them with 4.0: in a throwaway 3.0.2 project with the live settings,
+`tcw migrate` edited exactly those 45 tickets' `TCW Item` and nothing else
+(`tcwtest-cleanup/migrate.txt`; committed as `1a3d64a1`). The second run:
+the scenario passed with the same lags, and `validate --remote exited 0`,
+`0 errors, 51 warnings, 0 unresolved`; the warnings are the earlier runs'
+scenario folders, which are not in this throwaway project.
+
+## Step 21 — the conversion and its way back, rehearsed
+
+On `TCWTEST`, with 3.0.2 in `rehearsal/venv-3` and the merge clone's 4.0
+(record: `rehearsal/step-21-record.md`).
+
+- 3.0.2 filed TCWTEST-211, 212 and 213; 211 was advanced. 212 was changed to
+  an Epic. Jira refuses to make a Task a Sub-task through its API (HTTP 400,
+  "Given parent work item does not belong to appropriate hierarchy"), so the
+  Sub-task type was covered by Step 20's cleanup instead, which converted
+  TCWTEST-12 (a Sub-task) and TCWTEST-10 (an Epic). Every type the `TCW`
+  board uses (Task, Epic, Sub-task) was edited by 4.0's migration.
+- The conversion edited all three tickets. Both index checks, at once and
+  after 60 seconds, said `nothing to migrate`: no lag.
+- The way back exited 1: `put back: ['TCWTEST-211', 'TCWTEST-212']`, and
+  TCWTEST-213 left out because its value had been edited by hand. 213's value
+  was then put back by hand.
+- **A gap in the plan.** The files' way back
+  (`git reset -q --hard HEAD && git clean -fdq`) deleted the three item
+  folders, because 3.0.2's `work new` never committed them, and 3.0.2's
+  `work list` then warned about all three tickets. They were recreated with
+  3.0.2's `tcw work tickets adopt`, after which the list showed the three
+  items with no warning. A real files' way back must keep, or adopt again,
+  item folders that were never committed.
+- Emails: the API account is the user's own Jira account, and the only
+  watcher of the three tickets, so Jira sent no email. All three were moved
+  to `Won't Do`.
+
+## Step 22 — what the rehearsal found, told
+
+The rehearsal sent no email. On the live `TCW` board a second account
+watches 12 tickets, two of them (TCW-68, TCW-76) among Step 24's 58, so it
+might get up to two emails. 2026-11-03, the user: "It's fine, continue".
+Recorded as `gate 2: go`, committed as `c1b38239`. No lag was seen, so Step
+25 waited for nothing.
+
+## Step 23 — this machine's `tcw` becomes 4.0
+
+The primary checkout's `main` was fast-forwarded to the merge clone's and
+installed: `tcw 4.0.0` (`install.txt`), the two `main`s equal.
+
+## Step 24 — the live board converted
+
+`tcw migrate` in the primary checkout, first run, no retry:
+`changed: 0 files written, 0 moved, 0 deleted; 58 tickets edited`
+(`tcw116-step6.txt`; the files were already migrated in A). Compared with
+the dry run's keys: `only in step 6: []`, `only in the dry run: []`.
+
+## Step 25 — nothing left to migrate
+
+`tcw migrate`: `nothing to migrate`. The first `validate --remote` exited 1
+with one error: the release's own `gates.md` was at the top of the item's
+folder, where 4.0 keeps only the item's known files (`move it into
+resources/`). A gap in the plan, which placed it there. It was moved to
+`resources/gates.md`, and `load.sh`'s `gate_go` and the plan point at the
+new path (`70c228f0`). Run again: `nothing to migrate`; `validate --remote`
+`0 errors, 0 warnings, 0 unresolved` over 58 items; `tcw work list` lists 20
+open items with no warning.
+
+## Step 26 — rule 4.0 ends
+
+2026-11-03: the user told that `tcw` may run in this repository again. No
+agent was running.
