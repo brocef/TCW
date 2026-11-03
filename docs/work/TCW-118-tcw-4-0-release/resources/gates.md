@@ -28,3 +28,15 @@ Step 22. The rehearsal sent no email: the API account is the user's own Jira acc
 watcher of TCWTEST-211 to 213 (step-21-record.md). On the live TCW board a second account watches 12
 tickets, two of them (TCW-68, TCW-76) among Step 24's 58, so it may get up to two emails. The user
 accepted that. The index lag showed no stale lines, so Step 25 needs no extra wait. Next: Step 23.
+
+gate 3: go e902868dfc374098da49485d3cddf6e141c397d2
+2026-11-03T15:48:22Z
+> gate 3 go
+
+Step 36. Asked with Steps 29-34's results on T (suite 8268 passed, 116 skipped; CI on T success on all
+three jobs; validate and validate --remote clean; tarball, config comparison and plugin checks passed).
+Files changed since A outside TCW-118's folder, docs/changelogs/ and docs/release-notes/: only
+docs/use-cases.md (the review's S-4 requirement). The request said the go covers it only if the user
+says so, and asked for "gate 3 go" if they were happy with this, including that change. Covers: the
+tag's push, the upload's confirmation, then at once 3.x and main pushed, and later pushes to main
+touching only TCW-118's and TCW-99's folders. Next: Step 37.
