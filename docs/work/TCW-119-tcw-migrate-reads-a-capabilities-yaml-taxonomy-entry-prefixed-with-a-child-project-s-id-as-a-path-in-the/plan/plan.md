@@ -27,27 +27,38 @@ the shared editable install imports the primary checkout's code (CLAUDE.md,
    `test_a_capabilities_yaml_entry_is_routed_as_3x_routed_it`
    (`tests/migrate/test_migrate_legacy.py:340`), in the same style (a local
    `route(path, **kw)` with defaults `children=["kid"]`, `own=set()`,
-   `sources={}`). One assertion per row of Design 1's
+   `sources={}`, `project_id="app"`). One assertion per row of Design 1's
    table, in order:
     - `route("invoice") == (None, "invoice")` (no `/`);
     - `route("cli/x") == (None, "cli/x")` (first part not a child);
     - `route("core/auth", sources={"core": {"auth"}}) == ("core", "auth")`
-      and `route("kid/auth", sources={"kid": {"auth"}}) == ("kid", "auth")`
-      (a source; also a source that is a child);
+      (a source, not a child: the first row already sends it to
+      `bare_owner_3x`). `route("kid/auth", sources={"kid": {"auth"}}) ==
+      ("kid", "auth")` is asserted too, but it cannot tell the source row
+      from the child row, since both give `("kid", "auth")`, so it is not
+      counted as coverage of the source row. The source row is told apart
+      by `route("kid/zed", sources={"kid": {"auth"}, "lib": {"kid/x"}}) ==
+      ("kid", "zed")`: without the source row, `lib`'s folder `kid` would
+      make it a clash;
     - `route("kid/turn", own={"kid/turn"}) == (None, "kid/turn")` and
       `route("kid/turn", sources={"lib": {"kid/turn"}}) == ("lib", "kid/turn")`
       (the whole path is held);
-    - `route("kid/turn", own={"kid/other"})` and
-      `route("kid/turn", sources={"lib": {"kid/other"}})` each equal
-      `"kid/turn: ambiguous — 'kid' is both a child project of this project and a namespace in this project's taxonomy"`
-      (criterion 4, own and inherited);
+    - `route("kid/turn", own={"kid/other"})` equals
+      `legacy.TermClash("kid/turn: ambiguous — 'kid' is both a child project of this project and a namespace in this project's taxonomy", "write it as 'kid.taxonomy/turn' or 'app.taxonomy/kid/turn', then run 'tcw migrate' again")`;
+      `route("kid/turn", sources={"lib": {"kid/other"}})` equals
+      `legacy.TermClash("kid/turn: ambiguous — 'kid' is both a child project of this project and a namespace in the taxonomy it inherits from 'lib'", "write it as 'kid.taxonomy/turn' or 'lib.taxonomy/kid/turn', then run 'tcw migrate' again")`;
+      and `route("kid/turn", own={"kid/o"}, sources={"lib": {"kid/o"}, "core": {"kid/p"}})`
+      has a `why` ending `a namespace in this project's taxonomy and the taxonomies it inherits from 'lib' and 'core'`
+      and the `fix` `write it as 'kid.taxonomy/turn', 'app.taxonomy/kid/turn', 'lib.taxonomy/kid/turn' or 'core.taxonomy/kid/turn', then run 'tcw migrate' again`
+      (criterion 4: own, inherited, and both);
     - `route("kid/turn") == ("kid", "turn")` and
       `route("kid/a/b", own={"invoice"}) == ("kid", "a/b")` (the child);
     - `route("kid") == (None, "kid")` (the child's ID alone, no `/`: as
       today);
     - `pytest.raises(legacy.Ambiguous3)` for
-      `route("x/y", sources={"a": {"x/y"}, "b": {"x/y"}})` (3.x's own
-      ambiguity still raised).
+      `route("kid/y", sources={"a": {"kid/y"}, "b": {"kid/y"}})` (3.x's own
+      ambiguity still raised, on the held-path row: `kid` is a child, so the
+      call reaches the new code rather than leaving by the first row).
 
    Run it: it fails with `AttributeError: module 'tcw.migrate.legacy' has no
    attribute 'route_term_entry_3x'`.
@@ -56,9 +67,14 @@ the shared editable install imports the primary checkout's code (CLAUDE.md,
    (`legacy.py:958-983`):
 
     ```python
+    @dataclass(frozen=True)
+    class TermClash:
+        why: str
+        fix: str
+
     def route_term_entry_3x(path: str, *, children: list[str], own: set[str],
-                            sources: dict[str, set[str]]
-                            ) -> tuple[str | None, str] | str:
+                            sources: dict[str, set[str]], project_id: str
+                            ) -> tuple[str | None, str] | TermClash:
     ```
 
    with a docstring saying it is TCW-119 Design 1: what 3.x read (`get`,
@@ -69,9 +85,10 @@ the shared editable install imports the primary checkout's code (CLAUDE.md,
    or `head not in children` or `head in sources`, return
    `bare_owner_3x(path, own, sources)`; if `path in own` or any source's set
    holds `path`, return `bare_owner_3x(path, own, sources)`; if `head` is
-   `p.split("/", 1)[0]` for any `p` in `own` or any source's set, return the
-   ambiguity string above (with `{path}` and `{head}`); else return
-   `(head, rest)`.
+   `p.split("/", 1)[0]` for any `p` in `own` or any source's set, return a
+   `TermClash` worded as spec Design 1 says, from which of them have the
+   folder (the project's own first, then each source in `sources`' order);
+   else return `(head, rest)`.
 
    Run the new test and `tests/migrate/test_migrate_legacy.py`: green. Nothing
    calls the function yet, so no other test can change.
@@ -80,12 +97,13 @@ the shared editable install imports the primary checkout's code (CLAUDE.md,
 
 ## Step 2 — `Owners.owner_of` uses it for `taxonomy:` entries (criteria 1-6)
 
-**Files:** `tests/migrate/test_migrate_references.py` (four tests added),
+**Files:** `tests/migrate/test_migrate_references.py` (five tests added),
 `tcw/migrate/references.py` (one branch and two docstrings).
 
 1. **Tests first**, in a new section `# ── a taxonomy: entry prefixed with a
    child (TCW-119) ──` after `test_a_capabilities_yaml_entry_is_routed_as_3_x_routed_it`.
-   A helper `family(tmp_path, a_extra)` builds the spec's Reproduction with
+   A helper `family(tmp_path, a_extra, a_config=None)` (`a_config`, when
+   given, replaces `A`'s configuration) builds the spec's Reproduction with
    the file's `make`: `A` with the 3.x config of Reproduction step 2, the two
    items of steps 3 and 4 (item `2026-10-01-a` at `stage: inbox`, so `tcw
    validate` gives no stage-ahead warning; `2026-10-02-b` at `stage:
@@ -112,6 +130,14 @@ the shared editable install imports the primary checkout's code (CLAUDE.md,
       `A/tcw-config.yaml` still exists, `A/.tcw` does not, and the item's
       `capabilities.yaml` is byte-for-byte what was written. Fails today
       (exit 0).
+    - `test_a_taxonomy_entry_whose_child_is_a_folder_of_an_inherited_taxonomy_is_b10`
+      (criterion 4, inherited): a 3.x project `lib` beside `A` (`id: lib`,
+      a term at `docs/taxonomy/b/other`); `A`'s configuration adds
+      `upstream: {lib: ../lib}` and `taxonomy: {extends: [lib]}`, and `A`
+      keeps no taxonomy of its own. `tcw(["migrate"], A)` exits 3; its
+      standard error contains, word for word,
+      `B10 docs/work/2026-10-01-a/capabilities.yaml: b/turn: ambiguous — 'b' is both a child project of this project and a namespace in the taxonomy it inherits from 'lib'; write it as 'b.taxonomy/turn' or 'lib.taxonomy/b/turn', then run 'tcw migrate' again`;
+      and nothing is written, as above. Fails today (exit 0).
     - `test_a_capability_subject_prefixed_with_a_child_is_not_routed`
       (criterion 6): `family(tmp_path, {"docs/capabilities/cli/y/meta.yaml":
       "name: Y\nStatus: Supported\nSubject: [b/turn]\n",
@@ -126,18 +152,15 @@ the shared editable install imports the primary checkout's code (CLAUDE.md,
     ```python
     elif row.record == "capabilities-yaml":
         routed = route_term_entry_3x(value, children=self.view.children,
-                                     own=own, sources=sources)
-        if isinstance(routed, str):
-            head, _, rest = value.partition("/")
-            self.blockers.append(Blocker(
-                "B10", where, routed,
-                f"write it as '{head}.taxonomy/{rest}' or "
-                f"'{self.project}.taxonomy/{value}', then run 'tcw migrate' again"))
+                                     own=own, sources=sources,
+                                     project_id=self.project)
+        if isinstance(routed, TermClash):
+            self.blockers.append(Blocker("B10", where, routed.why, routed.fix))
             return None
         owner, path = routed
     ```
 
-   import `route_term_entry_3x` beside `route_entry_3x`
+   import `TermClash` and `route_term_entry_3x` beside `route_entry_3x`
    (`references.py:27`), and change the module docstring's sentence "and one
    under `taxonomy:` read as a term is" (`references.py:11`) to say that an
    entry under `taxonomy:` prefixed with a listed child's ID names the
@@ -145,13 +168,19 @@ the shared editable install imports the primary checkout's code (CLAUDE.md,
    when the child's ID is also a folder of the taxonomy
    (`legacy.route_term_entry_3x`).
 
-3. Run `tests/migrate/`: the four tests and every existing one pass,
+3. Run `tests/migrate/`: the five tests and every existing one pass,
    `test_each_entry_of_an_items_capabilities_file` and
    `test_a_capabilities_yaml_entry_is_routed_as_3_x_routed_it` unmodified
-   (criterion 5). Run `tests/migrate/test_goldens_current.py` by name: the
-   recorded golden outputs must not change; if one does, stop and say which,
-   since a golden family with a child-prefixed term entry would be a case
-   the spec did not foresee.
+   (criterion 5). Then run by name the tests that migrate the recorded
+   fixtures and compare what the migration writes:
+   `tests/migrate/test_migrate_f_single.py`,
+   `tests/migrate/test_migrate_f_full.py` and
+   `tests/migrate/test_migrate_monorepo.py` (the monorepo is the fixture with
+   children). They must pass unmodified; if one fails, stop and say which,
+   since a fixture with a child-prefixed term entry would be a case the spec
+   did not foresee. (`tests/migrate/test_goldens_current.py` is not that
+   check: it compares each fixture's digest with its recorded golden and
+   never runs the migration.)
 
 **Done when** the full suite passes.
 
@@ -184,7 +213,12 @@ the shared editable install imports the primary checkout's code (CLAUDE.md,
     - the "Names and addresses" table (`:672-677`) gains a row: first cell
       `` `<child>/<path>` in an item's `capabilities.yaml` ``, second cell
       `` `<child>.capabilities/<path>`, and under `taxonomy:`
-      `<child>.taxonomy/<path>`, for a child the project lists ``.
+      `<child>.taxonomy/<path>`, for a child the project lists ``, followed
+      in the same cell by: unless, under `taxonomy:`, the project's own or
+      inherited taxonomy has a term at that whole path, which keeps it; and
+      one sentence saying this differs from a capability entry on purpose,
+      since each half does what 3.x did and 3.x read every term entry in the
+      project's own taxonomy.
 3. Run `tests/test_migration_guide_4_0.py` and `tests/test_migration_guide.py`:
    green (the new row's first cell starts with a 3.x form and its second cell
    is not empty, as `test_every_row_says_what_replaces_it` needs; the scan
@@ -216,7 +250,7 @@ lists:
 | Entry | Fires? | Action |
 | --- | --- | --- |
 | `docs/changelogs/upcoming/<folder>.md` [Any-Code-Change] | yes | Create `docs/changelogs/upcoming/TCW-119-tcw-migrate-reads-a-capabilities-yaml-taxonomy-entry-prefixed-with-a-child-project-s-id-as-a-path-in-the.md` with `## Fixed`: `tcw migrate` (C16) converts an item's `capabilities.yaml` `taxonomy:` entry prefixed with a listed child's ID to `<child>.taxonomy/<rest>` (`legacy.route_term_entry_3x`), as `route_entry_3x` did for capability entries; B10 when the child's ID is also a first folder of the resolved taxonomy. `## Changed`: the 3.x to 4.0 migration guide says plain `tcw validate` in Jira mode does not check declared records. No `#` title. |
-| `docs/release-notes/upcoming/<folder>.md` [Public-API] | yes | Create `docs/release-notes/upcoming/<folder>.md` (same file name) under `## Fixes`: migrating a project that lists child projects now writes a child's term for a `taxonomy:` entry such as `b/turn` in an item's `capabilities.yaml`, as it already did for capability entries; a project migrated with 4.0.0 holds `<project>.taxonomy/<child>/<term>` there, and should change each such line by hand to `<child>.taxonomy/<term>`; and a note that in a Jira-mode project `tcw validate --remote` is the check that reads these files. Plain language, no module names. |
+| `docs/release-notes/upcoming/<folder>.md` [Public-API] | yes | Create `docs/release-notes/upcoming/<folder>.md` (same file name) under `## Fixes`: migrating a project that lists child projects now writes a child's term for a `taxonomy:` entry such as `b/turn` in an item's `capabilities.yaml`, as it already did for capability entries; a project migrated with 4.0.0 holds `<project>.taxonomy/<child>/<term>` there, and should change each such line by hand to `<child>.taxonomy/<term>`, unless the project's own taxonomy has a term at that path (those lines are correct, by the spec's own rule). To find them, a search the user can run: `grep -rn '<project>.taxonomy/<child-id>/' docs/work/*/capabilities.yaml` (or the item folders wherever the work store is). `tcw validate --remote` does not find them all: it skips `completed` and `discarded` items and items whose ticket is at a status no stage names; lines in finished items are history, worth fixing only for consistency. One clause: a migration left unfinished by 4.0.0 finishes with 4.0.0's conversion when resumed (its plan was made then), so fix those lines the same way. And a note that in a Jira-mode project `tcw validate --remote` is the check that reads these files. Plain language, no module names. |
 | `docs/guide/<topic>.md` [Guide-Topic-Change] | no | The linking and validation guide already says plain validate skips declared records in Jira mode (`docs/guide/linking-and-validation.md:216-225`); no guide in `docs/guide/` describes the migration's routing of `capabilities.yaml` entries. The migration guide, which does, is changed in Step 3. |
 | `docs/guide/jira.md` [Jira-Change] | no | No ticket, `work.jira` key or status behavior changes. |
 | `README.md` [Public-API] | no | It does not describe how `tcw migrate` converts references. |
@@ -254,8 +288,8 @@ Beyond the tests:
 - Criterion 1, 2 → Step 2 (first test); 3 → Step 2; 4 → Steps 1 and 2; 5 →
   Step 2.3; 6 → Step 2; 7 → Step 1; 8 → Step 3; 9 → Step 4; 10 →
   Verification 1. Every step names a criterion.
-- One function name throughout, `route_term_entry_3x`; one B10 text, the
-  spec's Design 1, split as `why` (Step 1) and `fix` (Step 2) the way
-  `Blocker` prints `"{code} {where}: {why}; {fix}"`
-  (`tcw/migrate/model.py:132-133`).
+- One function name throughout, `route_term_entry_3x`; the B10 texts are the
+  spec's Design 1, both halves (`why` and `fix`) built by the function as a
+  `TermClash` (Step 1) and passed to `Blocker` unchanged (Step 2), the way
+  `Blocker` prints `"{code} {where}: {why}; {fix}"`.
 - `capabilities.yaml` exists and the QA plan comment is posted (spec stage).

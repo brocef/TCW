@@ -252,8 +252,9 @@ scope here (Non-goals) and proposed as its own item (Notes).
 
 In `Owners.owner_of`, a value from a `capabilities-yaml` row whose namespace
 is `taxonomy` is read by a new function in `tcw/migrate/legacy.py` beside
-`route_entry_3x`, `route_term_entry_3x(path, *, children, own, sources)`.
-With `head` the entry's first part and `rest` what follows the first `/`:
+`route_entry_3x`, `route_term_entry_3x(path, *, children, own, sources,
+project_id)`. With `head` the entry's first part and `rest` what follows the
+first `/`:
 
 | Case | Result |
 | --- | --- |
@@ -270,22 +271,60 @@ keeps no taxonomy has an empty `own`, and a source's terms count, as they do
 for `route_entry_3x`'s `own_namespaces` (`references.py:123-124`).
 `View.children` is the list `view_of` already fills (`stores.py:454`).
 
-**The ambiguous case, decided: refuse.** Where `A` keeps a folder `b` in its
-taxonomy and lists a child `b`, an entry `b/turn` that `A` does not hold
-could mean a term `A` was about to add under its folder or `b`'s term. Neither
-reading is safer than the other, and the migration does not guess: it is the
-same ambiguity `route_entry_3x` refuses for a capability entry
-(`legacy.py:975-977`), and refusing it the same way keeps one rule for both
-halves of the file. The user writes the full identifier and runs again; a
-value already in full form is left alone (`references.py:105`). The blocker:
+**The ambiguous case, decided: refuse.** Where `A`'s taxonomy, or one `A`
+inherits through `taxonomy.extends`, keeps a folder `b` and `A` lists a
+child `b`, an entry `b/turn` that neither holds could mean a term to be added
+under that folder or `b`'s term. Neither reading is safer than the other, and
+the migration does not guess: it is the ambiguity `route_entry_3x` refuses
+for a capability entry (`legacy.py:975-977`), refused the same way. The user
+writes the full identifier and runs again; a value already in full form is
+left alone (`references.py:105`).
+
+The blocker names the project or projects whose taxonomy has the folder, and
+offers one full identifier for each reading: the child's term, then the
+same path in each project that has the folder, the project's own first and
+then its sources in the order the run lists them. For the project's own
+folder:
 
 ```text
 B10 <item folder>/capabilities.yaml: b/turn: ambiguous — 'b' is both a child project of this project and a namespace in this project's taxonomy; write it as 'b.taxonomy/turn' or 'a.taxonomy/b/turn', then run 'tcw migrate' again
 ```
 
+For a folder only in the taxonomy of `lib`, which `A` inherits:
+
+```text
+B10 <item folder>/capabilities.yaml: b/turn: ambiguous — 'b' is both a child project of this project and a namespace in the taxonomy it inherits from 'lib'; write it as 'b.taxonomy/turn' or 'lib.taxonomy/b/turn', then run 'tcw migrate' again
+```
+
+When both have it, the places are joined with "and" (`this project's
+taxonomy and the taxonomy it inherits from 'lib'`; several sources read
+`the taxonomies it inherits from 'lib' and 'core'`), and the identifiers are
+listed with commas and a final "or" (`'b.taxonomy/turn', 'a.taxonomy/b/turn'
+or 'lib.taxonomy/b/turn'`). Naming only the project's own path would, for an
+inherited folder, suggest a term the project does not have, and for a parent
+with no taxonomy of its own would write back the very address this item
+fixes.
+
+The function returns this refusal as a small value holding the blocker's
+`why` and `fix` texts (`TermClash`), so `owner_of` passes both to `Blocker`
+unchanged, as `Blocker` prints `"{code} {where}: {why}; {fix}"`.
+
 **The held path, decided: keep 3.x's reading.** If `A`'s taxonomy has
 `b/turn` itself, 3.x checked the entry against it and it passed; reading it
 as `b`'s now would change what a working reference points at.
+
+**The two halves of the file differ here, deliberately.** On a path the
+project's own taxonomy holds whose first part is a child's ID, the term rule
+keeps 3.x's reading, while `route_entry_3x` refuses the same shape for a
+capability entry whenever the first part is also a folder of the ledger,
+held or not. So this is not one rule for both halves. Each half stays
+faithful to what 3.x did with it: 3.x's capability router refused that
+ambiguity, so the migration refuses it too; 3.x read every term entry in the
+project's own taxonomy, so a term entry that taxonomy holds was found and
+checked there, and keeping that reading changes nothing that worked. Only
+where 3.x's term reading could not have found anything (the path not held)
+does the migration use the child-first reading the capability entries
+beside it got.
 
 ### 2. What else is unchanged
 
@@ -313,7 +352,12 @@ as `b`'s now would change what a working reference points at.
 - in "Names and addresses": a row saying how a `capabilities.yaml` entry
   prefixed with a listed child's ID is converted (`<child>/<path>` to
   `<child>.capabilities/<path>`, and under `taxonomy:` `<child>/<term>` to
-  `<child>.taxonomy/<term>`).
+  `<child>.taxonomy/<term>`), unless, under `taxonomy:`, the project's own
+  or inherited taxonomy has a term at that whole path, which keeps that
+  term. Since this states the rule, it also says in one sentence that the
+  difference from a capability entry (which is refused in that case) is
+  deliberate: each half does what 3.x did, and 3.x read every term entry in
+  the project's own taxonomy.
 
 ## Abstraction litmus test
 
@@ -367,8 +411,11 @@ No setup is missing from `docs/use-cases.md`.
    `write docs/work/2026-10-01-a/capabilities.yaml: C16`.
 2. **Then validate is clean for these lines.** After `tcw migrate` in `B`
    too, `tcw validate` in `A` gives no finding that mentions
-   `capabilities.yaml`, and exits 0 (the Reproduction's three warnings about
-   the hand-made item's missing stage documents remain, and are warnings).
+   `capabilities.yaml`, and exits 0. (The Reproduction's three warnings come
+   from its first item being at `implement` without request, spec or plan;
+   the test puts that item at `inbox`, which needs none of them, so it gives
+   no such warning. Any warning that remains does not name
+   `capabilities.yaml`.)
 3. **The project's own taxonomy holds the path.** In a project whose own
    taxonomy has a term at `b/turn` and which lists a child `b`, the entry
    `b/turn` under `taxonomy:` converts to `<project>.taxonomy/b/turn`.
@@ -376,8 +423,11 @@ No setup is missing from `docs/use-cases.md`.
    `b/other` (and none at `b/turn`) and which lists a child `b`, `tcw migrate`
    exits 3, writes nothing, and its output holds the B10 line of Design 1
    with that item's path, word for word. The same holds when the `b/` folder
-   is in a taxonomy the project inherits through `taxonomy.extends` rather
-   than its own (checked at the function level).
+   is in the taxonomy of a project `lib` that the project inherits through
+   `taxonomy.extends` rather than its own: `tcw migrate` exits 3, writes
+   nothing, and prints the second B10 line of Design 1, which names `lib`
+   and offers `'b.taxonomy/turn' or 'lib.taxonomy/b/turn'` (an end-to-end
+   test, besides the function's table in criterion 7).
 5. **Unchanged readings.** A `taxonomy:` entry with no `/`, one whose first
    part is not a listed child, one whose first part is an `extends` source,
    and one already in full form convert exactly as before this change: the
@@ -411,6 +461,16 @@ No setup is missing from `docs/use-cases.md`.
 - **A source's terms are counted for the "holds the path" and "first folder"
   checks.** That matches `route_entry_3x`'s `own_namespaces`, but means a
   library's folder named like a child turns the entry into B10. Same trade.
+- **A parent that keeps a taxonomy without a folder named after the child,
+  where the author meant to add `<child-id>/<term>` to the parent's own
+  taxonomy under `taxonomy: new:`.** The new rule routes that entry to the
+  child, silently: the parent holds neither the path nor a folder `<child-id>`,
+  so nothing makes it ambiguous. This is the same choice 3.x's capability
+  router made for a capability entry of that shape (`<child>/<rest>` to the
+  child whenever the ledger has no folder of that name), and the more likely
+  meaning beside capability entries routed the same way. If it was meant
+  otherwise, `tcw validate` or the records gate reports the child's term as
+  missing, and the user rewrites the line as `<parent>.taxonomy/<child-id>/<term>`.
 - **The request's "4.0 turns unchecked into an error" was wrong** (Problem,
   part 1). Anyone reading the release note should not be told 4.0 added an
   error: the note says the migration now writes the child's term, which 3.x
