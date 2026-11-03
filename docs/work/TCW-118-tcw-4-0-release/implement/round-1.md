@@ -5,8 +5,10 @@ Steps 5, 7, 8 and 9 of the plan, carried out by an agent in a worktree of
 
 ## Step 1 — every other child is completed (3.1)
 
-Added at Step 27, after the review found this step unrecorded. Its check was
-made before Step 2 (TCW-117's review was accepted at `6e68c3b3`, 2026-10-26
+Added at Step 27, after the review found this step unrecorded. A check was
+made before Step 2, and the message sent then (2026-10-26T20:35:51Z) named
+TCW-107 to TCW-117 as completed; TCW-106 had been completed since 2026-10-22
+(`af21a7b8`) (TCW-117's review was accepted at `6e68c3b3`, 2026-10-26
 16:23 -0400, and its completion noted on its ticket at 16:33; Step 2's first
 commit, `a3c8d46e`, is 16:36), but its lines were not written here. Read
 again on 2026-11-03 with the 4.0 `tcw`, `tcw work show TCW-<n>`:
@@ -575,8 +577,10 @@ run 41157041507, `gh run view --json headSha,jobs`):
 ```
 
 recorded as CI `f6a61093` in `refs.txt`, and Step 12 then recorded the same
-commit as V. Each earlier candidate's V had its own CI run, listed in
-`refs.txt`.
+commit as V. Each earlier candidate's V had a CI run, listed in `refs.txt`,
+on V itself or, for runs 1 and 4 (CI `08e59cdf` and `bf42ed01`), on a commit
+that differs from V only inside TCW-118's folder, which is what Step 12
+checks.
 
 ## Step 11 — the user told
 
@@ -737,9 +741,11 @@ agent was running.
   (criterion 47 names its old place; see Step 25). Each run's acceptance
   results are in `~/.tcw-4.0-release/run<n>/acceptance/`, run 8's in
   `run8/acceptance/results.txt`.
-- **Work beyond the spec**, each recorded in the changelog entry and the
-  handoff: a child's folder inside its parent's by default, with `--flat`
-  replacing `--nest` (`plan/children-in-parent-folders.md`); the worktree and
-  sibling-repository lookups from the evaluators' findings; the Python 3.11
-  fix (`08e59cdf`); and Jira mode without the TCW fields, added and then
-  moved to `v5` (`6366014d`).
+- **Work beyond the spec.** A child's folder inside its parent's by
+  default, with `--flat` replacing `--nest`
+  (`plan/children-in-parent-folders.md`), and the worktree and
+  sibling-repository lookups from the evaluators' findings: both in the
+  changelog entry and the handoff. The Python 3.11 fix (`08e59cdf`): in this
+  round's Step 10 only, since it fixes code no release has shipped. Jira mode
+  without the TCW fields, added and then moved to `v5` (`6366014d`): in the
+  handoff only, since 4.0 does not ship it.

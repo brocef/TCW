@@ -564,8 +564,10 @@ fresh clone.
   worktree, beside this worktree, is read there, and is the same project the
   search finds beside the main checkout: a main checkout and its linked
   worktrees, with the project at the same place in each, do not disagree,
-  while two separate clones still do (`_same_place_in_two_checkouts` in
-  `tcw/store/project.py`; `tests/test_manifest_worktree.py`).
+  while two separate clones still do. When the search found the project
+  first, before the manifest that places it was read, the two are still
+  reported (`_same_place_in_two_checkouts` in `tcw/store/project.py`;
+  `tests/test_manifest_worktree.py`).
 - A fresh clone in CI has no related projects and no credentials.
   `tcw validate` there must run without them, and report what it could not
   check rather than failing for that reason (TCW-14 asks for this as a gate).
