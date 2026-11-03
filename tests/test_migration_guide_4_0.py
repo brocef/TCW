@@ -379,3 +379,19 @@ def test_the_names_search_finds_no_current_command():
     assert len(current) > 20
     wrong = _grep_matches(names_search_pattern(), current)
     assert not wrong, sorted(wrong)
+
+
+def test_step_3_says_jira_mode_needs_remote_for_records():
+    """TCW-119 Design 3: in a Jira-mode project plain `tcw validate` does not
+    check what an item's `capabilities.yaml` declares; the guide says which
+    check does, and how a child-prefixed entry is converted."""
+    step_3 = section(GUIDE, 3, "3. Run it: `tcw migrate`")
+    assert "tcw validate --remote" in step_3 and "capabilities.yaml" in step_3
+    jira = section(GUIDE, 3, "Jira: `--no-jira`, and converting the tickets last")
+    assert "tcw validate --remote" in jira
+    # A paragraph, not a table row: every first cell of that table feeds the
+    # names search, which finds only names 4.0 no longer uses.
+    names = section(GUIDE, 3, "Names and addresses")
+    assert "`<child>/<path>`" in names and "`<child>.taxonomy/<path>`" in names
+    b10 = next(line for line in GUIDE.split("\n- ") if line.startswith("**B10**"))
+    assert "taxonomy:" in b10

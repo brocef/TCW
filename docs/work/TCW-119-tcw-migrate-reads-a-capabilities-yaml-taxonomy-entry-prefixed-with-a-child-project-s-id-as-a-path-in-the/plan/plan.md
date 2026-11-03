@@ -210,7 +210,11 @@ the shared editable install imports the primary checkout's code (CLAUDE.md,
     - the B10 bullet (`:246-248`) adds: or a `taxonomy:` entry that starts
       with a listed child's ID that is also a folder of the project's
       taxonomy, which could mean either; write it as a full identifier;
-    - the "Names and addresses" table (`:672-677`) gains a row: first cell
+    - the "Names and addresses" section gains a paragraph under its table
+      (corrected at implement: a row failed
+      `test_the_names_search_finds_every_3x_file_name_and_name_form`, since
+      each first cell feeds the names search and `capabilities.yaml` is still
+      a 4.0 name), carrying what was planned as a row: first cell
       `` `<child>/<path>` in an item's `capabilities.yaml` ``, second cell
       `` `<child>.capabilities/<path>`, and under `taxonomy:`
       `<child>.taxonomy/<path>`, for a child the project lists ``, followed

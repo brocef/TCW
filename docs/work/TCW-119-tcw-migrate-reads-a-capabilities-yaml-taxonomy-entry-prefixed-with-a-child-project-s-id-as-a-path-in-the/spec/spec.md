@@ -349,7 +349,10 @@ beside it got.
   past implementation, not before. The Jira order's step 2 says `tcw
   validate --remote` once the tickets are converted;
 - in the B10 bullet: the new ambiguous case;
-- in "Names and addresses": a row saying how a `capabilities.yaml` entry
+- in "Names and addresses": a paragraph under the table (not a row: each
+  first cell of that table feeds the guide's names search, which finds only
+  names 4.0 no longer uses, and `capabilities.yaml` is still a 4.0 name)
+  saying how a `capabilities.yaml` entry
   prefixed with a listed child's ID is converted (`<child>/<path>` to
   `<child>.capabilities/<path>`, and under `taxonomy:` `<child>/<term>` to
   `<child>.taxonomy/<term>`), unless, under `taxonomy:`, the project's own
