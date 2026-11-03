@@ -128,8 +128,25 @@ The CLI under change is `tcw/`, so every check ran this worktree's
 
 ## Checks
 
-- Full suite, bare `.venv/bin/pytest` from the worktree root: see below.
-- `.venv/bin/tcw validate`: see below.
+- Full suite, bare `.venv/bin/pytest` from the worktree root, at
+  `a4fa56aa`: `1 failed, 8310 passed, 115 skipped in 1126.94s`, the one
+  failure the migration guide's table row described in finding 2, fixed in
+  the next commit. Run again after that fix: `2 failed, 8309 passed, 115
+  skipped in 1773.43s`, both
+  `tests/test_check_versions.py::test_a_hanging_cli_is_abandoned_silently`
+  (`the check waited 5.9s on a hanging tcw`, limit 4s). That test times the
+  session-start version check against a stub that never answers; it passed
+  in the first run, nothing in this round touches that check, and it fails
+  the same way on an unchanged clone run while the machine was under load
+  (load average above 5), so it is a timing failure of the machine, not of
+  this change; run alone straight afterwards, both passed (`2 passed`).
+  Every other test passed.
+- The release simulated on a clone: `scripts/cut_version.py 4.1.0`, the
+  restamp script, `git add -u docs/work`, `git commit --amend --no-edit`,
+  `git tag -f v4.1.0`; its suite gave `1 failed, 8303 passed, 116 skipped`,
+  the failure the same guide-table one (the clone predates its fix): no test
+  objects to the restamped files or to the version.
+- `.venv/bin/tcw validate`: `0 errors, 0 warnings, 0 unresolved`.
 - Each commit's added lines checked against the private-names list: no
   match.
 
