@@ -16,6 +16,7 @@ object, and a file in it named like a state file is A2.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -262,11 +263,13 @@ def left_elsewhere(root: Path, mapping: dict, steps, git: Path | None) -> list[s
 
 def _plan_object(store: Store, id_path: str, kept: set[str], project: str,
                  out: StorePlan, mentions: Mentions, entries: list[str],
-                 owners: Owners, work_backend: str, override=None) -> None:
+                 owners: Owners, work_backend: str, override=None,
+                 jira_site: str | None = None) -> None:
     """One object's state file. `override` is the object's C14 resolution:
     its 4.0 state file is written at the original's id-path, without the
     `overrides` key, and keeps no `name` of its own when it had none, since
-    3.x showed the original's."""
+    3.x showed the original's. `jira_site` is the project's `work.jira.site`
+    in a Jira-backed project, for the ticket's key (`_ticket_key`)."""
     ns = store.namespace
     folder = store.folder / id_path
     old_rel = f"{store.rel}/{id_path}/{STATE_3X[ns]}"
@@ -328,9 +331,14 @@ def _plan_object(store: Store, id_path: str, kept: set[str], project: str,
                                                      f"written, the name TCW 3 showed"))
     if text is None:
         out.reports.append(Report("D7", new_rel, "written where TCW 3 had no state file"))
+    as_read = {VERSION_KEY: __version__, **applied(intended(data, edits), rows, replace)}
+    if ns == "work" and (key := _ticket_key(data.get("ticket"), name, jira_site)):
+        edits.append(SetTop("ticket", key))
     expect = {VERSION_KEY: __version__, **applied(intended(data, edits), rows, replace)}
     if four_text is not None:
-        _both(store, old_rel, new_rel, text, four_text, expect, out)
+        # A 4.0 file holding the link (written by TCW 4.0.0) or the key
+        # (written by this TCW, in a run that stopped) agrees with either.
+        _both(store, old_rel, new_rel, text, four_text, expect, out, also=as_read)
     else:
         try:
             new = convert_text(new_rel, source, edits, fields=rows, replace=replace,
@@ -352,15 +360,36 @@ def _plan_object(store: Store, id_path: str, kept: set[str], project: str,
         out.reports.append(Report("D7", rel, "written empty, where TCW 3 had none"))
 
 
+_JIRA_KEY = re.compile(r"[A-Z][A-Z0-9_]*-[1-9][0-9]*")
+
+
+def _ticket_key(ticket, folder: str, site: str | None) -> str | None:
+    """The key a 3.x Jira item file's `ticket` is written as (TCW-177): the
+    folder's key, when `ticket` is exactly the link `<site>/browse/<KEY>` on
+    the project's `work.jira.site` naming that key; else None, and the value
+    is carried over as it is, for `tcw validate` to judge."""
+    if not isinstance(ticket, str) or not isinstance(site, str) or not site:
+        return None
+    prefix = f"{site.rstrip('/')}/browse/"
+    key = ticket[len(prefix):] if ticket.startswith(prefix) else ""
+    # The key as the Jira backend reads it from a folder's name (its
+    # `KEY_FOLDER`; only `tcw/migrate/jira.py` may import that backend).
+    if not _JIRA_KEY.fullmatch(key) or not folder.startswith(f"{key}-"):
+        return None
+    return key
+
+
 def _both(store: Store, old_rel: str, new_rel: str, text: str | None, four_text: str,
-          expect: dict, out: StorePlan) -> None:
-    """Design 2.7's both-files rule, for a state file."""
+          expect: dict, out: StorePlan, also: dict | None = None) -> None:
+    """Design 2.7's both-files rule, for a state file. `also` is a second
+    content the 4.0 file may equal (TCW-177: the ticket's link as read)."""
     data4, problem = parse_mapping_3x(four_text, Path(new_rel))
     if problem:
         out.blockers.append(Blocker("B14", new_rel, problem,
                                     "correct the file by hand, then run 'tcw migrate' again"))
         return
-    if without_version(data4 or {}) != without_version(expect):
+    if without_version(data4 or {}) != without_version(expect) and not (
+            also is not None and without_version(data4 or {}) == without_version(also)):
         where = first_difference(without_version(expect), without_version(data4 or {}))
         out.blockers.append(Blocker(
             "B11", old_rel, f"differs from {new_rel} at {dotted(where or ())}",
@@ -496,7 +525,7 @@ def _meta_of(store: Store, id_path: str) -> dict:
 def plan_stores(root: Path, mapping: dict, project: str, *,
                 three_x: bool = True, work_backend: str = "filesystem",
                 family=None, ancestors: dict[str, list[str]] | None = None,
-                middle: bool = False) -> StorePlan:
+                middle: bool = False, jira_site: str | None = None) -> StorePlan:
     """Every store's state files and loose entries. `three_x`: the project's
     configuration is still in 3.x form, so a bare taxonomy folder is a 3.x
     term. `family` is the project's related projects, whose stores B7 also
@@ -504,7 +533,8 @@ def plan_stores(root: Path, mapping: dict, project: str, *,
     among (C14); `ancestors`, the projects each axis is inherited from once
     converted (D2); `middle`, whether a project of the family inherits
     capabilities from it, below which
-    4.0 applies its overrides (D4)."""
+    4.0 applies its overrides (D4); `jira_site`, the project's
+    `work.jira.site` when its work is kept in Jira (TCW-177)."""
     out = StorePlan()
     stores = stores_of(root, mapping)
     out.blockers += nesting_blockers(stores)
@@ -567,7 +597,8 @@ def plan_stores(root: Path, mapping: dict, project: str, *,
             entries = [m.entry for m in moved
                        if m.store_rel == store.rel and m.from_path == id_path]
             _plan_object(store, id_path, kept, project, out, mentions, entries, owners,
-                         work_backend, found_overrides.get((store.rel, id_path)))
+                         work_backend, found_overrides.get((store.rel, id_path)),
+                         jira_site=jira_site if work_backend == "jira" else None)
             covered.add(f"{store.rel}/{id_path}/{STATE_3X[store.namespace]}")
         out.reports += _resources_reports(store, kept)
     _text_writes(root, planned, moved, mentions, covered, owners, out)

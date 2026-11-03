@@ -442,6 +442,17 @@ def plan_jira_half(root: Path, project_id: str | None, *, jira_backed: bool,
     return jira.half(root, project_id)
 
 
+def _jira_site(root: Path, work_backend: str) -> str | None:
+    """The `work.jira.site` of the project's own layers, for a project whose
+    work is kept in Jira: a 3.x item file's link on it becomes the ticket's
+    key (TCW-177)."""
+    if work_backend != "jira":
+        return None
+    jira = own_jira_layers(root).jira
+    site = jira.get("site") if isinstance(jira, dict) else None
+    return site if isinstance(site, str) else None
+
+
 def no_jira_line(root: Path, project_id: str | None) -> str:
     """The summary's line for a Jira-backed project run with `--no-jira`
     (Design 1.1), its Jira project read from the configuration alone."""
@@ -510,7 +521,8 @@ def make_plan(root: Path, *, no_jira: bool = False) -> Plan:
         found = stores.plan_stores(read.root, read.shared[1], shared.project,
                                    three_x=read.three_x, work_backend=read.work_backend,
                                    family=family, ancestors=links.ancestors,
-                                   middle=bool(links.below))
+                                   middle=bool(links.below),
+                                   jira_site=_jira_site(read.root, read.work_backend))
         plan.owners = found.owners
         plan.blockers += found.blockers
         reports += found.reports

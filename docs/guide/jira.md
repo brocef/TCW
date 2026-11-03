@@ -35,13 +35,16 @@ folder may sit at the top of the work store or inside another item's folder
 (a **nested** item); TCW finds a key-named folder at any depth. The folder's
 state file, `tcw-work-item.yaml`, holds the line naming the TCW version that
 wrote it, the ticket's key (`ticket: SHOP-42`), and any parent or blocker Jira
-cannot link; everything else in the folder is the technical record. The file
-names the ticket by its key alone, never by its address, so committing item
-folders to a public repository does not publish the address of your Jira
-site; where TCW shows a link to the ticket, it builds one from `work.jira.site`
-and the key. A file written by TCW 4.0.0, which holds the ticket's address
-instead (`ticket: https://example.atlassian.net/browse/SHOP-42`), stays valid
-and needs no change; to change one, replace the address with the key. The taxonomy and
+cannot link; everything else in the folder is the technical record. TCW
+writes the ticket's key alone, so an item file it writes does not publish the
+address of your Jira site when item folders are committed to a public
+repository; where TCW shows a link to the ticket, it builds one from
+`work.jira.site` and the key. This holds for the files `tcw work new` and
+`tcw work tickets adopt` write, and for those `tcw migrate` writes from a 3.x
+item file whose link is on `work.jira.site` and names the folder's key. A
+file written by TCW 4.0.0 holds the link instead
+(`ticket: https://example.atlassian.net/browse/SHOP-42`); TCW 4.1 still
+accepts it, and it can be changed to the key by hand. The taxonomy and
 capabilities are never stored in Jira: they describe the product, and they
 live and change with its code.
 

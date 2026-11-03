@@ -63,7 +63,11 @@ def test_the_key_form_is_clean(offline, monkeypatch, capsys):
      "is not on"),
     (lambda p: folder(p, "TCW-1-x", ticket=f"{SITE}/browse/TCW-2"), "names TCW-2"),
     (lambda p: folder(p, "TCW-1-x", ticket="TCW-2"),
-     "ticket 'TCW-2' names TCW-2, but the folder's key is TCW-1"),
+     "ticket 'TCW-2' is not the folder's key, TCW-1"),
+    # An empty or multi-line value prints quoted, on one line (TCW-177 round 2).
+    (lambda p: folder(p, "TCW-1-x", ticket=""), "ticket '' is not the folder's key, TCW-1"),
+    (lambda p: folder(p, "TCW-1-x", ticket="TCW-1\nTCW-2"),
+     "ticket 'TCW-1\\nTCW-2' is not the folder's key, TCW-1"),
     (lambda p: folder(p, "TCW-1-x", ticket=7), "ticket 7 is not the folder's key, TCW-1"),
     (lambda p: (folder(p, "TCW-5-a"), folder(p, "TCW-5-b")), "the key TCW-5 names 2 folders"),
     (lambda p: folder(p, "tcw-5-x", ticket=f"{SITE}/browse/TCW-5"), "is not a Jira item folder"),

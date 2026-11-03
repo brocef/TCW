@@ -228,8 +228,8 @@ def _item_file_problems(path: Path, key: str, site: str) -> list[Finding]:
     if "/" not in url:
         # The key form, written since TCW-177. A Jira key holds no `/`.
         if url != key:
-            return [Finding("error", where, f"ticket {url!r} names {url}, but the "
-                                            f"folder's key is {key}")]
+            return [Finding("error", where, f"ticket {url!r} is not the folder's "
+                                            f"key, {key}")]
         return []
     # The link form TCW 4.0.0 wrote, checked as it was then.
     prefix = f"{site}/browse/"

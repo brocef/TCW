@@ -14,7 +14,7 @@ import pytest
 import yaml
 
 from tcw.project_files import version_line
-from tests.migrate.fixtures import CAPABILITY_IDS, LONG_FOLDER, build_f_single
+from tests.migrate.fixtures import SITE, CAPABILITY_IDS, LONG_FOLDER, build_f_single
 from tests.objectcli import tcw  # noqa: F401  (a fixture)
 
 V = version_line()
@@ -89,6 +89,48 @@ def test_each_state_file_is_renamed_with_only_the_listed_edits(migrated):
         new = rel.replace("/item.yaml", "/tcw-work-item.yaml")
         assert read(root, new).startswith(V)
         assert not (root / rel).exists()
+
+
+# ── TCW-177: a Jira item's ticket link becomes its key ──────────────────────
+
+def test_a_jira_items_ticket_link_on_the_site_becomes_its_key(tcw, tmp_path):
+    """The 3.x `ticket: <site>/browse/<KEY>` naming the folder's key is
+    written as `ticket: <KEY>` (TCW-177, round 2)."""
+    root = build_f_single(tmp_path / "app", backend="jira")
+    done = tcw(["migrate", "--no-jira"], root)
+    assert done.code == 0, done.err
+    assert read(root, f"{W}/APP-1-a/tcw-work-item.yaml") == V + "ticket: APP-1\n"
+    assert read(root, f"{W}/APP-2-b/tcw-work-item.yaml") == V + "ticket: APP-2\n"
+    found = tcw(["validate"], root)
+    assert "tcw-work-item.yaml" not in found.out + found.err
+
+
+@pytest.mark.parametrize("ticket", [
+    "https://other.invalid/browse/APP-1",           # another site
+    f"{SITE}/browse/APP-9",                          # another key
+    f"{SITE}/browse/APP-1/",                         # not exactly the link
+    "APP-1",                                         # already the key
+])
+def test_any_other_ticket_value_is_carried_over_as_it_is(tcw, tmp_path, ticket):
+    root = build_f_single(tmp_path / "app", backend="jira")
+    (root / W / "APP-1-a/item.yaml").write_text(f"ticket: {ticket}\n", encoding="utf-8")
+    tcw(["migrate", "--no-jira"], root)
+    assert read(root, f"{W}/APP-1-a/tcw-work-item.yaml") == V + f"ticket: {ticket}\n"
+
+
+@pytest.mark.parametrize("four", ["APP-1", f"{SITE}/browse/APP-1"])
+def test_a_ticket_pair_in_either_form_is_equal(tcw, tmp_path, four):
+    """A 3.x item file left beside its 4.0 file, which holds the key (a run
+    of this TCW stopped between the two) or the link (written by TCW 4.0.0),
+    is an equal pair, not B11."""
+    root = build_f_single(tmp_path / "app", backend="jira")
+    (root / W / "APP-1-a/tcw-work-item.yaml").write_text(V + f"ticket: {four}\n",
+                                                         encoding="utf-8")
+    done = tcw(["migrate", "--no-jira"], root)
+    assert done.code == 0, done.err
+    assert "B11" not in done.err
+    assert read(root, f"{W}/APP-1-a/tcw-work-item.yaml") == V + f"ticket: {four}\n"
+    assert not (root / W / "APP-1-a/item.yaml").exists()
 
 
 def test_a_folder_alone_becomes_a_term_and_missing_descriptions_are_written(migrated):
