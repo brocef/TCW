@@ -683,9 +683,14 @@ commands works in 4.0.
 | `meta.yaml` in a taxonomy entry's folder                  | `tcw-taxonomy.yaml`, starting with `tcw-version`                                                                     |
 | `meta.yaml` in a capability's folder                      | `tcw-capability.yaml`, starting with `tcw-version`                                                                   |
 | `item.yaml` in a work item's folder                       | `tcw-work-item.yaml`, starting with `tcw-version`; other loose files of the folder move into its `resources/` folder |
-| `ticket: <site>/browse/<KEY>` in a Jira `item.yaml`       | `ticket: <KEY>` if `<site>` is `work.jira.site` and `<KEY>` the folder's key (4.0.0 kept the link); else unchanged   |
 | `overrides: core/cap-1a2b3c` in a capability's state file | no pointer: an override is an object at the same path as the one it overrides, holding only what it changes          |
 | `cap-1a2b3c`, a capability's id                           | none: a capability is named by its path; the old ids are kept in `.tcw/tcw-migration.yaml`                           |
+
+In a project whose work is kept in Jira, an `item.yaml` line
+`ticket: <site>/browse/<KEY>`, where `<site>` is the project's
+`work.jira.site` and `<KEY>` the key the folder's name starts with, is
+written as `ticket: <KEY>` by TCW 4.1 and later (TCW 4.0.0 carried the link
+over); any other `ticket:` value is carried over as it is.
 
 ### Names and addresses
 

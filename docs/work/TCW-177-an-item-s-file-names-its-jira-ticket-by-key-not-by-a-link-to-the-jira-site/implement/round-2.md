@@ -82,8 +82,13 @@ The CLI under change is `tcw/`, so every check ran this worktree's
    migrate` from a 3.x link on the site naming the folder's key); a file
    written by TCW 4.0.0 holds the link, which 4.1 still accepts, and can be
    changed to the key by hand. The `keep-work-items-in-jira` description says
-   the same. `docs/migration-guide-3.X-to-4.0.0.md`'s Files table gains a row
-   for a Jira `item.yaml`'s `ticket:` line. The spec gains Goal 5, Design 5
+   the same. `docs/migration-guide-3.X-to-4.0.0.md` gains a paragraph below
+   its Files table on a Jira `item.yaml`'s `ticket:` line. (It was first a
+   row of that table, which the full suite refused:
+   `tests/test_migration_guide_4_0.py::test_the_names_search_finds_every_3x_file_name_and_name_form`
+   reads each first-column name as a 3.x file name the guide's search must
+   find, `AssertionError: ['ticket: <site>/browse/<KEY>']`; as a paragraph,
+   `71 passed`.) The spec gains Goal 5, Design 5
    and criterion 12, and its sweep table's `tcw/migrate/` row and Non-goals
    say what migrate now writes.
 
