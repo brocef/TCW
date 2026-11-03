@@ -353,6 +353,53 @@ def test_a_capabilities_yaml_entry_is_routed_as_3x_routed_it():
     assert route("kid/k-thing", has_ledger=False) == ("kid", "k-thing")
 
 
+def test_a_capabilities_yaml_term_entry_is_routed_child_first():
+    """TCW-119 Design 1, one assertion per row of its table, in order."""
+    def route(path, **kw):
+        args = dict(children=["kid"], own=set(), sources={}, project_id="app") | kw
+        return legacy.route_term_entry_3x(path, **args)
+    clash = legacy.TermClash
+    # No `/`, or a first part that is not a child: 3.x's reading.
+    assert route("invoice") == (None, "invoice")
+    assert route("cli/x") == (None, "cli/x")
+    # A source, not a child; and a source that is also a child. The second
+    # cannot tell the source row from the child row (both give the same
+    # pair); the third can: without the source row, lib's folder `kid`
+    # would make it a clash.
+    assert route("core/auth", sources={"core": {"auth"}}) == ("core", "auth")
+    assert route("kid/auth", sources={"kid": {"auth"}}) == ("kid", "auth")
+    assert route("kid/zed", sources={"kid": {"auth"}, "lib": {"kid/x"}}) == ("kid", "zed")
+    # The whole path is held: 3.x found it there.
+    assert route("kid/turn", own={"kid/turn"}) == (None, "kid/turn")
+    assert route("kid/turn", sources={"lib": {"kid/turn"}}) == ("lib", "kid/turn")
+    # The child's ID is also a first folder: refused, naming who has it.
+    assert route("kid/turn", own={"kid/other"}) == clash(
+        "kid/turn: ambiguous — 'kid' is both a child project of this project and a "
+        "namespace in this project's taxonomy",
+        "write it as 'kid.taxonomy/turn' or 'app.taxonomy/kid/turn', then run "
+        "'tcw migrate' again")
+    assert route("kid/turn", sources={"lib": {"kid/other"}}) == clash(
+        "kid/turn: ambiguous — 'kid' is both a child project of this project and a "
+        "namespace in the taxonomy it inherits from 'lib'",
+        "write it as 'kid.taxonomy/turn' or 'lib.taxonomy/kid/turn', then run "
+        "'tcw migrate' again")
+    both = route("kid/turn", own={"kid/o"}, sources={"lib": {"kid/o"}, "core": {"kid/p"},
+                                                     "ws": {"other"}})
+    assert both.why.endswith("a namespace in this project's taxonomy and the "
+                             "taxonomies it inherits from 'lib' and 'core'")
+    assert both.fix == ("write it as 'kid.taxonomy/turn', 'app.taxonomy/kid/turn', "
+                        "'lib.taxonomy/kid/turn' or 'core.taxonomy/kid/turn', then run "
+                        "'tcw migrate' again")
+    # Otherwise the child.
+    assert route("kid/turn") == ("kid", "turn")
+    assert route("kid/a/b", own={"invoice"}) == ("kid", "a/b")
+    # The child's ID alone: as today.
+    assert route("kid") == (None, "kid")
+    # 3.x's own ambiguity, on the held-path row (kid is a child).
+    with pytest.raises(legacy.Ambiguous3):
+        route("kid/y", sources={"a": {"kid/y"}, "b": {"kid/y"}})
+
+
 def test_a_link_is_read_by_the_store_s_get(f_full):
     own = {"capabilities": {"cli/x"}, "taxonomy": {"invoice"}}
     sources = {"core": {"capabilities": {"billing"}, "taxonomy": {"money"}}}
