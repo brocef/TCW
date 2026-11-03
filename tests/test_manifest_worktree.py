@@ -15,6 +15,7 @@ from pathlib import Path
 import yaml
 
 from tests.projectfiles import write_config, write_local_config, write_manifest
+from tests.processes import recorded_processes  # noqa: F401
 from tests.test_project_files_cli import personal_env, tcw
 
 
@@ -694,6 +695,72 @@ def test_a_worktree_in_a_main_checkouts_worktrees_folder_finds_that_checkouts_pr
     main, child = _main_with_a_child(tmp_path)
     wp = _linked(child, main / ".worktrees" / "p")
     _prints(wp, main, "project", "path", "r")
+
+
+def test_a_submodules_own_worktree_kept_inside_it_finds_the_root_in_the_copy(tmp_path):
+    """TCW-120 round 2 (S1): the copy is a linked worktree of a *submodule*,
+    kept inside the submodule's checkout. Git names the submodule's common
+    folder `SM/.git/modules/sub`, not `.git`, so its main checkout is read
+    from `core.worktree`, as `worktree_anchors` reads it; without that the
+    worktree counted as a main checkout of its own and the climb reached
+    `SM/sub`, "declared by more than one folder"."""
+    source = _repo(tmp_path / "SUBSRC", "r", "/p/\n/.claude/\n")
+    sm = tmp_path / "SM"
+    sm.mkdir()
+    git(sm, "init", "-q", "-b", "main")
+    git(sm, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(source), "sub")
+    _commit_all(sm)
+    sub = (sm / "sub").resolve()
+    ym = _repo(sub / "p", "p", "")
+    w = _linked(sub, sub / ".claude" / "worktrees" / "w")
+    wp = _linked(ym, w / "p")
+    _prints(wp, w, "project", "path", "r")
+
+
+def test_the_active_worktree_inside_its_own_main_checkout_past_another_repository(
+        tmp_path):
+    """TCW-120 round 2 (S2): Y's linked worktree `wt` is kept at `YM/z/wt`,
+    inside a separate repository `z` that is itself inside Y's main checkout
+    `YM`. YM's branch is 3.x and wt's is 4.0. The climb from wt's child `q`
+    leaves YM out, as the one from any other copy does, rather than reading
+    it and reporting it as needing `tcw migrate`."""
+    ym = tmp_path / "YM"
+    (ym / "q").mkdir(parents=True)
+    (ym / "tcw-config.yaml").write_text("id: p\n")
+    (ym / "q" / "tcw-config.yaml").write_text("id: q\n")
+    (ym / ".gitignore").write_text("/z/\n")
+    git(ym, "init", "-q", "-b", "main")
+    _commit_all(ym)
+    z = _repo(ym / "z", "z", "/wt/\n")
+    wt = _linked(ym, z / "wt")
+    (wt / "tcw-config.yaml").unlink()
+    (wt / "q" / "tcw-config.yaml").unlink()
+    proj(wt, "p")
+    proj(wt / "q", "q", parent=["p"])
+    _commit_all(wt)
+    ran = tcw(wt / "q", "project", "path", "p")
+    assert (ran.code, ran.out, ran.err) == (0, f"{wt}\n", ""), ran
+
+
+def test_a_search_from_a_plain_checkout_starts_no_git_process(tmp_path,
+                                                               recorded_processes):
+    """TCW-120 Goal 4: a search made from a folder with no linked worktree
+    above it climbs every enclosing folder and starts no git process for
+    the walk, from a plain single checkout and from a related project's
+    plain checkout while the active project is in a linked worktree."""
+    from tcw.store import project
+    single = _repo(tmp_path / "single", "a", "")
+    nested = proj(single / "s", "s")
+    main = _repo(tmp_path / "MAIN", "m", "")
+    w = _linked(main, tmp_path / "elsewhere" / "w")
+    anchors = project.worktree_anchors(w)
+    assert anchors is not None
+    related = _repo(tmp_path / "related", "rel", "")
+    recorded_processes.clear()
+    for folder, given in ((single, None), (nested, None), (related, anchors)):
+        rounds = project.search_rounds(folder, given)
+        assert rounds == [(folder.parent, folder, list(folder.parents))], rounds
+    assert recorded_processes == [], recorded_processes
 
 
 # -- A store path whose store declares a repository -------------------------------------

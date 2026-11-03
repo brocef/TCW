@@ -56,7 +56,7 @@ def override_variable(project_id: str) -> str:
 _ANCHOR_CACHE: dict[Path, tuple[Path, Path] | None] = {}
 _REPOSITORY_CACHE: dict[Path, tuple[Path, tuple[str, ...],
                                   tuple[tuple[str, str], ...]] | None] = {}
-_CHECKOUT_CACHE: dict[Path, tuple[Path, Path, Path] | None] = {}
+_CHECKOUT_CACHE: dict[Path, tuple[Path, Path | None, Path] | None] = {}
 
 
 #: The registry opened for each project root while a command runs; None
@@ -212,24 +212,50 @@ def _git_lines(directory: Path, *args: str) -> list[str] | None:
         return None
 
 
+def _checkout_of(folder: Path) -> tuple[Path, Path | None, Path] | None:
+    """`(top, main, common)` for the git checkout `folder` is in: its top
+    folder, its main checkout (`top` itself for a main checkout) and its
+    git common folder; None outside one. `main` is None for a linked
+    worktree of a bare repository, which has no main checkout.
+
+    One `git rev-parse --show-toplevel --git-common-dir` per folder per
+    process, cached in `_CHECKOUT_CACHE` for the life of the process, as
+    `worktree_anchors` caches its answer: `worktree_anchors`, the walk in
+    `_left_out_of_the_climb` and `_same_place_in_two_checkouts` all read
+    it, so a folder any of them has asked about is not asked about again.
+
+    A common folder named `.git` is the main checkout's own. A repository
+    that is itself a submodule keeps its git dir at
+    `<outer>/.git/modules/<name>`, and records its checkout as
+    `core.worktree`, relative to that dir, which one more call reads: so a
+    submodule's own linked worktree has the submodule's checkout as its
+    main checkout, as any other repository's has. A *bare* repository
+    records none."""
+    key = folder.resolve()
+    if key not in _CHECKOUT_CACHE:
+        out = _git_lines(key, "rev-parse", "--path-format=absolute",
+                         "--show-toplevel", "--git-common-dir")
+        found = None
+        if out and len(out) == 2:
+            top, common = Path(out[0]).resolve(), Path(out[1]).resolve()
+            if common.name == ".git":
+                main: Path | None = common.parent
+            else:
+                worktree = _git_lines(common, "--git-dir", str(common), "config",
+                                      "--get", "core.worktree")
+                main = (common / worktree[0]).resolve() if worktree else None
+            found = (top, main, common)
+        _CHECKOUT_CACHE[key] = found
+    return _CHECKOUT_CACHE[key]
+
+
 def _probe_worktree(directory: Path) -> tuple[Path, Path] | None:
-    out = _git_lines(directory, "rev-parse", "--path-format=absolute",
-                     "--show-toplevel", "--git-common-dir")
-    if not out or len(out) != 2:
+    found = _checkout_of(directory)
+    if found is None:
         return None
-    top, common = Path(out[0]).resolve(), Path(out[1]).resolve()
-    if common.name == ".git":
-        main = common.parent
-    else:
-        # A repository that is itself a submodule keeps its git dir at
-        # `<outer>/.git/modules/<name>`, and records its checkout as
-        # `core.worktree`, relative to that dir. A *bare* repo records none and
-        # is not a worktree at all, so it gives no anchors.
-        worktree = _git_lines(common, "--git-dir", str(common), "config", "--get",
-                              "core.worktree")
-        if not worktree:
-            return None
-        main = (common / worktree[0]).resolve()
+    top, main, _ = found
+    if main is None:
+        return None             # a bare repository's worktree gives no anchors
     if main != top:
         return top, main
     # Not a linked worktree of its own repository. A submodule checked out in a
@@ -403,7 +429,7 @@ def search_rounds(named_by: Path, anchors: tuple[Path, Path] | None
     from_main = (holder, own, enclosing)
     if not read_as_written(top.parent, anchors):
         return [from_main]
-    as_written = (named_by.parent, named_by, _climb(named_by, top.parent))
+    as_written = (named_by.parent, named_by, _climb(named_by, named_by))
     holding = worktree_anchors(top.parent)
     if holding is not None and _below(main, holding[1]) is not None:
         return [as_written]
@@ -415,25 +441,6 @@ def _under_a_linked_worktree(folder: Path) -> bool:
     mark git leaves in a linked worktree's top folder (and a submodule's).
     Read from the disk: no git process starts."""
     return any(_is_file(f / ".git") for f in (folder, *folder.parents))
-
-
-def _checkout_of(folder: Path) -> tuple[Path, Path, Path] | None:
-    """`(top, main, common)` for the git checkout `folder` is in: its top
-    folder, its main checkout (`top` itself for a main checkout) and its
-    git common folder; None outside one. One `git rev-parse`, cached as
-    `worktree_anchors` is. A checkout whose common folder is not named
-    `.git`, such as a submodule's, counts as a checkout of its own: the walk
-    in `_left_out_of_the_climb` goes on outward from it either way."""
-    key = folder.resolve()
-    if key not in _CHECKOUT_CACHE:
-        out = _git_lines(key, "rev-parse", "--path-format=absolute",
-                         "--show-toplevel", "--git-common-dir")
-        found = None
-        if out and len(out) == 2:
-            top, common = Path(out[0]).resolve(), Path(out[1]).resolve()
-            found = (top, common.parent if common.name == ".git" else top, common)
-        _CHECKOUT_CACHE[key] = found
-    return _CHECKOUT_CACHE[key]
 
 
 def _left_out_of_the_climb(start: Path) -> list[Path]:
@@ -448,12 +455,12 @@ def _left_out_of_the_climb(start: Path) -> list[Path]:
     found = _checkout_of(start)
     while found is not None:
         top, main, common = found
+        main = top if main is None else main     # a bare repository's worktree
         if top != main and _below(top, main) is not None:
             for folder in top.parents:
                 if _below(folder, main) is None:
                     break
-                if (_below(folder, main) == Path(".")
-                        or (_repository_of(folder) or (None,))[0] == common):
+                if (_repository_of(folder) or (None,))[0] == common:
                     left_out.append(folder)
         if top.parent == top:
             break
@@ -480,11 +487,10 @@ def _same_place_in_two_checkouts(a: Path, b: Path) -> bool:
     the copy in the worktree set (TCW-118, the evaluation of candidate 7)."""
     places = []
     for folder in (a, b):
-        found = _git_lines(folder, "rev-parse", "--path-format=absolute",
-                           "--show-toplevel", "--git-common-dir")
-        if not found or len(found) != 2:
+        found = _checkout_of(Path(folder))
+        if found is None:
             return False
-        top, common = Path(found[0]).resolve(), Path(found[1]).resolve()
+        top, _, common = found
         inside = _below(Path(folder).resolve(), top)
         if inside is None:
             return False
