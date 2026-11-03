@@ -7,8 +7,12 @@ names that project's item. A taxonomy or capability path prefixed with an
 3.x `get` read it (`legacy.bare_owner_3x`): the project's own when it has
 the object, else the one inherited source that has it, ambiguous B10. A
 `capabilities.yaml` entry under `new:`, `changed:` or `removed:` is routed
-as 3.x's `route_capability_path` routes it (`legacy.route_entry_3x`), and
-one under `taxonomy:` read as a term is. A value already written as a full
+as 3.x's `route_capability_path` routes it (`legacy.route_entry_3x`). One
+under `taxonomy:` is read as a term is, except that one prefixed with a
+listed child's ID names the child's term where 3.x's reading neither names a
+source nor finds the path, and is B10 where the child's ID is also a folder
+of the project's own or an inherited taxonomy (`legacy.route_term_entry_3x`,
+TCW-119). A value already written as a full
 identifier is left. A reference to an object an override's move put at a new
 id-path names the new one: this run's moves for the project's own objects,
 and a migrated source's record (`moved:`) for its own.
@@ -24,7 +28,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from tcw.ids import FullId, id_part_problem, id_path_problem, looks_full
-from tcw.migrate.legacy import Ambiguous3, bare_owner_3x, links_3x, route_entry_3x
+from tcw.migrate.legacy import (Ambiguous3, TermClash, bare_owner_3x, links_3x,
+                                route_entry_3x, route_term_entry_3x)
 from tcw.migrate.model import Blocker
 from tcw.reference_fields import Field, fields_of
 from tcw.rewrite import Replace
@@ -132,6 +137,14 @@ class Owners:
                     owner, path = routed
                     if owner is None:
                         owner, path = bare_owner_3x(path, own, sources)
+                elif row.record == "capabilities-yaml":
+                    routed = route_term_entry_3x(value, children=self.view.children,
+                                                 own=own, sources=sources,
+                                                 project_id=self.project)
+                    if isinstance(routed, TermClash):
+                        self.blockers.append(Blocker("B10", where, routed.why, routed.fix))
+                        return None
+                    owner, path = routed
                 else:
                     owner, path = bare_owner_3x(value, own, sources)
             except Ambiguous3:

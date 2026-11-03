@@ -239,6 +239,110 @@ def test_a_capabilities_yaml_entry_is_routed_as_3_x_routed_it(tcw, tmp_path):
                                  "new": ["app.taxonomy/fresh"]}}
 
 
+# ── a taxonomy: entry prefixed with a child (TCW-119) ───────────────────────
+
+A_CONFIG = "id: a\nwork:\n  backend: filesystem\nprojects:\n  children:\n    b: ../B\n"
+A_ITEM = f"{W}/2026-10-01-a/capabilities.yaml"
+A_ITEM_TEXT = ("changed:\n- b/cli/x\ntaxonomy:\n  changed:\n  - b/turn\n  new:\n"
+               "  - b/never\n")
+B_ITEM = f"{W}/2026-10-02-b/capabilities.yaml"
+
+
+def family(tmp_path: Path, a_extra: dict[str, str], a_config: str) -> tuple[Path, Path]:
+    """The spec's Reproduction: a parent `A` (3.x) listing a child `b` at
+    `../B`, with an unfinished item declaring `b/…` entries and a completed
+    one; and `B`, which has the term `turn` and the capability `cli/x`.
+    `a_config` is `A`'s whole configuration, never defaulted, since what it
+    lists (children, sources) is what the routing branches on."""
+    a = make(tmp_path / "A", {
+        "tcw-config.yaml": a_config,
+        f"{W}/2026-10-01-a/item.yaml": "title: A\nstage: inbox\n",
+        A_ITEM: A_ITEM_TEXT,
+        f"{W}/2026-10-02-b/item.yaml": "title: B\nstage: completed\n",
+        B_ITEM: "taxonomy:\n  removed:\n  - b/turn\n",
+        **a_extra})
+    b = make(tmp_path / "B", {
+        "tcw-config.yaml": "id: b\nprojects:\n  parent:\n    a: ../A\n",
+        f"{T}/turn/meta.yaml": "name: Turn\nkind: Vocabulary\n",
+        f"{T}/turn/description.md": "A turn.\n",
+        f"{C}/cli/x/meta.yaml": "id: cap-123abc\nname: X\nStatus: Supported\n",
+        f"{C}/cli/x/description.md": "X.\n"})
+    return a, b
+
+
+def _assert_refused_unwritten(done, a: Path, line: str) -> None:
+    """The run is B10 with exactly `line`, and wrote nothing."""
+    assert done.code == 3, (done.out, done.err)
+    assert line in done.err
+    assert (a / "tcw-config.yaml").is_file()
+    assert not (a / ".tcw").exists()
+    assert read(a, A_ITEM) == A_ITEM_TEXT
+
+
+def test_a_taxonomy_entry_prefixed_with_a_child_names_the_child_s_term(tcw, tmp_path):
+    a, b = family(tmp_path, {}, A_CONFIG)
+    done = tcw(["migrate"], a)
+    assert done.code == 0, done.err
+    assert "write docs/work/2026-10-01-a/capabilities.yaml: C16" in done.err.splitlines()
+    assert "a.taxonomy/b/" not in read(a, A_ITEM) + read(a, B_ITEM)
+    assert own_state(a, A_ITEM) == {"changed": ["b.capabilities/cli/x"],
+                                    "taxonomy": {"changed": ["b.taxonomy/turn"],
+                                                 "new": ["b.taxonomy/never"]}}
+    assert own_state(a, B_ITEM) == {"taxonomy": {"removed": ["b.taxonomy/turn"]}}
+    assert tcw(["migrate"], b).code == 0
+    found = tcw(["validate"], a)
+    assert found.code == 0, (found.out, found.err)
+    assert not [line for line in (found.out + found.err).splitlines()
+                if "capabilities.yaml" in line]
+
+
+def test_a_taxonomy_entry_the_parent_s_own_taxonomy_holds_keeps_3x_reading(tcw, tmp_path):
+    # Only the held entry: `b/never` beside it is not held, and `b` is now a
+    # folder of A's taxonomy, so it would be B10 (the case below).
+    a, _ = family(tmp_path, {f"{T}/b/turn/meta.yaml": "name: Turn\nkind: Vocabulary\n",
+                             f"{T}/b/turn/description.md": "A turn.\n",
+                             A_ITEM: "taxonomy:\n  changed:\n  - b/turn\n"}, A_CONFIG)
+    migrated(tcw, a)
+    assert own_state(a, A_ITEM)["taxonomy"]["changed"] == ["a.taxonomy/b/turn"]
+
+
+def test_a_taxonomy_entry_whose_child_is_also_a_taxonomy_folder_is_b10(tcw, tmp_path):
+    a, _ = family(tmp_path, {f"{T}/b/other/meta.yaml": "name: Other\nkind: Vocabulary\n",
+                             f"{T}/b/other/description.md": "Other.\n"}, A_CONFIG)
+    _assert_refused_unwritten(
+        tcw(["migrate"], a), a,
+        "B10 docs/work/2026-10-01-a/capabilities.yaml: b/turn: ambiguous — 'b' is both "
+        "a child project of this project and a namespace in this project's taxonomy; "
+        "write it as 'b.taxonomy/turn' or 'a.taxonomy/b/turn', then run 'tcw migrate' "
+        "again")
+
+
+def test_a_taxonomy_entry_whose_child_is_a_folder_of_an_inherited_taxonomy_is_b10(
+        tcw, tmp_path):
+    make(tmp_path / "lib", {"tcw-config.yaml": "id: lib\n",
+                            f"{T}/b/other/meta.yaml": "name: Other\nkind: Vocabulary\n",
+                            f"{T}/b/other/description.md": "Other.\n"})
+    a, _ = family(tmp_path, {}, A_CONFIG + "  upstream:\n    lib: ../lib\n"
+                                           "taxonomy:\n  extends:\n  - lib\n")
+    done = tcw(["migrate"], a)
+    _assert_refused_unwritten(
+        done, a,
+        "B10 docs/work/2026-10-01-a/capabilities.yaml: b/turn: ambiguous — 'b' is both "
+        "a child project of this project and a namespace in the taxonomy it inherits "
+        "from 'lib'; write it as 'b.taxonomy/turn' or 'lib.taxonomy/b/turn', then run "
+        "'tcw migrate' again")
+    assert "'a.taxonomy/b/turn'" not in done.err
+
+
+def test_a_capability_subject_prefixed_with_a_child_is_not_routed(tcw, tmp_path):
+    a, _ = family(tmp_path, {f"{C}/cli/y/meta.yaml": "name: Y\nStatus: Supported\n"
+                                                     "Subject: [b/turn]\n",
+                             f"{C}/cli/y/description.md": "Y.\n"}, A_CONFIG)
+    migrated(tcw, a)
+    assert own_state(a, f"{C}/cli/y/tcw-capability.yaml")["Subject"] == \
+        ["a.taxonomy/b/turn"]
+
+
 def test_a_cross_project_blocked_by_names_that_project_s_item(tcw, tmp_path):
     """3.x's `--blocks` wrote `<project>/<folder>` for another project's item."""
     app = make(tmp_path / "app", {

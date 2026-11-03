@@ -245,7 +245,13 @@ Some of the reports need a word more:
   the project it names; their own `tcw migrate` cannot do it for them.
 - **B10** is a reference 3.x gave no single owner, including a
   `capabilities.yaml` entry 3.x could not route: one in a project that keeps no
-  capabilities ledger, naming no child project. Fix the entry by hand.
+  capabilities ledger, naming no child project. It is also an entry under
+  `taxonomy:` in an item's `capabilities.yaml` that starts with the ID of a
+  child project this project lists, such as `b/turn`, when `b` is also a
+  folder of this project's taxonomy or of one it inherits, and the whole path
+  is not a term there: it could mean either. The line names the projects
+  that have the folder and offers a full identifier for each meaning, such
+  as `'b.taxonomy/turn' or 'a.taxonomy/b/turn'`. Fix the entry by hand.
 - **B18** names a file the run would write that git would ignore, and the
   rule that ignores it, as `<file>:<line>:<pattern>`. It is named only when
   what the file comes from is tracked by git: for a file moved, the file
@@ -352,6 +358,17 @@ the project's YAML, such as `prettier --check`, may now fail on the new
 `.tcw/tcw-manifest.yaml` and `.tcw/tcw-migration.yaml`: leave `.tcw/` out of
 its checks, as a 3.x project left out its root `tcw-config.yaml`.
 
+In a project whose work is kept in Jira, `tcw validate` without `--remote`,
+and the check `tcw migrate` runs after a real run, do not check the terms
+and capabilities each item's `capabilities.yaml` declares, because an item's
+stage is kept in Jira and the check needs it. Once the tickets are converted
+(below), run `tcw validate --remote`: it checks those files for each item
+not yet `completed` or `discarded`, except an item whose ticket is at a
+status no stage uses. An entry naming a term or capability
+that is not made yet is not reported then; it is reported when the item
+moves past implementation. See
+[Linking and validation](guide/linking-and-validation.md).
+
 `tcw migrate` does not check git and commits nothing. It runs whether or not
 the working tree has changes, and leaves committing to you.
 
@@ -446,7 +463,9 @@ is kept in Jira migrates in this order:
 
 1. `tcw migrate --no-jira`;
 2. `tcw validate`, and read the changes;
-3. `tcw migrate`, which now converts only the tickets.
+3. `tcw migrate`, which now converts only the tickets;
+4. `tcw validate --remote`, which also checks what each item's
+   `capabilities.yaml` declares.
 
 ### Exit codes
 
@@ -675,6 +694,16 @@ commands works in 4.0.
 | `tcw://C/<id-path>`, `tcw://W/<folder>`, `tcw://T/<term>` | `tcw://<project>.capabilities/<id-path>`, `tcw://<project>.work/<id-path>`, `tcw://<project>.taxonomy/<id-path>` |
 | `tcw://core/T/<term>`, a link into another project        | `tcw://core.taxonomy/<term>`, which may name any project TCW can locate                                          |
 | a ticket's `TCW Item` value `tcw/TCW-12-add-export`       | `tcw.work/TCW-12-add-export`, converted by `tcw migrate`                                                         |
+
+An entry in an item's `capabilities.yaml` that starts with the ID of a
+child project the project lists, `<child>/<path>`, becomes
+`<child>.capabilities/<path>`, and under `taxonomy:` `<child>.taxonomy/<path>`.
+Under `taxonomy:`, a path that the project's own or an inherited taxonomy has
+as a whole keeps naming that term, while a capability entry of that shape is
+refused (B10) whenever the child's ID is also a folder of the ledger. The
+difference is deliberate: each list is read as 3.x read it, and 3.x read
+every term entry in the project's own taxonomy, so a term found there stays
+the one it found.
 
 A **full identifier** names one object in any project:
 `<project>.<namespace>/<id-path>`, such as `app.work/2026-10-24-add-export` or

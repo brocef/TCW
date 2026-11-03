@@ -983,6 +983,60 @@ def route_entry_3x(path: str, *, extends: set[str], children: list[str],
             f"qualify the path with a child project id ({qualifiers})")
 
 
+@dataclass(frozen=True)
+class TermClash:
+    """A `capabilities.yaml` term entry `route_term_entry_3x` refuses: the
+    B10's `why` and `fix`, as `Blocker` prints them."""
+
+    why: str
+    fix: str
+
+
+def _either_or(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} or {items[-1]}"
+
+
+def route_term_entry_3x(path: str, *, children: list[str], own: set[str],
+                        sources: dict[str, set[str]], project_id: str
+                        ) -> tuple[str | None, str] | TermClash:
+    """The owner of a `capabilities.yaml` entry under `taxonomy:` (TCW-119
+    Design 1). 3.x read every such entry in the project's own taxonomy
+    (`_LedgerReader.term`, `tcw/work/gates.py:430-437` at v3.0.2), so where
+    3.x's `get` (`bare_owner_3x`) names a source or finds the path, that
+    reading stands. Otherwise an entry prefixed with a listed child's ID is
+    that child's term, as `route_entry_3x` routes a capability entry beside
+    it, unless the child's ID is also a first folder of the project's own
+    taxonomy or a source's: that could mean either, as `route_entry_3x`
+    refuses for a capability, and is a `TermClash` naming each project that
+    has the folder. `own` and `sources` are the taxonomy id-paths
+    `bare_owner_3x` reads; `Ambiguous3` is raised as it raises it."""
+    head, _, rest = path.partition("/")
+    if not rest or head not in children or head in sources:
+        return bare_owner_3x(path, own, sources)
+    if path in own or any(path in paths for paths in sources.values()):
+        return bare_owner_3x(path, own, sources)
+
+    def has_folder(paths: set[str]) -> bool:
+        return any(p.split("/", 1)[0] == head for p in paths)
+
+    own_has = has_folder(own)
+    inherited = [alias for alias, paths in sources.items() if has_folder(paths)]
+    if not own_has and not inherited:
+        return head, rest
+    places = ["this project's taxonomy"] if own_has else []
+    if inherited:
+        quoted = [f"'{alias}'" for alias in inherited]
+        names = (", ".join(quoted[:-1]) + " and " + quoted[-1]) if len(quoted) > 1 else quoted[0]
+        places.append(f"the taxonom{'ies' if len(inherited) > 1 else 'y'} it inherits "
+                      f"from {names}")
+    owners = ([project_id] if own_has else []) + inherited
+    ids = [f"'{head}.taxonomy/{rest}'", *(f"'{owner}.taxonomy/{path}'" for owner in owners)]
+    return TermClash(
+        f"{path}: ambiguous — '{head}' is both a child project of this project and a "
+        f"namespace in {' and '.join(places)}",
+        f"write it as {_either_or(ids)}, then run 'tcw migrate' again")
+
+
 def link_owner_3x(link: TcwRef3, own: dict[str, set[str]],
                   sources: dict[str, dict[str, set[str]]]) -> tuple[str | None, str]:
     """`resolve_tcw_ref`, `tcw/refs.py:84-125` at v3.0.2, for a taxonomy or
