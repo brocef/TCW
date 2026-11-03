@@ -56,6 +56,7 @@ def override_variable(project_id: str) -> str:
 _ANCHOR_CACHE: dict[Path, tuple[Path, Path] | None] = {}
 _REPOSITORY_CACHE: dict[Path, tuple[Path, tuple[str, ...],
                                   tuple[tuple[str, str], ...]] | None] = {}
+_CHECKOUT_CACHE: dict[Path, tuple[Path, Path, Path] | None] = {}
 
 
 #: The registry opened for each project root while a command runs; None
@@ -377,10 +378,24 @@ def search_rounds(named_by: Path, anchors: tuple[Path, Path] | None
     from the main checkout as above, follows when the first finds nothing:
     a workspace repository's `.worktrees/` folder, in its main checkout or
     in one of its linked worktrees, or a home folder kept in git, holds a
-    worktree whose sibling projects are beside the main checkout only."""
-    as_written = (named_by.parent, named_by, list(named_by.parents))
+    worktree whose sibling projects are beside the main checkout only.
+
+    Wherever the search looks from where a folder is (every round but the
+    one from the main checkout), its climb leaves out the main checkout of
+    each linked worktree enclosing the folder that is stored inside that
+    main checkout, and the folders between the two that are in the main
+    checkout's repository: they are the original the worktree was made
+    from, on another branch, as Claude Code's `.claude/worktrees/<name>`
+    is. The folders above that main checkout are still climbed, and so is a
+    folder of a separate repository between the two (TCW-120,
+    `_left_out_of_the_climb`). That holds for a related project's search
+    made outside the active worktree, and for an active project in no
+    worktree, too; a folder with no linked worktree above it is climbed in
+    full, with no git process started."""
     if anchors is None or _below(named_by, anchors[0]) is None:
-        return [as_written]
+        if _under_a_linked_worktree(named_by):
+            return [(named_by.parent, named_by, _climb(named_by, named_by))]
+        return [(named_by.parent, named_by, list(named_by.parents))]
     top, main = anchors
     holder, own = (main.parent, main) if named_by == top else (named_by.parent, named_by)
     enclosing = [p for p in named_by.parents if _below(p, top) is not None]
@@ -388,10 +403,72 @@ def search_rounds(named_by: Path, anchors: tuple[Path, Path] | None
     from_main = (holder, own, enclosing)
     if not read_as_written(top.parent, anchors):
         return [from_main]
+    as_written = (named_by.parent, named_by, _climb(named_by, top.parent))
     holding = worktree_anchors(top.parent)
     if holding is not None and _below(main, holding[1]) is not None:
         return [as_written]
     return [as_written, from_main]
+
+
+def _under_a_linked_worktree(folder: Path) -> bool:
+    """Whether `folder` or a folder above it has a `.git` that is a file, the
+    mark git leaves in a linked worktree's top folder (and a submodule's).
+    Read from the disk: no git process starts."""
+    return any(_is_file(f / ".git") for f in (folder, *folder.parents))
+
+
+def _checkout_of(folder: Path) -> tuple[Path, Path, Path] | None:
+    """`(top, main, common)` for the git checkout `folder` is in: its top
+    folder, its main checkout (`top` itself for a main checkout) and its
+    git common folder; None outside one. One `git rev-parse`, cached as
+    `worktree_anchors` is. A checkout whose common folder is not named
+    `.git`, such as a submodule's, counts as a checkout of its own: the walk
+    in `_left_out_of_the_climb` goes on outward from it either way."""
+    key = folder.resolve()
+    if key not in _CHECKOUT_CACHE:
+        out = _git_lines(key, "rev-parse", "--path-format=absolute",
+                         "--show-toplevel", "--git-common-dir")
+        found = None
+        if out and len(out) == 2:
+            top, common = Path(out[0]).resolve(), Path(out[1]).resolve()
+            found = (top, common.parent if common.name == ".git" else top, common)
+        _CHECKOUT_CACHE[key] = found
+    return _CHECKOUT_CACHE[key]
+
+
+def _left_out_of_the_climb(start: Path) -> list[Path]:
+    """The folders the search's climb from `start` leaves out (TCW-120): for
+    each linked worktree enclosing `start` that is stored inside its own
+    main checkout, found by walking the checkouts outward, nearest first,
+    main or linked, the folders enclosing that worktree up to and including
+    its main checkout that are in the main checkout's repository. A folder
+    of a separate repository between them is a checkout in its own right,
+    and is kept."""
+    left_out: list[Path] = []
+    found = _checkout_of(start)
+    while found is not None:
+        top, main, common = found
+        if top != main and _below(top, main) is not None:
+            for folder in top.parents:
+                if _below(folder, main) is None:
+                    break
+                if (_below(folder, main) == Path(".")
+                        or (_repository_of(folder) or (None,))[0] == common):
+                    left_out.append(folder)
+        if top.parent == top:
+            break
+        found = _checkout_of(top.parent)
+        if found is not None and _below(top, found[0]) in (None, Path(".")):
+            break                    # not strictly further out: never loop
+    return left_out
+
+
+def _climb(named_by: Path, start: Path) -> list[Path]:
+    """The folders enclosing `named_by`, nearest first, without those
+    `_left_out_of_the_climb(start)` names, compared by folder identity."""
+    left_out = _left_out_of_the_climb(start)
+    return [f for f in named_by.parents
+            if not any(_below(f, out) == Path(".") for out in left_out)]
 
 
 def _same_place_in_two_checkouts(a: Path, b: Path) -> bool:
