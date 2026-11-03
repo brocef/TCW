@@ -1,0 +1,13 @@
+tcw-version: 4.0.0
+name: Personal configuration
+kind: Feature
+relatesTo:
+- tcw.taxonomy/configurable-work-lifecycle
+- tcw.taxonomy/configure-skill
+vocabulary:
+- tcw.taxonomy/config-layer
+- tcw.taxonomy/environment-override
+- tcw.taxonomy/user-identity
+- tcw.taxonomy/work-item/lifecycle-stage
+- tcw.taxonomy/work-item/lifecycle-hook
+- tcw.taxonomy/manifest

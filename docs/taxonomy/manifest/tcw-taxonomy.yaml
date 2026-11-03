@@ -1,0 +1,5 @@
+tcw-version: 4.0.0
+name: Manifest
+kind: Vocabulary
+relatesTo:
+- tcw.taxonomy/project

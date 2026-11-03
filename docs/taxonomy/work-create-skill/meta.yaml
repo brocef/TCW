@@ -1,8 +1,0 @@
-name: TCW Work Create Skill
-kind: Feature
-relatesTo:
-- work-inbox
-- work-skill
-vocabulary:
-- skill
-- work-item

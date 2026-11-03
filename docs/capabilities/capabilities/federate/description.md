@@ -1,6 +1,6 @@
 As a user, I inherit the capabilities of every parent whose `inherit` includes
 `capabilities`, named under `parents:` in my project's `.tcw/tcw-config.yaml`
-(see [Name a project's parents](tcw://C/cli/name-a-projects-parents)), through
+(see [Name a project's parents](tcw://tcw.capabilities/cli/name-a-projects-parents)), through
 every level: a parent's own parents pass their capabilities down too, as far as
 each link's `inherit` allows, without my listing them. Capability inheritance
 is decided separately from taxonomy inheritance, by each link's `inherit`, and
@@ -17,7 +17,7 @@ differently.
 An inherited capability is read by its path like one of my own, once per path,
 combined from the projects that have a capability there, and its full
 identifier names the project it belongs to. To change one, I override it (see
-[Override an inherited capability](tcw://C/capabilities/override-inherited)).
+[Override an inherited capability](tcw://tcw.capabilities/capabilities/override-inherited)).
 Opening my ledger reads no other project: inherited capabilities are read only
 when a command needs them. When a parent, or a project between it and mine, is
 not on this machine or its parents cannot be read, a command that needs the

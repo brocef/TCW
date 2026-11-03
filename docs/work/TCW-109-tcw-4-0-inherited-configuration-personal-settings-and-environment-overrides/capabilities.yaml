@@ -1,15 +1,15 @@
 new:
-    - cli/inherit-configuration-from-parents
-    - cli/override-configuration-from-the-environment
+    - tcw.capabilities/cli/inherit-configuration-from-parents
+    - tcw.capabilities/cli/override-configuration-from-the-environment
 changed:
-    - cli/override-the-team-configuration-for-myself
-    - cli/show-the-effective-configuration
-    - cli/validate-a-project
-    - work/tag-a-work-item
-    - work/keep-work-items-in-jira
+    - tcw.capabilities/cli/override-the-team-configuration-for-myself
+    - tcw.capabilities/cli/show-the-effective-configuration
+    - tcw.capabilities/cli/validate-a-project
+    - tcw.capabilities/work/tag-a-work-item
+    - tcw.capabilities/work/keep-work-items-in-jira
 taxonomy:
     new:
-        - environment-override
+        - tcw.taxonomy/environment-override
     changed:
-        - config-layer
-        - personal-configuration
+        - tcw.taxonomy/config-layer
+        - tcw.taxonomy/personal-configuration

@@ -1,0 +1,9 @@
+tcw-version: 4.0.0
+name: TCW Work Create Skill
+kind: Feature
+relatesTo:
+- tcw.taxonomy/work-inbox
+- tcw.taxonomy/work-skill
+vocabulary:
+- tcw.taxonomy/skill
+- tcw.taxonomy/work-item

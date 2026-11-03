@@ -1,28 +1,28 @@
 new:
-    - cli/change-objects-only-in-the-project-that-owns-them
-    - cli/run-a-command-as-if-started-in-another-folder
-    - work/move-a-work-item
-    - taxonomy/rename-or-move-a-term
-    - capabilities/rename-or-move-a-capability
+    - tcw.capabilities/cli/change-objects-only-in-the-project-that-owns-them
+    - tcw.capabilities/cli/run-a-command-as-if-started-in-another-folder
+    - tcw.capabilities/work/move-a-work-item
+    - tcw.capabilities/taxonomy/rename-or-move-a-term
+    - tcw.capabilities/capabilities/rename-or-move-a-capability
 changed:
-    - work/rename-a-work-item
-    - work/open-a-work-item
-    - work/tell-tcw-who-i-am
-    - work/decompose-a-work-item-into-children
-    - work/manage-blocking-relations
-    - work/keep-work-items-in-jira
-    - work/manage-the-work-inbox
-    - work/configure-the-work-store-location
-    - cli/list-connected-projects
-    - cli/reference-a-tcw-object
-    - capabilities/override-inherited
-    - web/editing
-    - skills/work
+    - tcw.capabilities/work/rename-a-work-item
+    - tcw.capabilities/work/open-a-work-item
+    - tcw.capabilities/work/tell-tcw-who-i-am
+    - tcw.capabilities/work/decompose-a-work-item-into-children
+    - tcw.capabilities/work/manage-blocking-relations
+    - tcw.capabilities/work/keep-work-items-in-jira
+    - tcw.capabilities/work/manage-the-work-inbox
+    - tcw.capabilities/work/configure-the-work-store-location
+    - tcw.capabilities/cli/list-connected-projects
+    - tcw.capabilities/cli/reference-a-tcw-object
+    - tcw.capabilities/capabilities/override-inherited
+    - tcw.capabilities/web/editing
+    - tcw.capabilities/skills/work
 removed:
-    - work/delegate-a-work-item-to-another-project
+    - tcw.capabilities/work/delegate-a-work-item-to-another-project
 taxonomy:
     new:
-        - owning-project
+        - tcw.taxonomy/owning-project
     changed:
-        - reference
-        - project
+        - tcw.taxonomy/reference
+        - tcw.taxonomy/project

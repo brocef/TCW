@@ -1,6 +1,0 @@
-id: cap-b47597
-name: Run TCW from inside a git worktree
-Status: Supported
-Feature: project-registry
-Subject:
-- project

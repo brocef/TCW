@@ -16,7 +16,7 @@ A relative path is read against the project's own folder; inside a linked git
 worktree it is read against the primary checkout only when it points outside
 the checkout, while one that stays inside belongs to the worktree like the
 default store does (see
-[Run TCW from inside a git worktree](tcw://C/cli/run-from-a-git-worktree)). TCW follows symlinks and routes every
+[Run TCW from inside a git worktree](tcw://tcw.capabilities/cli/run-from-a-git-worktree)). TCW follows symlinks and routes every
 work command to that store, while lifecycle hooks still run in the owning
 software project. That routing is uniform: `tcw -C`, a move or rename,
 capability drift, `tcw validate` and the project graph all resolve the
@@ -29,15 +29,15 @@ same folder as another store, of this project or of any project it can
 locate, or when one lies inside the other.
 
 The same key exists for the other two components —
-[taxonomy](tcw://C/taxonomy/configure-the-taxonomy-store-location) and
-[capabilities](tcw://C/capabilities/configure-the-capabilities-store-location) —
+[taxonomy](tcw://tcw.capabilities/taxonomy/configure-the-taxonomy-store-location) and
+[capabilities](tcw://tcw.capabilities/capabilities/configure-the-capabilities-store-location) —
 and all three resolve through one ladder, so what is true of one is true of the
 others.
 
 `work.path` says where the store sits on **this** machine. Beside it I can add a
 `repository` block saying where the store _comes from_, so a machine that has
 never seen it can obtain it — see
-[declaring the home repository](tcw://C/work/declare-the-work-stores-home-repository).
+[declaring the home repository](tcw://tcw.capabilities/work/declare-the-work-stores-home-repository).
 The declaration is a fallback and never an override: a store already present at
 `work.path` keeps being used untouched, so one configuration serves both a laptop
 that has the folder and a fresh checkout that does not. `tcw project provision --component work`

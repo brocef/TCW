@@ -25,9 +25,6 @@ venv/
 logs/
 .worktrees/
 
-# Personal TCW configuration, never committed.
-/tcw-config.local.yaml
-
 # Working directory the fixture capture scripts build their throwaway nodes in.
 tests/fixtures/*/_scratch/
 

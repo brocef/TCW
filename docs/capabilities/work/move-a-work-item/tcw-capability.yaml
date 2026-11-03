@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Move a work item
+Status: Supported
+Subject:
+    - tcw.taxonomy/work-item
+    - tcw.taxonomy/organising-folder

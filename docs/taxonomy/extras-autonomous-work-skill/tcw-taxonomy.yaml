@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: TCW Extras Autonomous Work Skill
+kind: Feature
+relatesTo: []
+vocabulary:
+- tcw.taxonomy/skill
+- tcw.taxonomy/work-item

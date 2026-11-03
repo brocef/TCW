@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Add a term
+Status: Supported
+Subject:
+    - tcw.taxonomy/term
+Feature: tcw.taxonomy/taxonomy-feature-registry

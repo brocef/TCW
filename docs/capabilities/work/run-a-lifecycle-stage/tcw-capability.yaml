@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Run a lifecycle stage
+Status: Supported
+Subject:
+- tcw.taxonomy/work-item/lifecycle-stage
+Feature: tcw.taxonomy/configurable-work-lifecycle

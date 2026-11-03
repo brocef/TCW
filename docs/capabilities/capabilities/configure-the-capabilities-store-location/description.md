@@ -30,5 +30,5 @@ relative path with `tcw project new --capabilities-path <path> capabilities`.
 Beside `capabilities.path` I can declare where the tree _comes from_, with a
 `capabilities.repository` block, so a machine that has never seen it obtains it
 with `tcw project provision --component capabilities` (see [declaring the home
-repository](tcw://C/capabilities/declare-the-capabilities-stores-home-repository)). A tree
+repository](tcw://tcw.capabilities/capabilities/declare-the-capabilities-stores-home-repository)). A tree
 already present at `capabilities.path` keeps being used untouched.

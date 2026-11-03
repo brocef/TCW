@@ -1,7 +1,0 @@
-id: cap-b9711e
-name: Configure the work lifecycle
-Status: Supported
-Subject:
-- work-item/lifecycle-stage
-- work-item/lifecycle-hook
-Feature: configurable-work-lifecycle

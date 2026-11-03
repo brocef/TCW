@@ -1,0 +1,8 @@
+tcw-version: 4.0.0
+name: List connected projects
+Status: Supported
+Subject:
+    - tcw.taxonomy/project
+    - tcw.taxonomy/parent-link
+    - tcw.taxonomy/load-order
+Feature: tcw.taxonomy/project-registry

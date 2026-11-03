@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Configure procedures
+Status: Supported
+Feature: tcw.taxonomy/configurable-work-lifecycle
+Subject:
+- tcw.taxonomy/work-item/lifecycle-hook

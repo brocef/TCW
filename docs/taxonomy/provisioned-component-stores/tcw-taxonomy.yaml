@@ -1,0 +1,8 @@
+tcw-version: 4.0.0
+name: Provisioned component stores
+kind: Feature
+relatesTo: []
+vocabulary:
+- tcw.taxonomy/store
+- tcw.taxonomy/project
+- tcw.taxonomy/store/home-repository

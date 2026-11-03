@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Read a file by the format version it records
+Status: Supported
+Subject:
+    - tcw.taxonomy/project
+    - tcw.taxonomy/format-version
+Feature: tcw.taxonomy/project-registry

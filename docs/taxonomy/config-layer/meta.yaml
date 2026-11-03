@@ -1,4 +1,0 @@
-name: Configuration layer
-kind: Vocabulary
-relatesTo:
-    - environment-override

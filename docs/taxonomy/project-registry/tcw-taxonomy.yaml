@@ -1,0 +1,11 @@
+tcw-version: 4.0.0
+name: Project registry
+kind: Feature
+relatesTo: []
+vocabulary:
+    - tcw.taxonomy/project
+    - tcw.taxonomy/namespace
+    - tcw.taxonomy/reference
+    - tcw.taxonomy/parent-link
+    - tcw.taxonomy/load-order
+    - tcw.taxonomy/manifest

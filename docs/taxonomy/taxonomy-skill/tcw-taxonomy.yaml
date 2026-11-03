@@ -1,0 +1,9 @@
+tcw-version: 4.0.0
+name: TCW Taxonomy Skill
+kind: Feature
+relatesTo:
+- tcw.taxonomy/taxonomy-feature-registry
+vocabulary:
+- tcw.taxonomy/skill
+- tcw.taxonomy/vocabulary
+- tcw.taxonomy/feature

@@ -21,7 +21,7 @@ It deletes exactly one capability, so it refuses, and deletes nothing, when:
 The other refusals exit 3.
 
 Removing an override is how I stop overriding an inherited capability, as
-[`tcw capabilities reset`](tcw://C/capabilities/reset-an-override) also does;
+[`tcw capabilities reset`](tcw://tcw.capabilities/capabilities/reset-an-override) also does;
 standard error then adds `<id-path> now shows <full id>`, naming the inherited
 capability the path shows again. When the inherited capabilities cannot be
 read, that line is left out and the removal still happens.
@@ -29,7 +29,7 @@ read, that line is left out and the removal still happens.
 When a work item deletes a capability, I list its path under `removed:` in the
 item's `capabilities.yaml`. That record is what the work gates check: moving the
 item on from implementation is refused while that path still resolves (see
-[Advance a work item](tcw://C/work/advance-a-work-item)), and removing the
+[Advance a work item](tcw://tcw.capabilities/work/advance-a-work-item)), and removing the
 capability is my own step, not something completing the item does for me.
 
 A removal is refused while anything it would delete holds a state file, or a TCW 3.x `meta.yaml` or `item.yaml`, which names tcw migrate.

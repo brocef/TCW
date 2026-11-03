@@ -1,7 +1,0 @@
-id: cap-301436
-name: Offer a skill dedicated to instructing agents how to decide which documents
-  a finished change must update
-Status: Supported
-Feature: documentation-sync-skill
-Subject:
-- skill

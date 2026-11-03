@@ -1,6 +1,0 @@
-id: cap-017b87
-name: Change objects only in the project that owns them
-Status: Supported
-Subject:
-    - owning-project
-    - project

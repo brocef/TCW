@@ -1,0 +1,14 @@
+tcw-version: 4.0.0
+name: TCW Configuration Skill
+kind: Feature
+relatesTo:
+- tcw.taxonomy/configurable-work-lifecycle
+- tcw.taxonomy/configurable-component-store-location
+- tcw.taxonomy/project-registry
+- tcw.taxonomy/jira-work-backend
+- tcw.taxonomy/personal-configuration
+vocabulary:
+- tcw.taxonomy/skill
+- tcw.taxonomy/project
+- tcw.taxonomy/store
+- tcw.taxonomy/work-item/lifecycle-hook

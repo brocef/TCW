@@ -1,0 +1,4 @@
+tcw-version: 4.0.0
+name: Federate capabilities from another project
+Status: Supported
+Feature: tcw.taxonomy/project-registry

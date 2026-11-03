@@ -1,7 +1,0 @@
-id: cap-9b64fa
-name: Offer a skill dedicated to instructing agents how to take work items to completion
-  unattended
-Status: Supported
-Feature: extras-autonomous-work-skill
-Subject:
-- skill

@@ -27,4 +27,4 @@ them.
 A reference into another project reads: `show`, `path` and links resolve.
 Changing the object it names is refused from here, whatever the projects'
 relation, and the refusal names the folder to run the command in
-([Change objects only in the project that owns them](tcw://C/cli/change-objects-only-in-the-project-that-owns-them)).
+([Change objects only in the project that owns them](tcw://tcw.capabilities/cli/change-objects-only-in-the-project-that-owns-them)).

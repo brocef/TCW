@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: TCW Extras Report Skill
+kind: Feature
+relatesTo: []
+vocabulary:
+- tcw.taxonomy/skill

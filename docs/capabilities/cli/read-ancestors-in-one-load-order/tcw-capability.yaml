@@ -1,0 +1,8 @@
+tcw-version: 4.0.0
+name: Read a project's ancestors in one load order
+Status: Supported
+Subject:
+    - tcw.taxonomy/project
+    - tcw.taxonomy/load-order
+    - tcw.taxonomy/parent-link
+Feature: tcw.taxonomy/project-registry

@@ -1,0 +1,10 @@
+tcw-version: 4.0.0
+name: Taxonomy feature registry
+kind: Feature
+relatesTo:
+    - tcw.taxonomy/feature
+    - tcw.taxonomy/vocabulary
+vocabulary:
+    - tcw.taxonomy/feature
+    - tcw.taxonomy/vocabulary
+    - tcw.taxonomy/term

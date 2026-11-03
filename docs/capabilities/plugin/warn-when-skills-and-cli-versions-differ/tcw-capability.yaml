@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Warn when skills and CLI versions differ
+Status: Supported
+Subject:
+- tcw.taxonomy/cli
+- tcw.taxonomy/skill

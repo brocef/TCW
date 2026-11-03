@@ -1,8 +1,0 @@
-id: cap-8eb642
-name: List connected projects
-Status: Supported
-Subject:
-    - project
-    - parent-link
-    - load-order
-Feature: project-registry

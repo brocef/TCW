@@ -1,8 +1,0 @@
-id: cap-75c7e9
-name: Point TCW at a project I already have
-Status: Supported
-Feature: provisioned-component-stores
-Subject:
-- store/home-repository
-- project
-- cli

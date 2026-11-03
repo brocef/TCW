@@ -12,7 +12,7 @@ copy made of linked worktrees, one inside another, such as a child
 repository's worktree placed inside its workspace's worktree, keeps to the
 copy, while a worktree made anywhere else reads beside the main checkout.
 Hosting
-[multiple projects in one repo](tcw://C/cli/host-multiple-projects-in-one-repo)
+[multiple projects in one repo](tcw://tcw.capabilities/cli/host-multiple-projects-in-one-repo)
 behaves the same inside a worktree as outside it. The search for a project's
 folder works the same way: the folders outside the repository, next to it or
 enclosing it, are looked for from the main checkout, except from a worktree

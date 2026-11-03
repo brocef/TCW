@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Record where other projects are in a manifest
+Status: Supported
+Subject:
+- tcw.taxonomy/project
+- tcw.taxonomy/manifest
+Feature: tcw.taxonomy/project-registry

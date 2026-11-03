@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Rely on one output contract
+Status: Supported
+Subject:
+    - tcw.taxonomy/cli
+    - tcw.taxonomy/project
+    - tcw.taxonomy/reference

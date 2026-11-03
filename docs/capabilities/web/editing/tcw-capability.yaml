@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Edit TCW content in a local web app
+parent: tcw.capabilities/web
+Status: Supported
+Feature: tcw.taxonomy/local-web-app
+Subject:
+    - tcw.taxonomy/work-item

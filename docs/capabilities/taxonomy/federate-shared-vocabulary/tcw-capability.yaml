@@ -1,0 +1,10 @@
+tcw-version: 4.0.0
+name: Federate shared vocabulary
+Status: Partial
+Priority: P2
+Gaps:
+    remote git/URL sources and version-pinning remain deferred; local registered-project
+    inheritance is transitive.
+Subject:
+    - tcw.taxonomy/namespace
+Feature: tcw.taxonomy/project-registry

@@ -1,6 +1,0 @@
-id: cap-f6a8b0
-name: Offer a skill dedicated to instructing agents how to drive a work item to completion
-Status: Supported
-Feature: commands-drive-work-to-completion-skill
-Subject:
-- skill

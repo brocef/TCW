@@ -1,7 +1,0 @@
-id: cap-97192e
-name: Offer a skill dedicated to instructing agents how to change the configuration
-  of a project that already uses TCW
-Status: Supported
-Feature: configure-skill
-Subject:
-- skill

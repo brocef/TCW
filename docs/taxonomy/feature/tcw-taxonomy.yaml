@@ -1,0 +1,4 @@
+tcw-version: 4.0.0
+name: Feature
+relatesTo:
+    - tcw.taxonomy/vocabulary

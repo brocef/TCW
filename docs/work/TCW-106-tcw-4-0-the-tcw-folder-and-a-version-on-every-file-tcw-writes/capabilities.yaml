@@ -1,14 +1,14 @@
 new:
-    - cli/read-a-file-by-the-format-version-it-records
+    - tcw.capabilities/cli/read-a-file-by-the-format-version-it-records
 changed:
-    - cli/scaffold-the-doc-trees
-    - cli/validate-a-project
-    - cli/override-the-team-configuration-for-myself
-    - work/configure-the-work-lifecycle
-    - work/configure-procedures
+    - tcw.capabilities/cli/scaffold-the-doc-trees
+    - tcw.capabilities/cli/validate-a-project
+    - tcw.capabilities/cli/override-the-team-configuration-for-myself
+    - tcw.capabilities/work/configure-the-work-lifecycle
+    - tcw.capabilities/work/configure-procedures
 taxonomy:
     new:
-        - format-version
+        - tcw.taxonomy/format-version
     changed:
-        - project
-        - personal-configuration
+        - tcw.taxonomy/project
+        - tcw.taxonomy/personal-configuration

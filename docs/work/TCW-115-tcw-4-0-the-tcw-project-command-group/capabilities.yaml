@@ -1,27 +1,27 @@
 new:
-    - cli/find-where-a-project-is-on-this-machine
-    - cli/see-how-a-project-is-assembled
-    - cli/fetch-a-project-that-is-not-on-this-machine
+    - tcw.capabilities/cli/find-where-a-project-is-on-this-machine
+    - tcw.capabilities/cli/see-how-a-project-is-assembled
+    - tcw.capabilities/cli/fetch-a-project-that-is-not-on-this-machine
 changed:
-    - cli/scaffold-the-doc-trees
-    - cli/list-connected-projects
-    - cli/show-the-effective-configuration
-    - cli/provision-declared-stores
-    - cli/get-a-suggestion-for-a-mistyped-command
-    - cli/declare-a-connected-projects-home-repository
-    - cli/point-tcw-at-a-project-i-already-have
-    - cli/locate-tcw-storage-folders
-    - cli/validate-a-project
-    - cli/override-the-team-configuration-for-myself
-    - cli/host-multiple-projects-in-one-repo
-    - cli/read-a-file-by-the-format-version-it-records
-    - work/configure-the-work-store-location
-    - taxonomy/configure-the-taxonomy-store-location
-    - capabilities/configure-the-capabilities-store-location
-    - work/declare-the-work-stores-home-repository
-    - taxonomy/declare-the-taxonomy-stores-home-repository
-    - capabilities/declare-the-capabilities-stores-home-repository
+    - tcw.capabilities/cli/scaffold-the-doc-trees
+    - tcw.capabilities/cli/list-connected-projects
+    - tcw.capabilities/cli/show-the-effective-configuration
+    - tcw.capabilities/cli/provision-declared-stores
+    - tcw.capabilities/cli/get-a-suggestion-for-a-mistyped-command
+    - tcw.capabilities/cli/declare-a-connected-projects-home-repository
+    - tcw.capabilities/cli/point-tcw-at-a-project-i-already-have
+    - tcw.capabilities/cli/locate-tcw-storage-folders
+    - tcw.capabilities/cli/validate-a-project
+    - tcw.capabilities/cli/override-the-team-configuration-for-myself
+    - tcw.capabilities/cli/host-multiple-projects-in-one-repo
+    - tcw.capabilities/cli/read-a-file-by-the-format-version-it-records
+    - tcw.capabilities/work/configure-the-work-store-location
+    - tcw.capabilities/taxonomy/configure-the-taxonomy-store-location
+    - tcw.capabilities/capabilities/configure-the-capabilities-store-location
+    - tcw.capabilities/work/declare-the-work-stores-home-repository
+    - tcw.capabilities/taxonomy/declare-the-taxonomy-stores-home-repository
+    - tcw.capabilities/capabilities/declare-the-capabilities-stores-home-repository
 taxonomy:
     changed:
-        - cli
-        - project-registry
+        - tcw.taxonomy/cli
+        - tcw.taxonomy/project-registry

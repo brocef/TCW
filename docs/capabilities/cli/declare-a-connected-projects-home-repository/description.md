@@ -21,10 +21,10 @@ into the folder its deciding manifest entry gives, the entry the lookup for its
 folder uses. With no argument it fetches every project of this project's family
 that is missing, and with `<id>` that project and the projects it inherits
 from; see [Fetch a project that is not on this
-machine](tcw://C/cli/fetch-a-project-that-is-not-on-this-machine), which also
+machine](tcw://tcw.capabilities/cli/fetch-a-project-that-is-not-on-this-machine), which also
 says how far a manifest that is not this project's own may place a clone. The
 same command obtains the component stores a project declares (see [Provision
-declared stores](tcw://C/cli/provision-declared-stores)). A store whose
+declared stores](tcw://tcw.capabilities/cli/provision-declared-stores)). A store whose
 repository is a project already here is still read inside that project's
 folder, matched against the manifest entries that give that repository.
 

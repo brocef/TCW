@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Locate TCW storage folders
+Status: Supported
+Subject:
+- tcw.taxonomy/cli
+- tcw.taxonomy/store

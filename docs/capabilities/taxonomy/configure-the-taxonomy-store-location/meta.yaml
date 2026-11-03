@@ -1,7 +1,0 @@
-id: cap-d83532
-name: Configure the taxonomy-store location
-Status: Supported
-Feature: configurable-component-store-location
-Subject:
-- store
-- project

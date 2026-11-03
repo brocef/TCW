@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Tell TCW who I am
+Status: Supported
+Subject:
+    - tcw.taxonomy/user-identity
+    - tcw.taxonomy/work-item
+Feature: tcw.taxonomy/personal-configuration

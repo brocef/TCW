@@ -19,7 +19,7 @@ fails when the tree is the same folder as another store, of this project or of
 any project it can locate, or when one lies inside the other.
 
 This is the same thing `work.path` does for work items — see
-[the work-store equivalent](tcw://C/work/configure-the-work-store-location).
+[the work-store equivalent](tcw://tcw.capabilities/work/configure-the-work-store-location).
 Nothing changes for a project that sets nothing: the tree resolves to
 `docs/taxonomy` exactly as before, whether or not that folder exists.
 
@@ -31,5 +31,5 @@ exists.
 Beside `taxonomy.path` I can declare where the tree _comes from_, with a
 `taxonomy.repository` block, so a machine that has never seen it obtains it
 with `tcw project provision --component taxonomy` (see [declaring the home
-repository](tcw://C/taxonomy/declare-the-taxonomy-stores-home-repository)). A tree
+repository](tcw://tcw.capabilities/taxonomy/declare-the-taxonomy-stores-home-repository)). A tree
 already present at `taxonomy.path` keeps being used untouched.

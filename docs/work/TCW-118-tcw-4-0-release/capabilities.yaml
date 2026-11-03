@@ -1,6 +1,12 @@
 changed:
-    - plugin/bootstrap-the-cli
-    - cli/install-from-pypi
-    - capabilities/remove-a-capability
-    - capabilities/reset-an-override
-    - taxonomy/remove-a-local-term
+    - tcw.capabilities/plugin/bootstrap-the-cli
+    - tcw.capabilities/cli/install-from-pypi
+    - tcw.capabilities/capabilities/remove-a-capability
+    - tcw.capabilities/capabilities/reset-an-override
+    - tcw.capabilities/taxonomy/remove-a-local-term
+    - tcw.capabilities/capabilities/add-a-capability
+    - tcw.capabilities/cli/group-objects-in-organising-folders
+    - tcw.capabilities/cli/run-from-a-git-worktree
+    - tcw.capabilities/skills/work
+    - tcw.capabilities/taxonomy/add-a-term
+    - tcw.capabilities/work/decompose-a-work-item-into-children

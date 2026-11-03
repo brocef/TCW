@@ -1,7 +1,0 @@
-id: cap-3ce901
-name: Offer a skill dedicated to instructing agents how to report a bug or suggestion
-  to the TCW project
-Status: Supported
-Feature: extras-report-skill
-Subject:
-- skill

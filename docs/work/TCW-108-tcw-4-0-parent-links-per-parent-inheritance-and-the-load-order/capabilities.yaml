@@ -1,28 +1,28 @@
 new:
-    - cli/name-a-projects-parents
-    - cli/list-a-projects-children
-    - cli/read-ancestors-in-one-load-order
+    - tcw.capabilities/cli/name-a-projects-parents
+    - tcw.capabilities/cli/list-a-projects-children
+    - tcw.capabilities/cli/read-ancestors-in-one-load-order
 changed:
-    - cli/host-multiple-projects-in-one-repo
-    - cli/list-connected-projects
-    - cli/validate-a-project
-    - cli/rely-on-one-output-contract
-    - cli/override-the-team-configuration-for-myself
-    - cli/declare-a-connected-projects-home-repository
-    - cli/reference-a-tcw-object
-    - taxonomy/federate-shared-vocabulary
-    - capabilities/federate
-    - work/delegate-a-work-item-to-another-project
-    - web/editing
+    - tcw.capabilities/cli/host-multiple-projects-in-one-repo
+    - tcw.capabilities/cli/list-connected-projects
+    - tcw.capabilities/cli/validate-a-project
+    - tcw.capabilities/cli/rely-on-one-output-contract
+    - tcw.capabilities/cli/override-the-team-configuration-for-myself
+    - tcw.capabilities/cli/declare-a-connected-projects-home-repository
+    - tcw.capabilities/cli/reference-a-tcw-object
+    - tcw.capabilities/taxonomy/federate-shared-vocabulary
+    - tcw.capabilities/capabilities/federate
+    - tcw.capabilities/work/delegate-a-work-item-to-another-project
+    - tcw.capabilities/web/editing
 removed:
-    - cli/read-from-an-upstream-project
+    - tcw.capabilities/cli/read-from-an-upstream-project
 taxonomy:
     new:
-        - parent-link
-        - load-order
+        - tcw.taxonomy/parent-link
+        - tcw.taxonomy/load-order
     changed:
-        - project
-        - project-registry
-        - personal-configuration
+        - tcw.taxonomy/project
+        - tcw.taxonomy/project-registry
+        - tcw.taxonomy/personal-configuration
     removed:
-        - upstream-project
+        - tcw.taxonomy/upstream-project

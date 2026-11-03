@@ -2,4 +2,4 @@ As a user or agent, I run `tcw work lifecycle` to see my project's stage table: 
 
 `--stage <stage>` shows one stage; an unknown stage name is a usage error (exit 2) whose message lists the stages. `--json` prints `{"schema": 1, "hooks": {...}, "stages": [...]}`: the hook limits, and for each stage its name, kind, whether it is enabled, and its bindings.
 
-It reads the current project only. To see another project's configuration, I run it in that project. What a stage tells an agent to do is `tcw work stage prompt` — see [Run a lifecycle stage](tcw://C/work/run-a-lifecycle-stage).
+It reads the current project only. To see another project's configuration, I run it in that project. What a stage tells an agent to do is `tcw work stage prompt` — see [Run a lifecycle stage](tcw://tcw.capabilities/work/run-a-lifecycle-stage).

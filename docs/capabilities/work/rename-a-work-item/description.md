@@ -20,4 +20,4 @@ moves, because a reference that item holds could not be rewritten. The checks
 come first and a refusal writes nothing; a rename that stops partway says what
 it wrote, and running the same command again finishes it. TCW never commits
 the rename; the change is mine to commit. To put the folder somewhere else
-instead, I [move the item](tcw://C/work/move-a-work-item).
+instead, I [move the item](tcw://tcw.capabilities/work/move-a-work-item).

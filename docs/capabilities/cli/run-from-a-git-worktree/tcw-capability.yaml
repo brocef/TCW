@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Run TCW from inside a git worktree
+Status: Supported
+Feature: tcw.taxonomy/project-registry
+Subject:
+- tcw.taxonomy/project

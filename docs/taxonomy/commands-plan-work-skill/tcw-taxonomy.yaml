@@ -1,0 +1,8 @@
+tcw-version: 4.0.0
+name: TCW Plan Work Command Skill
+kind: Feature
+relatesTo: []
+vocabulary:
+- tcw.taxonomy/skill
+- tcw.taxonomy/work-item
+- tcw.taxonomy/work-item/lifecycle-stage

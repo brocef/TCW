@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Find where a project is on this machine
+Status: Supported
+Subject:
+- tcw.taxonomy/project
+- tcw.taxonomy/manifest
+Feature: tcw.taxonomy/project-registry

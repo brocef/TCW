@@ -1,6 +1,0 @@
-id: cap-7d0c93
-name: Run a procedure
-Status: Supported
-Feature: configurable-work-lifecycle
-Subject:
-- work-item/lifecycle-hook

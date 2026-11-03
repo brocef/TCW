@@ -1,7 +1,0 @@
-name: Override
-kind: Vocabulary
-relatesTo:
-    - term
-    - capability
-    - load-order
-    - full-identifier

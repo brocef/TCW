@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Override the team configuration for myself
+Status: Supported
+Subject:
+    - tcw.taxonomy/config-layer
+Feature: tcw.taxonomy/personal-configuration

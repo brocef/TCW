@@ -1,0 +1,9 @@
+tcw-version: 4.0.0
+name: Configurable component-store location
+kind: Feature
+relatesTo: []
+vocabulary:
+    - tcw.taxonomy/store
+    - tcw.taxonomy/project
+    - tcw.taxonomy/namespace
+    - tcw.taxonomy/tcw-address

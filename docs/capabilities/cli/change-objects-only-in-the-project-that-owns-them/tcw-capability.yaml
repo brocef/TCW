@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Change objects only in the project that owns them
+Status: Supported
+Subject:
+    - tcw.taxonomy/owning-project
+    - tcw.taxonomy/project

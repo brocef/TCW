@@ -7,7 +7,7 @@ rewritten: other terms' `parent`, `relatesTo` and `vocabulary`, capabilities'
 documents. It prints one `<old> -> <new>` line per identifier it changed.
 
 It follows the same rules as
-[moving a work item](tcw://C/work/move-a-work-item): the checks
+[moving a work item](tcw://tcw.capabilities/work/move-a-work-item): the checks
 come first and a refusal writes nothing; a stop says what was written and that
 running the same command again finishes it; references in other projects are
 left for `tcw validate` there to report. A term another project owns is

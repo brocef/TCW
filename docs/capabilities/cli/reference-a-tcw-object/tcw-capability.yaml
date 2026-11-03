@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Reference a TCW object with a tcw:// link
+Status: Supported
+Subject:
+    - tcw.taxonomy/reference
+Feature: tcw.taxonomy/project-registry

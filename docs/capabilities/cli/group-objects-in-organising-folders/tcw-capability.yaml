@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Group objects in organising folders
+Status: Supported
+Subject:
+    - tcw.taxonomy/organising-folder
+    - tcw.taxonomy/object-folder

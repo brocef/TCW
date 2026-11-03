@@ -23,7 +23,7 @@ how many of them give each status, as `Missing(1), Supported(1)`, and its page
 lists each status with its projects.
 
 Any object of another project TCW can locate opens in the app, read-only
-([Edit TCW content in a local web app](tcw://C/web/editing)), and a link to
+([Edit TCW content in a local web app](tcw://tcw.capabilities/web/editing)), and a link to
 one on this machine is followed. A link to a project that is not on this
 machine is shown as a labelled name. An unresolved link stays inert and says why.
-See [Edit TCW content in a local web app](tcw://C/web/editing).
+See [Edit TCW content in a local web app](tcw://tcw.capabilities/web/editing).

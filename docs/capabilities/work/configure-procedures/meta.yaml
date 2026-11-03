@@ -1,6 +1,0 @@
-id: cap-9e58e7
-name: Configure procedures
-Status: Supported
-Feature: configurable-work-lifecycle
-Subject:
-- work-item/lifecycle-hook

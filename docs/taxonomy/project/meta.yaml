@@ -1,5 +1,0 @@
-name: Project
-kind: Vocabulary
-relatesTo:
-    - parent-link
-    - load-order

@@ -1,0 +1,8 @@
+tcw-version: 4.0.0
+name: Provision the declared work store
+Status: Supported
+Feature: tcw.taxonomy/provisioned-component-stores
+Subject:
+- tcw.taxonomy/store
+- tcw.taxonomy/store/home-repository
+- tcw.taxonomy/cli

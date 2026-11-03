@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Offer a skill dedicated to instructing agents how to decide which documents
+  a finished change must update
+Status: Supported
+Feature: tcw.taxonomy/documentation-sync-skill
+Subject:
+- tcw.taxonomy/skill

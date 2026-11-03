@@ -1,0 +1,8 @@
+tcw-version: 4.0.0
+name: TCW Capabilities Skill
+kind: Feature
+relatesTo:
+- tcw.taxonomy/capability-feature-association
+vocabulary:
+- tcw.taxonomy/skill
+- tcw.taxonomy/capability

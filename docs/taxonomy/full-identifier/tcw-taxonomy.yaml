@@ -1,0 +1,5 @@
+tcw-version: 4.0.0
+name: Full identifier
+relatesTo:
+    - tcw.taxonomy/reference
+    - tcw.taxonomy/namespace

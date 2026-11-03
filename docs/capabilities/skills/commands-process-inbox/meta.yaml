@@ -1,7 +1,0 @@
-id: cap-8e36a2
-name: Offer a skill dedicated to instructing agents how to turn work inbox entries
-  into work items
-Status: Supported
-Feature: commands-process-inbox-skill
-Subject:
-- skill

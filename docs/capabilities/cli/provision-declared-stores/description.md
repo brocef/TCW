@@ -4,7 +4,7 @@ here. With no argument it works in two passes. The stores pass obtains the
 component stores, `work`, `taxonomy` and `capabilities`, whose home repository
 the project declares and which are not here. The projects pass then fetches the
 projects of this project's family that are not on this machine, as [Fetch a
-project that is not on this machine](tcw://C/cli/fetch-a-project-that-is-not-on-this-machine)
+project that is not on this machine](tcw://tcw.capabilities/cli/fetch-a-project-that-is-not-on-this-machine)
 describes. It reports on standard error what it is about to contact before
 contacting it, fetches each store into the location the declaration names or a
 per-machine cache, and says where each store landed. It prints nothing on

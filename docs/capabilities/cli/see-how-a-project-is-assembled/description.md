@@ -5,7 +5,7 @@ which of them are not on this machine; the order its ancestors are read in,
 with a warning when no order keeps every project's own order of parents; each
 setting with where its value comes from (the project, layer and file, as
 [Show the effective
-configuration](tcw://C/cli/show-the-effective-configuration) labels it, and
+configuration](tcw://tcw.capabilities/cli/show-the-effective-configuration) labels it, and
 whether it is inherited); where each store is, or why it cannot be reached;
 the records this project overrides from an ancestor, for taxonomy and
 capabilities; and how many paths two unrelated projects both use.
@@ -19,4 +19,4 @@ configuration, with the same message. It writes nothing.
 `tcw project info --json` prints the same facts as one document, `{"schema": 2,
 "project": {...}}`, for scripts. To learn where one other project is, [Find
 where a project is on this
-machine](tcw://C/cli/find-where-a-project-is-on-this-machine).
+machine](tcw://tcw.capabilities/cli/find-where-a-project-is-on-this-machine).

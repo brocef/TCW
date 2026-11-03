@@ -1,0 +1,4 @@
+tcw-version: 4.0.0
+name: Vocabulary
+relatesTo:
+    - tcw.taxonomy/term

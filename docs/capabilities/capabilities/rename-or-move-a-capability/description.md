@@ -7,7 +7,7 @@ project is rewritten: other capabilities' `Superseded by`, `Blocked by`,
 documents. It prints one `<old> -> <new>` line per identifier it changed.
 
 It follows the same rules as
-[moving a work item](tcw://C/work/move-a-work-item). An override
+[moving a work item](tcw://tcw.capabilities/work/move-a-work-item). An override
 is not moved or renamed away from the path of the capability it overrides,
 and a move to a path where my project would inherit another project's
 capability is refused, since it would make an override. A move that would

@@ -1,0 +1,7 @@
+tcw-version: 4.0.0
+name: Override configuration from the environment
+Status: Supported
+Subject:
+    - tcw.taxonomy/config-layer
+    - tcw.taxonomy/environment-override
+Feature: tcw.taxonomy/personal-configuration

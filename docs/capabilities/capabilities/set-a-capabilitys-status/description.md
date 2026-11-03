@@ -7,7 +7,7 @@ without `=`, is a usage error (exit 2). Addresses my own and inherited
 capabilities alike. On an inherited capability, named by its path or by the
 full identifier of the capability it inherits, `set` writes my project's own
 capability at the same path, holding only the fields given (see [Override an
-inherited capability](tcw://C/capabilities/override-inherited)). A capability of
+inherited capability](tcw://tcw.capabilities/capabilities/override-inherited)). A capability of
 another project that mine does not inherit is refused (exit 3), naming the
 project to change it in. A field cleared on any of my project's own
 capabilities is written as an explicit `null`, so it stays cleared even if a

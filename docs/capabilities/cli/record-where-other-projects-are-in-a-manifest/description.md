@@ -40,5 +40,5 @@ overrides on this machine as a warning rather than an error.
 The TCW 3 `projects:` key in `.tcw/tcw-config.yaml` is refused, with a message
 saying where parents, children and locations now go. See [Find a project's
 folder from its
-ID](tcw://C/cli/find-a-projects-folder-from-its-id) for how TCW uses the
+ID](tcw://tcw.capabilities/cli/find-a-projects-folder-from-its-id) for how TCW uses the
 manifests.

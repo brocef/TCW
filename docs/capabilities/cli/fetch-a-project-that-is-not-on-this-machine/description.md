@@ -2,12 +2,12 @@ As a user arriving on a machine that has only some of a project's family, I
 run `tcw project provision` to fetch the connected projects that are not here.
 Each is cloned from the repository its deciding manifest entry gives (the entry
 the lookup reads first; see [Find a project's folder from its
-ID](tcw://C/cli/find-a-projects-folder-from-its-id)) into the folder that entry
+ID](tcw://tcw.capabilities/cli/find-a-projects-folder-from-its-id)) into the folder that entry
 names, so afterwards every command finds it where the manifests say it is.
 `tcw project provision <id>` fetches that one project and the ancestors it
 needs that are missing, and no store; with no ID, the stores this project
 declares are provisioned first (see [Provision declared
-stores](tcw://C/cli/provision-declared-stores)), then the projects.
+stores](tcw://tcw.capabilities/cli/provision-declared-stores)), then the projects.
 
 It works in **rounds**. A round is every project the family names that is not
 on this machine and has not yet been tried in this run. Every project of a

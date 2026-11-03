@@ -1,0 +1,6 @@
+tcw-version: 4.0.0
+name: Rename or move a capability
+Status: Supported
+Subject:
+    - tcw.taxonomy/capability
+    - tcw.taxonomy/owning-project

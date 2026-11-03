@@ -1,7 +1,0 @@
-id: cap-bbe15b
-name: Find a project's folder from its ID
-Status: Supported
-Subject:
-- project
-- manifest
-Feature: project-registry
