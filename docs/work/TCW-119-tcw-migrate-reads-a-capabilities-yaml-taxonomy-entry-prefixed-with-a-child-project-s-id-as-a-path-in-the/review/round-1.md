@@ -121,4 +121,4 @@ Capability record: `docs/capabilities/cli/migrate-a-tcw-3-x-project-to-tcw-4/des
 - Not confirmed by this review: the implement round's red-before-fix results
   and mutation checks, which it reports itself.
 - The originating report is not a GitHub issue, so nothing waits on
-  publication for this item beyond the 4.0.1 release itself.
+  publication for this item beyond the 4.1.0 release itself.

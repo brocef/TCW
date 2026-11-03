@@ -487,4 +487,5 @@ No setup is missing from `docs/use-cases.md`.
   epic on a workflow of its own is never checked and nothing says so. It is
   not a migration defect and has its own question (warn, or check with a
   stage-free rule), so it is not folded in here. Not filed by this spec.
-- Ship as 4.0.1 (the request).
+- Ship as 4.1.0 (the request asked for 4.0.1; TCW-177, in the same release,
+  changes an item file's format, so the release is a minor one).

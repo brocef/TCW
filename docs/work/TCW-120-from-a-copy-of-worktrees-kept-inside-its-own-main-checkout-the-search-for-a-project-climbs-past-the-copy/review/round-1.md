@@ -141,4 +141,4 @@ Capability record: `docs/capabilities/cli/run-from-a-git-worktree/description.md
 - The documents' claim for a command run outside every worktree rests on the
   early return's logic and implement round 2's manual script, not on a test.
 - The originating report is not a GitHub issue, so nothing waits on
-  publication for this item beyond the 4.0.1 release itself.
+  publication for this item beyond the 4.1.0 release itself.

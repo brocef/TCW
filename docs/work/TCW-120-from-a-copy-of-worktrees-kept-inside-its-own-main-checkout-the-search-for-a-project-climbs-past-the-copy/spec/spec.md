@@ -515,7 +515,7 @@ fail. Criteria 3, 9 and the `tools` half of 5d were run and pass. The
 ## Notes
 
 - TCW-119 (a separate item, on `tcw migrate`'s reading of a child's term in
-  `capabilities.yaml`) is planned to ship in the same 4.0.1 release; the two
+  `capabilities.yaml`) is planned to ship in the same 4.1.0 release; the two
   share no code, so this item does not cut the version.
 - Workaround until then: an entry for `r` in p's
   `.tcw/tcw-manifest.local.yaml`.

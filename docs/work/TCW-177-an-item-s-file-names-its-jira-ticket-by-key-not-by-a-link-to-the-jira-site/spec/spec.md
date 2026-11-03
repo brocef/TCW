@@ -50,7 +50,7 @@ callers of `_item_file` and of the state file name finds:
 | `tcw/work/jira/remote.py` | `tcw validate --remote` compares each folder's key with its ticket; never reads the `ticket` line | none |
 | `tcw/serve/server.py:86` | an error body's `ticket` is a refused ticket's key, unrelated to the file | none |
 | `web/client/src` | reads `url` from the server's ticket answers, built by `tickets.py` | none |
-| `tcw/migrate/` (`stores.py:_plan_object`) | converts a 3.x `item.yaml` into `tcw-work-item.yaml` by editing the parsed 3.x file; it carries the 3.x `ticket:` line over unchanged and neither writes nor checks it (no match for `ticket` or `browse` in `tcw/migrate/stores.py`) | none; see Non-goals |
+| `tcw/migrate/` (`stores.py:_plan_object`) | converts a 3.x `item.yaml` into `tcw-work-item.yaml` by editing the parsed 3.x file; in 4.0.0 it carries the 3.x `ticket:` line over unchanged and neither writes nor checks it (no match for `ticket` or `browse` in `tcw/migrate/stores.py`) | writes the key when the 3.x line is the link on `work.jira.site` naming the folder's key (Design 5, added at implement round 2) |
 
 ## Goals
 
@@ -62,27 +62,39 @@ callers of `_item_file` and of the state file name finds:
    <site>/browse/<KEY>`, checked exactly as today: on `work.jira.site`, naming
    the folder's key. Existing projects stay valid with no change.
 4. This repository's own item files are rewritten to the key form.
-5. The Jira guide, the validation guide, the capability description, the
-   release notes and the changelog say so.
+5. `tcw migrate` writes the key for a 3.x item file whose `ticket:` is the
+   link on `work.jira.site` naming the folder's key (added at implement
+   round 2, from the code review's finding 2).
+6. The Jira guide, the validation guide, the capability description, the
+   migration guide, the release notes and the changelog say so.
+7. The release is **4.1.0**, a minor release, not 4.0.1: the item file's
+   format changes, and `docs/guide/configuration.md` says a patch release
+   never changes a format.
 
 ## Non-goals
 
 - **Converting existing files.** No command rewrites a 4.0.0 file's link to
   the key; a project that wants its files changed edits them (a one-line
   substitution). This repository does so by a script in its own commit.
-- **`tcw migrate`.** Its conversion of a 3.x project carries the 3.x
-  `ticket:` line over unchanged (see the table above); the result is the
-  4.0.0 link form, which stays valid. Changing what the 3.x to 4.0 migration
-  writes is not asked for and would change a documented conversion.
+- **`tcw migrate` converting any other `ticket:` value.** Only the link on
+  `work.jira.site` naming the folder's key becomes the key (Design 5); any
+  other value is carried over as it is, for `tcw validate` to report as it
+  does today.
 - **Rewriting git history.** Commits already pushed keep the old links; only
   what is committed from now on changes (the request).
 - **Other private names in the repository** (the site address in this
   repository's `.tcw/tcw-config.yaml`, in test fixtures and in the 3.0
   migration log). They are not item files; the request names only the item
   files.
-- **Old TCW reading new files.** TCW 4.0.0 refuses `ticket: <KEY>` as "is not
-  on <site>"; that is accepted (`docs/use-cases.md` S-9: old code reading
-  files a newer version wrote is not a constraint).
+- **Old TCW reading new files.** TCW 4.0.0 cannot read `ticket: <KEY>`. The
+  release is therefore 4.1.0, and the item files it writes are stamped
+  `tcw-version: 4.1.0`. TCW 4.0.0's version check (`version_problem`,
+  `tcw/project_files.py`) compares major and minor, so it refuses such a file
+  with "was written by TCW 4.1 (tcw-version 4.1.0), newer than this TCW
+  (4.0.0); upgrade TCW" before it reads the `ticket` line, instead of the
+  misleading "is not on <site>" it would give a file stamped 4.0.x. That is
+  the designed message for old code meeting a newer format
+  (`docs/use-cases.md` S-9).
 
 ## Design
 
@@ -98,8 +110,10 @@ the full link") and its follow-up decisions:
    1. `v` is not a string: an error, "ticket <v> is not the folder's key,
       <KEY>".
    2. `v` contains no `/` (the key form): it must equal the folder's key;
-      otherwise an error, "ticket '<v>' names <v>, but the folder's key is
-      <KEY>".
+      otherwise an error, "ticket '<v>' is not the folder's key, <KEY>", the
+      value quoted so an empty or multi-line one reads on one line (changed
+      at implement round 2 from "ticket '<v>' names <v>, but the folder's key
+      is <KEY>", which printed the value bare).
    3. `v` contains a `/` (the 4.0.0 link form): checked as today. It must start
       with `<work.jira.site>/browse/`, or an error, "ticket '<v>' is not on
       <site> (work.jira.site)"; the rest must equal the folder's key, or an
@@ -108,7 +122,16 @@ the full link") and its follow-up decisions:
 4. **This repository's item files** are rewritten by a short script that
    replaces each `ticket: <site>/browse/<KEY>` line with `ticket: <KEY>`,
    checking that each key equals its folder's key prefix, in a commit of its
-   own.
+   own. They are stamped `tcw-version: 4.1.0` in the release commit, after
+   `scripts/cut_version.py` bumps the version, since this branch's own code
+   reports 4.0.0 until then and would refuse them as newer.
+5. **`tcw migrate`** (added at implement round 2). Converting a 3.x
+   Jira-backed project, a 3.x `item.yaml` whose `ticket` is exactly
+   `<work.jira.site>/browse/<KEY>`, with `<KEY>` the folder's key, is written
+   as `ticket: <KEY>`. The site is the one `work.jira.site` of the project's
+   own layers (as `tcw migrate --no-jira`'s summary reads it). Any other
+   value is carried over unchanged. A 3.x file left beside a 4.0 file holding
+   either the key or the link is an equal pair, not B11.
 
 ## Abstraction litmus test
 
@@ -132,8 +155,10 @@ backend owns and already reads from the folder's name.
 - **S-3 Which backend keeps the work**: Jira only. The filesystem backend's
   state file has no `ticket` line.
 - **S-9 Upgrades**: new code reads both forms (Design 2.3 keeps the 4.0.0
-  check). TCW 4.0.0 reading a new file refuses it, which S-9 says is not a
-  constraint; a project upgrades everyone working on it.
+  check). The format changes, so the release is 4.1.0 and new files are
+  stamped 4.1.0; TCW 4.0.0 refuses them as written by a newer TCW and says
+  to upgrade, the message S-9 designs for old code meeting a newer format.
+  A project upgrades everyone working on it, CI included, together.
 - **S-11 Version control**: TCW changes no git state; this repository's
   rewrite is a commit made by hand.
 
@@ -143,6 +168,9 @@ above; 5 — no person assumed; 6 — the CLI carries all of it, so every harnes
 gets it; 7 — the writer writes one file in one call, as before; 8 — no cost
 to UC-1; 9 — a file format changes, read by new code in both forms (S-9);
 10 — the tests run in a Jira-mode project with the fake Jira site.
+
+`tcw migrate` (Design 5) touches UC-5 and UC-7 too: a 3.x project converted
+by 4.1 gets the key form, and its site comes from its own layers only.
 
 ## Acceptance criteria
 
@@ -178,6 +206,11 @@ to UC-1; 9 — a file format changes, read by new code in both forms (S-9);
     hold an entry file named by this item's folder. No document added by this
     change names a real Jira site.
 11. The full suite passes, run as CI runs it (bare `pytest` from the root).
+12. **Migration** (added at implement round 2). `tcw migrate` on a 3.x
+    Jira-backed project writes `ticket: <KEY>` for a link on its site naming
+    the folder's key; a link on another site, naming another key, or not
+    exactly the link, and a bare key, are carried over unchanged; a 3.x file
+    beside a 4.0 file holding the key or the link is an equal pair.
 
 ### Coverage
 
@@ -201,8 +234,11 @@ Design rule 2's sub-rules against the criteria:
   the remedy.
 - **A key containing `/`.** Jira keys are letters, digits and one hyphen
   (`folder_key`), so a value containing `/` is always the link form.
-- **Old TCW.** A teammate still on 4.0.0 sees new files refused by
-  `tcw validate`. Ships in 4.0.1; S-9 accepts this.
+- **Old TCW.** A teammate or CI job still on 4.0.0 sees new files refused by
+  `tcw validate` as written by TCW 4.1, with "upgrade TCW". Ships in 4.1.0,
+  not 4.0.1, so that this is the message (a patch release never changes a
+  format, `docs/guide/configuration.md`); the release notes tell everyone on
+  a project to move together.
 
 ## Notes
 

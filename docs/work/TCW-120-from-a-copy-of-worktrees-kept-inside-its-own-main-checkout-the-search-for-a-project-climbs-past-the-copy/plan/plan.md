@@ -2,7 +2,7 @@
 
 Spec: [`../spec/spec.md`](../spec/spec.md). One code change, in
 `search_rounds` (`tcw/store/project.py`), written test first. No new
-operation. TCW-119, a separate item, is planned for the same 4.0.1 release,
+operation. TCW-119, a separate item, is planned for the same 4.1.0 release,
 so the version is not cut here.
 
 This plan was revised after a spec review returned NOT DONE: the filter now
