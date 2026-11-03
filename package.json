@@ -8,6 +8,11 @@
         "themes": []
     },
     "packageManager": "pnpm@10.14.0",
+    "pnpm": {
+        "overrides": {
+            "minimatch": "^11.0.1"
+        }
+    },
     "engines": {
         "node": ">=22.12.0"
     },
@@ -47,6 +52,6 @@
         "typescript": "5.9.2",
         "typescript-eslint": "8.42.0",
         "vite": "7.3.7",
-        "vitest": "4.1.11"
+        "vitest": "4.1.12"
     }
 }
