@@ -535,3 +535,12 @@ fail. Criteria 3, 9 and the `tools` half of 5d were run and pass. The
   not `UnicodeDecodeError`, so git output that is not valid UTF-8, such as
   a path in another encoding, raises rather than answering None. It needs
   its own item.
+- **Known behaviour, not changed here (the review's recheck):** a main
+  checkout made with `git init --separate-git-dir` keeps its git folder
+  elsewhere, and git records no main checkout for its linked worktrees
+  (`git worktree list` names the git folder, and there is no
+  `core.worktree`). So the climb cannot tell which folder to leave out, and
+  a search from a copy kept inside such a checkout still reaches it: when
+  the checkout is TCW 3.x, the answer is still that it needs `tcw migrate`.
+  4.0.0's `worktree_anchors` already ignores this layout. Recognising it
+  needs its own item.
