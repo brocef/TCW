@@ -294,7 +294,7 @@ no_private_names() {   # <text on stdin> | no_private_names
   esac
 }
 gate_go() {   # gate_go <gate> <commit> [<word>]: the latest answer is <word> (go), and committed
-  local want=${3:-go} path=docs/work/TCW-118-tcw-4-0-release/gates.md last copy found=""
+  local want=${3:-go} path=docs/work/TCW-118-tcw-4-0-release/resources/gates.md last copy found=""
   last=$(grep -E "^gate $1: [a-z-]+ $2\$" "$REL/gates.md" | tail -n 1) || true
   [ "$last" = "gate $1: $want $2" ] ||
     stop "the latest gate $1 answer naming $2 in gates.md is '${last:-none}', not '$want'"
@@ -370,7 +370,7 @@ starting `> ` so that no quoted line can take the fixed form, and what
 followed. `gate_go` reads only the latest fixed line for the gate and commit
 it is given, so a `stop` or `way-back` after a go ends that go, and only a
 new `go` line restores it. Its whole content is copied to
-`docs/work/TCW-118-tcw-4-0-release/gates.md` by the commit that records each
+`docs/work/TCW-118-tcw-4-0-release/resources/gates.md` by the commit that records each
 answer, and `gate_go` requires a checkout whose last commit holds exactly the
 release folder's copy, with its working copy unchanged.
 
@@ -1488,7 +1488,7 @@ inside this repository). Then stops.
 The answer is written to `~/.tcw-4.0-release/gates.md` as it is given, as an
 entry whose first line is `gate 1: go <A>`, `gate 1: declined <A>` or
 `gate 1: defect <A>` with A's full hash ("Tools"), copied to
-`docs/work/TCW-118-tcw-4-0-release/gates.md` in `~/tcw-4.0-merge` and
+`docs/work/TCW-118-tcw-4-0-release/resources/gates.md` in `~/tcw-4.0-merge` and
 committed on its `main`, `TCW-118: gate 1, <accepted|declined|defect>`:
 
 - **Accepted**, naming A: on to Step 19.
