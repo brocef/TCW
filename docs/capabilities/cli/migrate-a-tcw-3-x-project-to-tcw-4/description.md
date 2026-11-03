@@ -6,7 +6,7 @@ place: its configuration moves into `.tcw/`, each object's state file takes
 its TCW 4 name, every reference the project's files make is written as a
 full identifier naming the project that owns the object (the project itself;
 a project it inherits from, when the reference is prefixed with that
-project's ID; and, in an item's `capabilities.yaml`, a child project the
+project's ID or only that project has it; and, in an item's `capabilities.yaml`, a child project the
 entry is prefixed with, in the taxonomy lists as in the capability lists),
 and, when its work is kept in Jira, the
 `TCW Item` of each of its tickets is converted last, after every file. It

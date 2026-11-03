@@ -346,8 +346,8 @@ beside it got.
   `capabilities.yaml` declares, because the item's stage is kept in Jira;
   that `tcw validate --remote` checks them, for items not yet finished; and
   that an entry naming a record not made yet is reported when the item moves
-  past implementation, not before. The Jira order's step 2 says `tcw
-  validate --remote` once the tickets are converted;
+  past implementation, not before. The Jira order gains a step 4,
+  `tcw validate --remote`, after the tickets are converted;
 - in the B10 bullet: the new ambiguous case;
 - in "Names and addresses": a paragraph under the table (not a row: each
   first cell of that table feeds the guide's names search, which finds only

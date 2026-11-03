@@ -1025,7 +1025,8 @@ def route_term_entry_3x(path: str, *, children: list[str], own: set[str],
         return head, rest
     places = ["this project's taxonomy"] if own_has else []
     if inherited:
-        names = " and ".join(f"'{alias}'" for alias in inherited)
+        quoted = [f"'{alias}'" for alias in inherited]
+        names = (", ".join(quoted[:-1]) + " and " + quoted[-1]) if len(quoted) > 1 else quoted[0]
         places.append(f"the taxonom{'ies' if len(inherited) > 1 else 'y'} it inherits "
                       f"from {names}")
     owners = ([project_id] if own_has else []) + inherited

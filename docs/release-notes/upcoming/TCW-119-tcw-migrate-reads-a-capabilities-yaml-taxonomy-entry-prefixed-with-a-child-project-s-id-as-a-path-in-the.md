@@ -5,8 +5,9 @@
   a child project's ID, such as `b/turn`, now becomes that child's term,
   `b.taxonomy/turn`, the same way the capability entries beside it already
   became the child's capabilities. TCW 4.0.0 wrote it as a term inside the
-  migrating project, `a.taxonomy/b/turn`, which `tcw validate` then reported
-  as an error. If the migrating project's own taxonomy really has a term at
+  migrating project, `a.taxonomy/b/turn`. When the migrating project keeps
+  no taxonomy, `tcw validate` reports that as an error; when it keeps one,
+  nothing reports it until the item finishes. If the migrating project's own taxonomy really has a term at
   that path, the entry still names it. If the child's ID is also a folder of
   that taxonomy (or of one it inherits) but the term is not there, the
   migration stops and asks you to write the entry yourself, offering the
@@ -15,8 +16,10 @@
   **If you already migrated with 4.0.0**, change each such line by hand from
   `<project>.taxonomy/<child-id>/<term>` to `<child-id>.taxonomy/<term>`,
   unless your project's own taxonomy has a term at that path: those lines
-  are already right. To find them, search the item folders, for example
-  `grep -rn 'a.taxonomy/b/' docs/work/*/capabilities.yaml` for a project `a`
+  are already right. If your taxonomy has a folder named like the child but
+  no term at that path, decide which one you meant, as the migration now
+  asks. To find them, search the item folders, for example
+  `grep -rnF 'a.taxonomy/b/' docs/work/*/capabilities.yaml` for a project `a`
   with a child `b` (use the folder your work items are kept in, if it is
   not `docs/work`). Do not rely on `tcw validate --remote` to find them all:
   it skips items that are `completed` or `discarded`, and items whose ticket

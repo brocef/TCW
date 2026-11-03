@@ -362,8 +362,9 @@ In a project whose work is kept in Jira, `tcw validate` without `--remote`,
 and the check `tcw migrate` runs after a real run, do not check the terms
 and capabilities each item's `capabilities.yaml` declares, because an item's
 stage is kept in Jira and the check needs it. Once the tickets are converted
-(below), run `tcw validate --remote`: it checks those files for every item
-not yet `completed` or `discarded`. An entry naming a term or capability
+(below), run `tcw validate --remote`: it checks those files for each item
+not yet `completed` or `discarded`, except an item whose ticket is at a
+status no stage uses. An entry naming a term or capability
 that is not made yet is not reported then; it is reported when the item
 moves past implementation. See
 [Linking and validation](guide/linking-and-validation.md).
