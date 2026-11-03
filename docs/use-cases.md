@@ -560,6 +560,12 @@ fresh clone.
 - A store whose `path` resolves inside a worktree and one that resolves to
   the primary checkout are different stores; nothing may silently use the
   other.
+- A related project a manifest places in a sibling repository's own linked
+  worktree, beside this worktree, is read there, and is the same project the
+  search finds beside the main checkout: a main checkout and its linked
+  worktrees, with the project at the same place in each, do not disagree,
+  while two separate clones still do (`_same_place_in_two_checkouts` in
+  `tcw/store/project.py`; `tests/test_manifest_worktree.py`).
 - A fresh clone in CI has no related projects and no credentials.
   `tcw validate` there must run without them, and report what it could not
   check rather than failing for that reason (TCW-14 asks for this as a gate).

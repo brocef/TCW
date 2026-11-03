@@ -3,6 +3,38 @@
 Steps 5, 7, 8 and 9 of the plan, carried out by an agent in a worktree of
 `v4` at `34739ce5`. The dispatching session adds the other steps' records.
 
+## Step 1 — every other child is completed (3.1)
+
+Added at Step 27, after the review found this step unrecorded. Its check was
+made before Step 2 (TCW-117's review was accepted at `6e68c3b3`, 2026-10-26
+16:23 -0400, and its completion noted on its ticket at 16:33; Step 2's first
+commit, `a3c8d46e`, is 16:36), but its lines were not written here. Read
+again on 2026-11-03 with the 4.0 `tcw`, `tcw work show TCW-<n>`:
+
+```text
+TCW-106 stage: completed
+TCW-107 stage: completed
+TCW-108 stage: completed
+TCW-109 stage: completed
+TCW-110 stage: completed
+TCW-111 stage: completed
+TCW-112 stage: completed
+TCW-113 stage: completed
+TCW-114 stage: completed
+TCW-115 stage: completed
+TCW-116 stage: completed
+TCW-117 stage: completed
+```
+
+TCW-116's proof 2 has no hit count: "The rehearsal of Design 9.3 step 3 was
+not made: TCW-117 has only its spec and plan on `v4`, so there is no
+`UNMIGRATED_RECORDS` to delete" (TCW-116's `implement/round-1.md`,
+"Step 25"). The count its place would have held is the one Step 15 found in
+every run from 2 to 8: 8 `tcw://C/` hits on 7 lines in 5 capability
+descriptions, after `UNMIGRATED_RECORDS` was deleted (criterion 16).
+TCW-116's Step 27 comment is on TCW-118's ticket, dated 2026-10-24 20:47
+UTC.
+
 ## Step 2 — the small follow-ups (Decided 1)
 
 Made by four agents, each in its own worktree from `v4` at `af55f473` (the
@@ -535,15 +567,35 @@ run's own status stayed `in_progress` after every job had completed with
 success; the dispatching session read the jobs directly and recorded CI
 `08e59cdf` in `refs.txt`. `gh pr list --head v4` printed `[]`.
 
+The last run of Step 10, for V `f6a61093` (`~/.tcw-4.0-release/step-10j.out`,
+run 41157041507, `gh run view --json headSha,jobs`):
+
+```text
+{"headSha":"f6a6109302be7fb6bfea57d1a3efd1e26fc77439","jobs":[{"conclusion":"success","name":"web-build"},{"conclusion":"success","name":"pytest (3.14)"},{"conclusion":"success","name":"pytest (3.11)"}]}
+```
+
+recorded as CI `f6a61093` in `refs.txt`, and Step 12 then recorded the same
+commit as V. Each earlier candidate's V had its own CI run, listed in
+`refs.txt`.
+
 ## Step 11 — the user told
 
-2026-10-27, to the user, in this session: from Step 12 until Step 26 no `tcw`
+2026-10-27T13:32:43Z, to the user, in this session: from Step 12 until Step 26 no `tcw`
 command runs in this repository, by any agent or session, and the user is
 asked to run none here or on another machine; the window holds gates 1 and 2
 and lasts as long as their review and test take; the shared `tcw` stays 3.0.2
 until gate 2's go; from 5.5 until the user's own setups are migrated, this
 machine's `tcw` is 4.0 and refuses every 3.x project except to migrate it;
 and the window also holds gate 3.
+
+## Step 12 — every `tcw` stopped
+
+The user was asked to run no `tcw` command in this repository in Step 11's
+message (2026-10-27T13:32:43Z). At 2026-10-27T14:21Z the dispatching
+session listed the other sessions on this machine: five, none working in
+this repository, so none was sent a message. The window this opened held
+until Step 26, so later runs' Step 12 sent no new message; the evaluators
+worked on copies outside this repository.
 
 ## Steps 12 to 17 — the release candidate, eight runs
 
@@ -589,8 +641,12 @@ after rerunning its 20 sibling lookups and a clean `tcw validate`.
 
 ## Step 19 — gate 2
 
-2026-10-31T23:11:47Z, the user: "gate 2 go", covering Steps 20 to 25.
-Committed as `0f36f2ee`.
+Asked at 2026-10-31T22:05:37Z. The request listed Steps 20 to 25 in order,
+the 58 keys and `tcw116-dry-run.txt`, the ways back for each part, and said
+plainly: "The board's way back has never been run against a live board.
+That is why step 2 rehearses it on the test project first", and that
+whether the edits email watchers was not yet known. 2026-10-31T23:11:47Z,
+the user: "gate 2 go", covering Steps 20 to 25. Committed as `0f36f2ee`.
 
 ## Step 20 — the live scenario on `TCWTEST`
 
@@ -628,6 +684,8 @@ On `TCWTEST`, with 3.0.2 in `rehearsal/venv-3` and the merge clone's 4.0
   3.0.2's `tcw work tickets adopt`, after which the list showed the three
   items with no warning. A real files' way back must keep, or adopt again,
   item folders that were never committed.
+- The clean list after the adoption was read in the session, not saved to a
+  file.
 - Emails: the API account is the user's own Jira account, and the only
   watcher of the three tickets, so Jira sent no email. All three were moved
   to `Won't Do`.
@@ -667,3 +725,21 @@ open items with no warning.
 
 2026-11-03: the user told that `tcw` may run in this repository again. No
 agent was running.
+
+## Notes added at Step 27
+
+- **Entry files of another item.** `88dda46b` (2026-10-29) edited TCW-111's
+  two upcoming entry files, so that the 4.0 entries describe where a child's
+  folder goes with no `--nest`, which never shipped. The user allowed it
+  (recorded in `implement/handoff-20261029T143641Z.md`, "Paused again").
+  Step 5's "No other item's entry file" was true when written.
+- **Where the records now are.** `gates.md` is at `resources/gates.md`
+  (criterion 47 names its old place; see Step 25). Each run's acceptance
+  results are in `~/.tcw-4.0-release/run<n>/acceptance/`, run 8's in
+  `run8/acceptance/results.txt`.
+- **Work beyond the spec**, each recorded in the changelog entry and the
+  handoff: a child's folder inside its parent's by default, with `--flat`
+  replacing `--nest` (`plan/children-in-parent-folders.md`); the worktree and
+  sibling-repository lookups from the evaluators' findings; the Python 3.11
+  fix (`08e59cdf`); and Jira mode without the TCW fields, added and then
+  moved to `v5` (`6366014d`).
