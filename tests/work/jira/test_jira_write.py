@@ -39,7 +39,7 @@ def test_a_new_item(jira_project):
     folder = jira_project.work / "TCW-1-dark-mode"
     assert [p.name for p in folder.iterdir()] == [ITEM_STATE]
     assert (folder / ITEM_STATE).read_text() == version_line() + \
-        f"ticket: {jira_project.fake.site}/browse/TCW-1\n"
+        "ticket: TCW-1\n"
 
 
 def test_no_route_to_request_leaves_a_plain_ticket(jira_project, tcw):

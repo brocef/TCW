@@ -84,7 +84,8 @@ def test_a_key_named_folder_with_no_state_file_is_no_item(jira_project, validate
     checked = validate(jira_project)
     assert checked.code == 1
     assert "error: docs/work/TCW-7-x/tcw-work-item.yaml: is missing; it holds the " \
-           "ticket's link" in checked.out
+           "ticket's key" in checked.out
+    assert "ticket's link" not in checked.out
     assert tcw(["show", "TCW-7"], jira_project.root).code == 4
 
 

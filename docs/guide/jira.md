@@ -34,8 +34,14 @@ the ticket's key and then the title's words, `SHOP-42-refund-a-payment`. The
 folder may sit at the top of the work store or inside another item's folder
 (a **nested** item); TCW finds a key-named folder at any depth. The folder's
 state file, `tcw-work-item.yaml`, holds the line naming the TCW version that
-wrote it, the ticket's address, and any parent or blocker Jira cannot link;
-everything else in the folder is the technical record. The taxonomy and
+wrote it, the ticket's key (`ticket: SHOP-42`), and any parent or blocker Jira
+cannot link; everything else in the folder is the technical record. The file
+names the ticket by its key alone, never by its address, so committing item
+folders to a public repository does not publish the address of your Jira
+site; where TCW shows a link to the ticket, it builds one from `work.jira.site`
+and the key. A file written by TCW 4.0.0, which holds the ticket's address
+instead (`ticket: https://example.atlassian.net/browse/SHOP-42`), stays valid
+and needs no change; to change one, replace the address with the key. The taxonomy and
 capabilities are never stored in Jira: they describe the product, and they
 live and change with its code.
 
@@ -225,7 +231,9 @@ reason recorded. A ticket in a status that no stage maps to has **no stage**:
 
 `tcw validate` never contacts Jira. It checks the configuration's shape and
 what the item folders hold on their own: each folder's name and
-`tcw-work-item.yaml`, a ticket key used by two folders at any depth, a record
+`tcw-work-item.yaml` (whose ticket key must be the folder's own, or, in a
+file written by TCW 4.0.0, whose address must be on `work.jira.site` and name
+the folder's key), a ticket key used by two folders at any depth, a record
 folder for a stage Jira keeps, the latest `review` round, each folder's
 `capabilities.yaml` (reported when the file cannot be read or is malformed,
 whatever the item's stage), and each parent or blocker recorded in a folder.

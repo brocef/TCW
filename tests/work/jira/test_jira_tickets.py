@@ -327,7 +327,7 @@ def test_a_folder_left_without_item_yaml_is_finished(jira_project, tcw):
     result = tcw(["tickets", "adopt", key], jira_project.root)
     assert (result.code, result.out.strip()) == (0, "tcw.work/TCW-1-kept"), result.err
     assert (jira_project.work / "TCW-1-kept" / ITEM_STATE).read_text() == version_line() + \
-        f"ticket: {jira_project.fake.site}/browse/{key}\n"
+        f"ticket: {key}\n"
 
 
 @pytest.mark.parametrize("status", ["In Progress", "Done"])

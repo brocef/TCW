@@ -67,7 +67,7 @@ Where the properties live depends on the backend:
 - **Jira:** on the item's ticket: its summary, status, priority, labels,
   assignee, parent and "blocks" links, and, when the project names them, custom
   fields for effort and complexity. The folder's `tcw-work-item.yaml` holds
-  only the version line, the ticket's address, and any parent or blocker Jira
+  only the version line, the ticket's key, and any parent or blocker Jira
   cannot link ([the Jira guide](jira.md) describes those).
 
 Two things happen only in Jira mode, because a backend reports honestly what it

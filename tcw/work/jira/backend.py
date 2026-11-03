@@ -140,7 +140,7 @@ def link_exists(work_path: Path, folder: str) -> bool:
 
 #: Row h's message in Jira mode, at the state file: today's message for an
 #: item folder whose 3.x state file was missing (TCW-111 Design 2.6).
-UNMADE_MESSAGE = "is missing; it holds the ticket's link"
+UNMADE_MESSAGE = "is missing; it holds the ticket's key"
 
 
 def _key_named(name: str) -> bool:
@@ -196,15 +196,16 @@ OPTIONAL_STATE_KEYS = frozenset({"id", "parent", "blocked-by"})
 
 
 def _item_file_problems(path: Path, key: str, site: str) -> list[Finding]:
-    """The state file must hold exactly `tcw-version` and `ticket:
-    <site>/browse/<KEY>`, and may hold `id` (Design 2.2; TCW-111 Design
-    1.2). Its version is checked first: a file this TCW cannot read is
-    reported for that alone (Design 1.5)."""
+    """The state file must hold exactly `tcw-version` and `ticket`, and may
+    hold `id` (Design 2.2; TCW-111 Design 1.2). `ticket` is the folder's
+    key, or the link `<site>/browse/<KEY>` TCW 4.0.0 wrote, checked as it
+    was then (TCW-177 Design 2). Its version is checked first: a file this
+    TCW cannot read is reported for that alone (Design 1.5)."""
     where = str(path)
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return [Finding("error", where, "is missing; it holds the ticket's link")]
+        return [Finding("error", where, UNMADE_MESSAGE)]
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as error:
         return [Finding("error", where, f"cannot be read: {error}")]
     if isinstance(data, dict) and (problem := version_problem(data, state=True)) is not None:
@@ -222,8 +223,17 @@ def _item_file_problems(path: Path, key: str, site: str) -> list[Finding]:
     if (problem := _recorded_problem(data)) is not None:
         return [Finding("error", where, problem)]
     url = data["ticket"]
+    if not isinstance(url, str):
+        return [Finding("error", where, f"ticket {url!r} is not the folder's key, {key}")]
+    if "/" not in url:
+        # The key form, written since TCW-177. A Jira key holds no `/`.
+        if url != key:
+            return [Finding("error", where, f"ticket {url!r} names {url}, but the "
+                                            f"folder's key is {key}")]
+        return []
+    # The link form TCW 4.0.0 wrote, checked as it was then.
     prefix = f"{site}/browse/"
-    if not isinstance(url, str) or not url.startswith(prefix):
+    if not url.startswith(prefix):
         return [Finding("error", where, f"ticket {url!r} is not on {site} "
                                         f"(work.jira.site)")]
     if url[len(prefix):] != key:
@@ -939,7 +949,7 @@ class JiraBackend:
         document = path / STATE_FILE
         recorded = ({"parent": str(parent)} if parent is not None else {}) | \
             ({"blocked-by": [str(s) for s in blocked_by]} if blocked_by else {})
-        text = f"{version_line()}ticket: {self.jira.site}/browse/{key}\n"
+        text = f"{version_line()}ticket: {key}\n"
         if recorded:
             text += yaml.safe_dump(recorded, sort_keys=False, allow_unicode=True)
         document.write_text(text, encoding="utf-8")

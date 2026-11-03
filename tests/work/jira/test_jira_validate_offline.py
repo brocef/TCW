@@ -37,15 +37,24 @@ def folder(project, name, ticket=None, **extra):
     path = project.work / name
     path.mkdir(parents=True)
     key = "-".join(name.split("-")[:2])
-    data = {"ticket": ticket or f"{SITE}/browse/{key}", **extra}
+    data = {"ticket": f"{SITE}/browse/{key}" if ticket is None else ticket, **extra}
     write_state(path / ITEM_STATE, yaml.safe_dump(data))
     return path
 
 
 def test_a_clean_tree_is_clean(offline, monkeypatch, capsys):
+    """A file TCW 4.0.0 wrote, naming the ticket by its link, stays valid
+    (TCW-177 AC 4)."""
     folder(offline, "TCW-1-x")
     code, text = validate(offline, monkeypatch, capsys)
     assert code == 0, text
+
+
+def test_the_key_form_is_clean(offline, monkeypatch, capsys):
+    """A file naming the ticket by its key alone is valid (TCW-177 AC 2)."""
+    folder(offline, "TCW-1-x", ticket="TCW-1")
+    code, text = validate(offline, monkeypatch, capsys)
+    assert code == 0 and "error:" not in text, text
 
 
 @pytest.mark.parametrize("make, words", [
@@ -53,6 +62,9 @@ def test_a_clean_tree_is_clean(offline, monkeypatch, capsys):
     (lambda p: folder(p, "TCW-1-x", ticket="https://other.atlassian.net/browse/TCW-1"),
      "is not on"),
     (lambda p: folder(p, "TCW-1-x", ticket=f"{SITE}/browse/TCW-2"), "names TCW-2"),
+    (lambda p: folder(p, "TCW-1-x", ticket="TCW-2"),
+     "ticket 'TCW-2' names TCW-2, but the folder's key is TCW-1"),
+    (lambda p: folder(p, "TCW-1-x", ticket=7), "ticket 7 is not the folder's key, TCW-1"),
     (lambda p: (folder(p, "TCW-5-a"), folder(p, "TCW-5-b")), "the key TCW-5 names 2 folders"),
     (lambda p: folder(p, "tcw-5-x", ticket=f"{SITE}/browse/TCW-5"), "is not a Jira item folder"),
     (lambda p: (p.work / "TCW-1-x").mkdir(parents=True), "is missing"),

@@ -24,7 +24,7 @@ def test_new_writes_the_version_and_the_ticket(jira_project, tcw):
     assert tcw(["new", "Dark mode"], jira_project.root).code == 0
     path = jira_project.work / "TCW-1-dark-mode" / ITEM_STATE
     assert path.read_text() == (f"tcw-version: {__version__}\n"
-                                f"ticket: {jira_project.fake.site}/browse/TCW-1\n")
+                                "ticket: TCW-1\n")
     assert keys_of(path) == {"tcw-version", "ticket"}
 
 
