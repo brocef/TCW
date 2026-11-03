@@ -22,8 +22,17 @@ When the checkout holding the worktree is itself a linked worktree, and the
 worktree's own main checkout lies inside that checkout's main checkout, the
 worktree is part of a copy, so the search looks only from where it is, and a
 project the copy does not have is not found rather than read from the
-folders the copy was made from. Looking from where a worktree is, the search does not climb into the main checkout of a linked worktree kept inside that main checkout, as Claude Code keeps its worktrees at `.claude/worktrees/<name>`, nor into the folders between the two that belong to the main checkout's repository: it goes on above that main checkout, and a separate repository kept between them is still looked in. This holds for a project kept anywhere inside such a worktree, however deep, whichever project's search it is. A project found in the main checkout whose copy is in the worktree is the worktree's copy, so it
-appears once rather than twice.
+folders the copy was made from. Wherever I run the command, inside a linked
+worktree or outside every one, when the search looks from where a folder is,
+rather than from a main checkout, and that folder lies inside a linked
+worktree kept inside its own main checkout, as Claude Code keeps its
+worktrees at `.claude/worktrees/<name>`, it does not climb into that main
+checkout, nor into the folders between the two that belong to the main
+checkout's repository: it goes on above that main checkout, and a separate
+repository kept between them is still looked in. This holds for a project
+kept anywhere inside such a worktree, however deep, whichever project's
+search it is. A project found in the main checkout whose copy is in the
+worktree is the worktree's copy, so it appears once rather than twice.
 
 The worktree's tracked files are its own: its `.tcw/tcw-config.yaml` and
 `.tcw/tcw-manifest.yaml` are the ones on its branch. Its personal files are

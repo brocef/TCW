@@ -507,8 +507,10 @@ fail. Criteria 3, 9 and the `tools` half of 5d were run and pass. The
   triggers the walk in the early return. The walk treats the submodule as a
   checkout of its own and goes on outward to its superproject's checkout,
   so a superproject's linked worktree kept inside its main checkout is seen
-  through it. No test of submodules is added. That is an assumption, not a
-  checked fact.
+  through it. A submodule's own linked worktree kept inside the submodule's
+  checkout has the submodule's checkout as its main checkout, read from
+  `core.worktree` as `worktree_anchors` reads it (implement round 2, S1;
+  `test_a_submodules_own_worktree_kept_inside_it_finds_the_root_in_the_copy`).
 
 ## Notes
 
@@ -521,3 +523,15 @@ fail. Criteria 3, 9 and the `tools` half of 5d were run and pass. The
   6), the refusal says "check the spelling", which misleads, since the
   spelling is right and the project is simply not in the copy. A better
   remedy names the manifest entry. It needs its own item.
+- **Known behaviour, kept (the code review, N1):** with a bare repository
+  kept as `project/.git` and its linked worktrees beside it in `project/`,
+  git names the common folder `.git`, so the container folder `project`
+  counts as the worktrees' main checkout, and a search from a plain clone
+  kept inside one of those worktrees leaves `project` out of its climb. A
+  project declared at `project` is then not found from there, which is what
+  4.0.0 already answers from the worktree itself.
+- **A separate change, not made here (the code review, N5):** `_git_lines`
+  in `tcw/store/project.py` catches `CalledProcessError` and `OSError` but
+  not `UnicodeDecodeError`, so git output that is not valid UTF-8, such as
+  a path in another encoding, raises rather than answering None. It needs
+  its own item.

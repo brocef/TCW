@@ -571,12 +571,14 @@ fresh clone.
   first, before the manifest that places it was read, the two are still
   reported (`_same_place_in_two_checkouts` in `tcw/store/project.py`;
   `tests/test_manifest_worktree.py`).
-- Looking from where a worktree is, the search does not climb into the main
-  checkout of a linked worktree kept inside that main checkout, nor into the
+- When the search looks from where a folder is, rather than from a main
+  checkout, and that folder lies inside a linked worktree kept inside its own
+  main checkout, it does not climb into that main checkout, nor into the
   folders between the two that belong to the main checkout's repository: it
   goes on above that main checkout, and a separate repository kept between
-  them is still looked in. This holds for a project kept anywhere inside such
-  a worktree, however deep, whichever project's search it is, so a copy kept
+  them is still looked in. This holds wherever the command runs, inside a
+  linked worktree or outside every one, for a project kept anywhere inside
+  such a worktree, however deep, whichever project's search it is, so a copy kept
   in `.claude/worktrees/<name>` finds its own projects once rather than also
   finding the main checkout's on another branch (TCW-120; `search_rounds` in
   `tcw/store/project.py`; `tests/test_manifest_worktree.py`).
