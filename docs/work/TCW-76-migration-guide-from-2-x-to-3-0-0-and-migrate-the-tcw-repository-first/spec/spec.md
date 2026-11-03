@@ -920,7 +920,7 @@ id: tcw
 work:
   backend: jira
   jira:
-    site: https://proposit.atlassian.net
+    site: https://example.atlassian.net
     project: TCW
     credentials: {email-env: TCW_JIRA_EMAIL, token-env: TCW_JIRA_API_KEY}
     fields: {project: TCW Project, item: TCW Item, effort: Effort, complexity: Complexity}
@@ -1302,7 +1302,7 @@ run, the log after step 12.
 11. `find docs/work -mindepth 1 -maxdepth 1 -not -type d` prints nothing, and every
     directory under `docs/work/` matches `^TCW-[0-9]+-[a-z0-9-]+$`.
 12. Every `docs/work/*/item.yaml` contains exactly one non-empty line,
-    `ticket: https://proposit.atlassian.net/browse/<KEY>`, and `<KEY>` equals its
+    `ticket: https://example.atlassian.net/browse/<KEY>`, and `<KEY>` equals its
     folder's prefix.
 13. `find docs/work \( -name state.yaml -o -name tracker.yaml -o -name intake.md -o -name initial-request.md -o -name outcome.md -o -name refined-outcome.md -o -name rework.md -o -name post-mortem.md -o -name rollup.md \)`
     prints nothing, and every `spec.md` and `plan.md` under `docs/work` sits at
