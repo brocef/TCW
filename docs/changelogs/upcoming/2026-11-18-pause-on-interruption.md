@@ -1,11 +1,10 @@
 ## Changed
 
-- `commands-pause-work` skill: an agent whose turn is interrupted without
-  warning now assumes the user interrupted it to deliver a pending message,
-  reads that message and pauses if asked, instead of resuming its plan or
-  treating itself as finished. An agent passing a pause on to others treats a
-  quiet agent as still processing it, not done and idle, until more than ten
-  minutes pass with no message or confirmation.
+- `commands-pause-work` skill: an agent that sent the pause to other agents
+  and sees one of them interrupted now assumes the user interrupted it so it
+  would read the pause, and that it is doing its own handoff. The agent does
+  not take that handoff over, and does not count the interrupted agent as done
+  and idle until more than ten minutes pass with no message or confirmation.
 - `commands-pause-work` skill: the agent reporting to the user now ends with a
   single resume message for a fresh session, covering every paused item and
   saying to start agents again where the work was split, instead of one

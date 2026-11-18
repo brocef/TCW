@@ -21,21 +21,22 @@ can to make that possible.
 You know whether you report to the user directly or to another agent that
 started you. That decides how you finish (section 2).
 
-## When a pause arrives as an interruption
+## When an agent you sent the pause to is interrupted
 
-A pause often reaches an agent as an interruption first and a message second:
-the user stops the turn so that the pause message waiting behind it can be
-read. So **when your turn is cut off without warning, assume the user did it**,
-not a fault or the end of the task. Look for the pending message and act on
-it — if it asks for a pause, follow this skill — rather than resuming the old
-plan or treating yourself as finished.
+Other agents may be working under you: full interactive sessions you started,
+ones the user started and you coordinate by message, or agents that message
+each other. Each gets the pause as a message, and may not read it until its
+current turn ends, which can take a while. A user who cannot wait that long
+interrupts those agents by hand, so that each stops its turn and reads the
+pause at once.
 
-The same holds when you are the one passing a pause on to other agents, such
-as subagents or sibling sessions working under you. An agent that has gone
-quiet since you sent it the pause has most likely been interrupted and is
-still processing it. **Do not treat it as done and idle until more than ten
-minutes have passed with no message or confirmation from it.** Until then,
-wait for its report; after that, count its work as unconfirmed.
+So **when an agent you sent the pause to shows as interrupted, assume the user
+interrupted it**, and that it is now working through the pause: reaching its
+own resting point and writing its own handoffs, with no further instruction
+from you. Do not take its handoff over, and do not treat it as done and idle
+**until more than ten minutes have passed with no message or confirmation from
+it**. Until then, wait for its report; after that, count its work as
+unconfirmed.
 
 ## 1. How to pause
 
@@ -58,8 +59,8 @@ and anything you know only from this session that the handoff does not hold.
 Write no resume message: the agent you report to writes the only one.
 
 **If you report to the user,** you write the only resume message, however
-many agents were working. Pause any agents you started, and wait for their
-reports as described above. Then send one short message: what was paused and
+many agents were working. Send the pause to every agent working under you,
+however it was started, and wait for their reports as described above. Then send one short message: what was paused and
 where each handoff is. End it with a single resume message, in a fenced
 block, for the user to paste into a fresh session:
 
