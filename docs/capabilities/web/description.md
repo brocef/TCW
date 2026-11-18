@@ -19,8 +19,9 @@ its request and comments, and one tab per stage that keeps files, with each
 stage's document or rounds and their verdicts. The Taxonomy and Capabilities
 trees list the scope's entries, each one another project owns marked with that
 project, and each under the entry its `parent:` names: under that entry's row
-when it is listed, and under a label naming it when it is not. Under a scope that reaches the projects below, each capability shows
-how many of them give each status, as `Missing(1), Supported(1)`, and its page
+when it is listed, and under a label naming it when it is not. Under a scope
+that reaches the projects below, each capability shows how many of them give
+each status, as `Missing(1), Supported(1)`, and its page
 lists each status with its projects.
 
 Any object of another project TCW can locate opens in the app, read-only

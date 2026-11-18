@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { itemKey, parsePath, pathFor } from "./route-utils"
+import { itemKey, parentItemKey, parsePath, pathFor } from "./route-utils"
 import { capability, term, workItem } from "../test-fixtures"
 
 describe("route utilities", () => {
@@ -54,4 +54,22 @@ test("TCW-113 Design 6.3: another project's work item is keyed by its full ident
     expect(itemKey("work", theirs, "shared")).toBe("desktop.work/x")
     const ours = workItem("x", { "full-id": "shared.work/x", owner: "shared" })
     expect(itemKey("work", ours, "shared")).toBe("x")
+})
+
+describe("a record's parent key", () => {
+    test("a parent's key is its id-path here and its full identifier elsewhere", () => {
+        expect(parentItemKey(term("b", { parent: "p.taxonomy/a" }), "p")).toBe(
+            "a"
+        )
+        expect(
+            parentItemKey(capability("b", { parent: "q.capabilities/a" }), "p")
+        ).toBe("q.capabilities/a")
+    })
+
+    test.each([null, "", "not an id", "a/b"])(
+        "parent text %j that is not a full identifier names no parent",
+        (parent) => {
+            expect(parentItemKey(term("b", { parent }), "p")).toBeNull()
+        }
+    )
 })
