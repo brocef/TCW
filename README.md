@@ -717,7 +717,7 @@ across the axes.
 | [`commands-process-inbox`](skills/commands-process-inbox/SKILL.md)                       | Decides on every arrival in the work inbox, then writes the request for each one taken on.                                                                          |
 | [`commands-plan-work`](skills/commands-plan-work/SKILL.md)                               | Takes an item, or a request made in chat, through the request, spec and plan stages, and stops before any code.                                                     |
 | [`commands-drive-work-to-completion`](skills/commands-drive-work-to-completion/SKILL.md) | Takes an item from wherever it is through implement, review and qa, to completed where the agent may record the qa verdict, or to qa for a person where it may not. |
-| [`commands-pause-work`](skills/commands-pause-work/SKILL.md)                             | Stops the work in hand, writes down what resuming needs in the item, and waits for you to say carry on.                                                             |
+| [`commands-pause-work`](skills/commands-pause-work/SKILL.md)                             | Stops the work in hand, saves a handoff, gives you one message to resume it all, and waits.                                                                         |
 
 **Extras: optional, built for one way of working**
 

@@ -12,8 +12,14 @@ dynamic_skill: true # which skills a project may override, and why: ../README.md
 
 Use the `work` skill for anything about the item itself. This skill covers
 **stopping**: it works no stage and **moves nothing**, so each item stays at
-the stage it was at. You do not know whether the user is back in five minutes
-or resuming on another machine — leave the work so both work.
+the stage it was at.
+
+Assume nothing about what was going on beyond this: the user said to pause,
+and may resume in a fresh session, possibly on another machine. Do what you
+can to make that possible.
+
+You know whether you report to the user directly or to another agent that
+started you. That decides how you finish (section 2).
 
 ## When a pause arrives as an interruption
 
@@ -29,51 +35,46 @@ as subagents or sibling sessions working under you. An agent that has gone
 quiet since you sent it the pause has most likely been interrupted and is
 still processing it. **Do not treat it as done and idle until more than ten
 minutes have passed with no message or confirmation from it.** Until then,
-wait for its report; after that, record its work as unconfirmed in your own
-handoff.
+wait for its report; after that, count its work as unconfirmed.
 
 ## 1. How to pause
 
-How to reach a resting point and what a handoff holds come from this project's
-`pause-work` procedure, TCW's own text unless the project replaced it:
+How to reach a resting point, what a handoff holds, and where it is kept so a
+fresh session can find it come from this project's `pause-work` procedure,
+TCW's own text unless the project replaced it:
 
 !`tcw work procedure pause-work || true`
 
 If nothing appears above, run `tcw work procedure pause-work` yourself (see
 the summary at the end) and follow what it prints. If the project wants
-anything more when work pauses, such as saving the work somewhere, its
-procedure says so; this skill adds nothing of its own.
+anything more when work pauses, its procedure says so; this skill adds
+nothing of its own.
 
-## 2. Where the handoff goes
+## 2. Report, then stop
 
-One handoff per item in flight, placed by the stage the item is at:
+**If you report to another agent,** send it one report: each item you were
+working, its stage, where its handoff is (or that none was written, and why),
+and anything you know only from this session that the handoff does not hold.
+Write no resume message: the agent you report to writes the only one.
 
-- **The stage has a folder:** write the handoff to the file
-  `tcw work path <slug> <stage> --handoff` prints. Never compose the path;
-  each call names a new file, and the newest one is what resuming reads.
-- **The backend keeps the stage** (`tcw work path` exits 3 for it; in Jira,
-  request and qa): post the handoff as a comment with
-  `tcw work comment <slug>`, the text on stdin, whose first line is
-  `Handoff`.
-- **The item is at inbox, or there is no item:** write nothing. Triage keeps
-  nothing worth resuming; say what you were doing in the report instead.
-
-Handoffs are never deleted: a later one supersedes an earlier one by being
-newer.
-
-## 3. Report, then stop
-
-One short message: each item, its stage, and where its handoff is. End it with
-the exact words the user can give a new session to pick the work back up,
-filled in with the real slug, one line per paused item:
+**If you report to the user,** you write the only resume message, however
+many agents were working. Pause any agents you started, and wait for their
+reports as described above. Then send one short message: what was paused and
+where each handoff is. End it with a single resume message, in a fenced
+block, for the user to paste into a fresh session:
 
 ```
-To resume in a new session, tell the agent: "Resume work on <slug> from its
-newest handoff."
+Resume the paused work: <what was in progress, each item by its full
+identifier and where its newest handoff is; what ran alongside what; any
+work not confirmed as paused>. Where the work was split between agents,
+start them again and give each its own instruction to resume.
 ```
 
-With no handoff written, name what the new session should start from instead:
-the slug, or what you were doing when there was no item.
+Copying it is the one way certain to carry anything from this session to the
+next, so it must be enough on its own to pick all of the work back up. Point
+to what was saved somewhere a fresh session can reach, rather than repeating
+it; anything saved nowhere else, or only on this machine, goes in the
+message itself.
 
 Then **fall silent**. No further tool calls, no scheduled check-in, no
 background task left running that would wake you. Waiting is the deliverable.

@@ -382,15 +382,30 @@ def test_every_injection_has_a_manual_fallback(skill):
             f"{_rel(skill)}'s Document command summary does not name `{command}`"
 
 
-def test_the_pause_skill_places_the_handoff_by_stage():
+def test_the_pause_procedure_places_the_handoff_by_stage():
     """Criterion 7: the stage folder, a `Handoff` comment where the backend
-    keeps the stage, and nothing at inbox."""
-    text = (REPO / "skills/commands-pause-work/SKILL.md").read_text(encoding="utf-8")
+    keeps the stage, and nothing at inbox. Where a handoff goes is the
+    procedure's to say, so a project can replace it; the skill injects it."""
+    text = (REPO / "tcw/work/procedures/pause-work.md").read_text(encoding="utf-8")
     assert "--handoff" in text
     assert "`Handoff`" in text and "tcw work comment <slug>" in text
     inbox = [l for l in text.splitlines() if "inbox" in l]
     assert any("write nothing" in l.lower() for l in inbox), inbox
-    assert "!`tcw work procedure pause-work" in text
+    skill = (REPO / "skills/commands-pause-work/SKILL.md").read_text(encoding="utf-8")
+    assert "!`tcw work procedure pause-work" in skill
+    assert "--handoff" not in skill, "the skill repeats the procedure's placement"
+
+
+def test_the_pause_skill_ends_with_one_resume_message():
+    """Only the agent reporting to the user writes a resume message, and it
+    writes one, however many agents were working."""
+    text = " ".join((REPO / "skills/commands-pause-work/SKILL.md")
+                    .read_text(encoding="utf-8").split())
+    assert "If you report to another agent," in text
+    assert "Write no resume message" in text
+    assert "If you report to the user," in text
+    assert "you write the only resume message" in text
+    assert "one line per paused item" not in text
 
 
 def test_the_codex_manifest_names_no_deleted_skill():
