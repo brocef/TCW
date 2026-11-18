@@ -28,9 +28,8 @@ import {
     requestJson,
 } from "../model/api"
 import {
-    buildPathTree,
     buildWorkTree,
-    pathAncestors,
+    pathTreeAncestors,
     pruneTree,
     sortWorkTree,
     workAncestors,
@@ -64,7 +63,14 @@ import {
 import { RefusalContext, useRefusals } from "./refusals"
 import { beginResize, loadExpanded } from "./ui-state"
 import { ProjectIdContext } from "./project-context"
-import { AXES, LABELS, itemKey, parsePath, pathFor } from "./route-utils"
+import {
+    AXES,
+    LABELS,
+    buildRecordTree,
+    itemKey,
+    parsePath,
+    pathFor,
+} from "./route-utils"
 import type {
     TClientData as Data,
     TDetail as Detail,
@@ -615,7 +621,14 @@ export function App() {
                           )?.["full-id"] ?? "",
                           data.work
                       )
-                    : pathAncestors(key)
+                    : pathTreeAncestors(
+                          buildRecordTree(
+                              nextAxis,
+                              data[nextAxis] as AxisItem[],
+                              projectId
+                          ),
+                          key
+                      )
             setExpanded((old) => ({
                 ...old,
                 [nextAxis]: new Set([...old[nextAxis], ...ancestors]),
@@ -668,9 +681,7 @@ export function App() {
                       stages.map((row) => row.name),
                       project?.scales.priority ?? []
                   )
-                : buildPathTree(currentItems, (item) =>
-                      itemKey(axis, item, projectId)
-                  )
+                : buildRecordTree(axis, currentItems, projectId)
         const filtering = Boolean(
             filter ||
             kindFilter.length ||

@@ -3,11 +3,13 @@ import {
     buildPathTree,
     buildWorkTree,
     pathAncestors,
+    pathTreeAncestors,
     pruneTree,
     sortWorkTree,
     workAncestors,
 } from "./tree"
 import { STAGES, workItem } from "../test-fixtures"
+import type { TreeNode } from "./types"
 
 const ORDER = STAGES.map((row) => row.name)
 const PRIORITIES = ["highest", "high", "medium", "low", "lowest"]
@@ -51,6 +53,96 @@ describe("path tree", () => {
             "core.capabilities",
             "core.capabilities/cli",
         ])
+    })
+})
+
+describe("path tree by parent", () => {
+    interface TRow {
+        key: string
+        parent?: string | null
+    }
+    const build = (rows: TRow[]) =>
+        buildPathTree(
+            rows,
+            (row) => row.key,
+            (row) => row.parent ?? null
+        )
+    const paths = (nodes: Array<TreeNode<TRow>>): unknown =>
+        nodes.map((node) =>
+            node.children.length
+                ? { [node.path]: paths(node.children) }
+                : node.path
+        )
+
+    test("a child of another project's listed record sits under it", () => {
+        const tree = build([
+            { key: "core.taxonomy/billing" },
+            { key: "refund", parent: "core.taxonomy/billing" },
+        ])
+        expect(paths(tree)).toEqual([
+            { "core.taxonomy": [{ "core.taxonomy/billing": ["refund"] }] },
+        ])
+        expect(pathTreeAncestors(tree, "refund")).toEqual([
+            "core.taxonomy",
+            "core.taxonomy/billing",
+        ])
+    })
+
+    test("a child of a record that is not listed sits under labels for it", () => {
+        const tree = build([
+            { key: "invoice" },
+            { key: "refund", parent: "core.taxonomy/billing" },
+        ])
+        expect(paths(tree)).toEqual([
+            "invoice",
+            { "core.taxonomy": [{ "core.taxonomy/billing": ["refund"] }] },
+        ])
+        expect(tree[1].item).toBeNull()
+        expect(tree[1].children[0].item).toBeNull()
+        expect(tree[1].children[0].children[0].item?.key).toBe("refund")
+    })
+
+    test("a flat child of this project's own record sits under it", () => {
+        const tree = build([
+            { key: "invoice" },
+            { key: "receipt", parent: "invoice" },
+        ])
+        expect(paths(tree)).toEqual([{ invoice: ["receipt"] }])
+    })
+
+    test("no parent, or the folder's own parent, keeps the path tree", () => {
+        const rows = [
+            { key: "a" },
+            { key: "a/b", parent: "a" },
+            { key: "a/c" },
+            { key: "core.taxonomy/x/y" },
+        ]
+        expect(paths(build(rows))).toEqual(
+            paths(buildPathTree(rows, (row) => row.key))
+        )
+    })
+
+    test("records naming each other as parent each appear once", () => {
+        const tree = build([
+            { key: "a", parent: "b" },
+            { key: "b", parent: "a" },
+        ])
+        const seen: string[] = []
+        const walk = (nodes: Array<TreeNode<TRow>>) =>
+            nodes.forEach((node) => {
+                seen.push(node.path)
+                walk(node.children)
+            })
+        walk(tree)
+        expect(seen.sort()).toEqual(["a", "b"])
+    })
+
+    test("a record naming itself as parent is placed by its folder", () => {
+        expect(paths(build([{ key: "a", parent: "a" }]))).toEqual(["a"])
+    })
+
+    test("ancestors of a path that is not in the tree are none", () => {
+        expect(pathTreeAncestors(build([{ key: "a" }]), "zz")).toEqual([])
     })
 })
 

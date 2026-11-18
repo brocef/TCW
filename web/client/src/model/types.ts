@@ -214,7 +214,7 @@ export interface TaxonomyItem extends JsonRecord, TOverrides {
     owner: string
     name?: string
     kind?: string
-    parent?: string
+    parent?: string | null
     relates_to?: string[]
     vocabulary?: string[]
     description?: string
@@ -230,6 +230,8 @@ export interface CapabilityItem extends JsonRecord, TOverrides {
     owner: string
     name?: string
     status?: string
+    /** The full identifier of the capability this one belongs under. */
+    parent?: string | null
     fields?: Record<string, string | string[]>
     body?: string
     modified?: string

@@ -6,6 +6,8 @@ import type {
     WorkItem,
 } from "../model/types"
 import { parseFullId, routeKey } from "../model/identifier"
+import { buildPathTree } from "../model/tree"
+import type { TreeNode } from "../model/types"
 
 export const AXES: Axis[] = ["taxonomy", "capabilities", "work"]
 
@@ -22,6 +24,33 @@ export function itemKey(axis: Axis, item: AxisItem, projectId: string): string {
     return routeKey(
         (item as WorkItem | TaxonomyItem | CapabilityItem)["full-id"],
         projectId
+    )
+}
+
+/** The key of the record a term or capability names as its `parent`, in
+ * the form `itemKey` gives, or null when it names none or its `parent` is
+ * not a full identifier. The trees nest a record under this key. */
+export function parentItemKey(
+    item: TaxonomyItem | CapabilityItem,
+    projectId: string
+): string | null {
+    const parent = item.parent
+    if (!parent || !parseFullId(parent)) return null
+    return routeKey(parent, projectId)
+}
+
+/** The taxonomy or capabilities tree: each record under its folder, or
+ * under the record its `parent` names. */
+export function buildRecordTree(
+    axis: Axis,
+    items: AxisItem[],
+    projectId: string
+): Array<TreeNode<AxisItem>> {
+    return buildPathTree(
+        items,
+        (item) => itemKey(axis, item, projectId),
+        (item) =>
+            parentItemKey(item as TaxonomyItem | CapabilityItem, projectId)
     )
 }
 

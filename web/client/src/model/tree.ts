@@ -4,15 +4,25 @@ import type { TreeNode, WorkItem } from "./types"
 export type TWorkSortKey = "name" | "created" | "priority"
 export type TSortDirection = "ascending" | "descending"
 
+/** A tree of route keys. A node's path is its key's segments joined by `/`,
+ * and a segment with no record of its own is a label node with no item.
+ * Each record sits under its folder's parent, unless `parentKeyOf` names a
+ * different key for it: then it sits under that key's node, which is made,
+ * with labels along its segments, when no listed record has that key. That
+ * is how a taxonomy term or capability whose `parent:` is another project's
+ * record, or whose folder was made flat, is shown under its parent. Parent
+ * links that form a cycle are broken by putting a node caught in it back
+ * under its folder's parent. */
 export function buildPathTree<T>(
     items: T[],
-    keyOf: (item: T) => string
+    keyOf: (item: T) => string,
+    parentKeyOf?: (item: T) => string | null
 ): Array<TreeNode<T>> {
     const map = new Map<string, TreeNode<T>>()
     const itemByKey = new Map<string, T>()
     for (const item of items)
         if (!itemByKey.has(keyOf(item))) itemByKey.set(keyOf(item), item)
-    for (const key of itemByKey.keys()) {
+    const ensure = (key: string): string => {
         let cursor = ""
         for (const segment of keySegments(key)) {
             cursor = cursor ? `${cursor}/${segment}` : segment
@@ -24,16 +34,66 @@ export function buildPathTree<T>(
                     children: [],
                 })
         }
-        map.get(key)!.item = itemByKey.get(key)!
+        return cursor
     }
+    const declared = new Map<string, string>()
+    for (const [key, item] of itemByKey) {
+        const path = ensure(key)
+        map.get(path)!.item = item
+        const parentKey = parentKeyOf?.(item)
+        if (parentKey) declared.set(path, parentKey)
+    }
+    for (const [path, parentKey] of declared) {
+        const parentPath = ensure(parentKey)
+        if (parentPath === path) declared.delete(path)
+        else declared.set(path, parentPath)
+    }
+    const folderParent = (path: string) => {
+        const parentPath = path.slice(0, path.lastIndexOf("/"))
+        return parentPath ? map.get(parentPath) : undefined
+    }
+    const parentOf = new Map<string, TreeNode<T>>()
     const roots: Array<TreeNode<T>> = []
     for (const [path, node] of map) {
-        const parentPath = path.slice(0, path.lastIndexOf("/"))
-        const parent = parentPath ? map.get(parentPath) : undefined
-        if (parent) parent.children.push(node)
+        const declaredPath = declared.get(path)
+        const parent = declaredPath ? map.get(declaredPath) : folderParent(path)
+        if (parent) {
+            parent.children.push(node)
+            parentOf.set(path, parent)
+        } else roots.push(node)
+    }
+    const reachable = new Set<string>()
+    const mark = (node: TreeNode<T>) => {
+        if (reachable.has(node.path)) return
+        reachable.add(node.path)
+        node.children.forEach(mark)
+    }
+    roots.forEach(mark)
+    for (const [path, node] of map) {
+        if (reachable.has(path)) continue
+        const old = parentOf.get(path)
+        if (old) old.children = old.children.filter((child) => child !== node)
+        const parent = folderParent(path)
+        if (parent && reachable.has(parent.path)) parent.children.push(node)
         else roots.push(node)
+        mark(node)
     }
     return roots
+}
+
+/** The paths of the nodes above the node with this path, outermost first;
+ * none when no node has it. */
+export function pathTreeAncestors<T>(
+    nodes: Array<TreeNode<T>>,
+    path: string
+): string[] {
+    for (const node of nodes) {
+        if (node.path === path) return []
+        const below = pathTreeAncestors(node.children, path)
+        if (below.length || node.children.some((child) => child.path === path))
+            return [node.path, ...below]
+    }
+    return []
 }
 
 /** The work tree by `parent`. Keys are full identifiers, which is what `parent`

@@ -123,7 +123,11 @@ Back and Forward work. Each list is a tree, filtered by the text box above it.
   comments, and one tab per stage that keeps files: that stage's document, or
   its rounds with their verdicts, and any handoffs.
 - **Taxonomy and capabilities** list the entries the scope covers, each one
-  owned by another project marked with that project.
+  owned by another project marked with that project. An entry is shown under
+  the entry its `parent:` names, even when its folder is not inside that
+  entry's, as with a parent in another project or `--flat`. When the parent
+  is not in the list (for example, the scope shows only this project), the
+  entry sits under a label naming the parent; the label opens no page.
 
 Any `tcw://` link in a document renders as a link inside the app, as
 described above.

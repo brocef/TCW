@@ -1389,3 +1389,36 @@ test("an override's page links a project whose own object sets no status", async
     expect(href("tablet")).toBe("/capabilities/tablet.capabilities/abc")
     expect(lines).toHaveTextContent("Missing: p, server (inherited)")
 })
+
+test.each([
+    ["taxonomy", "/api/taxonomy$", "terms", term],
+    ["capabilities", "/api/capabilities$", "capabilities", capability],
+] as const)(
+    "a %s record whose parent is another project's sits under labels for it",
+    async (axis, route, key, make) => {
+        serve({}, [
+            [
+                route,
+                200,
+                {
+                    [key]: [
+                        make("invoice", { name: "Invoice" }),
+                        make("refund", {
+                            name: "Refund",
+                            parent: `core.${axis}/billing`,
+                        }),
+                    ],
+                },
+            ],
+        ])
+        renderApp(`/${axis}`)
+        const refund = await screen.findByRole("treeitem", { name: /Refund/ })
+        expect(refund.getAttribute("aria-level")).toBe("3")
+        const group = refund.closest('[role="group"]')!.closest(".tree-node")!
+        expect(
+            group.querySelector(".tree-row [data-tree-path]")!.textContent
+        ).toBe("billing")
+        const invoice = screen.getByRole("treeitem", { name: /Invoice/ })
+        expect(invoice.getAttribute("aria-level")).toBe("1")
+    }
+)
