@@ -15,6 +15,23 @@ Use the `work` skill for anything about the item itself. This skill covers
 the stage it was at. You do not know whether the user is back in five minutes
 or resuming on another machine — leave the work so both work.
 
+## When a pause arrives as an interruption
+
+A pause often reaches an agent as an interruption first and a message second:
+the user stops the turn so that the pause message waiting behind it can be
+read. So **when your turn is cut off without warning, assume the user did it**,
+not a fault or the end of the task. Look for the pending message and act on
+it — if it asks for a pause, follow this skill — rather than resuming the old
+plan or treating yourself as finished.
+
+The same holds when you are the one passing a pause on to other agents, such
+as subagents or sibling sessions working under you. An agent that has gone
+quiet since you sent it the pause has most likely been interrupted and is
+still processing it. **Do not treat it as done and idle until more than ten
+minutes have passed with no message or confirmation from it.** Until then,
+wait for its report; after that, record its work as unconfirmed in your own
+handoff.
+
 ## 1. How to pause
 
 How to reach a resting point and what a handoff holds come from this project's
