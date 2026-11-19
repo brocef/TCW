@@ -1,0 +1,15 @@
+## Improvements
+
+- Pausing work now ends with a single message to paste into a fresh session,
+  instead of one line per item. It names every paused item and where its
+  handoff is, and, where several agents were working, says to start them
+  again. Only the agent talking to you writes it; agents working under it
+  send their reports to it instead.
+- When you pause an agent that coordinates other agents, and you interrupt
+  those agents by hand so they read the pause straight away, the coordinating
+  agent no longer takes over their handoffs. It waits for their reports, and
+  only after ten minutes with no word from one does it count that agent's work
+  as unconfirmed.
+- Where a handoff is kept is now part of the `pause-work` procedure, so your
+  project can change it under `work.procedures.pause-work`. By default it is
+  kept where a fresh session, possibly on another machine, can find it.

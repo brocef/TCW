@@ -53,16 +53,20 @@ nothing of its own.
 
 ## 2. Report, then stop
 
-**If you report to another agent,** send it one report: each item you were
-working, its stage, where its handoff is (or that none was written, and why),
-and anything you know only from this session that the handoff does not hold.
-Write no resume message: the agent you report to writes the only one.
+Whoever you report to, first send the pause to every agent working under you,
+however it was started, and wait for their reports as described above, so
+that your own report covers their work too.
+
+**If you report to another agent,** send it one report: each item you or the
+agents under you were working, its stage, where its handoff is (or that none
+was written, and why), and anything you know only from this session that the
+handoff does not hold. Write no resume message: the agent you report to
+writes the only one.
 
 **If you report to the user,** you write the only resume message, however
-many agents were working. Send the pause to every agent working under you,
-however it was started, and wait for their reports as described above. Then send one short message: what was paused and
-where each handoff is. End it with a single resume message, in a fenced
-block, for the user to paste into a fresh session:
+many agents were working. Send one short message: what was paused and where
+each handoff is. End it with a single resume message, in a fenced block, for
+the user to paste into a fresh session:
 
 ```
 Resume the paused work: <what was in progress, each item by its full
